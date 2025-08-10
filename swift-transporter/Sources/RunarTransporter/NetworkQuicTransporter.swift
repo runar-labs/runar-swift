@@ -1089,7 +1089,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 messageQueue.async { self.messageHandler.handleMessage(message) }
             }
         } catch {
-            logger.error("❌ [NetworkQuicTransporter] Failed to decode message from \(peerId): \(error)")
+            if case RunarTransportError.serializationError(let msg) = error {
+                logger.debug("🔎 [NetworkQuicTransporter] Serialization decode issue from \(peerId): \(msg)")
+            } else {
+                logger.error("❌ [NetworkQuicTransporter] Failed to decode message from \(peerId): \(error)")
+            }
         }
     }
     
