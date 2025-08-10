@@ -276,11 +276,20 @@ public struct BinaryMessageEncoder {
         
         // Read public key
         let keyLength = try readUInt32BE(data: data, offset: &offset, context: "node public key length")
+        // Sanity check key length to avoid pathological values
+        if keyLength == 0 || keyLength > 10_000 {
+            print("[BINDEC] Unreasonable node public key length=\(keyLength), data.count=\(data.count), offset(before slice)=\(offset)")
+            throw RunarTransportError.serializationError("Unreasonable node public key length: \(keyLength)")
+        }
         
         guard offset + Int(keyLength) <= data.count else {
+            print("[BINDEC] Insufficient data for public key: need=\(Int(keyLength)) have=\(data.count - offset) offset=\(offset) data.count=\(data.count)")
             throw RunarTransportError.serializationError("Insufficient data for public key")
         }
-        let publicKey = data[offset..<(offset + Int(keyLength))]
+        let sliceStart = offset
+        let sliceEnd = offset + Int(keyLength)
+        print("[BINDEC] Slicing publicKey: start=\(sliceStart) end=\(sliceEnd) total=\(data.count)")
+        let publicKey = data[sliceStart..<sliceEnd]
         offset += Int(keyLength)
         
         // Read network IDs
