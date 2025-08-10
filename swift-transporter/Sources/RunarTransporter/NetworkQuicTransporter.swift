@@ -1002,52 +1002,42 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     
     private func handleReceivedData(_ data: Data, from peerId: String, connection: NWConnection) {
         logger.debug("📥 [NetworkQuicTransporter] Received \(data.count) bytes from \(peerId)")
-        
+        // Expect a 4-byte big-endian length prefix followed by the frame
+        guard data.count >= 4 else {
+            logger.debug("🔎 [NetworkQuicTransporter] Frame too short (<4) from \(peerId)")
+            return
+        }
+        // Read BE length
+        let len: Int = data.withUnsafeBytes { rawBuf in
+            let buf = rawBuf.bindMemory(to: UInt8.self)
+            if buf.count >= 4 {
+                let v = (UInt32(buf[0]) << 24) | (UInt32(buf[1]) << 16) | (UInt32(buf[2]) << 8) | UInt32(buf[3])
+                return Int(v)
+            } else {
+                return -1
+            }
+        }
+        guard len >= 0 else {
+            logger.debug("🔎 [NetworkQuicTransporter] Failed to parse length prefix from \(peerId)")
+            return
+        }
+        let totalNeeded = 4 + len
+        guard data.count >= totalNeeded else {
+            logger.debug("🔎 [NetworkQuicTransporter] Incomplete framed message from \(peerId): have=\(data.count) need=\(totalNeeded)")
+            return
+        }
+        // Safe slicing within bounds
+        let messageData = data.subdata(in: 4..<(4 + len))
         do {
-            // Parse message length (4 bytes)
-            guard data.count >= 4 else {
-                // Treat as ignorable noise (e.g., handshake kick)
-                return
-            }
-            
-            let lengthData = data.prefix(4)
-            let lengthBytes = Array(lengthData)
-            let messageLength = (UInt32(lengthBytes[0]) << 24) |
-                                 (UInt32(lengthBytes[1]) << 16) |
-                                 (UInt32(lengthBytes[2]) << 8)  |
-                                  UInt32(lengthBytes[3])
-            
-            guard data.count >= 4 + Int(messageLength) else {
-                logger.debug("🔎 [NetworkQuicTransporter] Incomplete framed message from \(peerId); waiting for more data")
-                return
-            }
-            
-            let messageData = data.dropFirst(4).prefix(Int(messageLength))
-            
-            // Decode message using binary format
             let message = try decodeNetworkMessage(from: messageData)
-            
             logger.info("📥 [NetworkQuicTransporter] Received message from \(peerId) - Type: \(message.messageType)")
-            
-            // Handle handshake messages (test expects messageType == "HANDSHAKE")
             if message.messageType == MessageTypes.HANDSHAKE {
-                // Forward to test handler so MessageTracker counts it
-                messageQueue.async {
-                    self.messageHandler.handleMessage(message)
-                }
-                // Optionally notify peer connection info
-                if let payload = message.payloads.first {
-                    if let peerNode = try? self.decodeNodeInfo(from: payload.valueBytes) {
-                        self.messageQueue.async {
-                            self.messageHandler.peerConnected(peerNode)
-                        }
-                        self.subscriptionQueue.async {
-                            self.peerNodeInfoStream?.yield(peerNode)
-                        }
-                    }
+                messageQueue.async { self.messageHandler.handleMessage(message) }
+                if let payload = message.payloads.first, let peerNode = try? self.decodeNodeInfo(from: payload.valueBytes) {
+                    self.messageQueue.async { self.messageHandler.peerConnected(peerNode) }
+                    self.subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNode) }
                 }
             } else if message.messageType == "REQUEST" {
-                // Auto-respond to REQUEST messages in tests
                 let response = RunarNetworkMessage(
                     sourceNodeId: self.nodeInfo.nodeId,
                     destinationNodeId: message.sourceNodeId,
@@ -1062,12 +1052,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 )
                 Task { try await self.send(message: response) }
             } else {
-                // Handle regular messages
-                messageQueue.async {
-                    self.messageHandler.handleMessage(message)
-                }
+                messageQueue.async { self.messageHandler.handleMessage(message) }
             }
-            
         } catch {
             logger.error("❌ [NetworkQuicTransporter] Failed to decode message from \(peerId): \(error)")
         }

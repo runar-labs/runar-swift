@@ -1,0 +1,40 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:runar-swift}/swift-transporter",
+            "name": "Debug QuicIT (swift-transporter)",
+            "program": "${workspaceFolder:runar-swift}/swift-transporter/.build/debug/QuicIT",
+            "preLaunchTask": "swift: Build Debug QuicIT (swift-transporter)"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:runar-swift}/swift-transporter",
+            "name": "Release QuicIT (swift-transporter)",
+            "program": "${workspaceFolder:runar-swift}/swift-transporter/.build/release/QuicIT",
+            "preLaunchTask": "swift: Build Release QuicIT (swift-transporter)"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:runar-swift}/swift-transporter",
+            "name": "Debug QuicSample (swift-transporter)",
+            "program": "${workspaceFolder:runar-swift}/swift-transporter/.build/debug/QuicSample",
+            "preLaunchTask": "swift: Build Debug QuicSample (swift-transporter)"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:runar-swift}/swift-transporter",
+            "name": "Release QuicSample (swift-transporter)",
+            "program": "${workspaceFolder:runar-swift}/swift-transporter/.build/release/QuicSample",
+            "preLaunchTask": "swift: Build Release QuicSample (swift-transporter)"
+        }
+    ]
+}

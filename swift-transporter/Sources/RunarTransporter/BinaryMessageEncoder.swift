@@ -28,6 +28,20 @@ public struct BinaryMessageEncoder {
         }
     }
     
+    // Safely read a 4-byte big-endian unsigned integer and advance offset
+    private static func readUInt32BE(data: Data, offset: inout Int, context: String) throws -> UInt32 {
+        guard offset + 4 <= data.count else {
+            throw RunarTransportError.serializationError("Insufficient data for UInt32 in \(context)")
+        }
+        let value: UInt32 = data.withUnsafeBytes { rawBuf in
+            let buf = rawBuf.bindMemory(to: UInt8.self)
+            let i = offset
+            return (UInt32(buf[i]) << 24) | (UInt32(buf[i + 1]) << 16) | (UInt32(buf[i + 2]) << 8) | UInt32(buf[i + 3])
+        }
+        offset += 4
+        return value
+    }
+    
     // MARK: - Message Encoding
     
     /// Encode a network message to binary format
@@ -261,15 +275,7 @@ public struct BinaryMessageEncoder {
         }
         
         // Read public key
-        guard offset + 4 <= data.count else {
-            throw RunarTransportError.serializationError("Insufficient data for public key length")
-        }
-        let keyLengthBytes = Array(data[offset..<(offset + 4)])
-        let keyLength = UInt32(keyLengthBytes[0]) << 24 |
-                       UInt32(keyLengthBytes[1]) << 16 |
-                       UInt32(keyLengthBytes[2]) << 8 |
-                       UInt32(keyLengthBytes[3])
-        offset += 4
+        let keyLength = try readUInt32BE(data: data, offset: &offset, context: "node public key length")
         
         guard offset + Int(keyLength) <= data.count else {
             throw RunarTransportError.serializationError("Insufficient data for public key")

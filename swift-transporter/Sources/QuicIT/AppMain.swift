@@ -35,19 +35,6 @@ struct QuicITMain {
             let node1Id = CryptoUtils.compactId(node1Pk)
             let node2Id = CryptoUtils.compactId(node2Pk)
 
-            let node1Info = RunarNodeInfo(
-                nodePublicKey: node1Pk,
-                networkIds: ["it"],
-                addresses: ["localhost:9080"],
-                services: []
-            )
-            let node2Info = RunarNodeInfo(
-                nodePublicKey: node2Pk,
-                networkIds: ["it"],
-                addresses: ["localhost:9081"],
-                services: []
-            )
-
             let cfg1 = try km1.getQuicCertificateConfig()
             let cfg2 = try km2.getQuicCertificateConfig()
             let opt1 = NetworkQuicTransportOptions(
@@ -71,29 +58,83 @@ struct QuicITMain {
                 mobileKeyManager: km2
             )
 
-            final class Tracker: MessageHandlerProtocol {
-                let nodeId: String
-                var messages: [RunarNetworkMessage] = []
-                init(nodeId: String) { self.nodeId = nodeId }
-                func handleMessage(_ message: RunarNetworkMessage) { messages.append(message) }
-                func peerConnected(_ peerInfo: RunarNodeInfo) {}
-                func peerDisconnected(_ peerId: String) {}
+            // Explicit handlers we can inspect later
+            let h1 = SimpleHandler(nodeId: node1Id)
+            let h2 = SimpleHandler(nodeId: node2Id)
+
+            // Try to bind two high ports, retrying on EADDRINUSE
+            let basePort: UInt16 = 59000
+            var chosenP1: UInt16 = 0
+            var chosenP2: UInt16 = 0
+            var t1: NetworkQuicTransporter!
+            var t2: NetworkQuicTransporter!
+            var started = false
+            for step in 0..<50 { // 50 attempts → 100 ports scanned
+                let p1 = basePort &+ UInt16(step * 2)
+                let p2 = p1 &+ 1
+
+                let node1Info = RunarNodeInfo(
+                    nodePublicKey: node1Pk,
+                    networkIds: ["it"],
+                    addresses: ["localhost:\(p1)"],
+                    services: []
+                )
+                let node2Info = RunarNodeInfo(
+                    nodePublicKey: node2Pk,
+                    networkIds: ["it"],
+                    addresses: ["localhost:\(p2)"],
+                    services: []
+                )
+
+                let candT1 = NetworkQuicTransporter(
+                    nodeInfo: node1Info,
+                    bindAddress: "localhost:\(p1)",
+                    messageHandler: h1,
+                    options: opt1,
+                    logger: logger
+                )
+                let candT2 = NetworkQuicTransporter(
+                    nodeInfo: node2Info,
+                    bindAddress: "localhost:\(p2)",
+                    messageHandler: h2,
+                    options: opt2,
+                    logger: logger
+                )
+
+                do {
+                    try await candT1.start()
+                    try await candT2.start()
+                    t1 = candT1
+                    t2 = candT2
+                    chosenP1 = p1
+                    chosenP2 = p2
+                    started = true
+                    break
+                } catch {
+                    fputs("[QuicIT] Port pair (\(p1),\(p2)) in use or failed: \(error)\n", stderr)
+                    // Ensure clean state before retrying
+                    await candT1.stop()
+                    await candT2.stop()
+                    continue
+                }
             }
-            let h1 = Tracker(nodeId: node1Id)
-            let h2 = Tracker(nodeId: node2Id)
 
-            let t1 = NetworkQuicTransporter(nodeInfo: node1Info, bindAddress: "localhost:9080", messageHandler: h1, options: opt1, logger: logger)
-            let t2 = NetworkQuicTransporter(nodeInfo: node2Info, bindAddress: "localhost:9081", messageHandler: h2, options: opt2, logger: logger)
+            guard started else {
+                fputs("[QuicIT] Could not bind any port pair\n", stderr)
+                exit(1)
+            }
 
-            try await t1.start()
-            try await t2.start()
-            try await Task.sleep(nanoseconds: 1_000_000_000)
+            // Give listeners a moment
+            try await Task.sleep(nanoseconds: 800_000_000)
 
-            let p1 = RunarPeerInfo(publicKey: node1Pk, addresses: ["localhost:9080"]) // peer for node1
-            let p2 = RunarPeerInfo(publicKey: node2Pk, addresses: ["localhost:9081"]) // peer for node2
-            try await t1.connect(to: p2)
-            try await t2.connect(to: p1)
-            try await Task.sleep(nanoseconds: 2_000_000_000)
+            // Build peers using the chosen ports
+            let p1Peer = RunarPeerInfo(publicKey: node1Pk, addresses: ["localhost:\(chosenP1)"]) // peer for node1
+            let p2Peer = RunarPeerInfo(publicKey: node2Pk, addresses: ["localhost:\(chosenP2)"]) // peer for node2
+
+            // Cross-connect
+            try await t1.connect(to: p2Peer)
+            try await t2.connect(to: p1Peer)
+            try await Task.sleep(nanoseconds: 1_500_000_000)
 
             // Send a request from node1 to node2
             let req = RunarNetworkMessage(
@@ -111,7 +152,7 @@ struct QuicITMain {
             guard t1Connected || t2Connected else {
                 fputs("Connection not established\n", stderr); exit(2)
             }
-            let hasHandshake = h1.messages.contains { $0.messageType == MessageTypes.HANDSHAKE } || h2.messages.contains { $0.messageType == MessageTypes.HANDSHAKE }
+            let hasHandshake = (h1.messages.contains { $0.messageType == MessageTypes.HANDSHAKE }) || (h2.messages.contains { $0.messageType == MessageTypes.HANDSHAKE })
             let hasRequest = h2.messages.contains { $0.messageType == MessageTypes.REQUEST }
             guard hasHandshake else { fputs("No handshake\n", stderr); exit(3) }
             guard hasRequest else { fputs("No request received\n", stderr); exit(4) }
@@ -131,4 +172,11 @@ struct QuicITMain {
     }
 }
 
-
+final class SimpleHandler: MessageHandlerProtocol {
+    let nodeId: String
+    var messages: [RunarNetworkMessage] = []
+    init(nodeId: String) { self.nodeId = nodeId }
+    func handleMessage(_ message: RunarNetworkMessage) { messages.append(message) }
+    func peerConnected(_ peerInfo: RunarNodeInfo) {}
+    func peerDisconnected(_ peerId: String) {}
+}
