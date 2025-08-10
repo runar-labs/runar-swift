@@ -1001,7 +1001,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     }
     
     private func receiveNextMessage(from connection: NWConnection, peerId: String) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] (content: Data?, context: NWConnection.ContentContext?, isComplete: Bool, error: NWError?) -> Void in
+        connection.receiveMessage { [weak self] (content: Data?, context: NWConnection.ContentContext?, isComplete: Bool, error: NWError?) -> Void in
             guard let self = self else { return }
             
             if let error = error {
@@ -1011,9 +1011,14 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             
             // Process any received content >= 4 bytes (length-prefixed protocol), only for our app context
             if let data = content, !data.isEmpty {
-                // Drop if not our application message context
+                // Drop if not our application message context (ignore only well-known non-app frames)
                 if let ctx = context, ctx.identifier != self.appMessageContext.identifier {
-                    self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring context=\(ctx.identifier) from \(peerId)")
+                    if ctx.identifier == "endpoint_flow" || ctx.identifier == "quic" || ctx.identifier.hasPrefix("server-handshake-kick") {
+                        self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring context=\(ctx.identifier) from \(peerId)")
+                    } else {
+                        self.logger.debug("🔎 [NetworkQuicTransporter] Treating unknown context=\(ctx.identifier) as app data from \(peerId)")
+                        self.handleReceivedData(data, from: peerId, connection: connection)
+                    }
                 } else if data.count < 4 {
                     self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring short frame (len=\(data.count)) from \(peerId)")
                 } else {
@@ -1021,9 +1026,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 }
             }
             
-            if !isComplete {
-                self.receiveNextMessage(from: connection, peerId: peerId)
-            }
+            // Continue receiving subsequent messages
+            self.receiveNextMessage(from: connection, peerId: peerId)
         }
     }
     
@@ -1065,6 +1069,16 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     let pvPreview = pv.prefix(8).map { String(format: "%02x", $0) }.joined()
                     self.logger.info("🔎 [NetworkQuicTransporter] HANDSHAKE payloadLen=\(pv.count) preview=\(pvPreview)")
                     if let peerNode = try? self.decodeNodeInfo(from: pv) {
+                        // Remap temporary inbound peer key (endpoint string) to the real peer nodeId
+                        let realPeerId = peerNode.nodeId
+                        if realPeerId != peerId {
+                            // Alias temp key to real id so lookups by real id are connected
+                            self.connectionPool.aliasPeer(existingId: peerId, aliasId: realPeerId)
+                            if let state = self.connectionPool.getPeer(peerId: realPeerId) {
+                                state.setConnection(connection)
+                            }
+                            self.logger.info("🔁 [NetworkQuicTransporter] Aliased inbound peer from \(peerId) to real id \(realPeerId)")
+                        }
                         self.messageQueue.async { self.messageHandler.peerConnected(peerNode) }
                         self.subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNode) }
                     } else {
@@ -1072,6 +1086,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     }
                 }
             } else if message.messageType == "REQUEST" {
+                // Notify app handler about the incoming request
+                messageQueue.async { self.messageHandler.handleMessage(message) }
                 let response = RunarNetworkMessage(
                     sourceNodeId: self.nodeInfo.nodeId,
                     destinationNodeId: message.sourceNodeId,

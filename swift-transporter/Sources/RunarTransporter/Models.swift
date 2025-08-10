@@ -1,5 +1,6 @@
 import Foundation
 import Crypto
+import RunarKeys
 
 // MARK: - Core Models
 
@@ -272,8 +273,8 @@ public struct NodeUtils {
     /// Generate a compact node ID from a public key
     /// Matches the Rust compact_id function
     public static func compactId(from publicKey: Data) -> String {
-        let hash = SHA256.hash(data: publicKey)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
+        // Delegate to swift-keys' implementation to ensure consistency across packages/tests
+        return RunarKeys.CryptoUtils.compactId(publicKey)
     }
     
     /// Generate a correlation ID for request-response matching

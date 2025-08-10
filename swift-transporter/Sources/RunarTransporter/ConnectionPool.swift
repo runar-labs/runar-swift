@@ -26,7 +26,17 @@ public class ConnectionPool {
     }
     
     public func removePeer(peerId: String) {
-        queue.async(flags: .barrier) { self.peers.removeValue(forKey: peerId) }
+        queue.async(flags: .barrier) {
+            if let removed = self.peers.removeValue(forKey: peerId) {
+                // Remove any aliases pointing to the same PeerState instance
+                let keysToRemove = self.peers.compactMap { (key: String, value: PeerState) in
+                    return value === removed ? key : nil
+                }
+                for key in keysToRemove {
+                    self.peers.removeValue(forKey: key)
+                }
+            }
+        }
     }
     
     public func isPeerConnected(peerId: String) -> Bool {
@@ -35,5 +45,14 @@ public class ConnectionPool {
     
     public func getConnectedPeers() -> [String] {
         return queue.sync { Array(peers.keys) }
+    }
+    
+    /// Create an alias mapping so that another identifier points to the same peer state
+    public func aliasPeer(existingId: String, aliasId: String) {
+        queue.async(flags: .barrier) {
+            if let state = self.peers[existingId] {
+                self.peers[aliasId] = state
+            }
+        }
     }
 } 
