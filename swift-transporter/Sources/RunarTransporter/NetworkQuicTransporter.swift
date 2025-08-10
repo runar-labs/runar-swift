@@ -429,14 +429,43 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         let listener = try NWListener(using: parameters, on: NWEndpoint.Port(integerLiteral: port))
         self.listener = listener
         
-        // Set state handler
-        listener.stateUpdateHandler = self.listenerStateUpdateHandler(state:)
+        // Wait for listener to become ready or fail before returning
+        var didResume = false
+        let originalStateHandler = self.listenerStateUpdateHandler(state:)
+        let readyOrFailed: () async throws -> Void = {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                listener.stateUpdateHandler = { [weak self] state in
+                    // Forward to original logging handler
+                    originalStateHandler(state)
+                    guard !didResume else { return }
+                    switch state {
+                    case .ready:
+                        didResume = true
+                        cont.resume()
+                    case .failed(let error):
+                        didResume = true
+                        cont.resume(throwing: RunarTransportError.transportError("Listener failed: \(error)"))
+                    default:
+                        break
+                    }
+                }
+            }
+        }
         
         // Set new connection handler
         listener.newConnectionHandler = self.listenerNewConnectionHandler(connection:)
         
-        // Start listener
+        // Start listener and await readiness
         listener.start(queue: connectionQueue)
+        do {
+            try await readyOrFailed()
+        } catch {
+            // Ensure we restore state handler even on failure
+            listener.stateUpdateHandler = originalStateHandler
+            throw error
+        }
+        // Restore the original state handler for normal operation
+        listener.stateUpdateHandler = originalStateHandler
         logger.info("✅ [NetworkQuicTransporter] Listener started on \(bindAddress)")
     }
     

@@ -42,6 +42,34 @@ public struct BinaryMessageEncoder {
         return value
     }
     
+    // Safely read an 8-byte big-endian unsigned integer and advance offset
+    private static func readUInt64BE(data: Data, offset: inout Int, context: String) throws -> UInt64 {
+        guard offset + 8 <= data.count else {
+            throw RunarTransportError.serializationError("Insufficient data for UInt64 in \(context)")
+        }
+        let value: UInt64 = data.withUnsafeBytes { rawBuf in
+            let buf = rawBuf.bindMemory(to: UInt8.self)
+            let i = offset
+            let b0 = UInt64(buf[i])
+            let b1 = UInt64(buf[i + 1])
+            let b2 = UInt64(buf[i + 2])
+            let b3 = UInt64(buf[i + 3])
+            let b4 = UInt64(buf[i + 4])
+            let b5 = UInt64(buf[i + 5])
+            let b6 = UInt64(buf[i + 6])
+            let b7 = UInt64(buf[i + 7])
+            return (b0 << 56) | (b1 << 48) | (b2 << 40) | (b3 << 32) | (b4 << 24) | (b5 << 16) | (b6 << 8) | b7
+        }
+        offset += 8
+        return value
+    }
+    
+    // Safely read an 8-byte big-endian signed integer and advance offset
+    private static func readInt64BE(data: Data, offset: inout Int, context: String) throws -> Int64 {
+        let u = try readUInt64BE(data: data, offset: &offset, context: context)
+        return Int64(bitPattern: u)
+    }
+    
     // MARK: - Message Encoding
     
     /// Encode a network message to binary format
@@ -139,31 +167,26 @@ public struct BinaryMessageEncoder {
     public static func decodeNetworkMessage(from data: Data) throws -> RunarNetworkMessage {
         var offset = 0
         
-        // Helper function to read string with length prefix
+        // Helper function to read string with length prefix (bounds-safe, no slicing)
         func readString() throws -> String {
-            guard offset + 4 <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for string length")
+            let length = try readUInt32BE(data: data, offset: &offset, context: "string length")
+            if length > 1_000_000 { // sanity guard
+                throw RunarTransportError.serializationError("Unreasonable string length: \(length)")
             }
-            
-            // Read length bytes manually to avoid alignment issues
-            let lengthBytes = Array(data[offset..<(offset + 4)])
-            let length = UInt32(lengthBytes[0]) << 24 |
-                        UInt32(lengthBytes[1]) << 16 |
-                        UInt32(lengthBytes[2]) << 8 |
-                        UInt32(lengthBytes[3])
-            offset += 4
-            
             guard offset + Int(length) <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for string")
+                throw RunarTransportError.serializationError("Insufficient data for string (need=\(length) have=\(data.count - offset))")
             }
-            
-            let stringData = data[offset..<(offset + Int(length))]
-            offset += Int(length)
-            
-            guard let string = String(data: stringData, encoding: .utf8) else {
+            let start = offset
+            let end = offset + Int(length)
+            var bytes = Data(count: Int(length))
+            bytes.withUnsafeMutableBytes { destRaw in
+                let dest = destRaw.bindMemory(to: UInt8.self)
+                data.copyBytes(to: dest, from: start..<end)
+            }
+            offset = end
+            guard let string = String(data: bytes, encoding: .utf8) else {
                 throw RunarTransportError.serializationError("Invalid UTF-8 string")
             }
-            
             return string
         }
         
@@ -176,32 +199,12 @@ public struct BinaryMessageEncoder {
         // Read message type
         let messageType = try readString()
         
-        // Read timestamp
-        guard offset + 8 <= data.count else {
-            throw RunarTransportError.serializationError("Insufficient data for timestamp")
-        }
-        let timestampBytes = Array(data[offset..<(offset + 8)])
-        let timestampMs = UInt64(timestampBytes[0]) << 56 |
-                         UInt64(timestampBytes[1]) << 48 |
-                         UInt64(timestampBytes[2]) << 40 |
-                         UInt64(timestampBytes[3]) << 32 |
-                         UInt64(timestampBytes[4]) << 24 |
-                         UInt64(timestampBytes[5]) << 16 |
-                         UInt64(timestampBytes[6]) << 8 |
-                         UInt64(timestampBytes[7])
+        // Read timestamp (8 bytes, BE)
+        let timestampMs = try readUInt64BE(data: data, offset: &offset, context: "timestamp")
         let timestamp = Date(timeIntervalSince1970: TimeInterval(timestampMs) / 1000.0)
-        offset += 8
         
         // Read payloads count
-        guard offset + 4 <= data.count else {
-            throw RunarTransportError.serializationError("Insufficient data for payloads count")
-        }
-        let payloadsCountBytes = Array(data[offset..<(offset + 4)])
-        let payloadsCount = UInt32(payloadsCountBytes[0]) << 24 |
-                           UInt32(payloadsCountBytes[1]) << 16 |
-                           UInt32(payloadsCountBytes[2]) << 8 |
-                           UInt32(payloadsCountBytes[3])
-        offset += 4
+        let payloadsCount = try readUInt32BE(data: data, offset: &offset, context: "payloads count")
         
         // Read payloads
         var payloads: [NetworkMessagePayloadItem] = []
@@ -224,53 +227,44 @@ public struct BinaryMessageEncoder {
     public static func decodeNodeInfo(from data: Data) throws -> RunarNodeInfo {
         var offset = 0
         
-        // Helper function to read string with length prefix
+        // Helper function to read string with length prefix (safe, no slicing)
         func readString() throws -> String {
-            guard offset + 4 <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for string length")
+            let length = try readUInt32BE(data: data, offset: &offset, context: "node string length")
+            if length > 1_000_000 {
+                throw RunarTransportError.serializationError("Unreasonable string length: \(length)")
             }
-            
-            // Read length bytes manually to avoid alignment issues
-            let lengthBytes = Array(data[offset..<(offset + 4)])
-            let length = UInt32(lengthBytes[0]) << 24 |
-                        UInt32(lengthBytes[1]) << 16 |
-                        UInt32(lengthBytes[2]) << 8 |
-                        UInt32(lengthBytes[3])
-            offset += 4
-            
             guard offset + Int(length) <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for string")
+                throw RunarTransportError.serializationError("Insufficient data for string (need=\(length) have=\(data.count - offset))")
             }
-            
-            let stringData = data[offset..<(offset + Int(length))]
-            offset += Int(length)
-            
-            guard let string = String(data: stringData, encoding: .utf8) else {
+            let start = offset
+            let end = offset + Int(length)
+            var bytes = Data(count: Int(length))
+            bytes.withUnsafeMutableBytes { destRaw in
+                let dest = destRaw.bindMemory(to: UInt8.self)
+                data.withUnsafeBytes { srcRaw in
+                    let src = srcRaw.bindMemory(to: UInt8.self)
+                    if let d = dest.baseAddress, let s = src.baseAddress {
+                        memcpy(d, s.advanced(by: start), Int(length))
+                    }
+                }
+            }
+            offset = end
+            guard let string = String(data: bytes, encoding: .utf8) else {
                 throw RunarTransportError.serializationError("Invalid UTF-8 string")
             }
-            
             return string
         }
         
         // Helper function to read string array
         func readStringArray() throws -> [String] {
-            guard offset + 4 <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for array count")
-            }
-            
-            let countBytes = Array(data[offset..<(offset + 4)])
-            let count = UInt32(countBytes[0]) << 24 |
-                       UInt32(countBytes[1]) << 16 |
-                       UInt32(countBytes[2]) << 8 |
-                       UInt32(countBytes[3])
-            offset += 4
-            
+            let count = try readUInt32BE(data: data, offset: &offset, context: "array count")
+            if count > 10_000 { throw RunarTransportError.serializationError("Unreasonable string array count: \(count)") }
             var strings: [String] = []
+            strings.reserveCapacity(Int(count))
             for _ in 0..<count {
-                let string = try readString()
-                strings.append(string)
+                let s = try readString()
+                strings.append(s)
             }
-            
             return strings
         }
         
@@ -289,8 +283,17 @@ public struct BinaryMessageEncoder {
         let sliceStart = offset
         let sliceEnd = offset + Int(keyLength)
         print("[BINDEC] Slicing publicKey: start=\(sliceStart) end=\(sliceEnd) total=\(data.count)")
-        // Use subdata(in:) to force bounds-checked copy
-        let publicKey = data.subdata(in: sliceStart..<sliceEnd)
+        // Copy bytes explicitly to avoid any potential slicing issues
+        var publicKey = Data(count: Int(keyLength))
+        publicKey.withUnsafeMutableBytes { destRaw in
+            let dest = destRaw.bindMemory(to: UInt8.self)
+            data.withUnsafeBytes { srcRaw in
+                let src = srcRaw.bindMemory(to: UInt8.self)
+                if let d = dest.baseAddress, let s = src.baseAddress {
+                    memcpy(d, s.advanced(by: sliceStart), Int(keyLength))
+                }
+            }
+        }
         // Emit a short hex preview for diagnostics
         let previewCount = min(8, publicKey.count)
         let preview = publicKey.prefix(previewCount).map { String(format: "%02x", $0) }.joined()
@@ -298,21 +301,15 @@ public struct BinaryMessageEncoder {
         offset += Int(keyLength)
         
         // Read network IDs
+        _ = offset // silence unused warnings for debug breadcrumbs
         let networkIds = try readStringArray()
         
         // Read addresses
+        _ = offset
         let addresses = try readStringArray()
         
         // Read services count
-        guard offset + 4 <= data.count else {
-            throw RunarTransportError.serializationError("Insufficient data for services count")
-        }
-        let servicesCountBytes = Array(data[offset..<(offset + 4)])
-        let servicesCount = UInt32(servicesCountBytes[0]) << 24 |
-                           UInt32(servicesCountBytes[1]) << 16 |
-                           UInt32(servicesCountBytes[2]) << 8 |
-                           UInt32(servicesCountBytes[3])
-        offset += 4
+        let servicesCount = try readUInt32BE(data: data, offset: &offset, context: "services count")
         
         // Read services
         var services: [ServiceMetadata] = []
@@ -321,36 +318,12 @@ public struct BinaryMessageEncoder {
             services.append(service)
         }
         
-        // Read version
-        guard offset + 8 <= data.count else {
-            throw RunarTransportError.serializationError("Insufficient data for version")
-        }
-        let versionBytes = Array(data[offset..<(offset + 8)])
-        let version = Int64(versionBytes[0]) << 56 |
-                     Int64(versionBytes[1]) << 48 |
-                     Int64(versionBytes[2]) << 40 |
-                     Int64(versionBytes[3]) << 32 |
-                     Int64(versionBytes[4]) << 24 |
-                     Int64(versionBytes[5]) << 16 |
-                     Int64(versionBytes[6]) << 8 |
-                     Int64(versionBytes[7])
-        offset += 8
+        // Read version (8 bytes, BE)
+        let version = try readInt64BE(data: data, offset: &offset, context: "version")
         
-        // Read created at timestamp
-        guard offset + 8 <= data.count else {
-            throw RunarTransportError.serializationError("Insufficient data for created at timestamp")
-        }
-        let createdAtBytes = Array(data[offset..<(offset + 8)])
-        let createdAtMs = UInt64(createdAtBytes[0]) << 56 |
-                         UInt64(createdAtBytes[1]) << 48 |
-                         UInt64(createdAtBytes[2]) << 40 |
-                         UInt64(createdAtBytes[3]) << 32 |
-                         UInt64(createdAtBytes[4]) << 24 |
-                         UInt64(createdAtBytes[5]) << 16 |
-                         UInt64(createdAtBytes[6]) << 8 |
-                         UInt64(createdAtBytes[7])
+        // Read created at timestamp (8 bytes, BE)
+        let createdAtMs = try readUInt64BE(data: data, offset: &offset, context: "created at timestamp")
         let createdAt = Date(timeIntervalSince1970: TimeInterval(createdAtMs) / 1000.0)
-        offset += 8
         
         return RunarNodeInfo(
             nodePublicKey: publicKey,
@@ -384,31 +357,23 @@ public struct BinaryMessageEncoder {
     }
     
     private static func readPayload(from data: Data, offset: inout Int) throws -> NetworkMessagePayloadItem {
-        // Helper function to read string with length prefix
+        // Helper function to read string with length prefix (safe)
         func readString() throws -> String {
-            guard offset + 4 <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for string length")
-            }
-            
-            // Read length bytes manually to avoid alignment issues
-            let lengthBytes = Array(data[offset..<(offset + 4)])
-            let length = UInt32(lengthBytes[0]) << 24 |
-                        UInt32(lengthBytes[1]) << 16 |
-                        UInt32(lengthBytes[2]) << 8 |
-                        UInt32(lengthBytes[3])
-            offset += 4
-            
+            let length = try readUInt32BE(data: data, offset: &offset, context: "string length")
             guard offset + Int(length) <= data.count else {
                 throw RunarTransportError.serializationError("Insufficient data for string")
             }
-            
-            let stringData = data[offset..<(offset + Int(length))]
-            offset += Int(length)
-            
-            guard let string = String(data: stringData, encoding: .utf8) else {
+            let start = offset
+            let end = offset + Int(length)
+            var bytes = Data(count: Int(length))
+            bytes.withUnsafeMutableBytes { destRaw in
+                let dest = destRaw.bindMemory(to: UInt8.self)
+                data.copyBytes(to: dest, from: start..<end)
+            }
+            offset = end
+            guard let string = String(data: bytes, encoding: .utf8) else {
                 throw RunarTransportError.serializationError("Invalid UTF-8 string")
             }
-            
             return string
         }
         
@@ -416,15 +381,7 @@ public struct BinaryMessageEncoder {
         let path = try readString()
         
         // Read value bytes
-        guard offset + 4 <= data.count else {
-            throw RunarTransportError.serializationError("Insufficient data for value bytes length")
-        }
-        let valueLengthBytes = Array(data[offset..<(offset + 4)])
-        let valueLength = UInt32(valueLengthBytes[0]) << 24 |
-                         UInt32(valueLengthBytes[1]) << 16 |
-                         UInt32(valueLengthBytes[2]) << 8 |
-                         UInt32(valueLengthBytes[3])
-        offset += 4
+        let valueLength = try readUInt32BE(data: data, offset: &offset, context: "value bytes length")
         
         guard offset + Int(valueLength) <= data.count else {
             throw RunarTransportError.serializationError("Insufficient data for value bytes")
@@ -491,31 +448,23 @@ public struct BinaryMessageEncoder {
     }
     
     private static func readServiceMetadata(from data: Data, offset: inout Int) throws -> ServiceMetadata {
-        // Helper function to read string with length prefix
+        // Helper function to read string with length prefix (safe)
         func readString() throws -> String {
-            guard offset + 4 <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for string length")
-            }
-            
-            // Read length bytes manually to avoid alignment issues
-            let lengthBytes = Array(data[offset..<(offset + 4)])
-            let length = UInt32(lengthBytes[0]) << 24 |
-                        UInt32(lengthBytes[1]) << 16 |
-                        UInt32(lengthBytes[2]) << 8 |
-                        UInt32(lengthBytes[3])
-            offset += 4
-            
+            let length = try readUInt32BE(data: data, offset: &offset, context: "string length")
             guard offset + Int(length) <= data.count else {
                 throw RunarTransportError.serializationError("Insufficient data for string")
             }
-            
-            let stringData = data[offset..<(offset + Int(length))]
-            offset += Int(length)
-            
-            guard let string = String(data: stringData, encoding: .utf8) else {
+            let start = offset
+            let end = offset + Int(length)
+            var bytes = Data(count: Int(length))
+            bytes.withUnsafeMutableBytes { destRaw in
+                let dest = destRaw.bindMemory(to: UInt8.self)
+                data.copyBytes(to: dest, from: start..<end)
+            }
+            offset = end
+            guard let string = String(data: bytes, encoding: .utf8) else {
                 throw RunarTransportError.serializationError("Invalid UTF-8 string")
             }
-            
             return string
         }
         
@@ -527,16 +476,7 @@ public struct BinaryMessageEncoder {
         
         // Helper function to read action array
         func readActionArray() throws -> [ActionMetadata] {
-            guard offset + 4 <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for actions count")
-            }
-            
-            let countBytes = Array(data[offset..<(offset + 4)])
-            let count = UInt32(countBytes[0]) << 24 |
-                       UInt32(countBytes[1]) << 16 |
-                       UInt32(countBytes[2]) << 8 |
-                       UInt32(countBytes[3])
-            offset += 4
+            let count = try readUInt32BE(data: data, offset: &offset, context: "actions count")
             
             var actions: [ActionMetadata] = []
             for _ in 0..<count {
@@ -560,16 +500,7 @@ public struct BinaryMessageEncoder {
         
         // Helper function to read event array
         func readEventArray() throws -> [EventMetadata] {
-            guard offset + 4 <= data.count else {
-                throw RunarTransportError.serializationError("Insufficient data for events count")
-            }
-            
-            let countBytes = Array(data[offset..<(offset + 4)])
-            let count = UInt32(countBytes[0]) << 24 |
-                       UInt32(countBytes[1]) << 16 |
-                       UInt32(countBytes[2]) << 8 |
-                       UInt32(countBytes[3])
-            offset += 4
+            let count = try readUInt32BE(data: data, offset: &offset, context: "events count")
             
             var events: [EventMetadata] = []
             for _ in 0..<count {
