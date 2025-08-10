@@ -41,6 +41,9 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     private var pendingResponses: [String: CheckedContinuation<RunarNetworkMessage, Error>] = [:]
     private let correlationQueue = DispatchQueue(label: "com.runar.quic.correlation", qos: .userInitiated)
     
+    // App-level content context tag for framed Runar messages
+    private let appMessageContext = NWConnection.ContentContext(identifier: "runar-msg")
+    
     // Peer node info subscription
     private var peerNodeInfoStream: AsyncStream<RunarNodeInfo>.Continuation?
     private let subscriptionQueue = DispatchQueue(label: "com.runar.quic.subscription", qos: .userInitiated)
@@ -831,7 +834,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         data.append(messageData)
         
         // Send via unidirectional stream (matching Rust implementation)
-        connection.send(content: data, contentContext: NWConnection.ContentContext.defaultMessage, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) -> Void in
+        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) -> Void in
             if let error = error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send message to \(peerId): \(error)")
             } else {
@@ -1006,16 +1009,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 return
             }
             
-            // Process any received content >= 4 bytes (length-prefixed protocol), ignoring explicit kick contexts
+            // Process any received content >= 4 bytes (length-prefixed protocol), only for our app context
             if let data = content, !data.isEmpty {
-                var isNonApp = false
-                if let ctx = context {
-                    if ctx.identifier.hasPrefix("server-handshake-kick") {
-                        isNonApp = true
-                    }
-                }
-                if isNonApp {
-                    self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring non-app context from \(peerId)")
+                // Drop if not our application message context
+                if let ctx = context, ctx.identifier != self.appMessageContext.identifier {
+                    self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring context=\(ctx.identifier) from \(peerId)")
                 } else if data.count < 4 {
                     self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring short frame (len=\(data.count)) from \(peerId)")
                 } else {
@@ -1161,7 +1159,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         
         // For now, we'll use a simple send without waiting for response
         // In a full implementation, we'd need to implement proper request-response correlation
-        connection.send(content: data, completion: .contentProcessed { [weak self] error in
+        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] error in
             if let error = error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send request: \(error)")
             } else {
@@ -1230,8 +1228,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
         data.append(messageData)
         // Tag content as app-level framed message
-        let appCtx = NWConnection.ContentContext(identifier: "runar-msg")
-        connection.send(content: data, contentContext: NWConnection.ContentContext.defaultMessage, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) -> Void in
+        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) -> Void in
             if let error = error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send handshake to \(peerId): \(error)")
             } else {
@@ -1323,7 +1320,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         data.append(Data(bytes: &length, count: MemoryLayout<UInt32>.size))
         data.append(messageData)
         
-        connection.send(content: data, completion: .contentProcessed { [weak self] (error: NWError?) -> Void in
+        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) -> Void in
             if let error = error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send handshake response to \(peerId): \(error)")
             } else {
