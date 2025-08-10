@@ -289,7 +289,12 @@ public struct BinaryMessageEncoder {
         let sliceStart = offset
         let sliceEnd = offset + Int(keyLength)
         print("[BINDEC] Slicing publicKey: start=\(sliceStart) end=\(sliceEnd) total=\(data.count)")
-        let publicKey = data[sliceStart..<sliceEnd]
+        // Use subdata(in:) to force bounds-checked copy
+        let publicKey = data.subdata(in: sliceStart..<sliceEnd)
+        // Emit a short hex preview for diagnostics
+        let previewCount = min(8, publicKey.count)
+        let preview = publicKey.prefix(previewCount).map { String(format: "%02x", $0) }.joined()
+        print("[BINDEC] publicKey.len=\(publicKey.count) preview=\(preview)")
         offset += Int(keyLength)
         
         // Read network IDs

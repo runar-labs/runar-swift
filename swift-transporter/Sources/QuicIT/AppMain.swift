@@ -14,6 +14,16 @@ struct QuicITMain {
             let logger = RunarLogger(subsystem: "com.runar.transporter", category: "QuicIT")
             fputs("[QuicIT] starting...\n", stderr)
             do {
+            // Lightweight self-test path to validate BinaryMessageEncoder without Keychain/QUIC
+            if ProcessInfo.processInfo.environment["RUNAR_SELFTEST"] == "1" {
+                let dummyPk = Data(repeating: 0x42, count: 97)
+                let node = RunarNodeInfo(nodePublicKey: dummyPk, networkIds: ["it"], addresses: ["127.0.0.1:9999"], services: [])
+                let enc = try BinaryMessageEncoder.encodeNodeInfo(node)
+                let dec = try BinaryMessageEncoder.decodeNodeInfo(from: enc)
+                guard dec.nodePublicKey == dummyPk else { fputs("SELFTEST mismatch\n", stderr); exit(10) }
+                fputs("SELFTEST ok\n", stderr)
+                exit(0)
+            }
             let mobileCA = try MobileKeyManager(logger: ConsoleLogger(prefix: "IT-CA"))
             _ = try mobileCA.initializeUserRootKey()
             try mobileCA.createCACertificate()

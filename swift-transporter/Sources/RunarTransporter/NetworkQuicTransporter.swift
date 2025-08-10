@@ -1033,9 +1033,16 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             logger.info("📥 [NetworkQuicTransporter] Received message from \(peerId) - Type: \(message.messageType)")
             if message.messageType == MessageTypes.HANDSHAKE {
                 messageQueue.async { self.messageHandler.handleMessage(message) }
-                if let payload = message.payloads.first, let peerNode = try? self.decodeNodeInfo(from: payload.valueBytes) {
-                    self.messageQueue.async { self.messageHandler.peerConnected(peerNode) }
-                    self.subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNode) }
+                if let payload = message.payloads.first {
+                    let pv = payload.valueBytes
+                    let pvPreview = pv.prefix(8).map { String(format: "%02x", $0) }.joined()
+                    self.logger.info("🔎 [NetworkQuicTransporter] HANDSHAKE payloadLen=\(pv.count) preview=\(pvPreview)")
+                    if let peerNode = try? self.decodeNodeInfo(from: pv) {
+                        self.messageQueue.async { self.messageHandler.peerConnected(peerNode) }
+                        self.subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNode) }
+                    } else {
+                        self.logger.error("❌ [NetworkQuicTransporter] Failed to decode HANDSHAKE payload as NodeInfo (len=\(pv.count))")
+                    }
                 }
             } else if message.messageType == "REQUEST" {
                 let response = RunarNetworkMessage(
