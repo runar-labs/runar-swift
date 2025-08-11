@@ -1242,6 +1242,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         logger.info("🤝 [NetworkQuicTransporter] Performing handshake with \(peerId)")
         
         // Create handshake message (matching Rust handshake_outbound)
+        let hs = HandshakeData(nodeInfo: nodeInfo, nonce: UInt64.random(in: 0...UInt64.max), role: .initiator)
         let handshakeMessage = RunarNetworkMessage(
             sourceNodeId: nodeInfo.nodeId,
             destinationNodeId: peerId,
@@ -1249,7 +1250,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "handshake",
-                    valueBytes: try encodeNodeInfo(nodeInfo),
+                    valueBytes: try CborMessageEncoder.encodeHandshake(hs),
                     correlationId: UUID().uuidString
                 )
             ]
@@ -1323,14 +1324,15 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         logger.info("🤝 [NetworkQuicTransporter] Initiating handshake with \(peerId)")
         
         // Create handshake message
+        let hs = HandshakeData(nodeInfo: nodeInfo, nonce: UInt64.random(in: 0...UInt64.max), role: .initiator)
         let handshakeMessage = RunarNetworkMessage(
             sourceNodeId: nodeInfo.nodeId,
             destinationNodeId: peerId,
             messageType: MessageTypes.HANDSHAKE,
             payloads: [
                 NetworkMessagePayloadItem(
-                    path: "",
-                    valueBytes: try encodeNodeInfo(nodeInfo),
+                    path: "handshake",
+                    valueBytes: try CborMessageEncoder.encodeHandshake(hs),
                     correlationId: "handshake-\(nodeInfo.nodeId)-\(Date().timeIntervalSince1970)"
                 )
             ]
@@ -1368,6 +1370,19 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
         
         do {
+            if let hs = try? CborMessageDecoder.decodeHandshake(from: payload.valueBytes) {
+                let peerNodeInfo = hs.nodeInfo
+                let realPeerId = peerNodeInfo.nodeId
+                logger.info("✅ [NetworkQuicTransporter] Identified peer via HandshakeData: \(realPeerId)")
+                if peerId == "unknown" {
+                    let peerState = connectionPool.getOrCreatePeer(peerId: realPeerId, address: "unknown", logger: logger)
+                    peerState.setConnection(connection)
+                    connectionPool.removePeer(peerId: "unknown")
+                }
+                messageQueue.async { self.messageHandler.peerConnected(peerNodeInfo) }
+                subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNodeInfo) }
+                return
+            }
             let peerNodeInfo = try decodeNodeInfo(from: payload.valueBytes)
             let realPeerId = peerNodeInfo.nodeId
             

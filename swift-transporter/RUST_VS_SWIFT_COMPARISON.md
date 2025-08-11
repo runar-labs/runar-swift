@@ -41,8 +41,9 @@ withUnsafeBytes(of: &len) { raw in
 framed.append(body)
 ```
 
-**✅ DONE (Encoder + Test)**: Added CBOR encoder and unit test verifying the framing:
+**✅ DONE (Encoder + Tests + Partial Integration)**: Added CBOR encoder and unit test verifying the framing, and integrated into transporter send/receive paths via `TransportWireCodec`:
 - Test: `Tests/RunarTransporterTests/CborEncodingTests.swift::testFramingAndCborEncodingOfNetworkMessage`
+- Transporter now uses `[4-byte BE][CBOR]` framing for messages
 - Status: Test passes and validates `[4-byte length][CBOR]` plus CBOR fields.
 - Next: Wire runtime send/receive to use CBOR encoder/decoder instead of the current custom binary path.
 
@@ -69,10 +70,14 @@ public struct RunarNetworkMessage: Codable, Equatable, Sendable {
 }
 ```
 
-**❌ CRITICAL**: 
+**✅ IN PROGRESS (Adapter + Tests, partial integration)**:
 - `message_type` is `u32` in Rust vs `String` in Swift
 - Swift has an additional `timestamp` field
 - Field naming conventions differ (`source_node_id` vs `sourceNodeId`)
+
+Progress:
+- Introduced `TransportWireCodec` to map Swift models to Rust-aligned CBOR (u32 type), with tests: `TransporterIntegrationTests`
+- Transporter paths now use the adapter for encode/decode
 
 ### 3. Message Type Constants
 
@@ -166,10 +171,11 @@ let handshakeMessage = RunarNetworkMessage(
 )
 ```
 
-**✅ IN PROGRESS (Isolated types + CBOR codec, not yet integrated)**:
+**✅ IN PROGRESS (Isolated + Partial Integration)**:
 - Implemented `HandshakeData` with `nodeInfo`, `nonce`, and `role` (initiator/responder)
 - Added CBOR encoder/decoder and unit test `HandshakeCborTests`
-- Next: integrate handshake flow and nonce/role usage in transporter during Phase 4
+- Transporter now sends/receives `HandshakeData` CBOR payloads for handshake paths
+- Next: wire duplicate-resolution + activation gating around handshake completion
 
 ### 6. Connection Management
 
