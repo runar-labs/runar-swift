@@ -1382,15 +1382,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 // Duplicate-resolution: determine desired local role and pick winner using stable id heuristic
                 if let ps = self.connectionPool.getPeer(peerId: realPeerId) {
                     let localId = self.nodeInfo.nodeId
-                    let desireInitiator = (localId < realPeerId)
-                    // Determine existing role (default unknown -> responder)
-                    let existingIsInitiator = ps.initiatorPeerId == localId
-                    let keepExisting: Bool
-                    if desireInitiator {
-                        keepExisting = existingIsInitiator
-                    } else {
-                        keepExisting = !existingIsInitiator
-                    }
+                    let keepExisting = decideKeepExisting(localId: localId, peerId: realPeerId, ps: ps)
                     if keepExisting {
                         // Reject current inbound candidate
                         connection.cancel()
@@ -1399,6 +1391,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                         ps.closeConnection()
                         ps.setConnection(connection)
                         // Set dup metadata for inbound: remote(peer)=initiator if we desire responder
+                        let desireInitiator = (localId < realPeerId)
                         let candInitiator = desireInitiator ? localId : realPeerId
                         let candResponder = desireInitiator ? realPeerId : localId
                         ps.setDupMetadata(initiatorPeerId: candInitiator, initiatorNonce: 0, responderPeerId: candResponder, responderNonce: 0)
@@ -1453,6 +1446,17 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             
         } catch {
             logger.error("❌ [NetworkQuicTransporter] Failed to process handshake from \(peerId): \(error)")
+        }
+    }
+
+    // Internalized duplicate-resolution decision for testing
+    func decideKeepExisting(localId: String, peerId: String, ps: PeerState) -> Bool {
+        let desireInitiator = (localId < peerId)
+        let existingIsInitiator = ps.initiatorPeerId == localId
+        if desireInitiator {
+            return existingIsInitiator
+        } else {
+            return !existingIsInitiator
         }
     }
     
