@@ -13,6 +13,13 @@ public class PeerState {
     private var connectionReadyContinuation: CheckedContinuation<Void, Error>?
     private let queue = DispatchQueue(label: "com.runar.peerstate.", attributes: .concurrent)
     private let activation = ActivationStateMachine()
+    private static var idSeq: Int = 0
+    private let connectionId: Int
+    // Duplicate-resolution metadata (mirrors Rust fields at a high level)
+    private(set) var initiatorPeerId: String = ""
+    private(set) var initiatorNonce: UInt64 = 0
+    private(set) var responderPeerId: String = ""
+    private(set) var responderNonce: UInt64 = 0
     
     public init(peerNodeId: String, address: String, logger: RunarLogger) {
         self.peerNodeId = peerNodeId
@@ -20,6 +27,8 @@ public class PeerState {
         self.logger = logger
         self.streamPool = StreamPool(logger: logger)
         self.lastActivity = Date()
+        PeerState.idSeq += 1
+        self.connectionId = PeerState.idSeq
     }
     
     public var isConnected: Bool {
@@ -40,6 +49,8 @@ public class PeerState {
     public func hasConnection(_ conn: NWConnection) -> Bool {
         queue.sync { connection === conn }
     }
+
+    public func getConnectionId() -> Int { connectionId }
     
     public func hasConnectionToEndpoint(_ endpoint: String) -> Bool {
         return queue.sync {
@@ -103,6 +114,15 @@ public class PeerState {
             } else {
                 self.logger.debug("🔧 [PeerState] No connection ready continuation found for failure \(self.peerNodeId)")
             }
+        }
+    }
+
+    public func setDupMetadata(initiatorPeerId: String, initiatorNonce: UInt64, responderPeerId: String, responderNonce: UInt64) {
+        queue.async(flags: .barrier) {
+            self.initiatorPeerId = initiatorPeerId
+            self.initiatorNonce = initiatorNonce
+            self.responderPeerId = responderPeerId
+            self.responderNonce = responderNonce
         }
     }
 } 

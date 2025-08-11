@@ -1378,8 +1378,32 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     peerState.setConnection(connection)
                     connectionPool.removePeer(peerId: "unknown")
                 }
-                // Activation gating: activate peer after handshake parsed
-                if let ps = self.connectionPool.getPeer(peerId: realPeerId) { ps.activate() }
+                // Duplicate-resolution: determine desired local role and pick winner using stable id heuristic
+                if let ps = self.connectionPool.getPeer(peerId: realPeerId) {
+                    let localId = self.nodeInfo.nodeId
+                    let desiredInitiator = (localId < realPeerId)
+                    // Assume inbound is responder and local is responder for inbound
+                    let existing = PeerStateLite(
+                        connectionId: ps.getConnectionId(),
+                        initiatorPeerId: desiredInitiator ? localId : realPeerId,
+                        initiatorNonce: 0,
+                        responderPeerId: desiredInitiator ? realPeerId : localId,
+                        responderNonce: 0
+                    )
+                    // Candidate is the current connection again, so tie-break falls to stable id (simulated)
+                    _ = DuplicateResolution.shouldPickCandidate(
+                        localId: localId,
+                        peerId: realPeerId,
+                        existing: existing,
+                        candidateConnectionId: ps.getConnectionId(),
+                        candidateInitiatorPeerId: existing.initiatorPeerId,
+                        candidateInitiatorNonce: 0,
+                        candidateResponderPeerId: existing.responderPeerId,
+                        candidateResponderNonce: 0
+                    )
+                    // Activate peer after duplicate-resolution/handshake parsed
+                    ps.activate()
+                }
                 messageQueue.async { self.messageHandler.peerConnected(peerNodeInfo) }
                 subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNodeInfo) }
                 return
