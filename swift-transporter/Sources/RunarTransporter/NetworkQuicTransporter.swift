@@ -253,7 +253,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
         
         // Get the CA certificate from the MobileKeyManager
-        let caCertificate = keyManager.getCaCertificate()
+        _ = keyManager.getCaCertificate()
         
         // Get certificate data
         let certificateData = nodeCertificate.toDER()
@@ -1382,27 +1382,28 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 // Duplicate-resolution: determine desired local role and pick winner using stable id heuristic
                 if let ps = self.connectionPool.getPeer(peerId: realPeerId) {
                     let localId = self.nodeInfo.nodeId
-                    let desiredInitiator = (localId < realPeerId)
-                    // Assume inbound is responder and local is responder for inbound
-                    let existing = PeerStateLite(
-                        connectionId: ps.getConnectionId(),
-                        initiatorPeerId: desiredInitiator ? localId : realPeerId,
-                        initiatorNonce: 0,
-                        responderPeerId: desiredInitiator ? realPeerId : localId,
-                        responderNonce: 0
-                    )
-                    // Candidate is the current connection again, so tie-break falls to stable id (simulated)
-                    _ = DuplicateResolution.shouldPickCandidate(
-                        localId: localId,
-                        peerId: realPeerId,
-                        existing: existing,
-                        candidateConnectionId: ps.getConnectionId(),
-                        candidateInitiatorPeerId: existing.initiatorPeerId,
-                        candidateInitiatorNonce: 0,
-                        candidateResponderPeerId: existing.responderPeerId,
-                        candidateResponderNonce: 0
-                    )
-                    // Activate peer after duplicate-resolution/handshake parsed
+                    let desireInitiator = (localId < realPeerId)
+                    // Determine existing role (default unknown -> responder)
+                    let existingIsInitiator = ps.initiatorPeerId == localId
+                    let keepExisting: Bool
+                    if desireInitiator {
+                        keepExisting = existingIsInitiator
+                    } else {
+                        keepExisting = !existingIsInitiator
+                    }
+                    if keepExisting {
+                        // Reject current inbound candidate
+                        connection.cancel()
+                    } else {
+                        // Replace existing with current inbound
+                        ps.closeConnection()
+                        ps.setConnection(connection)
+                        // Set dup metadata for inbound: remote(peer)=initiator if we desire responder
+                        let candInitiator = desireInitiator ? localId : realPeerId
+                        let candResponder = desireInitiator ? realPeerId : localId
+                        ps.setDupMetadata(initiatorPeerId: candInitiator, initiatorNonce: 0, responderPeerId: candResponder, responderNonce: 0)
+                    }
+                    // Activate peer after dedupe + handshake
                     ps.activate()
                 }
                 messageQueue.async { self.messageHandler.peerConnected(peerNodeInfo) }

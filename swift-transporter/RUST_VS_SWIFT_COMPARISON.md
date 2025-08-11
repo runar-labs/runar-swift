@@ -223,7 +223,8 @@ public class PeerState {
   - Desired local role: if `local_id < peer_id` → Initiator, else Responder
   - Placeholder replacement (zero nonces) and stable_id tie-breaker when roles match
 - Tests: `DuplicateResolutionTests` cover placeholder, role selection, and stable_id preference
-- Next: model activation state transitions (activate after dup-resolution + handshake) as an isolated state machine, then integrate
+- Progress: Activation state implemented and used; transporter now records initiator/responder metadata and performs preliminary duplicate-resolution on handshake
+- Next: finalize closing loser connections and add transporter E2E tests that simulate competing inbound/outbound connections
 
 ### 7. Stream Management
 
