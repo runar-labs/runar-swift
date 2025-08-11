@@ -21,6 +21,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", from: "2.6.0"),
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.25.0"),
+        .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.4.5"),
         .package(url: "https://github.com/apple/swift-asn1.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-certificates.git", from: "1.0.0"),
         .package(path: "../swift-common"),
@@ -33,6 +34,7 @@ let package = Package(
             dependencies: [
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+                .product(name: "SwiftCBOR", package: "SwiftCBOR"),
                 .product(name: "SwiftCommon", package: "swift-common"),
                 .product(name: "RunarKeys", package: "swift-keys")
                 // TODO: Add swift-serializer when compilation issues are resolved
@@ -60,6 +62,7 @@ let package = Package(
             name: "RunarTransporterTests",
             dependencies: [
                 "RunarTransporter",
+                .product(name: "SwiftCBOR", package: "SwiftCBOR"),
                 .product(name: "X509", package: "swift-certificates"),
                 .product(name: "SwiftASN1", package: "swift-asn1")
             ]
