@@ -822,9 +822,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             throw RunarTransportError.connectionError("Not connected to peer \(peerId)")
         }
         
-        // Send via unidirectional stream (matching Rust implementation)
-        // Encode message using binary format
-        let messageData = try encodeNetworkMessage(message)
+        // Send via unidirectional stream with Rust-aligned framing/CBOR
+        let messageData = try TransportWireCodec.encodeBody(from: message)
         
         // Add length prefix (4 bytes)
         var data = Data()
@@ -1174,7 +1173,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     
     private func processReceivedMessage(_ messageData: Data, from peerId: String, connection: NWConnection) {
         do {
-            let message = try decodeNetworkMessage(from: messageData)
+        let message = try TransportWireCodec.decodeBody(to: messageData)
             logger.info("📥 [NetworkQuicTransporter] Received message from \(peerId) - Type: \(message.messageType)")
             
             if message.messageType == MessageTypes.HANDSHAKE {
