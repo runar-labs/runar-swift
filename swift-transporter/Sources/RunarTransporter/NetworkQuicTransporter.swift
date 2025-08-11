@@ -1087,12 +1087,12 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             let lengthHex = lengthBytes.map { String(format: "%02x", $0) }.joined()
             logger.debug("🔍 [NetworkQuicTransporter] Parsing length prefix: bytes=[\(lengthHex)], parsed_length=\(length)")
             
-            // Validate length (reasonable bounds)
-            guard length > 0 && length <= 1024 * 1024 else { // Max 1MB
-                logger.error("❌ [NetworkQuicTransporter] Invalid message length: \(length) bytes, removing corrupted prefix")
-                // Remove the corrupted length prefix and continue
-                messageBuffer.removeFirst(4)
-                continue
+            // Validate length (reasonable bounds). Zero-length is a protocol error (align with Rust) → close.
+            if length == 0 || length > 1024 * 1024 { // Max 1MB
+                logger.error("❌ [NetworkQuicTransporter] Invalid message length: \(length) bytes; closing connection")
+                connection.cancel()
+                if let ps = self.connectionPool.getPeer(peerId: peerId) { ps.closeConnection() }
+                break
             }
             
             let totalNeeded = 4 + length

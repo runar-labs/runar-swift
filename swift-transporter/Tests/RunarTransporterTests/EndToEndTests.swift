@@ -106,7 +106,8 @@ final class EndToEndTests: XCTestCase {
         let nodeId = NodeUtils.compactId(from: publicKey)
         
         XCTAssertFalse(nodeId.isEmpty)
-        XCTAssertEqual(nodeId.count, 64) // SHA256 hash is 32 bytes = 64 hex chars
+        // Rust compact_id is a short base58 of first 8 bytes of SHA-256 → typically 10-11 chars
+        XCTAssertTrue((8...12).contains(nodeId.count), "Compact ID should be short base58 (8-12 chars), got: \(nodeId.count)")
         
         let correlationId = NodeUtils.generateCorrelationId()
         XCTAssertFalse(correlationId.isEmpty)
