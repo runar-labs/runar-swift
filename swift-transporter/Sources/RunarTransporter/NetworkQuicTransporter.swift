@@ -764,7 +764,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             throw RunarTransportError.configurationError("MobileKeyManager not initialized in transport options")
         }
         // Use SNI that matches certificate SAN regardless of numeric endpoint
-        let parameters = try buildQuicParametersForConnection(keyManager: keyManager, sniHost: "localhost")
+        let sni = DnsSafeNodeId.convert(peerId)
+        let parameters = try buildQuicParametersForConnection(keyManager: keyManager, sniHost: sni)
         logger.debug("🔧 [NetworkQuicTransporter] Created per-connection QUIC parameters for \(peerId)")
         
         // Create endpoint

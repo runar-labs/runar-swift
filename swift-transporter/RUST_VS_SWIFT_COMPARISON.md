@@ -321,6 +321,8 @@ tlsOptions.identity = identity
 ```
 
 **⚠️ MODERATE**: 
+Progress:
+- Introduced DNS-safe node ID conversion in SNI for client connections to mirror Rust's `dns_safe_node_id`
 - Different TLS libraries and verification approaches
 - Swift lacks custom certificate verification logic
 - Different security model assumptions
