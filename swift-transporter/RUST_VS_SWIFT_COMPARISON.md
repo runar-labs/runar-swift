@@ -445,6 +445,7 @@ public func sendMessage(_ message: RunarNetworkMessage, to peerId: String) async
 - Test Swift client ↔ Rust server communication
 - Test Rust client ↔ Swift server communication
 - Test bidirectional message exchange
+- Note: We added Swift-only transporter integration tests that validate the wire codec, handshake CBOR payloads, activation gating, and SNI DNS-safe logic. Full cross-language E2E remains planned once both ends align on all items.
 
 ### End-to-End Tests
 - Test complete request/response cycles

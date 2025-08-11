@@ -794,6 +794,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         
         // Store connection in ConnectionPool
         let peerState = connectionPool.getOrCreatePeer(peerId: peerId, address: address, logger: logger)
+        // Mark duplicate-resolution metadata: outbound = initiator(local) -> responder(peer)
+        peerState.setDupMetadata(initiatorPeerId: nodeInfo.nodeId, initiatorNonce: 0, responderPeerId: peerId, responderNonce: 0)
         logger.debug("🔧 [NetworkQuicTransporter] Created/get peer state for \(peerId)")
         
         // Wait for connection to be established (proper state management)
