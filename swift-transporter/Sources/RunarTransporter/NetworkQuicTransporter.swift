@@ -822,6 +822,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             throw RunarTransportError.connectionError("Not connected to peer \(peerId)")
         }
         
+        // Send via unidirectional stream (matching Rust implementation)
         // Encode message using binary format
         let messageData = try encodeNetworkMessage(message)
         
@@ -833,12 +834,18 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
         data.append(messageData)
         
-        // Send via unidirectional stream (matching Rust implementation)
-        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) -> Void in
+        // Debug: Log what we're sending
+        let lengthHex = withUnsafeBytes(of: length) { bytes in
+            bytes.map { String(format: "%02x", $0) }.joined()
+        }
+        logger.debug("📤 [NetworkQuicTransporter] Sending message: length=\(messageData.count), length_bytes=[\(lengthHex)], total_size=\(data.count)")
+        
+        // Send the complete message
+        connection.send(content: data, isComplete: true, completion: .contentProcessed { [weak self] error in
             if let error = error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send message to \(peerId): \(error)")
             } else {
-                self?.logger.debug("✅ [NetworkQuicTransporter] Message sent to \(peerId)")
+                self?.logger.debug("📤 [NetworkQuicTransporter] Message sent to \(peerId)")
             }
         })
     }
@@ -864,47 +871,62 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     }
     
     private func listenerNewConnectionHandler(connection: NWConnection) {
-        self.logger.info("🆕 [NetworkQuicTransporter] New incoming connection")
-        // Retain the inbound connection immediately with a temporary peer id
-        let tempPeerId = connection.endpoint.debugDescription
-        let tempAddress = tempPeerId
-        let tempPeerState = self.connectionPool.getOrCreatePeer(peerId: tempPeerId, address: tempAddress, logger: self.logger)
-        tempPeerState.setConnection(connection)
-        // Accept and start the inbound QUIC connection so TLS handshake can proceed
+        self.logger.info("🆕 [NetworkQuicTransporter] New incoming connection from \(connection.endpoint)")
+        
+        // For QUIC, we need to handle the case where we might already have a connection to this peer
+        // Extract just the IP address (without port) for better deduplication
+        let endpointDescription = connection.endpoint.debugDescription
+        let ipAddress = extractIPAddress(from: endpointDescription)
+        
+        self.logger.debug("🔍 [NetworkQuicTransporter] Extracted IP address: \(ipAddress) from endpoint: \(endpointDescription)")
+        
+        // Check if we already have a connection to this IP address
+        // If we do, we should reject this connection to avoid duplicates
+        if connectionPool.hasConnectionToIPAddress(ipAddress) {
+            self.logger.info("🔄 [NetworkQuicTransporter] Already have connection to IP \(ipAddress), rejecting duplicate from \(endpointDescription)")
+            connection.cancel()
+            return
+        }
+        
+        // Start the connection to establish TLS handshake
+        connection.start(queue: connectionQueue)
+        
+        // Set up state handler for the inbound connection
         connection.stateUpdateHandler = { [weak self, weak connection] state in
             guard let self = self, let connection = connection else { return }
             self.logger.debug("🔧 [NetworkQuicTransporter] Inbound connection state: \(state)")
+            
             switch state {
             case .ready:
-                // We don't yet know the peerId until handshake/meta; use endpoint as temporary key
-                let tempPeerId = connection.endpoint.debugDescription
-                if let peerState = self.connectionPool.getPeer(peerId: tempPeerId) {
-                    peerState.setConnection(connection)
-                    peerState.updateActivity()
-                    peerState.notifyConnectionReady()
-                } else {
-                    let peerState = self.connectionPool.getOrCreatePeer(peerId: tempPeerId, address: tempPeerId, logger: self.logger)
-                    peerState.setConnection(connection)
-                    peerState.updateActivity()
-                    peerState.notifyConnectionReady()
-                }
-                self.startReceiving(from: connection, peerId: tempPeerId)
+                // Connection is ready, but DON'T start receiving here
+                // We'll start receiving in handleConnectionReady to avoid duplicates
+                self.logger.debug("🔧 [NetworkQuicTransporter] Inbound connection ready, waiting for handleConnectionReady")
+                
             case .failed(let error):
                 self.logger.error("❌ [NetworkQuicTransporter] Inbound connection failed: \(error)")
+                
             case .cancelled:
                 self.logger.info("🔚 [NetworkQuicTransporter] Inbound connection cancelled")
+                
             default:
                 break
             }
         }
-        connection.start(queue: connectionQueue)
+        
         // Server-side handshake kick: send a few small datagrams to trigger TLS
         for i in 0..<5 {
             let ctx = NWConnection.ContentContext(identifier: "server-handshake-kick-\(i)")
             connection.send(content: Data([0x00]), contentContext: ctx, isComplete: true, completion: .idempotent)
         }
-        // Start receiving only after the connection is started
-        self.startReceiving(from: connection, peerId: tempPeerId)
+    }
+    
+    // Helper function to extract IP address from endpoint description
+    private func extractIPAddress(from endpointDescription: String) -> String {
+        // Extract IP address from endpoint description like "127.0.0.1:50044"
+        if let colonRange = endpointDescription.range(of: ":") {
+            return String(endpointDescription[..<colonRange.lowerBound])
+        }
+        return endpointDescription
     }
     
     private func connectionStateUpdateHandler(connection: NWConnection, peerId: String) -> (NWConnection.State) -> Void {
@@ -997,71 +1019,164 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     }
     
     private func startReceiving(from connection: NWConnection, peerId: String) {
-        receiveNextMessage(from: connection, peerId: peerId)
+        // For QUIC, we need to handle data streaming differently than TCP
+        // Use a buffer to accumulate data and parse complete messages
+        let messageBuffer = MessageBuffer()
+        
+        // Start receiving with a simple handler
+        startReceiveLoop(connection: connection, peerId: peerId, messageBuffer: messageBuffer)
     }
     
-    private func receiveNextMessage(from connection: NWConnection, peerId: String) {
-        connection.receiveMessage { [weak self] (content: Data?, context: NWConnection.ContentContext?, isComplete: Bool, error: NWError?) -> Void in
-            guard let self = self else { return }
-            
-            if let error = error {
-                self.logger.error("❌ [NetworkQuicTransporter] Receive error from \(peerId): \(error)")
-                return
-            }
-            
-            // Process any received content >= 4 bytes (length-prefixed protocol), only for our app context
-            if let data = content, !data.isEmpty {
-                // Drop if not our application message context (ignore only well-known non-app frames)
-                if let ctx = context, ctx.identifier != self.appMessageContext.identifier {
-                    if ctx.identifier == "endpoint_flow" || ctx.identifier == "quic" || ctx.identifier.hasPrefix("server-handshake-kick") {
-                        self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring context=\(ctx.identifier) from \(peerId)")
-                    } else {
-                        self.logger.debug("🔎 [NetworkQuicTransporter] Treating unknown context=\(ctx.identifier) as app data from \(peerId)")
-                        self.handleReceivedData(data, from: peerId, connection: connection)
-                    }
-                } else if data.count < 4 {
-                    self.logger.debug("🔎 [NetworkQuicTransporter] Ignoring short frame (len=\(data.count)) from \(peerId)")
+
+    
+    private func startReceiveLoop(connection: NWConnection, peerId: String, messageBuffer: MessageBuffer) {
+        // For QUIC, we need to handle the receive loop properly
+        // Network.framework will call this completion handler multiple times as data arrives
+        func receiveNextChunk() {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] (data, _, isComplete, error) in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    self.logger.error("❌ [NetworkQuicTransporter] Receive error from \(peerId): \(error)")
+                    return
+                }
+                
+                if let data = data, !data.isEmpty {
+                    self.logger.debug("📥 [NetworkQuicTransporter] Received \(data.count) bytes from \(peerId)")
+                    
+                    // Debug: Log first few bytes to see what we're getting
+                    let previewBytes = data.prefix(min(8, data.count)).map { String(format: "%02x", $0) }.joined()
+                    self.logger.debug("📥 [NetworkQuicTransporter] Data preview: [\(previewBytes)]...")
+                    
+                    // Add to buffer and try to parse complete messages
+                    messageBuffer.append(data)
+                    
+                    // Process complete messages from buffer
+                    self.processMessageBuffer(messageBuffer, from: peerId, connection: connection)
+                }
+                
+                // Continue receiving if connection is still active
+                if !isComplete {
+                    // Use the nested function to continue the receive loop
+                    receiveNextChunk()
                 } else {
-                    self.handleReceivedData(data, from: peerId, connection: connection)
+                    self.logger.debug("🔚 [NetworkQuicTransporter] Connection \(peerId) marked as complete")
                 }
             }
+        }
+        
+        // Start the receive loop
+        receiveNextChunk()
+    }
+    
+    private func processMessageBuffer(_ messageBuffer: MessageBuffer, from peerId: String, connection: NWConnection) {
+        // Process complete messages from buffer
+        while messageBuffer.count >= 4 {
+            // Read length prefix
+            let lengthBytes = messageBuffer.prefix(4)
             
-            // Continue receiving subsequent messages
-            self.receiveNextMessage(from: connection, peerId: peerId)
+            // Ensure we have exactly 4 bytes for the length prefix
+            guard lengthBytes.count == 4 else {
+                logger.debug("⏳ [NetworkQuicTransporter] Waiting for complete length prefix: have \(lengthBytes.count) bytes")
+                break
+            }
+            
+            let length = parseLengthPrefix(from: lengthBytes)
+            
+            // Debug: Log the length parsing
+            let lengthHex = lengthBytes.map { String(format: "%02x", $0) }.joined()
+            logger.debug("🔍 [NetworkQuicTransporter] Parsing length prefix: bytes=[\(lengthHex)], parsed_length=\(length)")
+            
+            // Validate length (reasonable bounds)
+            guard length > 0 && length <= 1024 * 1024 else { // Max 1MB
+                logger.error("❌ [NetworkQuicTransporter] Invalid message length: \(length) bytes, removing corrupted prefix")
+                // Remove the corrupted length prefix and continue
+                messageBuffer.removeFirst(4)
+                continue
+            }
+            
+            let totalNeeded = 4 + length
+            
+            // Check if we have a complete message
+            guard messageBuffer.count >= totalNeeded else {
+                // Incomplete message, wait for more data
+                logger.debug("⏳ [NetworkQuicTransporter] Incomplete message: need \(totalNeeded), have \(messageBuffer.count)")
+                break
+            }
+            
+            // Extract complete message
+            let messageData = messageBuffer.subdata(in: 4..<totalNeeded)
+            
+            // Debug: Log the message parsing
+            logger.debug("🔍 [NetworkQuicTransporter] Parsed message from buffer - total: \(totalNeeded), length: \(length), message: \(messageData.count) bytes")
+            
+            // Process the message
+            processReceivedMessage(messageData, from: peerId, connection: connection)
+            
+            // Remove processed message from buffer
+            messageBuffer.removeFirst(totalNeeded)
+            
+            // Log buffer state after processing
+            logger.debug("🔍 [NetworkQuicTransporter] Buffer state after processing: remaining=\(messageBuffer.count) bytes")
         }
     }
     
-    private func handleReceivedData(_ data: Data, from peerId: String, connection: NWConnection) {
-        logger.debug("📥 [NetworkQuicTransporter] Received \(data.count) bytes from \(peerId)")
-        // Expect a 4-byte big-endian length prefix followed by the frame
-        guard data.count >= 4 else {
-            logger.debug("🔎 [NetworkQuicTransporter] Frame too short (<4) from \(peerId)")
-            return
+
+    
+    // Simple message buffer for QUIC streams
+    private class MessageBuffer {
+        private var data = Data()
+        
+        var count: Int { data.count }
+        
+        func append(_ newData: Data) {
+            data.append(newData)
         }
-        // Read BE length
-        let len: Int = data.withUnsafeBytes { rawBuf in
-            let buf = rawBuf.bindMemory(to: UInt8.self)
-            if buf.count >= 4 {
-                let v = (UInt32(buf[0]) << 24) | (UInt32(buf[1]) << 16) | (UInt32(buf[2]) << 8) | UInt32(buf[3])
-                return Int(v)
-            } else {
-                return -1
-            }
+        
+        func prefix(_ length: Int) -> Data {
+            return data.prefix(length)
         }
-        guard len >= 0 else {
-            logger.debug("🔎 [NetworkQuicTransporter] Failed to parse length prefix from \(peerId)")
-            return
+        
+        func subdata(in range: Range<Int>) -> Data {
+            return data.subdata(in: range)
         }
-        let totalNeeded = 4 + len
-        guard data.count >= totalNeeded else {
-            logger.debug("🔎 [NetworkQuicTransporter] Incomplete framed message from \(peerId): have=\(data.count) need=\(totalNeeded)")
-            return
+        
+        func removeFirst(_ count: Int) {
+            data.removeSubrange(0..<count)
         }
-        // Safe slicing within bounds
-        let messageData = data.subdata(in: 4..<(4 + len))
+        
+        func clear() {
+            data.removeAll()
+        }
+    }
+    
+    private func parseLengthPrefix(from data: Data) -> Int {
+        // Extract the 4-byte length prefix and convert from big-endian
+        let lengthBytes = data.prefix(4)
+        
+        // Debug: Log the raw bytes we're parsing
+        let rawHex = lengthBytes.map { String(format: "%02x", $0) }.joined()
+        logger.debug("🔍 [NetworkQuicTransporter] Raw length bytes: [\(rawHex)]")
+        
+        // Use a more explicit approach to avoid any potential issues
+        guard lengthBytes.count == 4 else {
+            logger.error("❌ [NetworkQuicTransporter] Invalid length prefix size: \(lengthBytes.count) bytes")
+            return 0
+        }
+        
+        let length = lengthBytes.withUnsafeBytes { bytes in
+            bytes.load(as: UInt32.self).bigEndian
+        }
+        
+        logger.debug("🔍 [NetworkQuicTransporter] Parsed length: \(length) (0x\(String(format: "%08x", length)))")
+        return Int(length)
+    }
+    
+    private func processReceivedMessage(_ messageData: Data, from peerId: String, connection: NWConnection) {
         do {
             let message = try decodeNetworkMessage(from: messageData)
             logger.info("📥 [NetworkQuicTransporter] Received message from \(peerId) - Type: \(message.messageType)")
+            
             if message.messageType == MessageTypes.HANDSHAKE {
                 messageQueue.async { self.messageHandler.handleMessage(message) }
                 if let payload = message.payloads.first {
@@ -1072,44 +1187,32 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                         // Remap temporary inbound peer key (endpoint string) to the real peer nodeId
                         let realPeerId = peerNode.nodeId
                         if realPeerId != peerId {
-                            // Alias temp key to real id so lookups by real id are connected
+                            self.logger.info("🔄 [NetworkQuicTransporter] Remapping peer \(peerId) -> \(realPeerId)")
+                            
+                            // Get or create the peer state for the real peer ID
+                            let peerState = self.connectionPool.getOrCreatePeer(peerId: realPeerId, address: peerId, logger: self.logger)
+                            
+                            // Associate this connection with the real peer
+                            peerState.setConnection(connection)
+                            peerState.updateActivity()
+                            peerState.notifyConnectionReady()
+                            
+                            // Use connectionPool to alias the peer
                             self.connectionPool.aliasPeer(existingId: peerId, aliasId: realPeerId)
-                            if let state = self.connectionPool.getPeer(peerId: realPeerId) {
-                                state.setConnection(connection)
-                            }
-                            self.logger.info("🔁 [NetworkQuicTransporter] Aliased inbound peer from \(peerId) to real id \(realPeerId)")
+                            
+                            // Update the peer ID for future messages
+                            self.processReceivedMessage(messageData, from: realPeerId, connection: connection)
+                            return
                         }
-                        self.messageQueue.async { self.messageHandler.peerConnected(peerNode) }
-                        self.subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNode) }
-                    } else {
-                        self.logger.error("❌ [NetworkQuicTransporter] Failed to decode HANDSHAKE payload as NodeInfo (len=\(pv.count))")
                     }
                 }
-            } else if message.messageType == "REQUEST" {
-                // Notify app handler about the incoming request
-                messageQueue.async { self.messageHandler.handleMessage(message) }
-                let response = RunarNetworkMessage(
-                    sourceNodeId: self.nodeInfo.nodeId,
-                    destinationNodeId: message.sourceNodeId,
-                    messageType: "RESPONSE",
-                    payloads: [
-                        NetworkMessagePayloadItem(
-                            path: "/auto/response",
-                            valueBytes: Data("ok".utf8),
-                            correlationId: message.payloads.first?.correlationId ?? ""
-                        )
-                    ]
-                )
-                Task { try await self.send(message: response) }
-            } else {
-                messageQueue.async { self.messageHandler.handleMessage(message) }
             }
+            
+            // Queue message for processing
+            messageQueue.async { self.messageHandler.handleMessage(message) }
+            
         } catch {
-            if case RunarTransportError.serializationError(let msg) = error {
-                logger.debug("🔎 [NetworkQuicTransporter] Serialization decode issue from \(peerId): \(msg)")
-            } else {
-                logger.error("❌ [NetworkQuicTransporter] Failed to decode message from \(peerId): \(error)")
-            }
+            logger.error("❌ [NetworkQuicTransporter] Failed to decode message from \(peerId): \(error)")
         }
     }
     

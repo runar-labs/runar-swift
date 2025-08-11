@@ -4,7 +4,7 @@ import os.log
 @testable import RunarTransporter
 
 @available(macOS 12.0, iOS 15.0, *)
-final class DiscoveryServiceTests: XCTestCase {
+final class DiscoveryServiceTests: TimeoutTestCase {
     
     private let logger = Logger(subsystem: "com.runar.transporter.tests", category: "discovery")
     
@@ -112,33 +112,35 @@ final class DiscoveryServiceTests: XCTestCase {
     }
     
     func testPeerDiscovery() async throws {
-        // Start both discovery services
-        try await discoveryService1?.start()
-        try await discoveryService2?.start()
-        
-        // Wait for discovery to occur
-        try await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
-        
-        // Verify peers were discovered
-        let peers1 = discoveryService1?.getDiscoveredPeers() ?? []
-        let peers2 = discoveryService2?.getDiscoveredPeers() ?? []
-        
-        XCTAssertGreaterThanOrEqual(peers1.count, 1, "Service 1 should discover at least one peer")
-        XCTAssertGreaterThanOrEqual(peers2.count, 1, "Service 2 should discover at least one peer")
-        
-        // Verify callback was called
-        XCTAssertGreaterThanOrEqual(discoveredPeers1.count, 1, "Discovery callback should be called for service 1")
-        XCTAssertGreaterThanOrEqual(discoveredPeers2.count, 1, "Discovery callback should be called for service 2")
-        
-        // Verify discovered peer info
-        if let peer1 = peers1.first {
-            XCTAssertEqual(peer1.addresses.count, 1, "Peer should have one address")
-            XCTAssertEqual(peer1.addresses.first, "127.0.0.1:8081", "Peer address should match")
-        }
-        
-        if let peer2 = peers2.first {
-            XCTAssertEqual(peer2.addresses.count, 1, "Peer should have one address")
-            XCTAssertEqual(peer2.addresses.first, "127.0.0.1:8080", "Peer address should match")
+        // Start both discovery services with timeout
+        try await self.runWithTimeoutVoidClass(20.0) {
+            try await self.discoveryService1?.start()
+            try await self.discoveryService2?.start()
+            
+            // Wait for discovery to occur
+            try await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+            
+            // Verify peers were discovered
+            let peers1 = self.discoveryService1?.getDiscoveredPeers() ?? []
+            let peers2 = self.discoveryService2?.getDiscoveredPeers() ?? []
+            
+            XCTAssertGreaterThanOrEqual(peers1.count, 1, "Service 1 should discover at least one peer")
+            XCTAssertGreaterThanOrEqual(peers2.count, 1, "Service 2 should discover at least one peer")
+            
+            // Verify callback was called
+            XCTAssertGreaterThanOrEqual(self.discoveredPeers1.count, 1, "Discovery callback should be called for service 1")
+            XCTAssertGreaterThanOrEqual(self.discoveredPeers2.count, 1, "Discovery callback should be called for service 2")
+            
+            // Verify discovered peer info
+            if let peer1 = peers1.first {
+                XCTAssertEqual(peer1.addresses.count, 1, "Peer should have one address")
+                XCTAssertEqual(peer1.addresses.first, "127.0.0.1:8081", "Peer address should match")
+            }
+            
+            if let peer2 = peers2.first {
+                XCTAssertEqual(peer2.addresses.count, 1, "Peer address should match")
+                XCTAssertEqual(peer2.addresses.first, "127.0.0.1:8080", "Peer address should match")
+            }
         }
     }
     
@@ -148,6 +150,12 @@ final class DiscoveryServiceTests: XCTestCase {
         
         // Wait a bit
         try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        
+        // Start discovery service 2 (needed for announce to work)
+        try await discoveryService2?.start()
+        
+        // Wait a bit for service 2 to initialize
+        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         
         // Manually announce service 2
         try await discoveryService2?.announce()
@@ -294,25 +302,35 @@ final class DiscoveryServiceTests: XCTestCase {
     }
     
     func testDiscoveryServiceConcurrentOperations() async throws {
-        // Test concurrent operations on discovery service
-        try await discoveryService1?.start()
-        
-        // Perform concurrent operations
-        await withTaskGroup(of: Void.self) { group in
-            // Task 1: Get discovered peers
+        // Test concurrent operations on discovery service with aggressive timeout
+        try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
-                for _ in 0..<10 {
-                    _ = self.discoveryService1?.getDiscoveredPeers() ?? []
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                try await self.discoveryService1?.start()
+                
+                // Perform concurrent operations
+                await withTaskGroup(of: Void.self) { innerGroup in
+                    // Task 1: Get discovered peers
+                    innerGroup.addTask {
+                        for _ in 0..<10 {
+                            _ = self.discoveryService1?.getDiscoveredPeers() ?? []
+                            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                        }
+                    }
+                    
+                    // Task 2: Announce
+                    innerGroup.addTask {
+                        for _ in 0..<5 {
+                            try? await self.discoveryService1?.announce()
+                            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+                        }
+                    }
                 }
             }
             
-            // Task 2: Announce
+            // Timeout task
             group.addTask {
-                for _ in 0..<5 {
-                    try? await self.discoveryService1?.announce()
-                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
-                }
+                try await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                throw TestTimeoutError(timeout: 5.0)
             }
         }
         

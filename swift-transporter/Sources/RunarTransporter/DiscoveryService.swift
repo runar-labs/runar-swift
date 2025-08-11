@@ -66,9 +66,22 @@ public class DiscoveryService: @unchecked Sendable {
             isRunning = true
         }
         
-        try await createMulticastSocket()
-        try await startReceiveTask()
-        try await startAnnounceTask()
+        // Start with timeout to prevent hanging
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await self.createMulticastSocket()
+                try await self.startReceiveTask()
+                try await self.startAnnounceTask()
+            }
+            
+            group.addTask {
+                try await Task.sleep(nanoseconds: 10_000_000_000) // 10 second timeout
+                throw RunarTransportError.transportError("Discovery service start timeout")
+            }
+            
+            try await group.next()!
+            group.cancelAll()
+        }
         
         logger.info("✅ [DiscoveryService] Started successfully")
     }
@@ -85,9 +98,32 @@ public class DiscoveryService: @unchecked Sendable {
             isRunning = false
         }
         
-        // Cancel tasks
+        // Cancel tasks first
         receiveTask?.cancel()
         announceTask?.cancel()
+        
+        // Wait for tasks to finish (with timeout)
+        if let receiveTask = receiveTask {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    await receiveTask.value
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second timeout
+                }
+            }
+        }
+        
+        if let announceTask = announceTask {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    await announceTask.value
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second timeout
+                }
+            }
+        }
         
         // Send goodbye
         await sendGoodbye()
@@ -223,20 +259,29 @@ public class DiscoveryService: @unchecked Sendable {
             
             while !Task.isCancelled && socket >= 0 {
                 do {
+                    // Use non-blocking socket operations with timeout
                     let (data, _) = try await withCheckedThrowingContinuation { continuation in
                         socketQueue.async {
+                            // Set socket to non-blocking mode
+                            var flags = fcntl(socket, F_GETFL, 0)
+                            fcntl(socket, F_SETFL, flags | O_NONBLOCK)
+                            
                             var addr = sockaddr_in()
                             var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
                             
+                            // Try to receive data with a short timeout
                             let bytesRead = withUnsafeMutablePointer(to: &addr) { addrPtr in
                                 addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-                                    recvfrom(socket, &buffer, buffer.count, 0, sockaddrPtr, &addrLen)
+                                    recvfrom(socket, &buffer, buffer.count, MSG_DONTWAIT, sockaddrPtr, &addrLen)
                                 }
                             }
                             
                             if bytesRead > 0 {
                                 let data = Data(buffer.prefix(bytesRead))
                                 continuation.resume(returning: (data, addr))
+                            } else if bytesRead == -1 && errno == EAGAIN {
+                                // No data available, continue
+                                continuation.resume(throwing: RunarTransportError.transportError("No data available"))
                             } else if bytesRead == 0 {
                                 continuation.resume(throwing: RunarTransportError.transportError("Socket closed"))
                             } else {
@@ -249,8 +294,12 @@ public class DiscoveryService: @unchecked Sendable {
                     
                 } catch {
                     if !Task.isCancelled {
-                        self.logger.error("❌ [DiscoveryService] Receive error: \(error)")
-                        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms delay
+                        // Only log actual errors, not "no data available"
+                        if !error.localizedDescription.contains("No data available") {
+                            self.logger.error("❌ [DiscoveryService] Receive error: \(error)")
+                        }
+                        // Short delay to prevent busy waiting
+                        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms delay
                     }
                 }
             }

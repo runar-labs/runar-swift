@@ -4,6 +4,26 @@ import XCTest
 /// Shared test utilities for RunarTransporter tests
 /// This file contains common test helpers to avoid duplication
 
+/// Base test class with timeout support
+@available(macOS 12.0, iOS 15.0, *)
+class TimeoutTestCase: XCTestCase {
+    
+    /// Default timeout for tests in this class
+    var testTimeout: TimeInterval { 30.0 }
+    
+    /// Run a test operation with timeout
+    func runWithTimeoutClass<T>(_ timeout: TimeInterval? = nil, operation: @escaping () async throws -> T) async throws -> T {
+        let actualTimeout = timeout ?? testTimeout
+        return try await runWithTimeout(actualTimeout, operation: operation)
+    }
+    
+    /// Run a test operation with timeout (void version)
+    func runWithTimeoutVoidClass(_ timeout: TimeInterval? = nil, operation: @escaping () async throws -> Void) async throws {
+        let actualTimeout = timeout ?? testTimeout
+        try await runWithTimeoutVoid(actualTimeout, operation: operation)
+    }
+}
+
 /// Helper function to run tests with timeout
 /// Ensures tests don't hang indefinitely
 func runWithTimeout<T>(_ timeout: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {

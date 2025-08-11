@@ -36,6 +36,27 @@ public class PeerState {
         queue.sync { connection }
     }
     
+    public func hasConnection(_ conn: NWConnection) -> Bool {
+        queue.sync { connection === conn }
+    }
+    
+    public func hasConnectionToEndpoint(_ endpoint: String) -> Bool {
+        return queue.sync {
+            return address == endpoint
+        }
+    }
+    
+    public func hasConnectionToIPAddress(_ ipAddress: String) -> Bool {
+        return queue.sync {
+            // Extract IP address from the stored address (which might include port)
+            if let colonRange = address.range(of: ":") {
+                let storedIP = String(address[..<colonRange.lowerBound])
+                return storedIP == ipAddress
+            }
+            return address == ipAddress
+        }
+    }
+    
     public func updateActivity() {
         queue.async(flags: .barrier) { self.lastActivity = Date() }
     }

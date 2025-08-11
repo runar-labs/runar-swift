@@ -1,5 +1,6 @@
 import Foundation
 import SwiftCommon
+import Network
 
 /// Thread-safe connection pool for managing active peer connections
 @available(macOS 12.0, iOS 15.0, *)
@@ -53,6 +54,46 @@ public class ConnectionPool {
             if let state = self.peers[existingId] {
                 self.peers[aliasId] = state
             }
+        }
+    }
+    
+    /// Get all peer states for iteration
+    public func getAllPeers() -> [String: PeerState] {
+        return queue.sync { peers }
+    }
+    
+    /// Check if we have a connection to a specific endpoint
+    public func hasConnectionToEndpoint(_ endpoint: String) -> Bool {
+        return queue.sync {
+            for (_, peerState) in peers {
+                if peerState.hasConnectionToEndpoint(endpoint) {
+                    return true
+                }
+            }
+            return false
+        }
+    }
+    
+    public func hasConnectionToIPAddress(_ ipAddress: String) -> Bool {
+        return queue.sync {
+            for (_, peerState) in peers {
+                if peerState.hasConnectionToIPAddress(ipAddress) {
+                    return true
+                }
+            }
+            return false
+        }
+    }
+    
+    /// Check if any peer has a specific connection
+    public func hasPeerWithConnection(_ connection: NWConnection) -> Bool {
+        return queue.sync {
+            for (_, peerState) in peers {
+                if peerState.hasConnection(connection) {
+                    return true
+                }
+            }
+            return false
         }
     }
 } 

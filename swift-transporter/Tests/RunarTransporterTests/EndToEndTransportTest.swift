@@ -122,6 +122,34 @@ final class EndToEndTransportTest: XCTestCase {
         try await runWithTimeout(20) {
             self.logger.info("🚀 Starting E2E transport test")
             
+            // Step 0: Test message encoding/decoding works correctly
+            self.logger.info("🔧 Testing message encoding/decoding...")
+            let testMessage = RunarNetworkMessage(
+                sourceNodeId: self.node1Id,
+                destinationNodeId: self.node2Id,
+                messageType: MessageTypes.REQUEST,
+                payloads: [
+                    NetworkMessagePayloadItem(
+                        path: "test:api1/get",
+                        valueBytes: "test_value".data(using: .utf8)!,
+                        correlationId: "test-request-1"
+                    )
+                ]
+            )
+            
+            do {
+                let encoded = try BinaryMessageEncoder.encodeNetworkMessage(testMessage)
+                let decoded = try BinaryMessageEncoder.decodeNetworkMessage(from: encoded)
+                XCTAssertEqual(decoded.sourceNodeId, testMessage.sourceNodeId)
+                XCTAssertEqual(decoded.destinationNodeId, testMessage.destinationNodeId)
+                XCTAssertEqual(decoded.messageType, testMessage.messageType)
+                XCTAssertEqual(decoded.payloads.count, testMessage.payloads.count)
+                self.logger.info("✅ Message encoding/decoding test passed - encoded size: \(encoded.count) bytes")
+            } catch {
+                self.logger.error("❌ Message encoding/decoding test failed: \(error)")
+                throw error
+            }
+            
             // Step 1: Start both transports
             self.logger.info("📡 Starting transport services...")
             try await self.transport1.start()

@@ -1,39 +1,72 @@
 #!/bin/bash
 
-# Run Swift tests with timeout
-# Usage: ./run_tests_with_timeout.sh [timeout_seconds] [test_filter]
+# Test runner script with timeouts to prevent hanging tests
+# Usage: ./run_tests_with_timeout.sh [test_name]
 
-TIMEOUT=${1:-30}  # Default 30 seconds
-FILTER=${2:-""}   # Default no filter
+set -e
 
-echo "Running Swift tests with ${TIMEOUT}s timeout..."
+# Default timeout in seconds
+DEFAULT_TIMEOUT=60
 
-# Start the test process in background
-if [ -z "$FILTER" ]; then
-    swift test &
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}🧪 Running RunarTransporter tests with timeout protection...${NC}"
+
+# Function to run tests with timeout
+run_tests_with_timeout() {
+    local test_name="$1"
+    local timeout="${2:-$DEFAULT_TIMEOUT}"
+    
+    echo -e "${YELLOW}⏱️  Running tests with ${timeout}s timeout...${NC}"
+    
+    if [ -n "$test_name" ]; then
+        echo -e "${YELLOW}🎯 Running specific test: $test_name${NC}"
+        $TIMEOUT_CMD $timeout swift test --filter "$test_name" || {
+            echo -e "${RED}❌ Test '$test_name' failed or timed out after ${timeout}s${NC}"
+            return 1
+        }
+    else
+        echo -e "${YELLOW}🚀 Running all tests...${NC}"
+        $TIMEOUT_CMD $timeout swift test || {
+            echo -e "${RED}❌ Tests failed or timed out after ${timeout}s${NC}"
+            return 1
+        }
+    fi
+    
+    echo -e "${GREEN}✅ Tests completed successfully!${NC}"
+}
+
+# Check if timeout command is available (try both system and Homebrew versions)
+TIMEOUT_CMD=""
+if command -v timeout &> /dev/null; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout &> /dev/null; then
+    TIMEOUT_CMD="gtimeout"
 else
-    swift test --filter "$FILTER" &
+    echo -e "${RED}❌ 'timeout' command not found. Please install it or use a different method.${NC}"
+    echo -e "${YELLOW}💡 On macOS, you can install it with: brew install coreutils${NC}"
+    exit 1
 fi
 
-TEST_PID=$!
-
-# Wait for timeout or completion
-for i in $(seq 1 $TIMEOUT); do
-    if ! kill -0 $TEST_PID 2>/dev/null; then
-        break
-    fi
-    sleep 1
-done
-
-# Check if process is still running
-if kill -0 $TEST_PID 2>/dev/null; then
-    echo "Tests timed out after ${TIMEOUT}s, killing process tree..."
-    pkill -TERM -P $TEST_PID 2>/dev/null || true
-    kill -9 $TEST_PID 2>/dev/null || true
-    exit 124
+# Run tests
+if [ $# -eq 0 ]; then
+    # No arguments - run all tests
+    run_tests_with_timeout
+elif [ $# -eq 1 ]; then
+    # One argument - run specific test
+    run_tests_with_timeout "$1"
+elif [ $# -eq 2 ]; then
+    # Two arguments - run specific test with custom timeout
+    run_tests_with_timeout "$1" "$2"
 else
-    wait $TEST_PID
-    EXIT_CODE=$?
-    echo "Tests finished (exit ${EXIT_CODE})"
-    exit $EXIT_CODE
+    echo -e "${RED}❌ Usage: $0 [test_name] [timeout_seconds]${NC}"
+    echo -e "${YELLOW}Examples:${NC}"
+    echo -e "  $0                    # Run all tests with default timeout"
+    echo -e "  $0 DiscoveryServiceTests  # Run specific test with default timeout"
+    echo -e "  $0 DiscoveryServiceTests 30  # Run specific test with 30s timeout"
+    exit 1
 fi

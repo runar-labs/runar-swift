@@ -179,15 +179,11 @@ public struct BinaryMessageEncoder {
             let start = offset
             let end = offset + Int(length)
             var bytes = Data(count: Int(length))
-            bytes.withUnsafeMutableBytes { destRaw in
-                let dest = destRaw.bindMemory(to: UInt8.self)
-                data.copyBytes(to: dest, from: start..<end)
+            bytes.withUnsafeMutableBytes { (mutableBuffer: UnsafeMutableRawBufferPointer) in
+                data.copyBytes(to: mutableBuffer, from: start..<end)
             }
             offset = end
-            guard let string = String(data: bytes, encoding: .utf8) else {
-                throw RunarTransportError.serializationError("Invalid UTF-8 string")
-            }
-            return string
+            return String(data: bytes, encoding: .utf8) ?? ""
         }
         
         // Read source node ID
