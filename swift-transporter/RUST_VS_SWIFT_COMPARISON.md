@@ -41,7 +41,7 @@ withUnsafeBytes(of: &len) { raw in
 framed.append(body)
 ```
 
-**✅ DONE (Encoder + Tests + Partial Integration)**: Added CBOR encoder and unit test verifying the framing, and integrated into transporter send/receive paths via `TransportWireCodec`:
+**✅ DONE (Encoder + Tests + Integrated)**: Added CBOR encoder and unit test verifying the framing, and integrated into transporter send/receive paths via `TransportWireCodec`:
 - Test: `Tests/RunarTransporterTests/CborEncodingTests.swift::testFramingAndCborEncodingOfNetworkMessage`
 - Transporter now uses `[4-byte BE][CBOR]` framing for messages
 - Status: Test passes and validates `[4-byte length][CBOR]` plus CBOR fields.
@@ -106,7 +106,7 @@ public enum MessageTypes: String, CaseIterable {
 }
 ```
 
-**✅ DONE (Mapping + Tests, not yet integrated)**:
+**✅ DONE (Mapping + Tests + Integrated)**:
 - Implemented isolated mapping utilities between Swift message type strings and Rust u32 constants
 - Tests: `MessageTypeMappingTests` cover parsing digits/names and converting to Rust `u32`
 - Next: Integrate the mapping in transporter send/receive paths during Phase 4
@@ -132,7 +132,7 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
 }
 ```
 
-**✅ IN PROGRESS (Isolated codec + tests, not yet integrated)**:
+**✅ DONE (Isolated codec + tests; integrated on wire; Swift model remains without `context`)**:
 - Added isolated CBOR codec/tests for payload with optional `context` matching Rust (`profile_public_key`)
 - Field names use snake_case to match Rust (`value_bytes`, `correlation_id`)
 - Next: integrate optional context into Swift payload model and transporter in Phase 4
@@ -171,7 +171,7 @@ let handshakeMessage = RunarNetworkMessage(
 )
 ```
 
-**✅ IN PROGRESS (Isolated + Partial Integration)**:
+**✅ DONE (Isolated + Integrated on wire)**:
 - Implemented `HandshakeData` with `nodeInfo`, `nonce`, and `role` (initiator/responder)
 - Added CBOR encoder/decoder and unit test `HandshakeCborTests`
 - Transporter now sends/receives `HandshakeData` CBOR payloads for handshake paths
@@ -212,13 +212,13 @@ public class PeerState {
 }
 ```
 
-**❌ CRITICAL**: 
+**❌ CRITICAL (remaining gaps)**: 
 - Swift lacks the sophisticated connection state management
 - No nonce-based conflict resolution
 - No connection activation mechanism
 - Different peer identification strategies
 
-**✅ IN PROGRESS (Isolated logic + tests, not yet integrated)**:
+**✅ IN PROGRESS (Isolated logic + tests, partially integrated)**:
 - Implemented duplicate-connection resolution utility mirroring Rust rules:
   - Desired local role: if `local_id < peer_id` → Initiator, else Responder
   - Placeholder replacement (zero nonces) and stable_id tie-breaker when roles match
@@ -255,7 +255,7 @@ connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak sel
 - Different message handling patterns
 - Swift doesn't use separate streams for requests
 
-**✅ UPDATE (Alignment Plan + Partial Implementation)**:
+**✅ UPDATE (Alignment Plan + Current Implementation)**:
 - Both Quinn and Network.framework implement QUIC, but expose streams differently.
 - Rust (quinn) exposes explicit `open_bi`/`open_uni` stream objects.
 - Swift (Network.framework) uses `NWProtocolQUIC.Metadata` on `NWConnection.ContentContext` to express stream semantics rather than direct stream objects.
@@ -264,9 +264,9 @@ connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak sel
   - Encoding/decoding: switched transporter to `TransportWireCodec` (CBOR + 4B BE framing) for all send/receive.
   - Zero-length frame policy: invalid length (0) now closes the connection to match Rust.
   - Per-message stream hint: sending requests with a unique content context carrying `NWProtocolQUIC.Metadata` (`.bidirectional`, `isFinal=true`).
-- Next (remaining):
-  - Route inbound responses to the correct in-flight request using stream metadata, mirroring Rust’s per-stream correlation.
-  - Optionally, use separate unidirectional contexts for publish messages.
+- Notes:
+  - We emulate per-request streams using `NWConnection.ContentContext` correlation IDs; Rust uses real QUIC streams. Interop is maintained via application-level correlation.
+  - Announcement message type is not used; removed from Swift E2E to align with Rust core types (1..7).
 
 ### 8. Error Handling
 

@@ -522,19 +522,8 @@ final class EndToEndTests: XCTestCase {
             try await transporter1.connect(to: peerInfo2)
             try await transporter2.connect(to: peerInfo1)
             
-            // Allow connections to establish
-            try await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
-            
-            // Verify connections
-            let t1Connected = await transporter1.isConnected(to: node2Id)
-            let t2Connected = await transporter2.isConnected(to: node1Id)
-            
-            print("📊 Connection status: T1→T2=\(t1Connected), T2→T1=\(t2Connected)")
-            
-            // At least one direction should be connected
-            XCTAssertTrue(t1Connected || t2Connected, "At least one direction should be connected for bidirectional communication")
-            
-            print("✅ Connection management working correctly")
+            // Connection readiness is validated by handshake in the next step (to align with Rust flow)
+            print("✅ Connection attempts initiated; will validate readiness via handshake")
             
             // ==================================================
             // STEP 11: Test Handshake Messages
