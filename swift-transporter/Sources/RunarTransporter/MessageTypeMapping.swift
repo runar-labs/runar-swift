@@ -79,6 +79,26 @@ public enum MessageTypeMapping {
         }
     }
 
+    /// Convert Rust u32 constant into semantic type
+    public static func fromRustU32(_ value: UInt32) throws -> SemanticMessageType {
+        switch value {
+        case RustMessageType.discovery: return .discovery
+        case RustMessageType.heartbeat: return .heartbeat
+        case RustMessageType.handshake: return .handshake
+        case RustMessageType.request: return .request
+        case RustMessageType.response: return .response
+        case RustMessageType.event: return .event
+        case RustMessageType.error: return .error
+        default: throw MessageTypeMappingError.unknownType("u32:\\(value)")
+        }
+    }
+
+    /// Convert Rust u32 constant into current Swift string constant
+    public static func toSwiftString(fromRustU32 value: UInt32) throws -> String {
+        let semantic = try fromRustU32(value)
+        return toSwiftString(semantic)
+    }
+
     /// Convert a semantic type back to current Swift string constant used by `MessageTypes`
     public static func toSwiftString(_ semantic: SemanticMessageType) -> String {
         switch semantic {
