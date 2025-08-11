@@ -84,6 +84,49 @@ public enum CborMessageDecoder {
         let role = roleStr == "Initiator" ? HandshakeRole.initiator : HandshakeRole.responder
         return HandshakeData(nodeInfo: nodeInfo, nonce: nonce, role: role)
     }
+
+    public struct DecodedPayloadWithContext: Equatable {
+        public let path: String
+        public let valueBytes: Data
+        public let correlationId: String
+        public let context: MessageContextSwift?
+    }
+
+    public struct DecodedNetworkMessageRust: Equatable {
+        public let sourceNodeId: String
+        public let destinationNodeId: String
+        public let messageType: UInt32
+        public let payloads: [DecodedPayloadWithContext]
+    }
+
+    public static func decodeNetworkMessageRust(from data: Data) throws -> DecodedNetworkMessageRust {
+        let itemOpt = try CBORDecoder(input: [UInt8](data)).decodeItem()
+        guard let item = itemOpt, case let CBOR.map(map) = item else {
+            throw RunarTransportError.serializationError("Invalid CBOR for NetworkMessage")
+        }
+        func str(_ k: String) -> CBOR { .utf8String(k) }
+        let src = map[str("source_node_id")]?.asString ?? ""
+        let dst = map[str("destination_node_id")]?.asString ?? ""
+        let msgType = UInt32(map[str("message_type")]?.asUInt64 ?? 0)
+        var payloads: [DecodedPayloadWithContext] = []
+        if case let CBOR.array(arr)? = map[str("payloads")] {
+            for it in arr {
+                guard case let CBOR.map(pm) = it else { continue }
+                let path = pm[str("path")]?.asString ?? ""
+                let valueBytes: Data
+                if case let CBOR.byteString(vb)? = pm[str("value_bytes")] { valueBytes = Data(vb) } else { valueBytes = Data() }
+                let correlationId = pm[str("correlation_id")]?.asString ?? ""
+                var ctx: MessageContextSwift? = nil
+                if case let CBOR.map(cm)? = pm[str("context")] {
+                    if case let CBOR.byteString(pk)? = cm[str("profile_public_key")] {
+                        ctx = MessageContextSwift(profilePublicKey: Data(pk))
+                    }
+                }
+                payloads.append(DecodedPayloadWithContext(path: path, valueBytes: valueBytes, correlationId: correlationId, context: ctx))
+            }
+        }
+        return DecodedNetworkMessageRust(sourceNodeId: src, destinationNodeId: dst, messageType: msgType, payloads: payloads)
+    }
 }
 
 private extension CBOR {

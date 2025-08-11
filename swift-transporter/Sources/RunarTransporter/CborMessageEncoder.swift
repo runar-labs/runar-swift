@@ -72,6 +72,43 @@ public enum CborMessageEncoder {
         map[.utf8String("role")] = .utf8String(roleStr)
         return Data(CBOR.map(map).encode())
     }
+
+    public static func encodePayloadWithContext(_ p: PayloadWithContext) throws -> Data {
+        var map: [CBOR: CBOR] = [:]
+        map[.utf8String("path")] = .utf8String(p.path)
+        map[.utf8String("value_bytes")] = .byteString([UInt8](p.valueBytes))
+        if let ctx = p.context {
+            map[.utf8String("context")] = .map([.utf8String("profile_public_key"): .byteString([UInt8](ctx.profilePublicKey))])
+        }
+        map[.utf8String("correlation_id")] = .utf8String(p.correlationId)
+        return Data(CBOR.map(map).encode())
+    }
+
+    // Encode full NetworkMessage aligned with Rust schema
+    public static func encodeNetworkMessageRust(
+        sourceNodeId: String,
+        destinationNodeId: String,
+        messageTypeU32: UInt32,
+        payloads: [PayloadWithContext]
+    ) throws -> Data {
+        var map: [CBOR: CBOR] = [:]
+        map[.utf8String("source_node_id")] = .utf8String(sourceNodeId)
+        map[.utf8String("destination_node_id")] = .utf8String(destinationNodeId)
+        map[.utf8String("message_type")] = .unsignedInt(UInt64(messageTypeU32))
+        map[.utf8String("payloads")] = .array(payloads.map { p in
+            var pm: [CBOR: CBOR] = [:]
+            pm[.utf8String("path")] = .utf8String(p.path)
+            pm[.utf8String("value_bytes")] = .byteString([UInt8](p.valueBytes))
+            if let ctx = p.context {
+                pm[.utf8String("context")] = .map([
+                    .utf8String("profile_public_key"): .byteString([UInt8](ctx.profilePublicKey))
+                ])
+            }
+            pm[.utf8String("correlation_id")] = .utf8String(p.correlationId)
+            return .map(pm)
+        })
+        return Data(CBOR.map(map).encode())
+    }
 }
 
 

@@ -125,9 +125,10 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
 }
 ```
 
-**❌ CRITICAL**: 
-- Rust has optional `context` field, Swift doesn't
-- Field naming differs (`value_bytes` vs `valueBytes`, `correlation_id` vs `correlationId`)
+**✅ IN PROGRESS (Isolated codec + tests, not yet integrated)**:
+- Added isolated CBOR codec/tests for payload with optional `context` matching Rust (`profile_public_key`)
+- Field names use snake_case to match Rust (`value_bytes`, `correlation_id`)
+- Next: integrate optional context into Swift payload model and transporter in Phase 4
 
 ### 5. Handshake Protocol
 
