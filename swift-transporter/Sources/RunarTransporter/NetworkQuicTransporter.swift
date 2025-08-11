@@ -788,9 +788,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         // Start connection
         connection.start(queue: connectionQueue)
         logger.debug("🔧 [NetworkQuicTransporter] Started connection for \(peerId)")
-        // Kick the handshake by sending a tiny datagram
-        let kickContext = NWConnection.ContentContext.defaultMessage
-        connection.send(content: Data([0x00]), contentContext: kickContext, isComplete: true, completion: .idempotent)
+        // QUIC/TLS handshake will proceed automatically after start(); do not send unframed bytes
         
         // Store connection in ConnectionPool
         let peerState = connectionPool.getOrCreatePeer(peerId: peerId, address: address, logger: logger)
@@ -842,8 +840,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
         logger.debug("📤 [NetworkQuicTransporter] Sending message: length=\(messageData.count), length_bytes=[\(lengthHex)], total_size=\(data.count)")
         
-        // Send the complete message
-        connection.send(content: data, isComplete: true, completion: .contentProcessed { [weak self] error in
+        // Send the complete message on app content context
+        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] error in
             if let error = error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send message to \(peerId): \(error)")
             } else {
@@ -900,9 +898,13 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             
             switch state {
             case .ready:
-                // Connection is ready, but DON'T start receiving here
-                // We'll start receiving in handleConnectionReady to avoid duplicates
-                self.logger.debug("🔧 [NetworkQuicTransporter] Inbound connection ready, waiting for handleConnectionReady")
+                // For inbound connections, start receive loop immediately under temporary peer id
+                self.logger.debug("🔧 [NetworkQuicTransporter] Inbound connection ready, starting receive loop (peer=unknown)")
+                // Ensure there is a placeholder peer state entry
+                let ps = self.connectionPool.getOrCreatePeer(peerId: "unknown", address: connection.endpoint.debugDescription, logger: self.logger)
+                ps.setConnection(connection)
+                ps.updateActivity()
+                self.startReceiving(from: connection, peerId: "unknown")
                 
             case .failed(let error):
                 self.logger.error("❌ [NetworkQuicTransporter] Inbound connection failed: \(error)")
@@ -915,18 +917,17 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             }
         }
         
-        // Server-side handshake kick: send a few small datagrams to trigger TLS
-        for i in 0..<5 {
-            let ctx = NWConnection.ContentContext(identifier: "server-handshake-kick-\(i)")
-            connection.send(content: Data([0x00]), contentContext: ctx, isComplete: true, completion: .idempotent)
-        }
+        // Do not send unframed bytes; handshake will progress automatically
     }
     
     // Helper function to extract IP address from endpoint description
     private func extractIPAddress(from endpointDescription: String) -> String {
-        // Extract IP address from endpoint description like "127.0.0.1:50044"
-        if let colonRange = endpointDescription.range(of: ":") {
-            return String(endpointDescription[..<colonRange.lowerBound])
+        // Extract prefix before last '.' or ':' to drop port-like suffixes in IPv4/IPv6 representations
+        if let lastDot = endpointDescription.lastIndex(of: ".") {
+            return String(endpointDescription[..<lastDot])
+        }
+        if let lastColon = endpointDescription.lastIndex(of: ":") {
+            return String(endpointDescription[..<lastColon])
         }
         return endpointDescription
     }
@@ -996,6 +997,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             logger.debug("🔧 [NetworkQuicTransporter] Found existing peer state for \(peerId)")
             peerState.setConnection(connection)
             peerState.updateActivity()
+            logger.debug("🔧 [NetworkQuicTransporter] Notifying peerState ready for \(peerId)")
+            peerState.notifyConnectionReady()
             logger.debug("🔧 [NetworkQuicTransporter] Notified connection ready for existing peer \(peerId)")
             logger.info("✅ [NetworkQuicTransporter] Connection state set for \(peerId)")
         } else {
@@ -1004,18 +1007,16 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             let peerState = connectionPool.getOrCreatePeer(peerId: peerId, address: connection.endpoint.debugDescription, logger: logger)
             peerState.setConnection(connection)
             peerState.updateActivity()
+            logger.debug("🔧 [NetworkQuicTransporter] Notifying peerState ready for new peer \(peerId)")
+            peerState.notifyConnectionReady()
             logger.debug("🔧 [NetworkQuicTransporter] Notified connection ready for new peer \(peerId)")
             logger.info("✅ [NetworkQuicTransporter] Created and set connection state for \(peerId)")
         }
         
-        // Start receiving messages
+        // Start receiving messages first
         startReceiving(from: connection, peerId: peerId)
-        
-        // Initiate handshake with a slight delay to ensure the peer's receive loop is attached
-        Task {
-            try await Task.sleep(nanoseconds: 150_000_000) // 150ms
-            try await initiateHandshake(to: peerId)
-        }
+        // Initiate handshake immediately (Rust sends as soon as stream is ready)
+        Task { try await initiateHandshake(to: peerId) }
     }
     
     private func startReceiving(from connection: NWConnection, peerId: String) {
@@ -1177,6 +1178,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             logger.info("📥 [NetworkQuicTransporter] Received message from \(peerId) - Type: \(message.messageType)")
             
             if message.messageType == MessageTypes.HANDSHAKE {
+                // Deliver handshake to handler for test visibility
                 messageQueue.async { self.messageHandler.handleMessage(message) }
                 if let payload = message.payloads.first {
                     let pv = payload.valueBytes
@@ -1191,7 +1193,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                             // Get or create the peer state for the real peer ID
                             let peerState = self.connectionPool.getOrCreatePeer(peerId: realPeerId, address: peerId, logger: self.logger)
                             
-                            // Associate this connection with the real peer
+                            // Associate this connection with the real peer and mark ready
                             peerState.setConnection(connection)
                             peerState.updateActivity()
                             peerState.notifyConnectionReady()
@@ -1344,7 +1346,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             throw RunarTransportError.connectionError("No connection available for handshake to \(peerId)")
         }
         
-        let messageData = try encodeNetworkMessage(handshakeMessage)
+        let messageData = try TransportWireCodec.encodeBody(from: handshakeMessage)
         var data = Data()
         var length = UInt32(messageData.count).bigEndian
         withUnsafeBytes(of: &length) { rawBuffer in
@@ -1500,23 +1502,19 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     // MARK: - Message Encoding/Decoding
     
     private func encodeNetworkMessage(_ message: RunarNetworkMessage) throws -> Data {
-        // Use binary encoding for efficiency and compatibility with Rust
-        return try BinaryMessageEncoder.encodeNetworkMessage(message)
+        return try TransportWireCodec.encodeBody(from: message)
     }
     
     private func decodeNetworkMessage(from data: Data) throws -> RunarNetworkMessage {
-        // Use binary decoding for efficiency and compatibility with Rust
-        return try BinaryMessageEncoder.decodeNetworkMessage(from: data)
+        return try TransportWireCodec.decodeBody(to: data)
     }
     
     private func encodeNodeInfo(_ nodeInfo: RunarNodeInfo) throws -> Data {
-        // Use binary encoding for efficiency and compatibility with Rust
-        return try BinaryMessageEncoder.encodeNodeInfo(nodeInfo)
+        return try CborMessageEncoder.encodeNodeInfo(nodeInfo)
     }
     
     private func decodeNodeInfo(from data: Data) throws -> RunarNodeInfo {
-        // Use binary decoding for efficiency and compatibility with Rust
-        return try BinaryMessageEncoder.decodeNodeInfo(from: data)
+        return try CborMessageDecoder.decodeNodeInfo(from: data)
     }
 }
 
