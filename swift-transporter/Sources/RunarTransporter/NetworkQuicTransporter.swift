@@ -993,7 +993,6 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             logger.debug("🔧 [NetworkQuicTransporter] Found existing peer state for \(peerId)")
             peerState.setConnection(connection)
             peerState.updateActivity()
-            peerState.notifyConnectionReady()
             logger.debug("🔧 [NetworkQuicTransporter] Notified connection ready for existing peer \(peerId)")
             logger.info("✅ [NetworkQuicTransporter] Connection state set for \(peerId)")
         } else {
@@ -1002,7 +1001,6 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             let peerState = connectionPool.getOrCreatePeer(peerId: peerId, address: connection.endpoint.debugDescription, logger: logger)
             peerState.setConnection(connection)
             peerState.updateActivity()
-            peerState.notifyConnectionReady()
             logger.debug("🔧 [NetworkQuicTransporter] Notified connection ready for new peer \(peerId)")
             logger.info("✅ [NetworkQuicTransporter] Created and set connection state for \(peerId)")
         }
@@ -1379,6 +1377,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     peerState.setConnection(connection)
                     connectionPool.removePeer(peerId: "unknown")
                 }
+                // Activation gating: activate peer after handshake parsed
+                if let ps = self.connectionPool.getPeer(peerId: realPeerId) { ps.activate() }
                 messageQueue.async { self.messageHandler.peerConnected(peerNodeInfo) }
                 subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNodeInfo) }
                 return

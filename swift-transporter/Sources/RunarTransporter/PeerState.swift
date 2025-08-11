@@ -12,6 +12,7 @@ public class PeerState {
     private var lastActivity: Date
     private var connectionReadyContinuation: CheckedContinuation<Void, Error>?
     private let queue = DispatchQueue(label: "com.runar.peerstate.", attributes: .concurrent)
+    private let activation = ActivationStateMachine()
     
     public init(peerNodeId: String, address: String, logger: RunarLogger) {
         self.peerNodeId = peerNodeId
@@ -22,7 +23,7 @@ public class PeerState {
     }
     
     public var isConnected: Bool {
-        queue.sync { connection != nil }
+        queue.sync { activation.active() }
     }
     
     public func setConnection(_ conn: NWConnection) {
@@ -66,6 +67,10 @@ public class PeerState {
             self.connection?.cancel()
             self.connection = nil
         }
+    }
+
+    public func activate() {
+        activation.activate()
     }
     
     public func setConnectionReadyContinuation(_ continuation: CheckedContinuation<Void, Error>) {
