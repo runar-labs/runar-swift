@@ -22,18 +22,27 @@ fn encode_message(msg: &NetworkMessage) -> Result<Vec<u8>, NetworkError> {
 ```
 
 #### Swift Implementation
-- **Encoding**: Uses custom binary format with length prefixing
-- **Format**: `[4-byte length][custom binary format]`
-- **Code**: 
+- **Encoding**: CBOR serialization now available with length prefixing (via SwiftCBOR)
+- **Format**: `[4-byte length][CBOR message]`
+- **Encoder**: `Sources/RunarTransporter/CborMessageEncoder.swift`
+- **Code**:
 ```swift
-// In NetworkQuicTransporter.swift
-let length = UInt32(messageData.count).bigEndian
-var data = Data()
-data.append(Data(bytes: &length, count: 4))
-data.append(messageData)
+// Produce CBOR body
+let body = try CborMessageEncoder.encodeNetworkMessage(message)
+
+// Frame: [4-byte BE length][CBOR bytes]
+var framed = Data()
+var len = UInt32(body.count).bigEndian
+withUnsafeBytes(of: &len) { raw in
+    framed.append(raw.bindMemory(to: UInt8.self))
+}
+framed.append(body)
 ```
 
-**❌ CRITICAL**: The Swift implementation uses a custom binary format while Rust uses CBOR. This will prevent any message exchange between the two implementations.
+**✅ DONE (Encoder + Test)**: Added CBOR encoder and unit test verifying the framing:
+- Test: `Tests/RunarTransporterTests/CborEncodingTests.swift::testFramingAndCborEncodingOfNetworkMessage`
+- Status: Test passes and validates `[4-byte length][CBOR]` plus CBOR fields.
+- Next: Wire runtime send/receive to use CBOR encoder/decoder instead of the current custom binary path.
 
 ### 2. Message Structure
 
@@ -90,10 +99,10 @@ public enum MessageTypes: String, CaseIterable {
 }
 ```
 
-**❌ CRITICAL**: 
-- Rust uses numeric constants (1, 2, 3, 4, 5, 6, 7)
-- Swift uses string constants ("Discovery", "Heartbeat", "Handshake", etc.)
-- No mapping between the two systems
+**✅ DONE (Mapping + Tests, not yet integrated)**:
+- Implemented isolated mapping utilities between Swift message type strings and Rust u32 constants
+- Tests: `MessageTypeMappingTests` cover parsing digits/names and converting to Rust `u32`
+- Next: Integrate the mapping in transporter send/receive paths during Phase 4
 
 ### 4. Message Payload Structure
 
@@ -154,10 +163,10 @@ let handshakeMessage = RunarNetworkMessage(
 )
 ```
 
-**❌ CRITICAL**: 
-- Different handshake data structures
-- Different serialization formats (CBOR vs custom binary)
-- Swift doesn't include nonce or connection role information
+**✅ IN PROGRESS (Isolated types + CBOR codec, not yet integrated)**:
+- Implemented `HandshakeData` with `nodeInfo`, `nonce`, and `role` (initiator/responder)
+- Added CBOR encoder/decoder and unit test `HandshakeCborTests`
+- Next: integrate handshake flow and nonce/role usage in transporter during Phase 4
 
 ### 6. Connection Management
 
@@ -370,10 +379,18 @@ public func sendMessage(_ message: RunarNetworkMessage, to peerId: String) async
 
 ## Implementation Strategy
 
+### Phase 0: Isolated Components + Unit Tests (no transporter wiring)
+1. Implement CBOR encoder/decoder utilities for messages and node info with unit tests
+   - Status: CBOR message encoder + framing test added and passing (see `CborEncodingTests`)
+2. Implement numeric message type mapping utilities (u32) with unit tests
+3. Define Rust-compatible `HandshakeData` (node_info, nonce, role) and implement CBOR codec with unit tests
+4. Extend payload model to support optional `context`; provide CBOR codec + unit tests
+5. Provide standalone framing helpers (read/write 4-byte BE length) with unit tests
+6. Design connection/peer state data structures (activation, nonce dedupe) decoupled from `NWConnection`; unit-test state transitions
+
 ### Phase 1: Core Message Compatibility
-1. Implement CBOR serialization in Swift
-2. Align message structures and types
-3. Update handshake protocol
+1. Align message structures and types
+2. Update handshake protocol
 
 ### Phase 2: Protocol Compatibility
 1. Implement connection state management
@@ -384,6 +401,14 @@ public func sendMessage(_ message: RunarNetworkMessage, to peerId: String) async
 1. Implement stream-based handling (if needed)
 2. Enhance error handling
 3. Optimize performance and reliability
+
+### Phase 4: Integration and Refactor Transporter (deferred tasks)
+1. Replace `BinaryMessageEncoder` with CBOR encoder/decoder in `NetworkQuicTransporter` send/receive paths
+2. Ensure framing remains `[4-byte BE length][CBOR]` and unify buffering/parse paths
+3. Migrate message type usage to numeric constants throughout transporter and tests
+4. Integrate `HandshakeData` (nonce + role) and update handshake flow accordingly
+5. Integrate connection activation and nonce-based deduplication into `ConnectionPool`/`PeerState`
+6. Remove legacy binary encoding and related code paths after tests pass
 
 ## Testing Strategy
 

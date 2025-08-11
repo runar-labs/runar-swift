@@ -1,0 +1,101 @@
+import Foundation
+import SwiftCBOR
+
+@available(macOS 12.0, iOS 15.0, *)
+public enum CborMessageDecoder {
+    public static func decodeNodeInfo(from data: Data) throws -> RunarNodeInfo {
+        let itemOpt = try CBORDecoder(input: [UInt8](data)).decodeItem()
+        guard let item = itemOpt, case let CBOR.map(map) = item else {
+            throw RunarTransportError.serializationError("Invalid CBOR for node_info")
+        }
+        func str(_ k: String) -> CBOR { .utf8String(k) }
+
+        guard case let CBOR.byteString(keyBytes)? = map[str("node_public_key")] else {
+            throw RunarTransportError.serializationError("Missing node_public_key")
+        }
+        let nodePublicKey = Data(keyBytes)
+
+        let networkIds: [String]
+        if case let CBOR.array(ids)? = map[str("network_ids")] {
+            networkIds = ids.compactMap { if case let CBOR.utf8String(s) = $0 { return s } else { return nil } }
+        } else { networkIds = [] }
+
+        let addresses: [String]
+        if case let CBOR.array(addrs)? = map[str("addresses")] {
+            addresses = addrs.compactMap { if case let CBOR.utf8String(s) = $0 { return s } else { return nil } }
+        } else { addresses = [] }
+
+        var services: [ServiceMetadata] = []
+        if case let CBOR.array(svcs)? = map[str("services")] {
+            for svc in svcs {
+                guard case let CBOR.map(sm) = svc else { continue }
+                let servicePath = (sm[str("service_path")]?.asString) ?? ""
+                let networkId = (sm[str("network_id")]?.asString) ?? ""
+                let serviceName = (sm[str("service_name")]?.asString) ?? ""
+                let description = (sm[str("description")]?.asString) ?? ""
+                let actions: [ActionMetadata]
+                if case let CBOR.array(act)? = sm[str("actions")] {
+                    actions = act.compactMap { a in
+                        guard case let CBOR.map(am) = a else { return nil }
+                        let ap = (am[str("action_path")]?.asString) ?? ""
+                        let an = (am[str("action_name")]?.asString) ?? ""
+                        let ad = (am[str("description")]?.asString) ?? ""
+                        let ins = am[str("input_schema")]?.asString
+                        let outs = am[str("output_schema")]?.asString
+                        return ActionMetadata(actionPath: ap, actionName: an, description: ad, inputSchema: ins, outputSchema: outs)
+                    }
+                } else { actions = [] }
+                let events: [EventMetadata]
+                if case let CBOR.array(ev)? = sm[str("events")] {
+                    events = ev.compactMap { e in
+                        guard case let CBOR.map(em) = e else { return nil }
+                        let p = (em[str("path")]?.asString) ?? ""
+                        let d = (em[str("description")]?.asString) ?? ""
+                        let ds = em[str("data_schema")]?.asString
+                        return EventMetadata(path: p, description: d, dataSchema: ds)
+                    }
+                } else { events = [] }
+                services.append(ServiceMetadata(servicePath: servicePath, networkId: networkId, serviceName: serviceName, description: description, actions: actions, events: events))
+            }
+        }
+
+        let version: Int64
+        if let v = map[str("version")]?.asInt64 { version = v } else { version = 0 }
+        let createdAtMs = map[str("created_at_ms")]?.asUInt64 ?? 0
+        let createdAt = Date(timeIntervalSince1970: TimeInterval(createdAtMs) / 1000.0)
+
+        return RunarNodeInfo(nodePublicKey: nodePublicKey, networkIds: networkIds, addresses: addresses, services: services, version: version, createdAt: createdAt)
+    }
+
+    public static func decodeHandshake(from data: Data) throws -> HandshakeData {
+        let itemOpt = try CBORDecoder(input: [UInt8](data)).decodeItem()
+        guard let item = itemOpt, case let CBOR.map(map) = item else {
+            throw RunarTransportError.serializationError("Invalid CBOR for handshake")
+        }
+        func str(_ k: String) -> CBOR { .utf8String(k) }
+
+        guard let nodeItem = map[str("node_info")], case let CBOR.map(_) = nodeItem else {
+            throw RunarTransportError.serializationError("Missing node_info")
+        }
+        let nodeInfo = try decodeNodeInfo(from: Data(CBOR.encode(nodeItem)))
+        let nonce = map[str("nonce")]?.asUInt64 ?? 0
+        // Rust serializes role as enum string using serde default ("Initiator"/"Responder")
+        let roleStr = map[str("role")]?.asString ?? "Responder"
+        let role = roleStr == "Initiator" ? HandshakeRole.initiator : HandshakeRole.responder
+        return HandshakeData(nodeInfo: nodeInfo, nonce: nonce, role: role)
+    }
+}
+
+private extension CBOR {
+    var asString: String? { if case let .utf8String(s) = self { return s } else { return nil } }
+    var asUInt64: UInt64? { if case let .unsignedInt(u) = self { return u } else { return nil } }
+    var asInt64: Int64? {
+        switch self {
+        case let .negativeInt(n): return -Int64(bitPattern: n + 1)
+        case let .unsignedInt(u): return Int64(bitPattern: u)
+        default: return nil
+        }
+    }
+}
+
+

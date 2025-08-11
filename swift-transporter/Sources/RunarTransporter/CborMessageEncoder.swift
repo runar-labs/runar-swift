@@ -60,6 +60,18 @@ public enum CborMessageEncoder {
         map[.utf8String("created_at_ms")] = .unsignedInt(UInt64(nodeInfo.createdAt.timeIntervalSince1970 * 1000))
         return Data(CBOR.map(map).encode())
     }
+
+    public static func encodeHandshake(_ hs: HandshakeData) throws -> Data {
+        var map: [CBOR: CBOR] = [:]
+        // Embed node_info as CBOR map
+        let nodeInfoBytes = try encodeNodeInfo(hs.nodeInfo)
+        let nodeInfoItem = try CBORDecoder(input: [UInt8](nodeInfoBytes)).decodeItem() ?? CBOR.null
+        map[.utf8String("node_info")] = nodeInfoItem
+        map[.utf8String("nonce")] = .unsignedInt(hs.nonce)
+        let roleStr = hs.role == .initiator ? "Initiator" : "Responder"
+        map[.utf8String("role")] = .utf8String(roleStr)
+        return Data(CBOR.map(map).encode())
+    }
 }
 
 
