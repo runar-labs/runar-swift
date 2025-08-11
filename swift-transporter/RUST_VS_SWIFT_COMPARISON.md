@@ -3,6 +3,8 @@
 ## Overview
 This document provides a comprehensive comparison between the Rust (`runar-rust/runar-node/src/network/transport/quic_transport.rs`) and Swift (`swift-transporter/Sources/RunarTransporter/NetworkQuicTransporter.swift`) QUIC transport implementations. The goal is to identify all discrepancies that need to be resolved for the two implementations to communicate with each other.
 
+> Process directive: For every task, always verify the exact behavior in the Rust implementation before making changes in Swift. Do not guess or assume. Reference file: `/Users/rafael/dev/runar-rust/runar-node/src/network/transport/quic_transport.rs`.
+
 ## Critical Discrepancies
 
 ### 1. Message Encoding Format
@@ -245,6 +247,12 @@ connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak sel
 - Different stream abstraction layers
 - Different message handling patterns
 - Swift doesn't use separate streams for requests
+
+**⏳ NEXT (Design + isolated tests first)**:
+- Model Rust stream lifecycle semantics in isolation:
+  - Request: open bi → write → finish send → read response
+  - Publish: open uni → write → finish (no response)
+- Add unit tests to enforce order and constraints without integrating Network.framework yet
 
 ### 8. Error Handling
 
