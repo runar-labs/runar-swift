@@ -210,6 +210,13 @@ public class PeerState {
 - No connection activation mechanism
 - Different peer identification strategies
 
+**✅ IN PROGRESS (Isolated logic + tests, not yet integrated)**:
+- Implemented duplicate-connection resolution utility mirroring Rust rules:
+  - Desired local role: if `local_id < peer_id` → Initiator, else Responder
+  - Placeholder replacement (zero nonces) and stable_id tie-breaker when roles match
+- Tests: `DuplicateResolutionTests` cover placeholder, role selection, and stable_id preference
+- Next: model activation state transitions (activate after dup-resolution + handshake) as an isolated state machine, then integrate
+
 ### 7. Stream Management
 
 #### Rust Implementation
