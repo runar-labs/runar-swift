@@ -1162,9 +1162,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             return 0
         }
         
-        let length = lengthBytes.withUnsafeBytes { bytes in
-            bytes.load(as: UInt32.self).bigEndian
-        }
+        let arr = Array(lengthBytes)
+        let length = (UInt32(arr[0]) << 24) | (UInt32(arr[1]) << 16) | (UInt32(arr[2]) << 8) | UInt32(arr[3])
         
         logger.debug("🔍 [NetworkQuicTransporter] Parsed length: \(length) (0x\(String(format: "%08x", length)))")
         return Int(length)
