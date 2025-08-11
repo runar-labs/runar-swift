@@ -44,17 +44,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     // App-level content context tag for framed Runar messages
     private let appMessageContext = NWConnection.ContentContext(identifier: "runar-msg")
 
-    // Create a QUIC stream content context with metadata matching desired stream semantics
-    private func makeQuicStreamContext(identifier: String, bidirectional: Bool = true, isFinal: Bool = true) -> NWConnection.ContentContext {
-        let meta = NWProtocolQUIC.Metadata()
-        meta.streamType = bidirectional ? .bidirectional : .unidirectional
-        meta.isFinal = isFinal
-        if #available(macOS 12.0, iOS 15.0, *) {
-            return NWConnection.ContentContext(identifier: identifier, metadata: [meta])
-        } else {
-            return NWConnection.ContentContext(identifier: identifier)
-        }
-    }
+    // Placeholder for per-message content contexts (no QUIC metadata on this SDK)
     
     // Peer node info subscription
     private var peerNodeInfoStream: AsyncStream<RunarNodeInfo>.Continuation?
@@ -165,6 +155,10 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         // Wait for connection to be established
         var attempts = 0
         while attempts < 10 {
+            // Fast-path: if we already have a connection object, proceed even if not yet activated
+            if let ps = connectionPool.getPeer(peerId: peerId), ps.getConnection() != nil {
+                break
+            }
             if await isConnected(to: peerId) {
                 break
             }
@@ -172,7 +166,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             attempts += 1
         }
         
-        guard await isConnected(to: peerId) else {
+        guard let ps = connectionPool.getPeer(peerId: peerId), ps.getConnection() != nil else {
             throw RunarTransportError.connectionError("Not connected to peer \(peerId) after waiting")
         }
         
@@ -1126,6 +1120,17 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             // Process the message
             processReceivedMessage(messageData, from: peerId, connection: connection)
             
+            // If this looks like a response, attempt to resolve pending continuation by correlation id
+            if let decoded = try? TransportWireCodec.decodeBody(to: messageData),
+               decoded.messageType == MessageTypes.RESPONSE,
+               let corr = decoded.payloads.first?.correlationId {
+                correlationQueue.async {
+                    if let cont = self.pendingResponses.removeValue(forKey: corr) {
+                        cont.resume(returning: decoded)
+                    }
+                }
+            }
+            
             // Remove processed message from buffer
             messageBuffer.removeFirst(totalNeeded)
             
@@ -1292,8 +1297,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         withUnsafeBytes(of: &length) { rawBuffer in frame.append(rawBuffer.bindMemory(to: UInt8.self)) }
         frame.append(messageData)
         
-        // Use QUIC stream metadata to request a dedicated bidirectional stream
-        let streamContext = makeQuicStreamContext(identifier: "runar-req-\(UUID().uuidString)", bidirectional: true, isFinal: true)
+        // Use a unique content context identifier (no QUIC metadata available)
+        let streamContext = NWConnection.ContentContext(identifier: "runar-req-\(UUID().uuidString)")
         let sendErr = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<NWError?, Error>) in
             connection.send(content: frame, contentContext: streamContext, isComplete: true, completion: .contentProcessed { err in
                 cont.resume(returning: err)

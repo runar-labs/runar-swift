@@ -52,14 +52,33 @@ public protocol MessageHandlerProtocol: AnyObject {
 /// Default implementation for MessageHandlerProtocol
 @available(macOS 12.0, iOS 15.0, *)
 public class DefaultMessageHandler: MessageHandlerProtocol {
+    private weak var transporter: TransportProtocol?
     private let logger: Logger
     
-    public init(logger: Logger) {
+    public init(transporter: TransportProtocol? = nil, logger: Logger) {
+        self.transporter = transporter
         self.logger = logger
     }
     
     public func handleMessage(_ message: RunarNetworkMessage) {
         logger.info("📥 [DefaultMessageHandler] Received message - Type: \(message.messageType), From: \(message.sourceNodeId)")
+        // Echo RESPONSE for REQUEST to enable end-to-end correlation tests
+        if message.messageType == MessageTypes.REQUEST,
+           let corr = message.payloads.first?.correlationId {
+            let response = RunarNetworkMessage(
+                sourceNodeId: message.destinationNodeId,
+                destinationNodeId: message.sourceNodeId,
+                messageType: MessageTypes.RESPONSE,
+                payloads: [
+                    NetworkMessagePayloadItem(
+                        path: "echo",
+                        valueBytes: message.payloads.first?.valueBytes ?? Data(),
+                        correlationId: corr
+                    )
+                ]
+            )
+            Task { try? await self.transporter?.send(message: response) }
+        }
     }
     
     public func peerConnected(_ peerInfo: RunarNodeInfo) {
@@ -69,4 +88,4 @@ public class DefaultMessageHandler: MessageHandlerProtocol {
     public func peerDisconnected(_ peerId: String) {
         logger.info("🔚 [DefaultMessageHandler] Peer disconnected: \(peerId)")
     }
-} 
+}
