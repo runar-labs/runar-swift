@@ -43,6 +43,18 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     
     // App-level content context tag for framed Runar messages
     private let appMessageContext = NWConnection.ContentContext(identifier: "runar-msg")
+
+    // Create a QUIC stream content context with metadata matching desired stream semantics
+    private func makeQuicStreamContext(identifier: String, bidirectional: Bool = true, isFinal: Bool = true) -> NWConnection.ContentContext {
+        let meta = NWProtocolQUIC.Metadata()
+        meta.streamType = bidirectional ? .bidirectional : .unidirectional
+        meta.isFinal = isFinal
+        if #available(macOS 12.0, iOS 15.0, *) {
+            return NWConnection.ContentContext(identifier: identifier, metadata: [meta])
+        } else {
+            return NWConnection.ContentContext(identifier: identifier)
+        }
+    }
     
     // Peer node info subscription
     private var peerNodeInfoStream: AsyncStream<RunarNodeInfo>.Continuation?
@@ -1270,30 +1282,27 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     }
     
     private func sendRequestAndWaitForResponse(connection: NWConnection, message: RunarNetworkMessage) async throws -> RunarNetworkMessage {
-        // This simulates the Rust request_inner flow using Network.framework
-        logger.debug("🔄 [NetworkQuicTransporter] Sending request and waiting for response")
+        // Align with Rust's request_inner: open a fresh stream per request
+        logger.debug("🔄 [NetworkQuicTransporter] Sending request and waiting for response (per-message stream)")
         
-        // Encode and send message
-        let messageData = try encodeNetworkMessage(message)
-        var data = Data()
+        // Encode frame
+        let messageData = try TransportWireCodec.encodeBody(from: message)
+        var frame = Data()
         var length = UInt32(messageData.count).bigEndian
-        withUnsafeBytes(of: &length) { rawBuffer in
-            data.append(rawBuffer.bindMemory(to: UInt8.self))
+        withUnsafeBytes(of: &length) { rawBuffer in frame.append(rawBuffer.bindMemory(to: UInt8.self)) }
+        frame.append(messageData)
+        
+        // Use QUIC stream metadata to request a dedicated bidirectional stream
+        let streamContext = makeQuicStreamContext(identifier: "runar-req-\(UUID().uuidString)", bidirectional: true, isFinal: true)
+        let sendErr = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<NWError?, Error>) in
+            connection.send(content: frame, contentContext: streamContext, isComplete: true, completion: .contentProcessed { err in
+                cont.resume(returning: err)
+            })
         }
-        data.append(messageData)
+        if let err = sendErr { throw err }
+        logger.debug("✅ [NetworkQuicTransporter] Request sent (\(frame.count) bytes)")
         
-        // For now, we'll use a simple send without waiting for response
-        // In a full implementation, we'd need to implement proper request-response correlation
-        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] error in
-            if let error = error {
-                self?.logger.error("❌ [NetworkQuicTransporter] Failed to send request: \(error)")
-            } else {
-                self?.logger.debug("✅ [NetworkQuicTransporter] Request sent successfully")
-            }
-        })
-        
-        // Wait for the actual response from the peer
-        // This is a real implementation that waits for the response
+        // Wait for correlated response
         let correlationId = message.payloads.first?.correlationId ?? ""
         return try await waitForResponse(from: message.destinationNodeId, correlationId: correlationId)
     }

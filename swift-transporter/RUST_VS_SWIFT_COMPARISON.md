@@ -255,11 +255,18 @@ connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak sel
 - Different message handling patterns
 - Swift doesn't use separate streams for requests
 
-**⏳ NEXT (Design + isolated tests first)**:
-- Model Rust stream lifecycle semantics in isolation:
-  - Request: open bi → write → finish send → read response
-  - Publish: open uni → write → finish (no response)
-- Add unit tests to enforce order and constraints without integrating Network.framework yet
+**✅ UPDATE (Alignment Plan + Partial Implementation)**:
+- Both Quinn and Network.framework implement QUIC, but expose streams differently.
+- Rust (quinn) exposes explicit `open_bi`/`open_uni` stream objects.
+- Swift (Network.framework) uses `NWProtocolQUIC.Metadata` on `NWConnection.ContentContext` to express stream semantics rather than direct stream objects.
+- Changes made:
+  - Inbound: start receive loop immediately on inbound `NWConnection` under a temporary peer id and remap on first handshake.
+  - Encoding/decoding: switched transporter to `TransportWireCodec` (CBOR + 4B BE framing) for all send/receive.
+  - Zero-length frame policy: invalid length (0) now closes the connection to match Rust.
+  - Per-message stream hint: sending requests with a unique content context carrying `NWProtocolQUIC.Metadata` (`.bidirectional`, `isFinal=true`).
+- Next (remaining):
+  - Route inbound responses to the correct in-flight request using stream metadata, mirroring Rust’s per-stream correlation.
+  - Optionally, use separate unidirectional contexts for publish messages.
 
 ### 8. Error Handling
 
