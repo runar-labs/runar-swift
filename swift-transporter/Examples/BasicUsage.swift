@@ -100,7 +100,7 @@ class BasicUsageExample {
             let updateMessage = try RunarNetworkMessage(
                 sourceNodeId: nodeInfo.nodeId,
                 destinationNodeId: peerInfo.peerId,
-                messageType: MessageTypes.NODE_INFO_UPDATE,
+                messageType: MessageTypes.nodeInfoUpdate,
                 payloads: [
                     NetworkMessagePayloadItem(
                         path: "",
@@ -140,13 +140,13 @@ class ExampleMessageHandler: MessageHandlerProtocol {
 
         // Handle different message types (matches Rust message handling)
         switch message.messageType {
-        case MessageTypes.REQUEST:
+        case MessageTypes.request:
             handleRequest(message)
-        case MessageTypes.RESPONSE:
+        case MessageTypes.response:
             handleResponse(message)
-        case MessageTypes.NODE_INFO_HANDSHAKE, MessageTypes.NODE_INFO_HANDSHAKE_RESPONSE:
+        case MessageTypes.nodeInfoHandshake, MessageTypes.nodeInfoHandshakeResponse:
             handleHandshake(message)
-        case MessageTypes.NODE_INFO_UPDATE:
+        case MessageTypes.nodeInfoUpdate:
             handleNodeInfoUpdate(message)
         default:
             logger.warning("⚠️ [ExampleMessageHandler] Unknown message type: \(message.messageType)")

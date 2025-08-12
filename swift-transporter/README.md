@@ -170,10 +170,10 @@ The Swift implementation follows the same architecture as the Rust QUIC transpor
 
 The message flow matches the Rust implementation:
 
-1. **Handshake**: `NODE_INFO_HANDSHAKE` → `NODE_INFO_HANDSHAKE_RESPONSE`
+1. **Handshake**: `nodeInfoHandshake` → `nodeInfoHandshakeResponse`
 2. **Requests**: `Request` messages with correlation IDs
 3. **Responses**: `Response` messages with matching correlation IDs
-4. **Updates**: `NODE_INFO_UPDATE` for capability changes
+4. **Updates**: `nodeInfoUpdate` for capability changes
 
 ### Peer Management
 

@@ -1,5 +1,5 @@
-import XCTest
 @testable import SwiftCommon
+import XCTest
 
 final class NodeIdTests: XCTestCase {
     func testCompactIdNotEmpty() {
@@ -8,5 +8,3 @@ final class NodeIdTests: XCTestCase {
         XCTAssertFalse(id.isEmpty)
     }
 }
-
-

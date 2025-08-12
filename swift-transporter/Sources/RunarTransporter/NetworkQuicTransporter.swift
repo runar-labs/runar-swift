@@ -188,7 +188,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             let message = try RunarNetworkMessage(
                 sourceNodeId: nodeInfo.nodeId,
                 destinationNodeId: peerId,
-                messageType: MessageTypes.NODE_INFO_UPDATE,
+                messageType: MessageTypes.nodeInfoUpdate,
                 payloads: [
                     NetworkMessagePayloadItem(
                         path: "",
@@ -1471,7 +1471,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             }
 
             // Handle different handshake message types
-            if message.messageType == MessageTypes.NODE_INFO_HANDSHAKE {
+            if message.messageType == MessageTypes.nodeInfoHandshake {
                 // Send handshake response
                 Task {
                     try await sendHandshakeResponse(to: realPeerId)
@@ -1487,7 +1487,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     self.peerNodeInfoStream?.yield(peerNodeInfo)
                 }
 
-            } else if message.messageType == MessageTypes.NODE_INFO_HANDSHAKE_RESPONSE {
+            } else if message.messageType == MessageTypes.nodeInfoHandshakeResponse {
                 // Notify about new peer (both directions)
                 messageQueue.async {
                     self.messageHandler.peerConnected(peerNodeInfo)

@@ -34,7 +34,7 @@ public enum MessageTypeMappingError: Error, Equatable {
 public enum MessageTypeMapping {
     /// Parse current Swift message type string into a semantic type
     /// Current Swift constants (Constants.swift):
-    /// 1=DISCOVERY, 2=HEARTBEAT, 3=ANNOUNCEMENT, 4=HANDSHAKE, 5=REQUEST, 6=RESPONSE, 7=EVENT, 8=ERROR, 9=NODE_INFO_UPDATE, 10=NODE_INFO_HANDSHAKE_RESPONSE
+    /// 1=discovery, 2=heartbeat, 3=announcement, 4=handshake, 5=request, 6=response, 7=event, 8=error, 9=nodeInfoUpdate, 10=nodeInfoHandshakeResponse
     public static func parseSwiftString(_ value: String) throws -> SemanticMessageType {
         switch value {
         case "1": return .discovery
