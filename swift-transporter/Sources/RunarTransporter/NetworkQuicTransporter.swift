@@ -1,3 +1,4 @@
+// swiftlint:disable file_length type_body_length
 import Crypto
 import Foundation
 import Network
@@ -1161,7 +1162,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
             // If this looks like a response, attempt to resolve pending continuation by correlation id
             if let decoded = try? TransportWireCodec.decodeBody(to: messageData),
-               decoded.messageType == MessageTypes.RESPONSE,
+               decoded.messageType == MessageTypes.response,
                let corr = decoded.payloads.first?.correlationId
             {
                 correlationQueue.async {
@@ -1232,7 +1233,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             let message = try TransportWireCodec.decodeBody(to: messageData)
             logger.info("📥 [NetworkQuicTransporter] Received message from \(peerId) - Type: \(message.messageType)")
 
-            if message.messageType == MessageTypes.HANDSHAKE {
+            if message.messageType == MessageTypes.handshake {
                 // Deliver handshake to handler for test visibility
                 messageQueue.async { self.messageHandler.handleMessage(message) }
                 if let payload = message.payloads.first {
@@ -1303,7 +1304,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         let handshakeMessage = try RunarNetworkMessage(
             sourceNodeId: nodeInfo.nodeId,
             destinationNodeId: peerId,
-            messageType: MessageTypes.HANDSHAKE,
+            messageType: MessageTypes.handshake,
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "handshake",
@@ -1382,7 +1383,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         let handshakeMessage = try RunarNetworkMessage(
             sourceNodeId: nodeInfo.nodeId,
             destinationNodeId: peerId,
-            messageType: MessageTypes.HANDSHAKE,
+            messageType: MessageTypes.handshake,
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "handshake",
@@ -1521,7 +1522,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         let responseMessage = try RunarNetworkMessage(
             sourceNodeId: nodeInfo.nodeId,
             destinationNodeId: peerId,
-            messageType: MessageTypes.NODE_INFO_HANDSHAKE_RESPONSE,
+            messageType: MessageTypes.nodeInfoHandshakeResponse,
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "",

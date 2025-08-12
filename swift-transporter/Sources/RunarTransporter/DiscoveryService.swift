@@ -170,7 +170,7 @@ public class DiscoveryService: @unchecked Sendable {
 
     /// Create and configure multicast socket (matches Rust create_multicast_socket)
     private func createMulticastSocket() async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             socketQueue.async {
                 do {
                     // Create UDP socket
@@ -428,7 +428,7 @@ public class DiscoveryService: @unchecked Sendable {
 
     /// Send data to multicast group
     private func sendMulticastData(_ data: Data) async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             socketQueue.async {
                 let socket = self.udpSocket
                 guard socket >= 0 else {

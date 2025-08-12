@@ -10,7 +10,7 @@ final class CborEncodingTests: XCTestCase {
         let msg = RunarNetworkMessage(
             sourceNodeId: "src",
             destinationNodeId: "dst",
-            messageType: MessageTypes.REQUEST,
+            messageType: MessageTypes.request,
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "handshake",

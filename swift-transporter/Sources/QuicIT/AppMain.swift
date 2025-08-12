@@ -150,7 +150,7 @@ struct QuicITMain {
                 let req = RunarNetworkMessage(
                     sourceNodeId: node1Id,
                     destinationNodeId: node2Id,
-                    messageType: MessageTypes.REQUEST,
+                    messageType: MessageTypes.request,
                     payloads: [NetworkMessagePayloadItem(path: "/it/get", valueBytes: Data("ok".utf8), correlationId: "it-1")]
                 )
                 try await t1.send(message: req)
@@ -162,8 +162,8 @@ struct QuicITMain {
                 guard t1Connected || t2Connected else {
                     fputs("Connection not established\n", stderr); exit(2)
                 }
-                let hasHandshake = (h1.messages.contains { $0.messageType == MessageTypes.HANDSHAKE }) || (h2.messages.contains { $0.messageType == MessageTypes.HANDSHAKE })
-                let hasRequest = h2.messages.contains { $0.messageType == MessageTypes.REQUEST }
+                let hasHandshake = (h1.messages.contains { $0.messageType == MessageTypes.handshake }) || (h2.messages.contains { $0.messageType == MessageTypes.handshake })
+                let hasRequest = h2.messages.contains { $0.messageType == MessageTypes.request }
                 guard hasHandshake else { fputs("No handshake\n", stderr); exit(3) }
                 guard hasRequest else { fputs("No request received\n", stderr); exit(4) }
 

@@ -532,8 +532,8 @@ final class EndToEndTests: XCTestCase {
             // Allow time for handshake messages to be exchanged
             try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
 
-            let node1HandshakeMessages = node1Messages.getMessages().filter { $0.messageType == MessageTypes.HANDSHAKE }
-            let node2HandshakeMessages = node2Messages.getMessages().filter { $0.messageType == MessageTypes.HANDSHAKE }
+            let node1HandshakeMessages = node1Messages.getMessages().filter { $0.messageType == MessageTypes.handshake }
+            let node2HandshakeMessages = node2Messages.getMessages().filter { $0.messageType == MessageTypes.handshake }
 
             let handshakeReceived = !node1HandshakeMessages.isEmpty || !node2HandshakeMessages.isEmpty
 
@@ -572,11 +572,11 @@ final class EndToEndTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
 
             // Check that request was received
-            let node2RequestMessages = node2Messages.getMessages().filter { $0.messageType == MessageTypes.REQUEST }
+            let node2RequestMessages = node2Messages.getMessages().filter { $0.messageType == MessageTypes.request }
             XCTAssertTrue(!node2RequestMessages.isEmpty, "Node2 should receive request message")
 
             // Check that response was sent back
-            let node1ResponseMessages = node1Messages.getMessages().filter { $0.messageType == MessageTypes.RESPONSE }
+            let node1ResponseMessages = node1Messages.getMessages().filter { $0.messageType == MessageTypes.response }
             XCTAssertTrue(!node1ResponseMessages.isEmpty, "Node1 should receive response message")
 
             print("✅ Request-response messaging working correctly")
@@ -607,7 +607,7 @@ final class EndToEndTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
 
             // Check that event was received
-            let node2EventMessages = node2Messages.getMessages().filter { $0.messageType == MessageTypes.EVENT }
+            let node2EventMessages = node2Messages.getMessages().filter { $0.messageType == MessageTypes.event }
             XCTAssertTrue(!node2EventMessages.isEmpty, "Node2 should receive event message")
 
             print("✅ Event publishing working correctly")
@@ -634,14 +634,14 @@ final class EndToEndTests: XCTestCase {
             }
 
             // Validate different message types
-            let hasHandshake = node1AllMessages.contains { $0.messageType == MessageTypes.HANDSHAKE } ||
-                node2AllMessages.contains { $0.messageType == MessageTypes.HANDSHAKE }
-            let hasRequest = node1AllMessages.contains { $0.messageType == MessageTypes.REQUEST } ||
-                node2AllMessages.contains { $0.messageType == MessageTypes.REQUEST }
-            let hasResponse = node1AllMessages.contains { $0.messageType == MessageTypes.RESPONSE } ||
-                node2AllMessages.contains { $0.messageType == MessageTypes.RESPONSE }
-            let hasEvent = node1AllMessages.contains { $0.messageType == MessageTypes.EVENT } ||
-                node2AllMessages.contains { $0.messageType == MessageTypes.EVENT }
+            let hasHandshake = node1AllMessages.contains { $0.messageType == MessageTypes.handshake } ||
+                node2AllMessages.contains { $0.messageType == MessageTypes.handshake }
+            let hasRequest = node1AllMessages.contains { $0.messageType == MessageTypes.request } ||
+                node2AllMessages.contains { $0.messageType == MessageTypes.request }
+            let hasResponse = node1AllMessages.contains { $0.messageType == MessageTypes.response } ||
+                node2AllMessages.contains { $0.messageType == MessageTypes.response }
+            let hasEvent = node1AllMessages.contains { $0.messageType == MessageTypes.event } ||
+                node2AllMessages.contains { $0.messageType == MessageTypes.event }
             let hasAnnouncement = false
 
             print("📊 MESSAGE TYPE VALIDATION:")
@@ -1007,13 +1007,13 @@ private final class EchoingHandler: MessageHandlerProtocol {
     init(base: MessageHandlerProtocol) { self.base = base }
     func handleMessage(_ message: RunarNetworkMessage) {
         base.handleMessage(message)
-        if message.messageType == MessageTypes.REQUEST,
+        if message.messageType == MessageTypes.request,
            let corr = message.payloads.first?.correlationId
         {
             let response = RunarNetworkMessage(
                 sourceNodeId: message.destinationNodeId,
                 destinationNodeId: message.sourceNodeId,
-                messageType: MessageTypes.RESPONSE,
+                messageType: MessageTypes.response,
                 payloads: [
                     NetworkMessagePayloadItem(
                         path: "echo",

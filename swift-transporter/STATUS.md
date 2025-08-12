@@ -7,7 +7,7 @@
   - Verify blocks updated to use `SecTrustCopyCertificateChain` for logging, `SecPolicyCreateSSL`, `SecTrustSetAnchorCertificates`, `SecTrustSetAnchorCertificatesOnly(true)`, `SecTrustEvaluateWithError`.
   - Deterministic `SecIdentity` binding from provided DER or `MobileKeyManager` leaf; logs identity subjects for server/client.
   - Parameters: TLS 1.3, mTLS required, SNI `localhost`, ALPN "runar", loopback only, P2P disabled, local endpoint reuse enabled.
-  - Handshake emits `MessageTypes.HANDSHAKE` and is forwarded to the message handler; initiated shortly after connection ready (small delay to avoid races).
+  - Handshake emits `MessageTypes.handshake` and is forwarded to the message handler; initiated shortly after connection ready (small delay to avoid races).
   - Framing: 4-byte big-endian length prefix; non-app kick frames ignored; default content context for app frames. Short frames (<4 bytes) ignored.
 
 - **Tests**:

@@ -63,13 +63,13 @@ public class DefaultMessageHandler: MessageHandlerProtocol {
     public func handleMessage(_ message: RunarNetworkMessage) {
         logger.info("📥 [DefaultMessageHandler] Received message - Type: \(message.messageType), From: \(message.sourceNodeId)")
         // Echo RESPONSE for REQUEST to enable end-to-end correlation tests
-        if message.messageType == MessageTypes.REQUEST,
+        if message.messageType == MessageTypes.request,
            let corr = message.payloads.first?.correlationId
         {
             let response = RunarNetworkMessage(
                 sourceNodeId: message.destinationNodeId,
                 destinationNodeId: message.sourceNodeId,
-                messageType: MessageTypes.RESPONSE,
+                messageType: MessageTypes.response,
                 payloads: [
                     NetworkMessagePayloadItem(
                         path: "echo",

@@ -6,7 +6,7 @@ final class TransporterIntegrationTests: XCTestCase {
         let msg = RunarNetworkMessage(
             sourceNodeId: "src",
             destinationNodeId: "dst",
-            messageType: MessageTypes.REQUEST,
+            messageType: MessageTypes.request,
             payloads: [
                 NetworkMessagePayloadItem(path: "/p", valueBytes: Data([0x10, 0x20]), correlationId: "c"),
             ]
@@ -19,7 +19,7 @@ final class TransporterIntegrationTests: XCTestCase {
         let decoded = try TransportWireCodec.decodeBody(to: frames[0])
         XCTAssertEqual(decoded.sourceNodeId, "src")
         XCTAssertEqual(decoded.destinationNodeId, "dst")
-        XCTAssertEqual(decoded.messageType, MessageTypes.REQUEST)
+        XCTAssertEqual(decoded.messageType, MessageTypes.request)
         XCTAssertEqual(decoded.payloads.first?.valueBytes, Data([0x10, 0x20]))
     }
 }

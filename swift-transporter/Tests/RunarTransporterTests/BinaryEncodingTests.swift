@@ -23,7 +23,7 @@ final class BinaryEncodingTests: XCTestCase {
         // Create a test network message
         let sourceNodeId = "test-source-node-123"
         let destinationNodeId = "test-dest-node-456"
-        let messageType = MessageTypes.REQUEST
+        let messageType = MessageTypes.request
         let timestamp = Date()
 
         let payload = NetworkMessagePayloadItem(
@@ -68,7 +68,7 @@ final class BinaryEncodingTests: XCTestCase {
         let originalMessage = RunarNetworkMessage(
             sourceNodeId: "source-1",
             destinationNodeId: "dest-1",
-            messageType: MessageTypes.RESPONSE,
+            messageType: MessageTypes.response,
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "/service1/action1",
@@ -103,7 +103,7 @@ final class BinaryEncodingTests: XCTestCase {
         let originalMessage = RunarNetworkMessage(
             sourceNodeId: "source-empty",
             destinationNodeId: "dest-empty",
-            messageType: MessageTypes.HEARTBEAT,
+            messageType: MessageTypes.heartbeat,
             payloads: []
         )
 
@@ -113,7 +113,7 @@ final class BinaryEncodingTests: XCTestCase {
 
         // Verify
         XCTAssertEqual(decodedMessage.payloads.count, 0, "Should have no payloads")
-        XCTAssertEqual(decodedMessage.messageType, MessageTypes.HEARTBEAT, "Message type should match")
+        XCTAssertEqual(decodedMessage.messageType, MessageTypes.heartbeat, "Message type should match")
     }
 
     func testNetworkMessageWithUnicodeStrings() throws {
@@ -334,7 +334,7 @@ final class BinaryEncodingTests: XCTestCase {
         let message = RunarNetworkMessage(
             sourceNodeId: "performance-test-source",
             destinationNodeId: "performance-test-dest",
-            messageType: MessageTypes.REQUEST,
+            messageType: MessageTypes.request,
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "/performance/test",
@@ -355,7 +355,7 @@ final class BinaryEncodingTests: XCTestCase {
         let message = RunarNetworkMessage(
             sourceNodeId: "performance-test-source",
             destinationNodeId: "performance-test-dest",
-            messageType: MessageTypes.REQUEST,
+            messageType: MessageTypes.request,
             payloads: [
                 NetworkMessagePayloadItem(
                     path: "/performance/test",

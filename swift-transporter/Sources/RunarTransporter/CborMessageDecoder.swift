@@ -59,7 +59,14 @@ public enum CborMessageDecoder {
         let createdAtMs = map[str("created_at_ms")]?.asUInt64 ?? 0
         let createdAt = Date(timeIntervalSince1970: TimeInterval(createdAtMs) / 1000.0)
 
-        return RunarNodeInfo(nodePublicKey: nodePublicKey, networkIds: networkIds, addresses: addresses, services: services, version: version, createdAt: createdAt)
+        return RunarNodeInfo(
+            nodePublicKey: nodePublicKey,
+            networkIds: networkIds,
+            addresses: addresses,
+            services: services,
+            version: version,
+            createdAt: createdAt
+        )
     }
 
     public static func decodeHandshake(from data: Data) throws -> HandshakeData {
