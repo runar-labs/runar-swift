@@ -181,8 +181,8 @@ public struct ECDHKeyPair: Sendable {
         let sharedSecret = try ephemeralPrivateKey.sharedSecretFromKeyAgreement(with: recipientKey)
         let sharedSecretBytes = sharedSecret.withUnsafeBytes { Data($0) }
         
-        // Derive encryption key using HKDF
-        let encryptionKey = try deriveKey(from: sharedSecretBytes, info: "runar-key-encryption")
+        // Derive encryption key using HKDF-SHA-384 with fixed info label
+        let encryptionKey = try deriveKey(from: sharedSecretBytes, info: "runar-v1:ecies:envelope-key")
         
         // Encrypt the data using AES-GCM
         let encryptedData = try encryptWithSymmetricKey(data, encryptionKey)
@@ -218,8 +218,8 @@ public struct ECDHKeyPair: Sendable {
         let sharedSecret = try keyAgreementPrivateKey.sharedSecretFromKeyAgreement(with: ephemeralPublicKey)
         let sharedSecretBytes = sharedSecret.withUnsafeBytes { Data($0) }
         
-        // Derive encryption key using HKDF
-        let encryptionKey = try ECDHKeyPair.deriveKey(from: sharedSecretBytes, info: "runar-key-encryption")
+        // Derive encryption key using HKDF-SHA-384 with fixed info label
+        let encryptionKey = try ECDHKeyPair.deriveKey(from: sharedSecretBytes, info: "runar-v1:ecies:envelope-key")
         
         // Decrypt the data using AES-GCM
         return try ECDHKeyPair.decryptWithSymmetricKey(encryptedPayload, encryptionKey)
@@ -231,7 +231,7 @@ public struct ECDHKeyPair: Sendable {
         let salt = Data() // Empty salt for HKDF
         
         let sharedSecretKey = SymmetricKey(data: sharedSecret)
-        let derivedKey = HKDF<SHA256>.deriveKey(
+        let derivedKey = HKDF<SHA384>.deriveKey(
             inputKeyMaterial: sharedSecretKey,
             salt: salt,
             info: infoData,

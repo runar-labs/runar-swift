@@ -45,16 +45,15 @@ final class CryptoUtilsTests: XCTestCase {
         XCTAssertEqual(verifyingKey.rawRepresentation, originalKeyPair.publicKey.rawRepresentation)
     }
     
-    func testBase58Encoding() throws {
+    func testBase64UrlEncoding() throws {
         // Test with known data
         let testData = "Hello".data(using: .utf8)!
         let compactId = CryptoUtils.compactId(testData)
         
-        // Verify the result contains only base58 characters
-        let base58Chars = CharacterSet(charactersIn: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
-        let compactIdChars = CharacterSet(charactersIn: compactId)
-        
-        XCTAssertTrue(compactIdChars.isSubset(of: base58Chars))
+        // Verify base64url charset {-_A-Za-z0-9}
+        let b64urlChars = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        let idChars = CharacterSet(charactersIn: compactId)
+        XCTAssertTrue(idChars.isSubset(of: b64urlChars))
     }
     
     func testCompactIdConsistency() throws {

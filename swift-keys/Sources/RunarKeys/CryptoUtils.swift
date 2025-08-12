@@ -12,9 +12,9 @@ public struct CryptoUtils {
         // Create a hash of the public key
         let hash = SHA256.hash(data: publicKey)
         
-        // Take the first 8 bytes and encode as base58
-        let prefix = Data(hash.prefix(8))
-        return base58Encode(prefix)
+        // Take the first 16 bytes and encode as base64url without padding
+        let prefix = Data(hash.prefix(16))
+        return base64URLEncode(prefix)
     }
     
     /// Generate a random identifier
@@ -37,29 +37,10 @@ public struct CryptoUtils {
     /// Simple base58 encoding (simplified implementation)
     /// - Parameter data: Data to encode
     /// - Returns: Base58 encoded string
-    private static func base58Encode(_ data: Data) -> String {
-        let alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-        var bytes = [UInt8](data)
-        var result = ""
-        
-        while bytes.count > 0 {
-            var remainder = 0
-            var newBytes: [UInt8] = []
-            
-            for byte in bytes {
-                remainder = remainder * 256 + Int(byte)
-                if remainder >= 58 {
-                    newBytes.append(UInt8(remainder / 58))
-                    remainder %= 58
-                } else if !newBytes.isEmpty {
-                    newBytes.append(0)
-                }
-            }
-            
-            result = String(alphabet[alphabet.index(alphabet.startIndex, offsetBy: remainder)]) + result
-            bytes = newBytes
-        }
-        
-        return result
+    private static func base64URLEncode(_ data: Data) -> String {
+        return data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 } 

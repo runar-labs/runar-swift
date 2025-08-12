@@ -527,7 +527,7 @@ public class MobileKeyManager {
         // Extract the raw 48-byte scalar of the root private key (P-384).
         let rootScalarBytes = rootKey.rawScalarBytes()
         
-        // Derive a profile-specific private scalar using HKDF-SHA256.
+        // Derive a profile-specific private scalar using HKDF-SHA-384.
         let salt = "RunarUserProfileDerivationSalt".data(using: .utf8)!
         
         // Attempt to create a valid P-384 signing key from the HKDF output.
@@ -545,8 +545,8 @@ public class MobileKeyManager {
             
             let infoData = info.data(using: .utf8)!
             
-            // Use SHA256 to derive a 32-byte key from the 48-byte P-384 private key
-            let hash = SHA256.hash(data: rootScalarBytes)
+            // Use SHA-384 to prepare IKM for HKDF
+            let hash = SHA384.hash(data: rootScalarBytes)
             let derivedKey = Data(hash)
             
             // Use HKDF to derive 48 bytes for P-384
@@ -849,8 +849,8 @@ public class MobileKeyManager {
         let salt = "RunarNodeStorageKey".data(using: .utf8)!
         let info = "storage-key".data(using: .utf8)!
         
-        // Use SHA256 to derive a 32-byte key from the 48-byte P-384 private key
-        let hash = SHA256.hash(data: rootScalarBytes)
+        // Use SHA-384 to prepare IKM for HKDF
+        let hash = SHA384.hash(data: rootScalarBytes)
         let derivedKey = Data(hash)
         
         return try! hkdf(salt: salt, ikm: derivedKey, info: info, outputLength: 32)
@@ -1052,7 +1052,7 @@ public class MobileKeyManager {
     /// HKDF implementation using CryptoKit
     private func hkdf(salt: Data, ikm: Data, info: Data, outputLength: Int) throws -> Data {
         let key = SymmetricKey(data: ikm)
-        let derivedKey = HKDF<SHA256>.deriveKey(
+        let derivedKey = HKDF<SHA384>.deriveKey(
             inputKeyMaterial: key,
             salt: salt,
             info: info,
