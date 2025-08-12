@@ -16,7 +16,7 @@ public enum SemanticMessageType: CaseIterable, Equatable, Hashable {
 }
 
 /// Rust u32 constants for core message types
-public struct RustMessageType {
+public enum RustMessageType {
     public static let discovery: UInt32 = 1
     public static let heartbeat: UInt32 = 2
     public static let handshake: UInt32 = 3
@@ -121,5 +121,3 @@ public enum MessageTypeMapping {
         return try toRustU32(semantic)
     }
 }
-
-

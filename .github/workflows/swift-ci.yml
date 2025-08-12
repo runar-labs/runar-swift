@@ -37,12 +37,12 @@ jobs:
             swiftformat --lint "$dir"
           done
 
-      - name: SwiftLint (non-strict for now)
+      - name: SwiftLint (strict)
         run: |
           set -euo pipefail
           for dir in swift-common swift-keys swift-serializer swift-serializer-macros swift-transporter; do
-            echo "SwiftLint in $dir"
-            (cd "$dir" && swiftlint || true)
+            echo "SwiftLint in $dir (strict)"
+            (cd "$dir" && swiftlint)
           done
 
   build-and-test:

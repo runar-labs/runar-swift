@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 
 public enum NodeId {
     /// Compute compact node ID from a public key as base64url(no padding)
@@ -19,5 +19,3 @@ public enum NodeId {
         return b64url
     }
 }
-
-

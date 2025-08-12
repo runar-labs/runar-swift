@@ -1,15 +1,14 @@
-import XCTest
 @testable import RunarSerializer
+import XCTest
 
 final class BasicAnyValueTests: XCTestCase {
-    
     func testNullValue() {
         let nullValue = AnyValue.null()
-        
+
         XCTAssertTrue(nullValue.isNull)
         XCTAssertEqual(nullValue.category, .null)
         XCTAssertEqual(nullValue.typeName, "null")
-        
+
         // Test serialization
         do {
             let serialized = try nullValue.serialize()
@@ -19,15 +18,15 @@ final class BasicAnyValueTests: XCTestCase {
             XCTFail("Failed to serialize null value: \(error)")
         }
     }
-    
+
     func testPrimitiveString() async {
         let testString = "Hello, World!"
         let primitiveValue = AnyValue.primitive(testString)
-        
+
         XCTAssertFalse(primitiveValue.isNull)
         XCTAssertEqual(primitiveValue.category, .primitive)
         XCTAssertEqual(primitiveValue.typeName, "String")
-        
+
         // Test type retrieval
         do {
             let retrievedString: String = try await primitiveValue.asType()
@@ -35,7 +34,7 @@ final class BasicAnyValueTests: XCTestCase {
         } catch {
             XCTFail("Failed to get string value: \(error)")
         }
-        
+
         // Test serialization
         do {
             let serialized = try primitiveValue.serialize()
@@ -44,15 +43,15 @@ final class BasicAnyValueTests: XCTestCase {
             XCTFail("Failed to serialize primitive value: \(error)")
         }
     }
-    
+
     func testBytesValue() async {
         let testData = "Test bytes".data(using: .utf8)!
         let bytesValue = AnyValue.bytes(testData)
-        
+
         XCTAssertFalse(bytesValue.isNull)
         XCTAssertEqual(bytesValue.category, .bytes)
         XCTAssertEqual(bytesValue.typeName, "Data")
-        
+
         // Test type retrieval
         do {
             let retrievedData: Data = try await bytesValue.asType()
@@ -60,7 +59,7 @@ final class BasicAnyValueTests: XCTestCase {
         } catch {
             XCTFail("Failed to get bytes value: \(error)")
         }
-        
+
         // Test serialization
         do {
             let serialized = try bytesValue.serialize()
@@ -75,11 +74,11 @@ final class BasicAnyValueTests: XCTestCase {
             XCTFail("Failed to serialize bytes value: \(error)")
         }
     }
-    
+
     func testTypeMismatch() async {
         let testString = "Hello"
         let primitiveValue = AnyValue.primitive(testString)
-        
+
         // Try to get as wrong type
         do {
             let _: Data = try await primitiveValue.asType()
@@ -90,10 +89,10 @@ final class BasicAnyValueTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
-    
+
     func testDeserializeNull() {
         let nullData = Data([0]) // null category byte
-        
+
         do {
             let deserialized = try AnyValue.deserialize(nullData)
             XCTAssertTrue(deserialized.isNull)
@@ -102,12 +101,12 @@ final class BasicAnyValueTests: XCTestCase {
             XCTFail("Failed to deserialize null: \(error)")
         }
     }
-    
+
     func testDeserializeEmptyData() {
         let emptyData = Data()
-        
+
         do {
-            let _ = try AnyValue.deserialize(emptyData)
+            _ = try AnyValue.deserialize(emptyData)
             XCTFail("Should have thrown empty data error")
         } catch SerializerError.emptyData {
             // Expected error
@@ -115,12 +114,12 @@ final class BasicAnyValueTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
-    
+
     func testDeserializeInvalidCategory() {
         let invalidData = Data([255]) // Invalid category byte
-        
+
         do {
-            let _ = try AnyValue.deserialize(invalidData)
+            _ = try AnyValue.deserialize(invalidData)
             XCTFail("Should have thrown invalid category error")
         } catch SerializerError.invalidCategory(255) {
             // Expected error
@@ -128,7 +127,7 @@ final class BasicAnyValueTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
-    
+
     func testValueCategoryFromRaw() {
         XCTAssertEqual(ValueCategory.from(0), .null)
         XCTAssertEqual(ValueCategory.from(1), .primitive)
@@ -139,7 +138,7 @@ final class BasicAnyValueTests: XCTestCase {
         XCTAssertEqual(ValueCategory.from(6), .json)
         XCTAssertNil(ValueCategory.from(255))
     }
-    
+
     static let allTests = [
         ("testNullValue", testNullValue),
         ("testPrimitiveString", testPrimitiveString),
@@ -150,4 +149,4 @@ final class BasicAnyValueTests: XCTestCase {
         ("testDeserializeInvalidCategory", testDeserializeInvalidCategory),
         ("testValueCategoryFromRaw", testValueCategoryFromRaw),
     ]
-} 
+}

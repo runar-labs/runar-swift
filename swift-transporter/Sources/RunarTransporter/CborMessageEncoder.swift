@@ -4,6 +4,7 @@ import SwiftCBOR
 @available(macOS 12.0, iOS 15.0, *)
 public enum CborMessageEncoder {
     // MARK: - Encoding
+
     public static func encodeNetworkMessage(_ message: RunarNetworkMessage) throws -> Data {
         // Map to CBOR structure matching Rust: a CBOR map with specific keys
         // Keys follow snake_case to align with Rust field names
@@ -101,7 +102,7 @@ public enum CborMessageEncoder {
             pm[.utf8String("value_bytes")] = .byteString([UInt8](p.valueBytes))
             if let ctx = p.context {
                 pm[.utf8String("context")] = .map([
-                    .utf8String("profile_public_key"): .byteString([UInt8](ctx.profilePublicKey))
+                    .utf8String("profile_public_key"): .byteString([UInt8](ctx.profilePublicKey)),
                 ])
             }
             pm[.utf8String("correlation_id")] = .utf8String(p.correlationId)
@@ -110,5 +111,3 @@ public enum CborMessageEncoder {
         return Data(CBOR.map(map).encode())
     }
 }
-
-

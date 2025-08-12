@@ -16,5 +16,3 @@ public struct HandshakeData: Equatable, Hashable {
         self.role = role
     }
 }
-
-

@@ -1,6 +1,6 @@
-import XCTest
-import SwiftCommon
 @testable import RunarTransporter
+import SwiftCommon
+import XCTest
 
 final class TransporterActivationIntegrationTests: XCTestCase {
     func testPeerStateActivationAfterHandshakeParsing() throws {
@@ -12,5 +12,3 @@ final class TransporterActivationIntegrationTests: XCTestCase {
         XCTAssertTrue(ps.isConnected)
     }
 }
-
-

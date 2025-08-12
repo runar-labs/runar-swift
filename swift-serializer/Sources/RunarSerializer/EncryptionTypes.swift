@@ -6,7 +6,7 @@ import Foundation
 public struct LabelKeyInfo {
     public let profileIds: [String]
     public let networkId: String?
-    
+
     public init(profileIds: [String], networkId: String?) {
         self.profileIds = profileIds
         self.networkId = networkId
@@ -17,4 +17,4 @@ public struct LabelKeyInfo {
 public protocol LabelResolver {
     /// Resolve a field label to key information
     func resolveLabel(_ label: String) -> LabelKeyInfo?
-} 
+}

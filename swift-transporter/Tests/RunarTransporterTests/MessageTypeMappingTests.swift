@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 final class MessageTypeMappingTests: XCTestCase {
     func testParseSwiftStringDigits() throws {
@@ -35,7 +35,7 @@ final class MessageTypeMappingTests: XCTestCase {
         XCTAssertEqual(try MessageTypeMapping.toRustU32(.event), RustMessageType.event)
         XCTAssertEqual(try MessageTypeMapping.toRustU32(.error), RustMessageType.error)
     }
-    
+
     func testSwiftStringToRustU32() throws {
         XCTAssertEqual(try MessageTypeMapping.swiftStringToRustU32("4"), RustMessageType.handshake)
         XCTAssertEqual(try MessageTypeMapping.swiftStringToRustU32("5"), RustMessageType.request)
@@ -52,5 +52,3 @@ final class MessageTypeMappingTests: XCTestCase {
         XCTAssertThrowsError(try MessageTypeMapping.swiftStringToRustU32("42"))
     }
 }
-
-

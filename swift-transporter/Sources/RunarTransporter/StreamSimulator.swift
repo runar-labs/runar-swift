@@ -60,5 +60,3 @@ public final class SimulatedRecvStream {
         return nil
     }
 }
-
-

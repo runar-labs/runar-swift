@@ -5,26 +5,27 @@ import SwiftProtobuf
 /// These must be identical to the Rust PeerInfo and MulticastMessage structures
 
 // MARK: - PeerInfo (matches Rust PeerInfo)
+
 @available(macOS 12.0, iOS 15.0, *)
 public struct DiscoveryPeerInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-    public var publicKey: Data = Data()
+    public var publicKey: Data = .init()
     public var addresses: [String] = []
-    
+
     public var unknownFields = SwiftProtobuf.UnknownStorage()
-    
+
     public init() {}
-    
+
     public init(publicKey: Data, addresses: [String]) {
         self.publicKey = publicKey
         self.addresses = addresses
     }
-    
+
     public static let protoMessageName: String = "DiscoveryPeerInfo"
     public static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
         1: .same(proto: "public_key"),
-        2: .same(proto: "addresses")
+        2: .same(proto: "addresses"),
     ]
-    
+
     public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
         while let fieldNumber = try decoder.nextFieldNumber() {
             switch fieldNumber {
@@ -34,7 +35,7 @@ public struct DiscoveryPeerInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
             }
         }
     }
-    
+
     public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
         if !publicKey.isEmpty {
             try visitor.visitSingularBytesField(value: publicKey, fieldNumber: 1)
@@ -44,7 +45,7 @@ public struct DiscoveryPeerInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
         }
         try unknownFields.traverse(visitor: &visitor)
     }
-    
+
     public static func == (lhs: DiscoveryPeerInfo, rhs: DiscoveryPeerInfo) -> Bool {
         if lhs.publicKey != rhs.publicKey { return false }
         if lhs.addresses != rhs.addresses { return false }
@@ -54,35 +55,37 @@ public struct DiscoveryPeerInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
 }
 
 // MARK: - MulticastMessage (matches Rust MulticastMessage)
+
 @available(macOS 12.0, iOS 15.0, *)
 public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
     public var announce: DiscoveryPeerInfo? {
         get { return _announce }
         set { _announce = newValue }
     }
+
     public var goodbye: String {
         get { return _goodbye ?? "" }
         set { _goodbye = newValue }
     }
-    
+
     public var unknownFields = SwiftProtobuf.UnknownStorage()
-    
+
     public init() {}
-    
+
     public init(announce: DiscoveryPeerInfo? = nil, goodbye: String = "") {
-        self._announce = announce
-        self._goodbye = goodbye
+        _announce = announce
+        _goodbye = goodbye
     }
-    
+
     private var _announce: DiscoveryPeerInfo?
     private var _goodbye: String?
-    
+
     public static let protoMessageName: String = "DiscoveryMulticastMessage"
     public static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
         1: .same(proto: "announce"),
-        2: .same(proto: "goodbye")
+        2: .same(proto: "goodbye"),
     ]
-    
+
     public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
         while let fieldNumber = try decoder.nextFieldNumber() {
             switch fieldNumber {
@@ -92,7 +95,7 @@ public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._M
             }
         }
     }
-    
+
     public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
         if let v = _announce {
             try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
@@ -102,7 +105,7 @@ public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._M
         }
         try unknownFields.traverse(visitor: &visitor)
     }
-    
+
     public static func == (lhs: DiscoveryMulticastMessage, rhs: DiscoveryMulticastMessage) -> Bool {
         if lhs._announce != rhs._announce { return false }
         if lhs._goodbye != rhs._goodbye { return false }
@@ -112,6 +115,7 @@ public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._M
 }
 
 // MARK: - Helper Extensions
+
 @available(macOS 12.0, iOS 15.0, *)
 extension DiscoveryMulticastMessage {
     /// Get the sender ID from the message (matches Rust sender_id() method)
@@ -123,4 +127,4 @@ extension DiscoveryMulticastMessage {
         }
         return nil
     }
-} 
+}

@@ -22,27 +22,26 @@ import SwiftSyntaxMacros
 /// ```
 public struct PlainMacro: MemberMacro {
     public static func expansion(
-        of node: AttributeSyntax,
+        of _: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
-        in context: some MacroExpansionContext
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        
         // Ensure we're working with a struct
         guard let structDecl = declaration.as(StructDeclSyntax.self) else {
             throw MacroError("Plain macro can only be applied to structs")
         }
-        
+
         let structName = structDecl.name.text
-        
+
         // Check if the struct has Codable conformance
         let hasCodable = structDecl.inheritanceClause?.inheritedTypes.contains { type in
             type.type.as(SimpleTypeIdentifierSyntax.self)?.name.text == "Codable"
         } ?? false
-        
+
         guard hasCodable else {
             throw MacroError("Plain macro requires the struct to explicitly conform to Codable")
         }
-        
+
         // Add the serialization methods
         return [
             """
@@ -50,12 +49,12 @@ public struct PlainMacro: MemberMacro {
             public func toAnyValue() -> AnyValue {
                 return AnyValue.struct(self)
             }
-            
+
             /// Create this struct from an AnyValue
             public static func fromAnyValue(_ value: AnyValue) async throws -> \(raw: structName) {
                 return try await value.asType()
             }
-            """
+            """,
         ]
     }
 }
@@ -63,14 +62,12 @@ public struct PlainMacro: MemberMacro {
 /// Error type for macro-related errors
 struct MacroError: Error, CustomStringConvertible {
     let message: String
-    
+
     init(_ message: String) {
         self.message = message
     }
-    
+
     var description: String {
         return message
     }
 }
-
- 

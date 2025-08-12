@@ -1,6 +1,6 @@
-import XCTest
 import Foundation
 @testable import RunarTransporter
+import XCTest
 
 @available(macOS 12.0, iOS 15.0, *)
 final class HandshakeCborTests: XCTestCase {
@@ -13,12 +13,12 @@ final class HandshakeCborTests: XCTestCase {
             version: 7,
             createdAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
-        let hs = HandshakeData(nodeInfo: nodeInfo, nonce: 0xDEADBEEF, role: .initiator)
+        let hs = HandshakeData(nodeInfo: nodeInfo, nonce: 0xDEAD_BEEF, role: .initiator)
 
         let encoded = try CborMessageEncoder.encodeHandshake(hs)
         let decoded = try CborMessageDecoder.decodeHandshake(from: encoded)
 
-        XCTAssertEqual(decoded.nonce, 0xDEADBEEF)
+        XCTAssertEqual(decoded.nonce, 0xDEAD_BEEF)
         XCTAssertEqual(decoded.role, .initiator)
         XCTAssertEqual(decoded.nodeInfo.nodePublicKey, nodeInfo.nodePublicKey)
         XCTAssertEqual(decoded.nodeInfo.networkIds, ["net"])
@@ -31,5 +31,3 @@ final class HandshakeCborTests: XCTestCase {
         )
     }
 }
-
-

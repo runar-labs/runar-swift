@@ -1,7 +1,7 @@
-import XCTest
 import Foundation
-import SwiftCBOR
 @testable import RunarTransporter
+import SwiftCBOR
+import XCTest
 
 @available(macOS 12.0, iOS 15.0, *)
 final class CborEncodingTests: XCTestCase {
@@ -16,7 +16,7 @@ final class CborEncodingTests: XCTestCase {
                     path: "handshake",
                     valueBytes: Data([0x01, 0x02, 0x03]),
                     correlationId: "corr"
-                )
+                ),
             ]
         )
 
@@ -66,5 +66,3 @@ final class CborEncodingTests: XCTestCase {
         }
     }
 }
-
-

@@ -9,24 +9,27 @@ let package = Package(
         .iOS(.v15),
         .macOS(.v12),
         .watchOS(.v8),
-        .tvOS(.v15)
+        .tvOS(.v15),
     ],
     products: [
         .library(
             name: "RunarKeys",
-            targets: ["RunarKeys"]),
+            targets: ["RunarKeys"]
+        ),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-certificates.git", .upToNextMajor(from: "1.0.0"))
+        .package(url: "https://github.com/apple/swift-certificates.git", .upToNextMajor(from: "1.0.0")),
     ],
     targets: [
         .target(
             name: "RunarKeys",
             dependencies: [
-                .product(name: "X509", package: "swift-certificates")
-            ]),
+                .product(name: "X509", package: "swift-certificates"),
+            ]
+        ),
         .testTarget(
             name: "RunarKeysTests",
-            dependencies: ["RunarKeys"])
+            dependencies: ["RunarKeys"]
+        ),
     ]
-) 
+)

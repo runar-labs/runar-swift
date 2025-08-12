@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 final class DuplicateResolutionTests: XCTestCase {
     func testDesiredLocalRole() {
@@ -74,5 +74,3 @@ final class DuplicateResolutionTests: XCTestCase {
         XCTAssertFalse(pickHigher)
     }
 }
-
-

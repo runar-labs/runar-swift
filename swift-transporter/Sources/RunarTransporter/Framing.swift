@@ -22,12 +22,10 @@ public enum Framing {
                 continue
             }
             guard buffer.count >= needed else { break }
-            let payload = buffer.subdata(in: 4..<needed)
+            let payload = buffer.subdata(in: 4 ..< needed)
             frames.append(payload)
             buffer.removeFirst(needed)
         }
         return frames
     }
 }
-
-

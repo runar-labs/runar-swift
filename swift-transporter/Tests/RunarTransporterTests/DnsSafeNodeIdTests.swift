@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 final class DnsSafeNodeIdTests: XCTestCase {
     func testConversionRules() {
@@ -9,5 +9,3 @@ final class DnsSafeNodeIdTests: XCTestCase {
         XCTAssertEqual(DnsSafeNodeId.convert(""), "")
     }
 }
-
-

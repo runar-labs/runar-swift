@@ -1,9 +1,9 @@
-import XCTest
-import Security
-import Foundation
 import CryptoKit
-import X509
+import Foundation
+import Security
 import SwiftASN1
+import X509
+import XCTest
 
 /// Errors specific to certificate chain creation and management
 enum CertificateChainError: Error {
@@ -16,7 +16,6 @@ enum CertificateChainError: Error {
 
 /// POC test class for creating and verifying a proper TLS certificate chain for QUIC transporter
 final class SecIdentityPOCTests: XCTestCase {
-    
     // Test configuration - use constants for clarity and easy modification
     private static let caSubject = "CN=Runar Test CA,O=Runar Test Org,C=US"
     private static let leafSubject = "CN=Runar Test Server,O=Runar Test Org,C=US"
@@ -24,19 +23,17 @@ final class SecIdentityPOCTests: XCTestCase {
     private static let validityDuration: TimeInterval = 365 * 24 * 60 * 60 // 1 year
     private static let caKeyUsage = KeyUsage(keyCertSign: true, cRLSign: true) // CA-specific usage
     private static let leafKeyUsage = KeyUsage(digitalSignature: true, keyEncipherment: true) // Server TLS usage
-    private static let leafExtendedKeyUsage: ExtendedKeyUsage = {
-        // Only serverAuth for TLS servers; can easily add clientAuth if needed
+    private static let leafExtendedKeyUsage: ExtendedKeyUsage = // Only serverAuth for TLS servers; can easily add clientAuth if needed
         // Using the high-level Usage API from swift-certificates 1.7.0
-        return try! ExtendedKeyUsage([.serverAuth])
-    }()
-    
+        try! ExtendedKeyUsage([.serverAuth])
+
     // Unique labels for Keychain items to avoid conflicts
     private var caKeyLabel: String!
     private var caCertLabel: String!
     private var leafKeyLabel: String!
     private var leafCertLabel: String!
     private var identityLabel: String!
-    
+
     override func setUp() {
         super.setUp()
         // Generate unique labels for this test run
@@ -47,7 +44,7 @@ final class SecIdentityPOCTests: XCTestCase {
         leafCertLabel = "Test Leaf Certificate \(uniqueID)"
         identityLabel = "Test SecIdentity \(uniqueID)"
     }
-    
+
     override func tearDown() {
         super.tearDown()
         // Clean up all Keychain items created during the test
@@ -57,27 +54,27 @@ final class SecIdentityPOCTests: XCTestCase {
         cleanupKeychainItem(class: kSecClassCertificate, label: leafCertLabel)
         cleanupKeychainItem(class: kSecClassIdentity, label: identityLabel)
     }
-    
+
     private func cleanupKeychainItem(class itemClass: CFString, label: String) {
         let query: [String: Any] = [
             kSecClass as String: itemClass,
-            kSecAttrLabel as String: label
+            kSecAttrLabel as String: label,
         ]
         let status = SecItemDelete(query as CFDictionary)
-        if status != errSecSuccess && status != errSecItemNotFound {
+        if status != errSecSuccess, status != errSecItemNotFound {
             print("Warning: Failed to delete Keychain item with label \(label): \(status)")
         }
     }
-    
+
     func testCreateAndVerifyTLSChainForQUIC() throws {
         print("🚀 Starting TLS certificate chain POC test...")
-        
+
         // Step 1: Generate CA private key (P-384 ECDSA)
         print("📋 Step 1: Generating CA private key...")
         let caPrivateKey = try generatePrivateKey()
         let caPublicKey = caPrivateKey.publicKey
         print("✅ Generated CA private key (P-384 ECDSA)")
-        
+
         // Step 2: Create self-signed CA certificate with proper extensions
         print("📋 Step 2: Creating self-signed CA certificate...")
         let caDN = try parseDistinguishedName(Self.caSubject)
@@ -88,7 +85,7 @@ final class SecIdentityPOCTests: XCTestCase {
         )
         let caCertDER = try serializeCertificate(caCertificate)
         print("✅ Created CA certificate: \(caCertDER.count) bytes")
-        
+
         // Step 3: Generating leaf key directly in Keychain and deriving public key
         print("📋 Step 3: Generating leaf key in Keychain...")
         let secLeafPrivateKey = try generatePrivateKeyInKeychain(label: leafKeyLabel)
@@ -113,12 +110,12 @@ final class SecIdentityPOCTests: XCTestCase {
         )
         let leafCertDER = try serializeCertificate(leafCertificate)
         print("✅ Created leaf certificate: \(leafCertDER.count) bytes")
-        
+
         // Step 5: Import CA certificate to Keychain (as trust anchor)
         print("📋 Step 5: Importing CA certificate to Keychain...")
         let secCACertificate = try importCertificateToKeychain(der: caCertDER, label: caCertLabel)
         print("✅ Imported CA certificate to Keychain")
-        
+
         // Step 6: Importing leaf certificate to Keychain...
         print("📋 Step 6: Importing leaf certificate to Keychain...")
         let secLeafCertificate = try importCertificateToKeychain(der: leafCertDER, label: leafCertLabel)
@@ -137,17 +134,17 @@ final class SecIdentityPOCTests: XCTestCase {
         print("📋 Step 8: Verifying certificate chain...")
         try verifyCertificateChain(leaf: secLeafCertificate, ca: secCACertificate)
         print("✅ Certificate chain verified successfully")
-        
+
         // Step 9: Validating SecIdentity with sign/verify...
         print("📋 Step 9: Validating SecIdentity with sign/verify...")
         try validateSecIdentity(secIdentity)
         print("✅ SecIdentity validated: signature verification succeeded")
-        
+
         print("🎉 TLS certificate chain POC test PASSED! Ready for QUIC transporter usage.")
     }
-    
+
     // MARK: - Helper Functions
-    
+
     /// Generate secure random bytes for serial numbers
     private func generateSecureRandomBytes(count: Int) throws -> [UInt8] {
         var bytes = [UInt8](repeating: 0, count: count)
@@ -162,24 +159,24 @@ final class SecIdentityPOCTests: XCTestCase {
     private func generatePrivateKey() throws -> P384.Signing.PrivateKey {
         return P384.Signing.PrivateKey()
     }
-    
+
     /// Parse string DN to X509 DistinguishedName
     private func parseDistinguishedName(_ dn: String) throws -> DistinguishedName {
         var components: [RelativeDistinguishedName] = []
         let parts = dn.components(separatedBy: ",")
-        
+
         for part in parts {
             let trimmed = part.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
-            
+
             let keyValue = trimmed.components(separatedBy: "=")
             guard keyValue.count == 2 else {
                 throw CertificateChainError.certificateCreationFailed("Invalid DN component: \(trimmed)")
             }
-            
+
             let key = keyValue[0].trimmingCharacters(in: .whitespaces).uppercased()
             let value = keyValue[1].trimmingCharacters(in: .whitespaces)
-            
+
             let attribute: RelativeDistinguishedName.Attribute
             switch key {
             case "CN":
@@ -191,13 +188,13 @@ final class SecIdentityPOCTests: XCTestCase {
             default:
                 throw CertificateChainError.certificateCreationFailed("Unsupported DN attribute: \(key)")
             }
-            
+
             components.append(RelativeDistinguishedName([attribute]))
         }
-        
+
         return DistinguishedName(components)
     }
-    
+
     /// Create self-signed CA certificate with proper extensions
     private func createCACertificate(
         privateKey: P384.Signing.PrivateKey,
@@ -206,7 +203,7 @@ final class SecIdentityPOCTests: XCTestCase {
     ) throws -> Certificate {
         let serialBytes = try generateSecureRandomBytes(count: 16)
         let serial = Certificate.SerialNumber(bytes: serialBytes)
-        
+
         let extensions = try Certificate.Extensions {
             Critical(
                 BasicConstraints.isCertificateAuthority(maxPathLength: nil)
@@ -215,7 +212,7 @@ final class SecIdentityPOCTests: XCTestCase {
             AuthorityKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.x963Representation))))
             SubjectKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.x963Representation))))
         }
-        
+
         return try Certificate(
             version: .v3,
             serialNumber: serial,
@@ -229,7 +226,7 @@ final class SecIdentityPOCTests: XCTestCase {
             issuerPrivateKey: .init(privateKey)
         )
     }
-    
+
     /// Create leaf certificate signed by CA with proper extensions
     private func createLeafCertificate(
         caCertificate: Certificate,
@@ -239,7 +236,7 @@ final class SecIdentityPOCTests: XCTestCase {
     ) throws -> Certificate {
         let serialBytes = try generateSecureRandomBytes(count: 16)
         let serial = Certificate.SerialNumber(bytes: serialBytes)
-        
+
         let extensions = try Certificate.Extensions {
             Critical(
                 BasicConstraints.notCertificateAuthority
@@ -254,7 +251,7 @@ final class SecIdentityPOCTests: XCTestCase {
             SubjectKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.x963Representation))))
             SubjectAlternativeNames([.dnsName("localhost"), .dnsName("runar.test")])
         }
-        
+
         return try Certificate(
             version: .v3,
             serialNumber: serial,
@@ -268,34 +265,34 @@ final class SecIdentityPOCTests: XCTestCase {
             issuerPrivateKey: .init(caPrivateKey)
         )
     }
-    
+
     /// Serialize certificate to DER format
     private func serializeCertificate(_ certificate: Certificate) throws -> Data {
         var serializer = DER.Serializer()
         try certificate.serialize(into: &serializer)
         return Data(serializer.serializedBytes)
     }
-    
+
     /// Import DER-encoded certificate to Keychain and return SecCertificate
     private func importCertificateToKeychain(der: Data, label: String) throws -> SecCertificate {
         guard let secCertificate = SecCertificateCreateWithData(nil, der as CFData) else {
             throw CertificateChainError.keychainOperationFailed("Failed to create SecCertificate from DER data")
         }
-        
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassCertificate,
             kSecAttrLabel as String: label,
-            kSecValueRef as String: secCertificate
+            kSecValueRef as String: secCertificate,
         ]
-        
+
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess || status == errSecDuplicateItem else {
             throw CertificateChainError.keychainOperationFailed("Failed to import certificate to Keychain: \(status)")
         }
-        
+
         return secCertificate
     }
-    
+
     /// Generate a new P-384 private key **directly in the Keychain** and return the `SecKey` reference.
     ///
     /// This avoids `paramErr` (-50) that can occur when importing raw key bytes.
@@ -306,8 +303,8 @@ final class SecIdentityPOCTests: XCTestCase {
             kSecAttrKeySizeInBits as String: 384,
             kSecPrivateKeyAttrs as String: [
                 kSecAttrIsPermanent as String: true,
-                kSecAttrLabel as String: label
-            ]
+                kSecAttrLabel as String: label,
+            ],
         ]
 
         var error: Unmanaged<CFError>?
@@ -318,6 +315,7 @@ final class SecIdentityPOCTests: XCTestCase {
     }
 
     // MARK: Key export helpers
+
     /// Extract raw representation from a `SecKey` (if allowed) to bridge back to CryptoKit
     private func rawPrivateKeyData(from secKey: SecKey) throws -> Data {
         var error: Unmanaged<CFError>?
@@ -326,34 +324,34 @@ final class SecIdentityPOCTests: XCTestCase {
         }
         return data
     }
-    
+
     // Removed explicit SecIdentity storage – Keychain synthesises it from key + certificate
-    
+
     /// Verify the certificate chain using SecTrust
     private func verifyCertificateChain(leaf: SecCertificate, ca: SecCertificate) throws {
         let policy = SecPolicyCreateSSL(true, nil) // SSL policy for TLS validation
-        
+
         let certificates = [leaf, ca] as CFArray
         var trust: SecTrust?
         let createStatus = SecTrustCreateWithCertificates(certificates, policy, &trust)
         guard createStatus == errSecSuccess, let secTrust = trust else {
             throw CertificateChainError.verificationFailed("Failed to create SecTrust: \(createStatus)")
         }
-        
+
         // Set CA as anchor
         let anchors = [ca] as CFArray
         let anchorStatus = SecTrustSetAnchorCertificates(secTrust, anchors)
         guard anchorStatus == errSecSuccess else {
             throw CertificateChainError.verificationFailed("Failed to set anchor certificates: \(anchorStatus)")
         }
-        
+
         // Evaluate trust
         var error: CFError?
         guard SecTrustEvaluateWithError(secTrust, &error) else {
             throw CertificateChainError.verificationFailed("Chain validation failed: \(error?.localizedDescription ?? "Unknown error")")
         }
     }
-    
+
     /// Validate SecIdentity by signing data and verifying the signature
     private func validateSecIdentity(_ identity: SecIdentity) throws {
         var privateKey: SecKey?
@@ -361,25 +359,25 @@ final class SecIdentityPOCTests: XCTestCase {
         guard keyStatus == errSecSuccess, let secPrivateKey = privateKey else {
             throw CertificateChainError.verificationFailed("Failed to get private key from identity: \(keyStatus)")
         }
-        
+
         var certificate: SecCertificate?
         let certStatus = SecIdentityCopyCertificate(identity, &certificate)
         guard certStatus == errSecSuccess, let secCertificate = certificate else {
             throw CertificateChainError.verificationFailed("Failed to get certificate from identity: \(certStatus)")
         }
-        
+
         let dataToSign = "Test validation data".data(using: .utf8)! as CFData
         let algorithm = SecKeyAlgorithm.ecdsaSignatureMessageX962SHA384
-        
+
         var signError: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(secPrivateKey, algorithm, dataToSign, &signError) as Data? else {
             throw CertificateChainError.signingFailed("Failed to sign data: \(signError?.takeRetainedValue().localizedDescription ?? "Unknown")")
         }
-        
+
         guard let publicKey = SecCertificateCopyKey(secCertificate) else {
             throw CertificateChainError.verificationFailed("Failed to get public key from certificate")
         }
-        
+
         var verifyError: Unmanaged<CFError>?
         let isValid = SecKeyVerifySignature(publicKey, algorithm, dataToSign, signature as CFData, &verifyError)
         guard isValid else {

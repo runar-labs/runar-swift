@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 final class TransporterIntegrationTests: XCTestCase {
     func testWireCodecRoundTripWithMappingAndFraming() throws {
@@ -8,7 +8,7 @@ final class TransporterIntegrationTests: XCTestCase {
             destinationNodeId: "dst",
             messageType: MessageTypes.REQUEST,
             payloads: [
-                NetworkMessagePayloadItem(path: "/p", valueBytes: Data([0x10, 0x20]), correlationId: "c")
+                NetworkMessagePayloadItem(path: "/p", valueBytes: Data([0x10, 0x20]), correlationId: "c"),
             ]
         )
         let body = try TransportWireCodec.encodeBody(from: msg)
@@ -23,5 +23,3 @@ final class TransporterIntegrationTests: XCTestCase {
         XCTAssertEqual(decoded.payloads.first?.valueBytes, Data([0x10, 0x20]))
     }
 }
-
-

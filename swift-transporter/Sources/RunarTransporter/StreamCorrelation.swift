@@ -7,11 +7,11 @@ public struct StreamCorrelation {
     public let streamId: UInt64
     public let correlationId: String
     public let createdAt: Date
-    
+
     public init(peerNodeId: String, streamId: UInt64, correlationId: String) {
         self.peerNodeId = peerNodeId
         self.streamId = streamId
         self.correlationId = correlationId
-        self.createdAt = Date()
+        createdAt = Date()
     }
-} 
+}

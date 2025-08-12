@@ -8,35 +8,35 @@ public class RunarLogger {
     private let subsystem: String
     private let category: String
     private let osLogger: Logger
-    
+
     public init(subsystem: String = "com.runar", category: String = "default") {
         self.subsystem = subsystem
         self.category = category
-        self.osLogger = Logger(subsystem: subsystem, category: category)
+        osLogger = Logger(subsystem: subsystem, category: category)
     }
-    
+
     public func debug(_ message: String) {
         osLogger.debug("\(message)")
         print("[DEBUG] \(message)")
     }
-    
+
     public func info(_ message: String) {
         osLogger.info("\(message)")
         print("[INFO] \(message)")
     }
-    
+
     public func warning(_ message: String) {
         osLogger.warning("\(message)")
         print("[WARNING] \(message)")
     }
-    
+
     public func error(_ message: String) {
         osLogger.error("\(message)")
         print("[ERROR] \(message)")
     }
-    
+
     public func critical(_ message: String) {
         osLogger.critical("\(message)")
         print("[CRITICAL] \(message)")
     }
-} 
+}

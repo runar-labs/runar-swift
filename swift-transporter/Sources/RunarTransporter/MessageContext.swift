@@ -23,5 +23,3 @@ public struct PayloadWithContext: Equatable, Hashable {
         self.context = context
     }
 }
-
-

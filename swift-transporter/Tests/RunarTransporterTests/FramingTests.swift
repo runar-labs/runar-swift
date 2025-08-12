@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 final class FramingTests: XCTestCase {
     func testEncodeDecodeSingleFrame() {
@@ -33,7 +33,7 @@ final class FramingTests: XCTestCase {
 
     func testInvalidLengthIsSkipped() {
         // Insert invalid zero-length
-        var buf = Data([0,0,0,0])
+        var buf = Data([0, 0, 0, 0])
         let p = Data([0xAA])
         buf.append(Framing.encodeFrame(p))
         let frames = Framing.decodeFrames(&buf)
@@ -41,5 +41,3 @@ final class FramingTests: XCTestCase {
         XCTAssertTrue(buf.isEmpty)
     }
 }
-
-

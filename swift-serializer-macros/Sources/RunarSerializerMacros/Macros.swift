@@ -11,4 +11,4 @@ public macro Plain() = #externalMacro(module: "RunarSerializerMacrosMacros", typ
 
 /// Usage: @Encrypted struct MyStruct { @EncryptedField(label: "user") var sensitive: String }
 @attached(member, names: named(Encrypted), named(encryptWithKeystore), arbitrary)
-public macro Encrypted() = #externalMacro(module: "RunarSerializerMacrosMacros", type: "EncryptedMacro") 
+public macro Encrypted() = #externalMacro(module: "RunarSerializerMacrosMacros", type: "EncryptedMacro")

@@ -1,6 +1,6 @@
-import XCTest
 import Foundation
 @testable import RunarTransporter
+import XCTest
 
 final class NetworkMessageRustCborTests: XCTestCase {
     func testEncodeDecodeRustNetworkMessage() throws {
@@ -37,5 +37,3 @@ final class NetworkMessageRustCborTests: XCTestCase {
         XCTAssertNil(decoded.payloads[1].context)
     }
 }
-
-

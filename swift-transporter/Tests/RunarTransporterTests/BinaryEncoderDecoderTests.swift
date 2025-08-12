@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 @available(macOS 12.0, iOS 15.0, *)
 final class BinaryEncoderDecoderTests: XCTestCase {

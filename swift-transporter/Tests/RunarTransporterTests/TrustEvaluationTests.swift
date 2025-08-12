@@ -1,7 +1,7 @@
-import XCTest
-import Security
 import RunarKeys
+import Security
 import SwiftCommon
+import XCTest
 
 final class TrustEvaluationTests: XCTestCase {
     func testSecTrustEvaluationWithRunarCA() throws {
@@ -40,5 +40,3 @@ final class TrustEvaluationTests: XCTestCase {
         }
     }
 }
-
-

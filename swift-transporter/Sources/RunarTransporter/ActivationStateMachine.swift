@@ -21,7 +21,9 @@ public final class ActivationStateMachine {
         lock.lock(); defer { lock.unlock() }
         if isActive { return }
         isActive = true
-        for cb in observers { cb(true) }
+        for cb in observers {
+            cb(true)
+        }
     }
 
     public func active() -> Bool {
@@ -29,5 +31,3 @@ public final class ActivationStateMachine {
         return isActive
     }
 }
-
-

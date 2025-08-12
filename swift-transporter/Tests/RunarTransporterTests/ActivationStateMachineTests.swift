@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 final class ActivationStateMachineTests: XCTestCase {
     func testActivationNotifiesOnceAndIsIdempotent() {
@@ -22,5 +22,3 @@ final class ActivationStateMachineTests: XCTestCase {
         XCTAssertEqual(received, true)
     }
 }
-
-

@@ -74,7 +74,7 @@ public enum CborMessageDecoder {
         }
         func str(_ k: String) -> CBOR { .utf8String(k) }
 
-        guard let nodeItem = map[str("node_info")], case let CBOR.map(_) = nodeItem else {
+        guard let nodeItem = map[str("node_info")], case .map = nodeItem else {
             throw RunarTransportError.serializationError("Missing node_info")
         }
         let nodeInfo = try decodeNodeInfo(from: Data(CBOR.encode(nodeItem)))
@@ -140,5 +140,3 @@ private extension CBOR {
         }
     }
 }
-
-

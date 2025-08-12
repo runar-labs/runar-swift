@@ -1,6 +1,6 @@
-import XCTest
-import SwiftCommon
 @testable import RunarTransporter
+import SwiftCommon
+import XCTest
 
 @available(macOS 12.0, iOS 15.0, *)
 final class DuplicateConnectionResolutionIntegrationTests: XCTestCase {
@@ -31,9 +31,7 @@ final class DuplicateConnectionResolutionIntegrationTests: XCTestCase {
 }
 
 private final class SimpleHandler: MessageHandlerProtocol {
-    func handleMessage(_ message: RunarNetworkMessage) {}
-    func peerConnected(_ peerInfo: RunarNodeInfo) {}
-    func peerDisconnected(_ peerId: String) {}
+    func handleMessage(_: RunarNetworkMessage) {}
+    func peerConnected(_: RunarNodeInfo) {}
+    func peerDisconnected(_: String) {}
 }
-
-

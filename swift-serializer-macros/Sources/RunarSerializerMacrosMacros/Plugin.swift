@@ -8,4 +8,4 @@ struct RunarSerializerMacrosPlugin: CompilerPlugin {
         PlainMacro.self,
         EncryptedMacro.self,
     ]
-} 
+}

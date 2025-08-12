@@ -1,7 +1,7 @@
-import XCTest
 import Foundation
-import SwiftCBOR
 @testable import RunarTransporter
+import SwiftCBOR
+import XCTest
 
 final class PayloadContextCborTests: XCTestCase {
     func testEncodePayloadWithOptionalContext() throws {
@@ -41,5 +41,3 @@ final class PayloadContextCborTests: XCTestCase {
         XCTAssertNil(map[.utf8String("context")])
     }
 }
-
-

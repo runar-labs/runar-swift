@@ -5,16 +5,16 @@ import SwiftSyntaxMacros
 
 public struct TestMacro: MemberMacro {
     public static func expansion(
-        of node: AttributeSyntax,
-        providingMembersOf declaration: some DeclGroupSyntax,
-        in context: some MacroExpansionContext
+        of _: AttributeSyntax,
+        providingMembersOf _: some DeclGroupSyntax,
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
         return [
             """
             public func testFunction() {
                 print("Hello from macro!")
             }
-            """
+            """,
         ]
     }
-} 
+}

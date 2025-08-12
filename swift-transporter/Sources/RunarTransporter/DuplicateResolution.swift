@@ -42,9 +42,9 @@ public enum DuplicateResolution {
         existing: PeerStateLite,
         candidateConnectionId: Int,
         candidateInitiatorPeerId: String,
-        candidateInitiatorNonce: UInt64,
-        candidateResponderPeerId: String,
-        candidateResponderNonce: UInt64
+        candidateInitiatorNonce _: UInt64,
+        candidateResponderPeerId _: String,
+        candidateResponderNonce _: UInt64
     ) -> Bool {
         // Placeholder rule: replace if existing has zero nonces (placeholder)
         if existing.initiatorNonce == 0 && existing.responderNonce == 0 {
@@ -72,5 +72,3 @@ public enum DuplicateResolution {
         }
     }
 }
-
-

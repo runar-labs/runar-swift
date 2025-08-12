@@ -33,7 +33,7 @@ public struct RunarTransporter {
             logger: logger
         )
     }
-    
+
     /// Create a QUIC transport with default options
     ///
     /// - Parameters:
@@ -57,7 +57,7 @@ public struct RunarTransporter {
             logger: logger
         )
     }
-    
+
     /// Create a QUIC transport optimized for mobile devices
     ///
     /// - Parameters:
@@ -81,7 +81,7 @@ public struct RunarTransporter {
             logger: logger
         )
     }
-    
+
     /// Create a QUIC transport with custom certificates
     ///
     /// - Parameters:
@@ -106,7 +106,7 @@ public struct RunarTransporter {
             secKey: secKey,
             mobileKeyManager: nil // Optional for convenience method
         )
-        
+
         return createQuicTransport(
             nodeInfo: nodeInfo,
             bindAddress: bindAddress,
@@ -115,4 +115,4 @@ public struct RunarTransporter {
             logger: logger
         )
     }
-} 
+}

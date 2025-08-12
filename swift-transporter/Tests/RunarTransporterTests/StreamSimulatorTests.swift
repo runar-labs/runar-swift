@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarTransporter
+import XCTest
 
 final class StreamSimulatorTests: XCTestCase {
     func testRequestInnerLikeFlow() throws {
@@ -25,5 +25,3 @@ final class StreamSimulatorTests: XCTestCase {
         // no response expected
     }
 }
-
-

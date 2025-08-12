@@ -9,4 +9,4 @@ public class StreamPool {
     public init(logger: RunarLogger) {
         self.logger = logger
     }
-} 
+}

@@ -1,9 +1,9 @@
+import CryptoKit
 import Foundation
 import Network
-import CryptoKit
 import RunarKeys
-import SwiftCommon
 import Security
+import SwiftCommon
 
 @main
 struct QuicSampleApp {
@@ -49,7 +49,7 @@ struct QuicSampleApp {
                 let certQuery: [String: Any] = [
                     kSecClass as String: kSecClassCertificate,
                     kSecReturnRef as String: true,
-                    kSecMatchLimit as String: kSecMatchLimitAll
+                    kSecMatchLimit as String: kSecMatchLimitAll,
                 ]
                 var certsOut: CFTypeRef?
                 let cs = SecItemCopyMatching(certQuery as CFDictionary, &certsOut)
@@ -185,7 +185,7 @@ struct QuicSampleApp {
                 return params
             }
 
-            let listener = try NWListener(using: try buildListenerParams())
+            let listener = try NWListener(using: buildListenerParams())
             listener.stateUpdateHandler = { state in print("[S] state=", state) }
             listener.newConnectionHandler = { conn in
                 print("[S] new conn")
@@ -193,7 +193,7 @@ struct QuicSampleApp {
                 conn.start(queue: .global())
                 // Proactively send a byte to kick TLS from server side as well
                 let ctx = NWConnection.ContentContext.defaultMessage
-                for i in 0..<5 {
+                for i in 0 ..< 5 {
                     DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(50 * i)) {
                         conn.send(content: Data([0xA5]), contentContext: ctx, isComplete: true, completion: .contentProcessed { err in
                             print("[S] kick send #\(i) err=", String(describing: err))
@@ -208,13 +208,13 @@ struct QuicSampleApp {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard let port = listener.port else { throw NSError(domain: "listen", code: -5) }
 
-            let conn = NWConnection(host: "localhost", port: port, using: try buildClientParams())
+            let conn = try NWConnection(host: "localhost", port: port, using: buildClientParams())
             clientConnection = conn
             conn.stateUpdateHandler = { state in print("[C] state=", state) }
             conn.start(queue: .global())
             // Send immediately to trigger handshake
             let ctx = NWConnection.ContentContext.defaultMessage
-            for i in 0..<5 {
+            for i in 0 ..< 5 {
                 DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(50 * i)) {
                     conn.send(content: Data([0x01, 0x02]), contentContext: ctx, isComplete: true, completion: .contentProcessed { err in
                         print("[C] send #\(i) err=", String(describing: err))
@@ -224,7 +224,6 @@ struct QuicSampleApp {
             conn.receive(minimumIncompleteLength: 1, maximumLength: 1024) { data, _, _, err in
                 print("[C] recv data=", data?.count as Any, "err=", String(describing: err))
             }
-            
 
             try? await Task.sleep(nanoseconds: 10_000_000_000)
         } catch {

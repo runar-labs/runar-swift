@@ -8,7 +8,7 @@ let package = Package(
         .iOS(.v13),
         .macOS(.v10_15),
         .tvOS(.v13),
-        .watchOS(.v6)
+        .watchOS(.v6),
     ],
     products: [
         .library(
@@ -25,17 +25,17 @@ let package = Package(
             name: "RunarSerializerMacros",
             dependencies: ["RunarSerializerMacrosMacros"]
         ),
-                       .macro(
-                   name: "RunarSerializerMacrosMacros",
-                   dependencies: [
-                       .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-                       .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-                       .product(name: "SwiftCBOR", package: "SwiftCBOR"),
-                   ]
-               ),
+        .macro(
+            name: "RunarSerializerMacrosMacros",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+                .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+            ]
+        ),
         .testTarget(
             name: "RunarSerializerMacrosTests",
             dependencies: ["RunarSerializerMacros"]
         ),
     ]
-) 
+)

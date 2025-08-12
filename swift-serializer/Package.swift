@@ -7,7 +7,7 @@ let package = Package(
         .iOS(.v13),
         .macOS(.v12),
         .tvOS(.v13),
-        .watchOS(.v6)
+        .watchOS(.v6),
     ],
     products: [
         .library(
@@ -26,7 +26,7 @@ let package = Package(
             dependencies: [
                 "SwiftCBOR",
                 .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
-                .product(name: "RunarKeys", package: "swift-keys")
+                .product(name: "RunarKeys", package: "swift-keys"),
             ],
             path: "Sources/RunarSerializer"
         ),
@@ -35,9 +35,9 @@ let package = Package(
             dependencies: [
                 "RunarSerializer",
                 .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
-                "SwiftCBOR"
+                "SwiftCBOR",
             ],
             path: "Tests/RunarSerializerTests"
         ),
     ]
-) 
+)
