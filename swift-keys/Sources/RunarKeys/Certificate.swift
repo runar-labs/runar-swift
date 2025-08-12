@@ -110,6 +110,19 @@ public class CertificateAuthority {
         )
         return X509Certificate(certificate: leafCertificate)
     }
+
+    /// Sign a certificate request (CSR) to create a leaf certificate with an explicit serial number
+    public func signCertificateRequest(csrDer: Data, validityDays: Int, serialNumber: Certificate.SerialNumber) throws -> X509Certificate {
+        let csr = try CertificateRequest(derData: csrDer)
+        let leafCertificate = try createLeafCertificate(
+            caCertificate: getCertificate(),
+            caPrivateKey: try keyPair.toECDSASigningKey(),
+            csr: csr,
+            validityDays: validityDays,
+            serialNumber: serialNumber
+        )
+        return X509Certificate(certificate: leafCertificate)
+    }
     
     /// Create a leaf certificate directly from a public key (for Keychain integration)
     public func createCertificateFromPublicKey(publicKeyData: Data, subject: String, validityDays: Int) throws -> X509Certificate {
@@ -364,13 +377,14 @@ private func createLeafCertificate(
     caCertificate: Certificate,
     caPrivateKey: P384.Signing.PrivateKey,
     csr: CertificateRequest,
-    validityDays: Int
+    validityDays: Int,
+    serialNumber: Certificate.SerialNumber? = nil
 ) throws -> Certificate {
     let validityDuration: TimeInterval = TimeInterval(validityDays * 24 * 60 * 60)
     
     let certificate = try Certificate(
         version: .v3,
-        serialNumber: Certificate.SerialNumber(),
+        serialNumber: serialNumber ?? Certificate.SerialNumber(),
         publicKey: csr.publicKey,
         notValidBefore: Date().addingTimeInterval(-60), // Start 1 minute ago to avoid timing issues
         notValidAfter: Date().addingTimeInterval(validityDuration),

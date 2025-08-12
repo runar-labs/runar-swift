@@ -278,9 +278,16 @@ public class MobileKeyManager {
 
         // Issue certificate from CSR with monotonic serial number increment
         let validityDays: UInt32 = 365 // 1-year validity (consider shortening)
+        // Build monotonic serial (big-endian, positive, <= 20 bytes)
+        var serialBytes = withUnsafeBytes(of: serialCounter.bigEndian, Array.init)
+        // Trim leading zeros to keep it short; ensure at least 1 byte
+        while serialBytes.first == 0 && serialBytes.count > 1 { serialBytes.removeFirst() }
+        let serial = Certificate.SerialNumber(bytes: ArraySlice(serialBytes))
+
         let nodeCertificate = try certificateAuthority.signCertificateRequest(
             csrDer: setupToken.csrDer,
-            validityDays: Int(validityDays)
+            validityDays: Int(validityDays),
+            serialNumber: serial
         )
 
         // Increment persisted serial counter for next issuance
