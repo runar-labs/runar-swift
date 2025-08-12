@@ -9,7 +9,7 @@ public enum CryptoUtils {
     /// - Parameter publicKey: Public key bytes
     /// - Returns: Compact identifier string
     public static func compactId(_ publicKey: Data) -> String {
-        return NodeId.compactId(from: publicKey)
+        NodeId.compactId(from: publicKey)
     }
 
     /// Generate a random identifier
@@ -34,6 +34,6 @@ public enum CryptoUtils {
     /// - Returns: Base58 encoded string
     private static func base64URLEncode(_ data: Data) -> String {
         // Deprecated: use NodeId directly for canonical encoding
-        return NodeId.compactId(from: data)
+        NodeId.compactId(from: data)
     }
 }

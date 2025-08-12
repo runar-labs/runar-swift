@@ -15,15 +15,13 @@ public enum CborMessageDecoder {
         }
         let nodePublicKey = Data(keyBytes)
 
-        let networkIds: [String]
-        if case let CBOR.array(ids)? = map[str("network_ids")] {
-            networkIds = ids.compactMap { if case let CBOR.utf8String(s) = $0 { return s } else { return nil } }
-        } else { networkIds = [] }
+        let networkIds: [String] = if case let CBOR.array(ids)? = map[str("network_ids")] {
+            ids.compactMap { if case let CBOR.utf8String(s) = $0 { s } else { nil } }
+        } else { [] }
 
-        let addresses: [String]
-        if case let CBOR.array(addrs)? = map[str("addresses")] {
-            addresses = addrs.compactMap { if case let CBOR.utf8String(s) = $0 { return s } else { return nil } }
-        } else { addresses = [] }
+        let addresses: [String] = if case let CBOR.array(addrs)? = map[str("addresses")] {
+            addrs.compactMap { if case let CBOR.utf8String(s) = $0 { s } else { nil } }
+        } else { [] }
 
         var services: [ServiceMetadata] = []
         if case let CBOR.array(svcs)? = map[str("services")] {
@@ -33,9 +31,8 @@ public enum CborMessageDecoder {
                 let networkId = (sm[str("network_id")]?.asString) ?? ""
                 let serviceName = (sm[str("service_name")]?.asString) ?? ""
                 let description = (sm[str("description")]?.asString) ?? ""
-                let actions: [ActionMetadata]
-                if case let CBOR.array(act)? = sm[str("actions")] {
-                    actions = act.compactMap { a in
+                let actions: [ActionMetadata] = if case let CBOR.array(act)? = sm[str("actions")] {
+                    act.compactMap { a in
                         guard case let CBOR.map(am) = a else { return nil }
                         let ap = (am[str("action_path")]?.asString) ?? ""
                         let an = (am[str("action_name")]?.asString) ?? ""
@@ -44,23 +41,21 @@ public enum CborMessageDecoder {
                         let outs = am[str("output_schema")]?.asString
                         return ActionMetadata(actionPath: ap, actionName: an, description: ad, inputSchema: ins, outputSchema: outs)
                     }
-                } else { actions = [] }
-                let events: [EventMetadata]
-                if case let CBOR.array(ev)? = sm[str("events")] {
-                    events = ev.compactMap { e in
+                } else { [] }
+                let events: [EventMetadata] = if case let CBOR.array(ev)? = sm[str("events")] {
+                    ev.compactMap { e in
                         guard case let CBOR.map(em) = e else { return nil }
                         let p = (em[str("path")]?.asString) ?? ""
                         let d = (em[str("description")]?.asString) ?? ""
                         let ds = em[str("data_schema")]?.asString
                         return EventMetadata(path: p, description: d, dataSchema: ds)
                     }
-                } else { events = [] }
+                } else { [] }
                 services.append(ServiceMetadata(servicePath: servicePath, networkId: networkId, serviceName: serviceName, description: description, actions: actions, events: events))
             }
         }
 
-        let version: Int64
-        if let v = map[str("version")]?.asInt64 { version = v } else { version = 0 }
+        let version: Int64 = if let v = map[str("version")]?.asInt64 { v } else { 0 }
         let createdAtMs = map[str("created_at_ms")]?.asUInt64 ?? 0
         let createdAt = Date(timeIntervalSince1970: TimeInterval(createdAtMs) / 1000.0)
 
@@ -113,8 +108,7 @@ public enum CborMessageDecoder {
             for it in arr {
                 guard case let CBOR.map(pm) = it else { continue }
                 let path = pm[str("path")]?.asString ?? ""
-                let valueBytes: Data
-                if case let CBOR.byteString(vb)? = pm[str("value_bytes")] { valueBytes = Data(vb) } else { valueBytes = Data() }
+                let valueBytes = if case let CBOR.byteString(vb)? = pm[str("value_bytes")] { Data(vb) } else { Data() }
                 let correlationId = pm[str("correlation_id")]?.asString ?? ""
                 var ctx: MessageContextSwift? = nil
                 if case let CBOR.map(cm)? = pm[str("context")] {
@@ -130,13 +124,13 @@ public enum CborMessageDecoder {
 }
 
 private extension CBOR {
-    var asString: String? { if case let .utf8String(s) = self { return s } else { return nil } }
-    var asUInt64: UInt64? { if case let .unsignedInt(u) = self { return u } else { return nil } }
+    var asString: String? { if case let .utf8String(s) = self { s } else { nil } }
+    var asUInt64: UInt64? { if case let .unsignedInt(u) = self { u } else { nil } }
     var asInt64: Int64? {
         switch self {
-        case let .negativeInt(n): return -Int64(bitPattern: n + 1)
-        case let .unsignedInt(u): return Int64(bitPattern: u)
-        default: return nil
+        case let .negativeInt(n): -Int64(bitPattern: n + 1)
+        case let .unsignedInt(u): Int64(bitPattern: u)
+        default: nil
         }
     }
 }

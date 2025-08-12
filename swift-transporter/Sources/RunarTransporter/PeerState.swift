@@ -53,13 +53,13 @@ public class PeerState {
     public func getConnectionId() -> Int { connectionId }
 
     public func hasConnectionToEndpoint(_ endpoint: String) -> Bool {
-        return queue.sync {
+        queue.sync {
             address == endpoint
         }
     }
 
     public func hasConnectionToIPAddress(_ ipAddress: String) -> Bool {
-        return queue.sync {
+        queue.sync {
             // Extract IP address from the stored address (which might include port)
             if let colonRange = address.range(of: ":") {
                 let storedIP = String(address[..<colonRange.lowerBound])

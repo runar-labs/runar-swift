@@ -38,27 +38,27 @@ public struct X509Certificate: Codable {
     }
 
     public var subject: String {
-        return certificate.subject.description
+        certificate.subject.description
     }
 
     public var issuer: String {
-        return certificate.issuer.description
+        certificate.issuer.description
     }
 
     public var notValidBefore: Date {
-        return certificate.notValidBefore
+        certificate.notValidBefore
     }
 
     public var notValidAfter: Date {
-        return certificate.notValidAfter
+        certificate.notValidAfter
     }
 
     public var publicKey: Certificate.PublicKey {
-        return certificate.publicKey
+        certificate.publicKey
     }
 
     public var subjectPublicKeyInfoBytes: Data {
-        return Data(certificate.publicKey.subjectPublicKeyInfoBytes)
+        Data(certificate.publicKey.subjectPublicKeyInfoBytes)
     }
 }
 
@@ -90,12 +90,12 @@ public class CertificateAuthority {
 
     /// Get the CA certificate
     public func getCertificate() -> X509Certificate {
-        return certificate
+        certificate
     }
 
     /// Get the CA key pair
     public func getKeyPair() -> ECDHKeyPair {
-        return keyPair
+        keyPair
     }
 
     /// Sign a certificate request (CSR) to create a leaf certificate
@@ -138,7 +138,7 @@ public class CertificateAuthority {
 
     /// Get the underlying certificate for internal operations
     func getCertificate() -> Certificate {
-        return certificate.certificate
+        certificate.certificate
     }
 
     // MARK: - Helper Functions
@@ -170,11 +170,11 @@ public struct CertificateRequest {
     }
 
     public var subject: String {
-        return csr.subject.description
+        csr.subject.description
     }
 
     public var publicKey: Certificate.PublicKey {
-        return csr.publicKey
+        csr.publicKey
     }
 
     /// Create a CSR from a key pair and subject
@@ -209,7 +209,7 @@ public struct CertificateValidator {
 
     /// Return the trusted CA certificates used by this validator
     public func getTrustedCACertificates() -> [X509Certificate] {
-        return trustedCaCertificates
+        trustedCaCertificates
     }
 
     /// Validate a certificate against trusted CAs
@@ -302,7 +302,7 @@ public struct CertificateValidator {
 public extension X509Certificate {
     /// Convert to SecCertificate for Keychain integration
     func toSecCertificate() -> SecCertificate? {
-        return SecCertificateCreateWithData(nil, toDER() as CFData)
+        SecCertificateCreateWithData(nil, toDER() as CFData)
     }
 
     /// Create a SecIdentity from this certificate and a Keychain-stored private key
@@ -448,23 +448,22 @@ private func parseDistinguishedName(_ dn: String) throws -> DistinguishedName {
         let key = keyValue[0].trimmingCharacters(in: .whitespaces).uppercased()
         let value = keyValue[1].trimmingCharacters(in: .whitespaces)
 
-        let attribute: RelativeDistinguishedName.Attribute?
-        switch key {
+        let attribute: RelativeDistinguishedName.Attribute? = switch key {
         case "CN":
-            attribute = .init(type: .RDNAttributeType.commonName, utf8String: value)
+            .init(type: .RDNAttributeType.commonName, utf8String: value)
         case "C":
-            attribute = try .init(type: .RDNAttributeType.countryName, printableString: value)
+            try .init(type: .RDNAttributeType.countryName, printableString: value)
         case "O":
-            attribute = .init(type: .RDNAttributeType.organizationName, utf8String: value)
+            .init(type: .RDNAttributeType.organizationName, utf8String: value)
         case "OU":
-            attribute = .init(type: .RDNAttributeType.organizationalUnitName, utf8String: value)
+            .init(type: .RDNAttributeType.organizationalUnitName, utf8String: value)
         case "ST":
-            attribute = .init(type: .RDNAttributeType.stateOrProvinceName, utf8String: value)
+            .init(type: .RDNAttributeType.stateOrProvinceName, utf8String: value)
         case "L":
-            attribute = .init(type: .RDNAttributeType.localityName, utf8String: value)
+            .init(type: .RDNAttributeType.localityName, utf8String: value)
         default:
             // Ignore unknown attributes for robustness
-            attribute = nil
+            nil
         }
 
         if let attribute {
@@ -477,7 +476,7 @@ private func parseDistinguishedName(_ dn: String) throws -> DistinguishedName {
 
 /// Create CA certificate extensions
 private func createCAExtensions(publicKey: P384.Signing.PublicKey) throws -> Certificate.Extensions {
-    return try Certificate.Extensions {
+    try Certificate.Extensions {
         Critical(BasicConstraints.isCertificateAuthority(maxPathLength: 0))
         Critical(KeyUsage(keyCertSign: true, cRLSign: true))
         AuthorityKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.x963Representation))))

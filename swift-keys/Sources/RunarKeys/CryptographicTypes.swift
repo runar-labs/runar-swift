@@ -26,37 +26,37 @@ public enum KeyError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .invalidKeyFormat(message):
-            return "Invalid key format: \(message)"
+            "Invalid key format: \(message)"
         case let .certificateError(message):
-            return "Certificate error: \(message)"
+            "Certificate error: \(message)"
         case let .certificateNotFound(message):
-            return "Certificate not found: \(message)"
+            "Certificate not found: \(message)"
         case let .encryptionError(message):
-            return "Encryption error: \(message)"
+            "Encryption error: \(message)"
         case let .decryptionError(message):
-            return "Decryption error: \(message)"
+            "Decryption error: \(message)"
         case let .keyDerivationError(message):
-            return "Key derivation error: \(message)"
+            "Key derivation error: \(message)"
         case let .keyNotFound(message):
-            return "Key not found: \(message)"
+            "Key not found: \(message)"
         case let .keyAlreadyInitialized(message):
-            return "Key already initialized: \(message)"
+            "Key already initialized: \(message)"
         case let .signingError(message):
-            return "Signing error: \(message)"
+            "Signing error: \(message)"
         case let .validationError(message):
-            return "Validation error: \(message)"
+            "Validation error: \(message)"
         case let .invalidOperation(message):
-            return "Invalid operation: \(message)"
+            "Invalid operation: \(message)"
         case let .keyGenerationFailed(message):
-            return "Key generation failed: \(message)"
+            "Key generation failed: \(message)"
         case let .keychainOperationFailed(message):
-            return "Keychain operation failed: \(message)"
+            "Keychain operation failed: \(message)"
         case let .certificateChainError(message):
-            return "Certificate chain error: \(message)"
+            "Certificate chain error: \(message)"
         case let .secIdentityError(message):
-            return "SecIdentity error: \(message)"
+            "SecIdentity error: \(message)"
         case let .secTrustError(message):
-            return "SecTrust error: \(message)"
+            "SecTrust error: \(message)"
         }
     }
 }
@@ -101,22 +101,22 @@ public struct ECDHKeyPair: Sendable {
 
     /// Get the raw scalar bytes (48 bytes for P-384)
     public func rawScalarBytes() -> Data {
-        return keyAgreementPrivateKey.rawRepresentation
+        keyAgreementPrivateKey.rawRepresentation
     }
 
     /// Get public key as raw bytes (uncompressed point)
     public func publicKeyBytes() -> Data {
-        return publicKey.x963Representation
+        publicKey.x963Representation
     }
 
     /// Convert to ECDSA signing key for certificate operations
     public func toECDSASigningKey() throws -> P384.Signing.PrivateKey {
-        return try P384.Signing.PrivateKey(rawRepresentation: keyAgreementPrivateKey.rawRepresentation)
+        try P384.Signing.PrivateKey(rawRepresentation: keyAgreementPrivateKey.rawRepresentation)
     }
 
     /// Convert to ECDSA verifying key for certificate operations
     public func toECDSAVerifyingKey() throws -> P384.Signing.PublicKey {
-        return try P384.Signing.PublicKey(rawRepresentation: publicKey.rawRepresentation)
+        try P384.Signing.PublicKey(rawRepresentation: publicKey.rawRepresentation)
     }
 
     /// Sign data using ECDSA (converts to signing key internally)
@@ -135,7 +135,7 @@ public struct ECDHKeyPair: Sendable {
 
     /// Perform ECDH key agreement with another public key
     public func sharedSecret(with publicKey: P384.KeyAgreement.PublicKey) throws -> SharedSecret {
-        return try keyAgreementPrivateKey.sharedSecretFromKeyAgreement(with: publicKey)
+        try keyAgreementPrivateKey.sharedSecretFromKeyAgreement(with: publicKey)
     }
 
     // MARK: - Keychain Integration Methods
@@ -191,7 +191,7 @@ public struct ECDHKeyPair: Sendable {
 
     /// Encrypt data using ECIES with recipient's public key
     public func encryptECIES(data: Data, recipientPublicKey: Data) throws -> Data {
-        return try ECDHKeyPair.encryptECIES(data: data, recipientPublicKey: recipientPublicKey)
+        try ECDHKeyPair.encryptECIES(data: data, recipientPublicKey: recipientPublicKey)
     }
 
     /// Decrypt data using ECIES with our private key

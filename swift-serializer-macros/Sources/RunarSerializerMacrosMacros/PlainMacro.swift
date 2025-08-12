@@ -68,6 +68,6 @@ struct MacroError: Error, CustomStringConvertible {
     }
 
     var description: String {
-        return message
+        message
     }
 }

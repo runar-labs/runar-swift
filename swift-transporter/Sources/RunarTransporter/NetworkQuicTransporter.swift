@@ -173,11 +173,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     }
 
     public func isConnected(to peerId: String) async -> Bool {
-        return connectionPool.isPeerConnected(peerId: peerId)
+        connectionPool.isPeerConnected(peerId: peerId)
     }
 
     public func getConnectedPeers() async -> [String] {
-        return connectionPool.getConnectedPeers()
+        connectionPool.getConnectedPeers()
     }
 
     public func updatePeers(nodeInfo: RunarNodeInfo) async throws {
@@ -203,11 +203,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     }
 
     public func getLocalAddress() -> String {
-        return bindAddress
+        bindAddress
     }
 
     public func subscribeToPeerNodeInfo() -> AsyncStream<RunarNodeInfo> {
-        return AsyncStream { continuation in
+        AsyncStream { continuation in
             subscriptionQueue.async {
                 self.peerNodeInfoStream = continuation
             }
@@ -371,22 +371,22 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
         // Set custom certificate validation block
         sec_protocol_options_set_verify_block(securityProtocolOptions, { [weak self] (_: sec_protocol_metadata_t, trust: sec_trust_t, complete: @escaping sec_protocol_verify_complete_t) in
-            guard let self = self else {
+            guard let self else {
                 complete(false)
                 return
             }
 
-            self.logger.debug("🔐 [NetworkQuicTransporter] Custom certificate validation called")
+            logger.debug("🔐 [NetworkQuicTransporter] Custom certificate validation called")
             // Set our CA as the trust anchor
             let trustRef = sec_trust_copy_ref(trust).takeRetainedValue()
             if let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate], let leaf = chain.first {
                 if let summary = SecCertificateCopySubjectSummary(leaf) as String? {
-                    self.logger.debug("🔐 [Server verify] Leaf subject: \(summary), chainCount=\(chain.count)")
+                    logger.debug("🔐 [Server verify] Leaf subject: \(summary), chainCount=\(chain.count)")
                 } else {
-                    self.logger.debug("🔐 [Server verify] Leaf present, chainCount=\(chain.count)")
+                    logger.debug("🔐 [Server verify] Leaf present, chainCount=\(chain.count)")
                 }
             } else {
-                self.logger.debug("🔐 [Server verify] No certificates in trust object")
+                logger.debug("🔐 [Server verify] No certificates in trust object")
             }
             // Set TLS policy (server = false because we validate client cert on listener)
             let serverPolicy = SecPolicyCreateSSL(false, nil)
@@ -394,7 +394,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             let anchors = [caCertificate] as CFArray
             let setAnchorStatus = SecTrustSetAnchorCertificates(trustRef, anchors)
             guard setAnchorStatus == errSecSuccess else {
-                self.logger.error("❌ [NetworkQuicTransporter] Failed to set CA as trust anchor: \(setAnchorStatus)")
+                logger.error("❌ [NetworkQuicTransporter] Failed to set CA as trust anchor: \(setAnchorStatus)")
                 complete(false)
                 return
             }
@@ -405,10 +405,10 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             var error: CFError?
             let isValid = SecTrustEvaluateWithError(trustRef, &error)
 
-            if let error = error {
-                self.logger.error("❌ [NetworkQuicTransporter] [Server] trust failed: \(error)")
+            if let error {
+                logger.error("❌ [NetworkQuicTransporter] [Server] trust failed: \(error)")
             } else {
-                self.logger.debug("✅ [NetworkQuicTransporter] [Server] trust OK (anchors-only)")
+                logger.debug("✅ [NetworkQuicTransporter] [Server] trust OK (anchors-only)")
             }
 
             complete(isValid)
@@ -675,17 +675,17 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         // Trust anchors from our CA
         let caCertificate = try getCACertificateFromKeychain()
         sec_protocol_options_set_verify_block(sec, { [weak self] (_: sec_protocol_metadata_t, trust: sec_trust_t, complete: @escaping sec_protocol_verify_complete_t) in
-            guard let self = self else { complete(false); return }
-            self.logger.debug("🔐 [NetworkQuicTransporter] [Client] verify-block invoked")
+            guard let self else { complete(false); return }
+            logger.debug("🔐 [NetworkQuicTransporter] [Client] verify-block invoked")
             let trustRef = sec_trust_copy_ref(trust).takeRetainedValue()
             if let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate], let leaf = chain.first {
                 if let summary = SecCertificateCopySubjectSummary(leaf) as String? {
-                    self.logger.debug("🔐 [Client verify] Leaf subject: \(summary), chainCount=\(chain.count)")
+                    logger.debug("🔐 [Client verify] Leaf subject: \(summary), chainCount=\(chain.count)")
                 } else {
-                    self.logger.debug("🔐 [Client verify] Leaf present, chainCount=\(chain.count)")
+                    logger.debug("🔐 [Client verify] Leaf present, chainCount=\(chain.count)")
                 }
             } else {
-                self.logger.debug("🔐 [Client verify] No certificates in trust object")
+                logger.debug("🔐 [Client verify] No certificates in trust object")
             }
             // Try evaluating NW-provided trust first
             // Use SNI host for TLS policy hostname checks
@@ -693,12 +693,12 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             SecTrustSetPolicies(trustRef, clientPolicy)
             let anchors = [caCertificate] as CFArray
             let setAnchorStatus = SecTrustSetAnchorCertificates(trustRef, anchors)
-            if setAnchorStatus != errSecSuccess { self.logger.error("❌ [NetworkQuicTransporter] [Client] Set anchors failed: \(setAnchorStatus)"); complete(false); return }
+            if setAnchorStatus != errSecSuccess { logger.error("❌ [NetworkQuicTransporter] [Client] Set anchors failed: \(setAnchorStatus)"); complete(false); return }
             _ = SecTrustSetAnchorCertificatesOnly(trustRef, true)
             var error: CFError?
             var ok = SecTrustEvaluateWithError(trustRef, &error)
             if ok {
-                self.logger.debug("✅ [NetworkQuicTransporter] [Client] trust OK (NW trust, anchors-only)")
+                logger.debug("✅ [NetworkQuicTransporter] [Client] trust OK (NW trust, anchors-only)")
                 // SPKI pinning: compare leaf public key bytes to expected peer public key (X9.63)
                 if let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate], let leaf = chain.first,
                    let leafKey = SecCertificateCopyKey(leaf)
@@ -706,68 +706,68 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     var pubErr: Unmanaged<CFError>?
                     if let leafKeyData = SecKeyCopyExternalRepresentation(leafKey, &pubErr) as Data? {
                         if leafKeyData == expectedPeerPublicKey {
-                            self.logger.debug("🔐 [NetworkQuicTransporter] [Client] SPKI pin OK")
+                            logger.debug("🔐 [NetworkQuicTransporter] [Client] SPKI pin OK")
                             complete(true)
                             return
                         } else {
-                            self.logger.error("❌ [NetworkQuicTransporter] [Client] SPKI pin mismatch")
+                            logger.error("❌ [NetworkQuicTransporter] [Client] SPKI pin mismatch")
                             complete(false)
                             return
                         }
                     } else {
                         let msg = pubErr?.takeRetainedValue().localizedDescription ?? "Unknown"
-                        self.logger.error("❌ [NetworkQuicTransporter] [Client] Failed to export leaf public key: \(msg)")
+                        logger.error("❌ [NetworkQuicTransporter] [Client] Failed to export leaf public key: \(msg)")
                         complete(false)
                         return
                     }
                 } else {
-                    self.logger.error("❌ [NetworkQuicTransporter] [Client] Missing leaf certificate for SPKI pinning")
+                    logger.error("❌ [NetworkQuicTransporter] [Client] Missing leaf certificate for SPKI pinning")
                     complete(false)
                     return
                 }
             }
-            if let e = error { self.logger.error("❌ [NetworkQuicTransporter] [Client] NW trust failed: \(e). Trying rebuilt trust...") }
+            if let e = error { logger.error("❌ [NetworkQuicTransporter] [Client] NW trust failed: \(e). Trying rebuilt trust...") }
 
             // Rebuild SecTrust using the leaf and our CA, then evaluate
             if let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate], let leaf = chain.first {
                 var rebuilt: SecTrust?
                 let certs = [leaf] as CFTypeRef
                 let createStatus = SecTrustCreateWithCertificates(certs, clientPolicy, &rebuilt)
-                if createStatus == errSecSuccess, let rebuilt = rebuilt {
+                if createStatus == errSecSuccess, let rebuilt {
                     _ = SecTrustSetAnchorCertificates(rebuilt, anchors)
                     _ = SecTrustSetAnchorCertificatesOnly(rebuilt, true)
                     var e2: CFError?
                     ok = SecTrustEvaluateWithError(rebuilt, &e2)
                     if ok {
-                        self.logger.debug("✅ [NetworkQuicTransporter] [Client] trust OK (rebuilt trust, anchors-only)")
+                        logger.debug("✅ [NetworkQuicTransporter] [Client] trust OK (rebuilt trust, anchors-only)")
                         // SPKI pinning on rebuilt path
                         if let leafKey = SecCertificateCopyKey(leaf) {
                             var pubErr: Unmanaged<CFError>?
                             if let leafKeyData = SecKeyCopyExternalRepresentation(leafKey, &pubErr) as Data? {
                                 if leafKeyData == expectedPeerPublicKey {
-                                    self.logger.debug("🔐 [NetworkQuicTransporter] [Client] SPKI pin OK (rebuilt)")
+                                    logger.debug("🔐 [NetworkQuicTransporter] [Client] SPKI pin OK (rebuilt)")
                                     complete(true)
                                     return
                                 } else {
-                                    self.logger.error("❌ [NetworkQuicTransporter] [Client] SPKI pin mismatch (rebuilt)")
+                                    logger.error("❌ [NetworkQuicTransporter] [Client] SPKI pin mismatch (rebuilt)")
                                     complete(false)
                                     return
                                 }
                             } else {
                                 let msg = e2?.localizedDescription ?? "Unknown"
-                                self.logger.error("❌ [NetworkQuicTransporter] [Client] Failed to export leaf public key (rebuilt): \(msg)")
+                                logger.error("❌ [NetworkQuicTransporter] [Client] Failed to export leaf public key (rebuilt): \(msg)")
                                 complete(false)
                                 return
                             }
                         }
                     } else {
-                        if let e2 = e2 { self.logger.error("❌ [NetworkQuicTransporter] [Client] rebuilt trust failed: \(e2)") }
+                        if let e2 { logger.error("❌ [NetworkQuicTransporter] [Client] rebuilt trust failed: \(e2)") }
                     }
                 } else {
-                    self.logger.error("❌ [NetworkQuicTransporter] [Client] SecTrustCreateWithCertificates failed: \(createStatus)")
+                    logger.error("❌ [NetworkQuicTransporter] [Client] SecTrustCreateWithCertificates failed: \(createStatus)")
                 }
             } else {
-                self.logger.error("❌ [NetworkQuicTransporter] [Client] Could not extract leaf certificate from trust")
+                logger.error("❌ [NetworkQuicTransporter] [Client] Could not extract leaf certificate from trust")
             }
             complete(false)
         }, connectionQueue)
@@ -889,7 +889,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
         // Send the complete message on app content context
         connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] error in
-            if let error = error {
+            if let error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send message to \(peerId): \(error)")
             } else {
                 self?.logger.debug("📤 [NetworkQuicTransporter] Message sent to \(peerId)")
@@ -940,24 +940,24 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
         // Set up state handler for the inbound connection
         connection.stateUpdateHandler = { [weak self, weak connection] state in
-            guard let self = self, let connection = connection else { return }
-            self.logger.debug("🔧 [NetworkQuicTransporter] Inbound connection state: \(state)")
+            guard let self, let connection else { return }
+            logger.debug("🔧 [NetworkQuicTransporter] Inbound connection state: \(state)")
 
             switch state {
             case .ready:
                 // For inbound connections, start receive loop immediately under temporary peer id
-                self.logger.debug("🔧 [NetworkQuicTransporter] Inbound connection ready, starting receive loop (peer=unknown)")
+                logger.debug("🔧 [NetworkQuicTransporter] Inbound connection ready, starting receive loop (peer=unknown)")
                 // Ensure there is a placeholder peer state entry
-                let ps = self.connectionPool.getOrCreatePeer(peerId: "unknown", address: connection.endpoint.debugDescription, logger: self.logger)
+                let ps = connectionPool.getOrCreatePeer(peerId: "unknown", address: connection.endpoint.debugDescription, logger: logger)
                 ps.setConnection(connection)
                 ps.updateActivity()
-                self.startReceiving(from: connection, peerId: "unknown")
+                startReceiving(from: connection, peerId: "unknown")
 
             case let .failed(error):
-                self.logger.error("❌ [NetworkQuicTransporter] Inbound connection failed: \(error)")
+                logger.error("❌ [NetworkQuicTransporter] Inbound connection failed: \(error)")
 
             case .cancelled:
-                self.logger.info("🔚 [NetworkQuicTransporter] Inbound connection cancelled")
+                logger.info("🔚 [NetworkQuicTransporter] Inbound connection cancelled")
 
             default:
                 break
@@ -981,55 +981,55 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
     private func connectionStateUpdateHandler(connection: NWConnection, peerId: String) -> (NWConnection.State) -> Void {
         let handler: (NWConnection.State) -> Void = { [weak self, weak connection] (state: NWConnection.State) in
-            guard let self = self, let connection = connection else {
+            guard let self, let connection else {
                 self?.logger.debug("🔧 [NetworkQuicTransporter] Connection state handler called with nil self or connection for \(peerId)")
                 return
             }
 
             // Add comprehensive debug logging for all state changes
-            self.logger.debug("🔧 [NetworkQuicTransporter] Connection state change for \(peerId): \(String(describing: state))")
-            self.logger.info("🔄 [NetworkQuicTransporter] Connection state change for \(peerId): \(String(describing: state))")
+            logger.debug("🔧 [NetworkQuicTransporter] Connection state change for \(peerId): \(String(describing: state))")
+            logger.info("🔄 [NetworkQuicTransporter] Connection state change for \(peerId): \(String(describing: state))")
             // Path logging omitted (platform API differences)
 
             switch state {
             case .ready:
-                self.logger.debug("🔧 [NetworkQuicTransporter] Connection READY for \(peerId)")
-                self.logger.info("✅ [NetworkQuicTransporter] Connected to \(peerId)")
-                self.handleConnectionReady(connection, peerId: peerId)
+                logger.debug("🔧 [NetworkQuicTransporter] Connection READY for \(peerId)")
+                logger.info("✅ [NetworkQuicTransporter] Connected to \(peerId)")
+                handleConnectionReady(connection, peerId: peerId)
             case let .failed(error):
-                self.logger.debug("🔧 [NetworkQuicTransporter] Connection FAILED for \(peerId): \(error)")
-                self.logger.error("❌ [NetworkQuicTransporter] Connection to \(peerId) failed: \(error)")
-                if case let NWError.posix(code) = error { self.logger.error("❌ [NetworkQuicTransporter] POSIX: \(code.rawValue)") }
-                if case let NWError.tls(code) = error { self.logger.error("❌ [NetworkQuicTransporter] TLS: \(code)") }
-                if case let NWError.dns(code) = error { self.logger.error("❌ [NetworkQuicTransporter] DNS: \(code)") }
-                if let peerState = self.connectionPool.getPeer(peerId: peerId) {
-                    self.logger.debug("🔧 [NetworkQuicTransporter] Notifying peer state of connection failure for \(peerId)")
+                logger.debug("🔧 [NetworkQuicTransporter] Connection FAILED for \(peerId): \(error)")
+                logger.error("❌ [NetworkQuicTransporter] Connection to \(peerId) failed: \(error)")
+                if case let NWError.posix(code) = error { logger.error("❌ [NetworkQuicTransporter] POSIX: \(code.rawValue)") }
+                if case let NWError.tls(code) = error { logger.error("❌ [NetworkQuicTransporter] TLS: \(code)") }
+                if case let NWError.dns(code) = error { logger.error("❌ [NetworkQuicTransporter] DNS: \(code)") }
+                if let peerState = connectionPool.getPeer(peerId: peerId) {
+                    logger.debug("🔧 [NetworkQuicTransporter] Notifying peer state of connection failure for \(peerId)")
                     peerState.notifyConnectionFailed(error)
                 } else {
-                    self.logger.debug("🔧 [NetworkQuicTransporter] No peer state found for failed connection \(peerId)")
+                    logger.debug("🔧 [NetworkQuicTransporter] No peer state found for failed connection \(peerId)")
                 }
-                self.removeConnection(peerId: peerId)
+                removeConnection(peerId: peerId)
             case .cancelled:
-                self.logger.debug("🔧 [NetworkQuicTransporter] Connection CANCELLED for \(peerId)")
-                self.logger.info("🔚 [NetworkQuicTransporter] Connection to \(peerId) cancelled")
-                if let peerState = self.connectionPool.getPeer(peerId: peerId) {
-                    self.logger.debug("🔧 [NetworkQuicTransporter] Notifying peer state of connection cancellation for \(peerId)")
+                logger.debug("🔧 [NetworkQuicTransporter] Connection CANCELLED for \(peerId)")
+                logger.info("🔚 [NetworkQuicTransporter] Connection to \(peerId) cancelled")
+                if let peerState = connectionPool.getPeer(peerId: peerId) {
+                    logger.debug("🔧 [NetworkQuicTransporter] Notifying peer state of connection cancellation for \(peerId)")
                     peerState.notifyConnectionFailed(RunarTransportError.connectionError("Connection cancelled"))
                 } else {
-                    self.logger.debug("🔧 [NetworkQuicTransporter] No peer state found for cancelled connection \(peerId)")
+                    logger.debug("🔧 [NetworkQuicTransporter] No peer state found for cancelled connection \(peerId)")
                 }
-                self.removeConnection(peerId: peerId)
+                removeConnection(peerId: peerId)
             case .preparing:
-                self.logger.debug("🔧 [NetworkQuicTransporter] Connection PREPARING for \(peerId)")
+                logger.debug("🔧 [NetworkQuicTransporter] Connection PREPARING for \(peerId)")
             case .setup:
-                self.logger.debug("🔧 [NetworkQuicTransporter] Connection SETUP for \(peerId)")
+                logger.debug("🔧 [NetworkQuicTransporter] Connection SETUP for \(peerId)")
             case let .waiting(error):
-                self.logger.debug("🔧 [NetworkQuicTransporter] Connection WAITING for \(peerId): \(error)")
-                if case let NWError.posix(code) = error { self.logger.error("❌ [NetworkQuicTransporter] WAIT POSIX: \(code.rawValue)") }
-                if case let NWError.tls(code) = error { self.logger.error("❌ [NetworkQuicTransporter] WAIT TLS: \(code)") }
-                if case let NWError.dns(code) = error { self.logger.error("❌ [NetworkQuicTransporter] WAIT DNS: \(code)") }
+                logger.debug("🔧 [NetworkQuicTransporter] Connection WAITING for \(peerId): \(error)")
+                if case let NWError.posix(code) = error { logger.error("❌ [NetworkQuicTransporter] WAIT POSIX: \(code.rawValue)") }
+                if case let NWError.tls(code) = error { logger.error("❌ [NetworkQuicTransporter] WAIT TLS: \(code)") }
+                if case let NWError.dns(code) = error { logger.error("❌ [NetworkQuicTransporter] WAIT DNS: \(code)") }
             default:
-                self.logger.debug("🔧 [NetworkQuicTransporter] Connection UNKNOWN state for \(peerId): \(String(describing: state))")
+                logger.debug("🔧 [NetworkQuicTransporter] Connection UNKNOWN state for \(peerId): \(String(describing: state))")
             }
         }
         return handler
@@ -1080,25 +1080,25 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         // Network.framework will call this completion handler multiple times as data arrives
         func receiveNextChunk() {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-                guard let self = self else { return }
+                guard let self else { return }
 
-                if let error = error {
-                    self.logger.error("❌ [NetworkQuicTransporter] Receive error from \(peerId): \(error)")
+                if let error {
+                    logger.error("❌ [NetworkQuicTransporter] Receive error from \(peerId): \(error)")
                     return
                 }
 
-                if let data = data, !data.isEmpty {
-                    self.logger.debug("📥 [NetworkQuicTransporter] Received \(data.count) bytes from \(peerId)")
+                if let data, !data.isEmpty {
+                    logger.debug("📥 [NetworkQuicTransporter] Received \(data.count) bytes from \(peerId)")
 
                     // Debug: Log first few bytes to see what we're getting
                     let previewBytes = data.prefix(min(8, data.count)).map { String(format: "%02x", $0) }.joined()
-                    self.logger.debug("📥 [NetworkQuicTransporter] Data preview: [\(previewBytes)]...")
+                    logger.debug("📥 [NetworkQuicTransporter] Data preview: [\(previewBytes)]...")
 
                     // Add to buffer and try to parse complete messages
                     messageBuffer.append(data)
 
                     // Process complete messages from buffer
-                    self.processMessageBuffer(messageBuffer, from: peerId, connection: connection)
+                    processMessageBuffer(messageBuffer, from: peerId, connection: connection)
                 }
 
                 // Continue receiving if connection is still active
@@ -1106,7 +1106,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     // Use the nested function to continue the receive loop
                     receiveNextChunk()
                 } else {
-                    self.logger.debug("🔚 [NetworkQuicTransporter] Connection \(peerId) marked as complete")
+                    logger.debug("🔚 [NetworkQuicTransporter] Connection \(peerId) marked as complete")
                 }
             }
         }
@@ -1190,11 +1190,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
 
         func prefix(_ length: Int) -> Data {
-            return data.prefix(length)
+            data.prefix(length)
         }
 
         func subdata(in range: Range<Int>) -> Data {
-            return data.subdata(in: range)
+            data.subdata(in: range)
         }
 
         func removeFirst(_ count: Int) {
@@ -1408,7 +1408,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         data.append(messageData)
         // Tag content as app-level framed message
         connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) in
-            if let error = error {
+            if let error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send handshake to \(peerId): \(error)")
             } else {
                 self?.logger.debug("✅ [NetworkQuicTransporter] Handshake sent to \(peerId)")
@@ -1545,7 +1545,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         data.append(messageData)
 
         connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] (error: NWError?) in
-            if let error = error {
+            if let error {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send handshake response to \(peerId): \(error)")
             } else {
                 self?.logger.debug("✅ [NetworkQuicTransporter] Handshake response sent to \(peerId)")
@@ -1556,19 +1556,19 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     // MARK: - Message Encoding/Decoding
 
     private func encodeNetworkMessage(_ message: RunarNetworkMessage) throws -> Data {
-        return try TransportWireCodec.encodeBody(from: message)
+        try TransportWireCodec.encodeBody(from: message)
     }
 
     private func decodeNetworkMessage(from data: Data) throws -> RunarNetworkMessage {
-        return try TransportWireCodec.decodeBody(to: data)
+        try TransportWireCodec.decodeBody(to: data)
     }
 
     private func encodeNodeInfo(_ nodeInfo: RunarNodeInfo) throws -> Data {
-        return try CborMessageEncoder.encodeNodeInfo(nodeInfo)
+        try CborMessageEncoder.encodeNodeInfo(nodeInfo)
     }
 
     private func decodeNodeInfo(from data: Data) throws -> RunarNodeInfo {
-        return try CborMessageDecoder.decodeNodeInfo(from: data)
+        try CborMessageDecoder.decodeNodeInfo(from: data)
     }
 }
 
@@ -1610,13 +1610,13 @@ public enum QuicTransportError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .peerNotConnected(peerId):
-            return "Peer \(peerId) is not connected"
+            "Peer \(peerId) is not connected"
         case .transportNotRunning:
-            return "Transport is not running"
+            "Transport is not running"
         case let .encodingError(message):
-            return "Encoding error: \(message)"
+            "Encoding error: \(message)"
         case let .decodingError(message):
-            return "Decoding error: \(message)"
+            "Decoding error: \(message)"
         }
     }
 }

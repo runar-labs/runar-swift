@@ -43,7 +43,7 @@ public struct RunarNodeInfo: Codable, Equatable, Hashable {
 
     /// Get the node ID (derived from public key)
     public var nodeId: String {
-        return NodeUtils.compactId(from: nodePublicKey)
+        NodeUtils.compactId(from: nodePublicKey)
     }
 }
 
@@ -76,7 +76,7 @@ public struct RunarPeerInfo: Codable, Equatable, Hashable {
 
     /// Get the peer ID (derived from public key)
     public var peerId: String {
-        return NodeUtils.compactId(from: publicKey)
+        NodeUtils.compactId(from: publicKey)
     }
 }
 
@@ -247,21 +247,21 @@ public enum RunarTransportError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .configurationError(message):
-            return "Configuration error: \(message)"
+            "Configuration error: \(message)"
         case let .connectionError(message):
-            return "Connection error: \(message)"
+            "Connection error: \(message)"
         case let .messageError(message):
-            return "Message error: \(message)"
+            "Message error: \(message)"
         case let .transportError(message):
-            return "Transport error: \(message)"
+            "Transport error: \(message)"
         case let .serializationError(message):
-            return "Serialization error: \(message)"
+            "Serialization error: \(message)"
         case let .timeoutError(message):
-            return "Timeout error: \(message)"
+            "Timeout error: \(message)"
         case let .certificateError(message):
-            return "Certificate error: \(message)"
+            "Certificate error: \(message)"
         case let .peerNotConnected(peerId):
-            return "Peer not connected: \(peerId)"
+            "Peer not connected: \(peerId)"
         }
     }
 }
@@ -274,16 +274,16 @@ public enum NodeUtils {
     /// Matches the Rust compact_id function
     public static func compactId(from publicKey: Data) -> String {
         // Delegate to swift-keys' implementation to ensure consistency across packages/tests
-        return RunarKeys.CryptoUtils.compactId(publicKey)
+        RunarKeys.CryptoUtils.compactId(publicKey)
     }
 
     /// Generate a correlation ID for request-response matching
     public static func generateCorrelationId() -> String {
-        return UUID().uuidString
+        UUID().uuidString
     }
 
     /// Generate a correlation ID with prefix
     public static func generateCorrelationId(withPrefix prefix: String) -> String {
-        return "\(prefix)-\(UUID().uuidString)"
+        "\(prefix)-\(UUID().uuidString)"
     }
 }

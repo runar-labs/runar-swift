@@ -157,7 +157,7 @@ final class SecIdentityPOCTests: XCTestCase {
 
     /// Generate a new P-384 ECDSA private key
     private func generatePrivateKey() throws -> P384.Signing.PrivateKey {
-        return P384.Signing.PrivateKey()
+        P384.Signing.PrivateKey()
     }
 
     /// Parse string DN to X509 DistinguishedName

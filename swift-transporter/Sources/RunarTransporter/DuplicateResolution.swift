@@ -21,17 +21,17 @@ public enum ConnectionRoleLite: Equatable {
 public enum DuplicateResolution {
     /// Determine desired local role from Rust rule: if local_id < peer_id then Initiator else Responder
     public static func desiredLocalRole(localId: String, peerId: String) -> LocalDesiredRole {
-        return localId < peerId ? .initiator : .responder
+        localId < peerId ? .initiator : .responder
     }
 
     /// Compute the local role from a PeerStateLite perspective
     public static func localRole(for state: PeerStateLite, localId: String) -> ConnectionRoleLite {
-        return state.initiatorPeerId == localId ? .initiator : .responder
+        state.initiatorPeerId == localId ? .initiator : .responder
     }
 
     /// Compute the local role for a candidate given initiator/responder peer ids
     public static func localRoleForCandidate(localId: String, candidateInitiatorPeerId: String) -> ConnectionRoleLite {
-        return candidateInitiatorPeerId == localId ? .initiator : .responder
+        candidateInitiatorPeerId == localId ? .initiator : .responder
     }
 
     /// Decide whether to pick candidate connection over existing, mirroring Rust `replace_or_keep_connection` logic.

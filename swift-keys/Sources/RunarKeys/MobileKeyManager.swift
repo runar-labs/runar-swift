@@ -287,7 +287,7 @@ public class MobileKeyManager {
         // Build monotonic serial (big-endian, positive, <= 20 bytes) from allocated value
         var serialBytes = withUnsafeBytes(of: allocatedSerialCounter.bigEndian, Array.init)
         // Trim leading zeros to keep it short; ensure at least 1 byte
-        while serialBytes.first == 0 && serialBytes.count > 1 {
+        while serialBytes.first == 0, serialBytes.count > 1 {
             serialBytes.removeFirst()
         }
         let serial = Certificate.SerialNumber(bytes: ArraySlice(serialBytes))
@@ -325,12 +325,12 @@ public class MobileKeyManager {
 
     /// Get issued certificate by node ID
     public func getIssuedCertificate(nodeId: String) -> X509Certificate? {
-        return issuedCertificates[nodeId]
+        issuedCertificates[nodeId]
     }
 
     /// List all issued certificates
     public func listIssuedCertificates() -> [(String, X509Certificate)] {
-        return issuedCertificates.map { nodeId, cert in (nodeId, cert) }
+        issuedCertificates.map { nodeId, cert in (nodeId, cert) }
     }
 
     /// Create a fresh 32-byte symmetric key for envelope encryption
@@ -389,7 +389,7 @@ public class MobileKeyManager {
         let hasNetworkKey = networkId != nil
         let hasProfileKeys = !profileIds.isEmpty && profileIds.contains { userProfileKeys[$0] != nil }
 
-        if !hasNetworkKey && !hasProfileKeys {
+        if !hasNetworkKey, !hasProfileKeys {
             throw KeyError.invalidOperation("No valid network or profile keys provided for envelope encryption")
         }
 
@@ -401,11 +401,11 @@ public class MobileKeyManager {
 
         // Encrypt envelope key for network (optional)
         var networkEncryptedKey = Data()
-        if let networkId = networkId, let networkKey = networkDataKeys[networkId] {
+        if let networkId, let networkKey = networkDataKeys[networkId] {
             let pk = networkKey.publicKeyBytes()
             // Encrypt the envelope key with network key's public key
             networkEncryptedKey = try ECDHKeyPair.encryptECIES(data: envelopeKeyData, recipientPublicKey: pk)
-        } else if let networkId = networkId, let networkPublicKeyBytes = networkPublicKeys[networkId] {
+        } else if let networkId, let networkPublicKeyBytes = networkPublicKeys[networkId] {
             // Use static method for encryption
             networkEncryptedKey = try ECDHKeyPair.encryptECIES(data: envelopeKeyData, recipientPublicKey: networkPublicKeyBytes)
         }
@@ -518,12 +518,12 @@ public class MobileKeyManager {
 
     /// Get the user CA certificate
     public func getCaCertificate() -> X509Certificate {
-        return certificateAuthority.certificate
+        certificateAuthority.certificate
     }
 
     /// Get the CA public key bytes
     public func getCaPublicKey() -> Data {
-        return try! certificateAuthority.getKeyPair().toECDSAVerifyingKey().x963Representation
+        try! certificateAuthority.getKeyPair().toECDSAVerifyingKey().x963Representation
     }
 
     /// Derive a user profile key from the root key using HKDF.
@@ -621,7 +621,7 @@ public class MobileKeyManager {
 
     /// Get statistics about the mobile key manager
     public func getStatistics() -> MobileKeyManagerStatistics {
-        return MobileKeyManagerStatistics(
+        MobileKeyManagerStatistics(
             issuedCertificatesCount: issuedCertificates.count,
             userProfileKeysCount: userProfileKeys.count,
             networkKeysCount: networkDataKeys.count,
@@ -646,7 +646,7 @@ public class MobileKeyManager {
 
     /// Initialize user identity and generate root keys (legacy method)
     public func initializeUserIdentity() throws -> Data {
-        return try initializeUserRootKey()
+        try initializeUserRootKey()
     }
 
     /// Encrypt data for a specific profile (legacy method for compatibility)
@@ -675,7 +675,7 @@ public class MobileKeyManager {
 
     /// Generate a user profile key (legacy method name for compatibility)
     public func generateUserProfileKey(profileId: String) throws -> Data {
-        return try deriveUserProfileKey(label: profileId)
+        try deriveUserProfileKey(label: profileId)
     }
 
     // MARK: - Node Communication Methods
@@ -733,7 +733,7 @@ public class MobileKeyManager {
     /// Get the node public key (for compatibility with NodeKeyManager)
     public func getNodePublicKey() -> Data {
         // For mobile, this is the user root key public key
-        return try! getUserRootPublicKey()
+        try! getUserRootPublicKey()
     }
 
     /// Get the node ID (compact Base58 encoding of public key)
@@ -745,7 +745,7 @@ public class MobileKeyManager {
     /// Get certificate status
     public func getCertificateStatus() -> CertificateStatus {
         // Mobile always has a valid CA certificate
-        return .valid
+        .valid
     }
 
     /// Generate a CSR (Certificate Signing Request) for node setup
@@ -843,7 +843,7 @@ public class MobileKeyManager {
 
     /// Encrypt message for mobile using node's public key
     public func encryptMessageForMobile(message: Data, mobilePublicKey: Data) throws -> Data {
-        return try ECDHKeyPair.encryptECIES(data: message, recipientPublicKey: mobilePublicKey)
+        try ECDHKeyPair.encryptECIES(data: message, recipientPublicKey: mobilePublicKey)
     }
 
     /// Decrypt message from mobile using node's private key
@@ -886,7 +886,7 @@ public class MobileKeyManager {
 
     /// Decrypt envelope-encrypted data using network key (NodeKeyManager compatibility)
     public func decryptEnvelopeData(_ envelopeData: EnvelopeEncryptedData) throws -> Data {
-        return try decryptWithNetwork(envelopeData: envelopeData)
+        try decryptWithNetwork(envelopeData: envelopeData)
     }
 
     // MARK: - State Management with Keychain
@@ -1093,12 +1093,12 @@ public class MobileKeyManager {
     /// Serialize ECDHKeyPair to Data for storage
     private func serializeECDHKeyPair(_ keyPair: ECDHKeyPair) throws -> Data {
         // Store the raw scalar bytes (32 bytes)
-        return keyPair.rawScalarBytes()
+        keyPair.rawScalarBytes()
     }
 
     /// Deserialize ECDHKeyPair from Data
     private func deserializeECDHKeyPair(_ data: Data) throws -> ECDHKeyPair {
-        return try ECDHKeyPair(rawRepresentation: data)
+        try ECDHKeyPair(rawRepresentation: data)
     }
 
     /// Retrieve a SecKey from Keychain by label

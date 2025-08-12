@@ -28,17 +28,17 @@ public struct EncryptedField<T>: EncryptedFieldProtocol {
     }
 
     public var projectedValue: EncryptedField<T> {
-        return self
+        self
     }
 
     /// Get the encryption label for this field
     public var encryptionLabel: String {
-        return label
+        label
     }
 
     /// Check if the value is set
     public var hasValue: Bool {
-        return value != nil
+        value != nil
     }
 }
 
@@ -71,17 +71,17 @@ extension String: Encryptable {
 
 extension Data: Encryptable {
     public func toData() throws -> Data {
-        return self
+        self
     }
 
     public static func fromData(_ data: Data) throws -> Data {
-        return data
+        data
     }
 }
 
 extension Int: Encryptable {
     public func toData() throws -> Data {
-        return Swift.withUnsafeBytes(of: bigEndian) { Data($0) }
+        Swift.withUnsafeBytes(of: bigEndian) { Data($0) }
     }
 
     public static func fromData(_ data: Data) throws -> Int {
@@ -94,7 +94,7 @@ extension Int: Encryptable {
 
 extension Bool: Encryptable {
     public func toData() throws -> Data {
-        return Data([self ? 1 : 0])
+        Data([self ? 1 : 0])
     }
 
     public static func fromData(_ data: Data) throws -> Bool {
@@ -107,7 +107,7 @@ extension Bool: Encryptable {
 
 extension Double: Encryptable {
     public func toData() throws -> Data {
-        return withUnsafeBytes(of: bitPattern.bigEndian) { Data($0) }
+        withUnsafeBytes(of: bitPattern.bigEndian) { Data($0) }
     }
 
     public static func fromData(_ data: Data) throws -> Double {
@@ -126,7 +126,7 @@ extension Array: Encryptable where Element: Encryptable {
         var result = Data()
 
         // Write count as UInt32
-        let count = UInt32(self.count)
+        let count = UInt32(count)
         result.append(contentsOf: Swift.withUnsafeBytes(of: count.bigEndian) { Data($0) })
 
         // Write each element
@@ -177,7 +177,7 @@ extension Dictionary: Encryptable where Key == String, Value: Encryptable {
         var result = Data()
 
         // Write count as UInt32
-        let count = UInt32(self.count)
+        let count = UInt32(count)
         result.append(contentsOf: Swift.withUnsafeBytes(of: count.bigEndian) { Data($0) })
 
         // Write each key-value pair
@@ -256,8 +256,8 @@ public enum EncryptedFieldUtils {
     ///   - field: The encrypted field wrapper
     ///   - context: Serialization context with key manager
     /// - Returns: Envelope encrypted data if the field has a value, nil otherwise
-    public static func encryptField<T: Encryptable>(
-        _ field: EncryptedField<T>,
+    public static func encryptField(
+        _ field: EncryptedField<some Encryptable>,
         context: SerializationContext
     ) throws -> EnvelopeEncryptedData? {
         guard let value = field.wrappedValue else {

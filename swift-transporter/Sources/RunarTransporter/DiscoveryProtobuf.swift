@@ -26,7 +26,7 @@ public struct DiscoveryPeerInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
         2: .same(proto: "addresses"),
     ]
 
-    public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    public mutating func decodeMessage(decoder: inout some SwiftProtobuf.Decoder) throws {
         while let fieldNumber = try decoder.nextFieldNumber() {
             switch fieldNumber {
             case 1: try decoder.decodeSingularBytesField(value: &publicKey)
@@ -36,7 +36,7 @@ public struct DiscoveryPeerInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
         }
     }
 
-    public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    public func traverse(visitor: inout some SwiftProtobuf.Visitor) throws {
         if !publicKey.isEmpty {
             try visitor.visitSingularBytesField(value: publicKey, fieldNumber: 1)
         }
@@ -59,12 +59,12 @@ public struct DiscoveryPeerInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
 @available(macOS 12.0, iOS 15.0, *)
 public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
     public var announce: DiscoveryPeerInfo? {
-        get { return _announce }
+        get { _announce }
         set { _announce = newValue }
     }
 
     public var goodbye: String {
-        get { return _goodbye ?? "" }
+        get { _goodbye ?? "" }
         set { _goodbye = newValue }
     }
 
@@ -86,7 +86,7 @@ public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._M
         2: .same(proto: "goodbye"),
     ]
 
-    public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    public mutating func decodeMessage(decoder: inout some SwiftProtobuf.Decoder) throws {
         while let fieldNumber = try decoder.nextFieldNumber() {
             switch fieldNumber {
             case 1: try decoder.decodeSingularMessageField(value: &_announce)
@@ -96,7 +96,7 @@ public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._M
         }
     }
 
-    public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    public func traverse(visitor: inout some SwiftProtobuf.Visitor) throws {
         if let v = _announce {
             try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
         }
@@ -120,7 +120,7 @@ public struct DiscoveryMulticastMessage: SwiftProtobuf.Message, SwiftProtobuf._M
 extension DiscoveryMulticastMessage {
     /// Get the sender ID from the message (matches Rust sender_id() method)
     func senderId() -> String? {
-        if let announce = announce {
+        if let announce {
             return NodeUtils.compactId(from: announce.publicKey)
         } else if !goodbye.isEmpty {
             return goodbye

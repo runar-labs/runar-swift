@@ -25,7 +25,7 @@ public struct RunarTransporter {
         options: NetworkQuicTransportOptions,
         logger: RunarLogger
     ) -> TransportProtocol {
-        return NetworkQuicTransporter(
+        NetworkQuicTransporter(
             nodeInfo: nodeInfo,
             bindAddress: bindAddress,
             messageHandler: messageHandler,
@@ -49,7 +49,7 @@ public struct RunarTransporter {
         messageHandler: MessageHandlerProtocol,
         logger: RunarLogger
     ) -> TransportProtocol {
-        return createQuicTransport(
+        createQuicTransport(
             nodeInfo: nodeInfo,
             bindAddress: bindAddress,
             messageHandler: messageHandler,
@@ -73,7 +73,7 @@ public struct RunarTransporter {
         messageHandler: MessageHandlerProtocol,
         logger: RunarLogger
     ) -> TransportProtocol {
-        return createQuicTransport(
+        createQuicTransport(
             nodeInfo: nodeInfo,
             bindAddress: bindAddress,
             messageHandler: messageHandler,

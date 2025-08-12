@@ -32,19 +32,19 @@ public enum SerializerError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .deserializationFailed(message):
-            return "Deserialization failed: \(message)"
+            "Deserialization failed: \(message)"
         case let .encryptionFailed(message):
-            return "Encryption failed: \(message)"
+            "Encryption failed: \(message)"
         case let .typeMismatch(message):
-            return "Type mismatch: \(message)"
+            "Type mismatch: \(message)"
         case let .invalidCategory(category):
-            return "Invalid category: \(category)"
+            "Invalid category: \(category)"
         case .emptyData:
-            return "Empty data"
+            "Empty data"
         case let .typeNameTooLong(typeName):
-            return "Type name too long: \(typeName)"
+            "Type name too long: \(typeName)"
         case let .serializationFailed(message):
-            return "Serialization failed: \(message)"
+            "Serialization failed: \(message)"
         }
     }
 }
@@ -61,7 +61,7 @@ public enum ValueCategory: UInt8, CaseIterable {
 
     /// Create category from raw value
     public static func from(_ value: UInt8) -> ValueCategory? {
-        return ValueCategory(rawValue: value)
+        ValueCategory(rawValue: value)
     }
 }
 
@@ -80,8 +80,8 @@ private class AnyValueBox {
     private let serializeFn: (SerializationContext?) throws -> Data
     private let asTypeFn: (Any.Type) -> Any?
 
-    init<T>(
-        value _: T,
+    init(
+        value _: some Any,
         typeName: String,
         category: ValueCategory,
         serializeFn: @escaping (SerializationContext?) throws -> Data,
@@ -94,11 +94,11 @@ private class AnyValueBox {
     }
 
     func serialize(context: SerializationContext?) throws -> Data {
-        return try serializeFn(context)
+        try serializeFn(context)
     }
 
     func asType<T>() -> T? {
-        return asTypeFn(T.self) as? T
+        asTypeFn(T.self) as? T
     }
 }
 
@@ -113,12 +113,12 @@ public class AnyValue {
 
     /// Create a null value
     public static func null() -> AnyValue {
-        return AnyValue(category: .null, typeName: "null")
+        AnyValue(category: .null, typeName: "null")
     }
 
     /// Check if this is a null value
     public var isNull: Bool {
-        return category == .null
+        category == .null
     }
 
     /// Create a primitive value
@@ -352,7 +352,7 @@ public class AnyValue {
 
     /// Get the type name of the contained value
     public var typeName: String {
-        return box.typeName
+        box.typeName
     }
 
     /// Serialize the value
@@ -420,7 +420,7 @@ public class AnyValue {
         }
 
         // Try lazy deserialization
-        if let lazyData = lazyData {
+        if let lazyData {
             let value = try await deserializeLazyData(lazyData)
             materializedValue = value
 
@@ -841,11 +841,11 @@ public protocol PlainSerializable: Codable {
 /// Default implementation for PlainSerializable
 public extension PlainSerializable {
     func toAnyValue() -> AnyValue {
-        return AnyValue.struct(self)
+        AnyValue.struct(self)
     }
 
     static func fromAnyValue(_ value: AnyValue) async throws -> Self {
-        return try await value.asType()
+        try await value.asType()
     }
 }
 
@@ -863,7 +863,7 @@ public actor TypeRegistry {
 
     /// Get decoder for a type name
     public func getDecoder(for typeName: String) -> (@Sendable (Data) throws -> Any)? {
-        return decoders[typeName]
+        decoders[typeName]
     }
 
     /// Shared instance for global access

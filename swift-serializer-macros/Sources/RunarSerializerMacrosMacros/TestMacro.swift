@@ -9,7 +9,7 @@ public struct TestMacro: MemberMacro {
         providingMembersOf _: some DeclGroupSyntax,
         in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        return [
+        [
             """
             public func testFunction() {
                 print("Hello from macro!")

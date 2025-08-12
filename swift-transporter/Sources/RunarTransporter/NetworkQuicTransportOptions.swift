@@ -63,7 +63,7 @@ public struct NetworkQuicTransportOptions {
 
     /// Create default options for development/testing
     public static func `default`() -> NetworkQuicTransportOptions {
-        return NetworkQuicTransportOptions()
+        NetworkQuicTransportOptions()
     }
 
     /// Create options with custom certificates and SecKey
@@ -73,7 +73,7 @@ public struct NetworkQuicTransportOptions {
         mobileKeyManager: MobileKeyManager? = nil,
         verifyCertificates: Bool = true
     ) -> NetworkQuicTransportOptions {
-        return NetworkQuicTransportOptions(
+        NetworkQuicTransportOptions(
             verifyCertificates: verifyCertificates,
             certificates: certificates,
             secKey: secKey,
@@ -83,7 +83,7 @@ public struct NetworkQuicTransportOptions {
 
     /// Create options optimized for mobile devices
     public static func mobileOptimized() -> NetworkQuicTransportOptions {
-        return NetworkQuicTransportOptions(
+        NetworkQuicTransportOptions(
             keepAliveInterval: 30.0, // Longer keep-alive for mobile
             connectionIdleTimeout: 120.0, // Longer idle timeout for mobile
             streamIdleTimeout: 60.0, // Longer stream timeout for mobile
@@ -93,7 +93,7 @@ public struct NetworkQuicTransportOptions {
 
     /// Create options optimized for high-performance scenarios
     public static func highPerformance() -> NetworkQuicTransportOptions {
-        return NetworkQuicTransportOptions(
+        NetworkQuicTransportOptions(
             keepAliveInterval: 5.0, // Shorter keep-alive for responsiveness
             connectionIdleTimeout: 30.0, // Shorter idle timeout
             streamIdleTimeout: 15.0, // Shorter stream timeout

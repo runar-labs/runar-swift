@@ -407,7 +407,7 @@ public struct BinaryMessageEncoder {
 
         // Helper function to append optional string
         func appendOptionalString(_ string: String?) {
-            if let string = string {
+            if let string {
                 appendString(string)
             } else {
                 // Write empty string for nil

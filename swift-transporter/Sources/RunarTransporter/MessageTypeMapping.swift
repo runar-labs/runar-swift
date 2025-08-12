@@ -102,16 +102,16 @@ public enum MessageTypeMapping {
     /// Convert a semantic type back to current Swift string constant used by `MessageTypes`
     public static func toSwiftString(_ semantic: SemanticMessageType) -> String {
         switch semantic {
-        case .discovery: return "1"
-        case .heartbeat: return "2"
-        case .announcement: return "3"
-        case .handshake: return "4"
-        case .request: return "5"
-        case .response: return "6"
-        case .event: return "7"
-        case .error: return "8"
-        case .nodeInfoUpdate: return "9"
-        case .nodeInfoHandshakeResponse: return "10"
+        case .discovery: "1"
+        case .heartbeat: "2"
+        case .announcement: "3"
+        case .handshake: "4"
+        case .request: "5"
+        case .response: "6"
+        case .event: "7"
+        case .error: "8"
+        case .nodeInfoUpdate: "9"
+        case .nodeInfoHandshakeResponse: "10"
         }
     }
 

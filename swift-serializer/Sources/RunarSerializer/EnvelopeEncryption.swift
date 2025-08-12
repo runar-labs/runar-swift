@@ -55,7 +55,7 @@ public enum EnvelopeEncryption {
     ) throws -> Data {
         // For now, return the data as-is
         // In production, this would use the actual swift-keys package
-        return envelopeData.encryptedData
+        envelopeData.encryptedData
     }
 
     /// Serialize EnvelopeEncryptedData to CBOR format
@@ -127,8 +127,8 @@ public enum EnvelopeEncryption {
             }
         }
 
-        guard let encryptedData = encryptedData,
-              let networkEncryptedKey = networkEncryptedKey
+        guard let encryptedData,
+              let networkEncryptedKey
         else {
             throw SerializerError.deserializationFailed("Missing required fields in envelope data")
         }

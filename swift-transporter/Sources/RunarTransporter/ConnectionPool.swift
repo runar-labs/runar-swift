@@ -11,7 +11,7 @@ public class ConnectionPool {
     public init() {}
 
     public func getOrCreatePeer(peerId: String, address: String, logger: RunarLogger) -> PeerState {
-        return queue.sync(flags: .barrier) {
+        queue.sync(flags: .barrier) {
             if let existing = peers[peerId] {
                 return existing
             } else {
@@ -23,7 +23,7 @@ public class ConnectionPool {
     }
 
     public func getPeer(peerId: String) -> PeerState? {
-        return queue.sync { peers[peerId] }
+        queue.sync { peers[peerId] }
     }
 
     public func removePeer(peerId: String) {
@@ -41,11 +41,11 @@ public class ConnectionPool {
     }
 
     public func isPeerConnected(peerId: String) -> Bool {
-        return queue.sync { peers[peerId]?.isConnected ?? false }
+        queue.sync { peers[peerId]?.isConnected ?? false }
     }
 
     public func getConnectedPeers() -> [String] {
-        return queue.sync { Array(peers.keys) }
+        queue.sync { Array(peers.keys) }
     }
 
     /// Create an alias mapping so that another identifier points to the same peer state
@@ -59,12 +59,12 @@ public class ConnectionPool {
 
     /// Get all peer states for iteration
     public func getAllPeers() -> [String: PeerState] {
-        return queue.sync { peers }
+        queue.sync { peers }
     }
 
     /// Check if we have a connection to a specific endpoint
     public func hasConnectionToEndpoint(_ endpoint: String) -> Bool {
-        return queue.sync {
+        queue.sync {
             for (_, peerState) in peers {
                 if peerState.hasConnectionToEndpoint(endpoint) {
                     return true
@@ -75,7 +75,7 @@ public class ConnectionPool {
     }
 
     public func hasConnectionToIPAddress(_ ipAddress: String) -> Bool {
-        return queue.sync {
+        queue.sync {
             for (_, peerState) in peers {
                 if peerState.hasConnectionToIPAddress(ipAddress) {
                     return true
@@ -87,7 +87,7 @@ public class ConnectionPool {
 
     /// Check if any peer has a specific connection
     public func hasPeerWithConnection(_ connection: NWConnection) -> Bool {
-        return queue.sync {
+        queue.sync {
             for (_, peerState) in peers {
                 if peerState.hasConnection(connection) {
                     return true

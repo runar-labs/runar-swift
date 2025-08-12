@@ -65,6 +65,6 @@ struct TestTimeoutError: Error, LocalizedError {
     let timeout: TimeInterval
 
     var errorDescription: String? {
-        return "Test timed out after \(timeout) seconds"
+        "Test timed out after \(timeout) seconds"
     }
 }

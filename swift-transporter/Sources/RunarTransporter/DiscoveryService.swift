@@ -102,7 +102,7 @@ public class DiscoveryService: @unchecked Sendable {
         announceTask?.cancel()
 
         // Wait for tasks to finish (with timeout)
-        if let receiveTask = receiveTask {
+        if let receiveTask {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask {
                     await receiveTask.value
@@ -113,7 +113,7 @@ public class DiscoveryService: @unchecked Sendable {
             }
         }
 
-        if let announceTask = announceTask {
+        if let announceTask {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask {
                     await announceTask.value
@@ -170,7 +170,7 @@ public class DiscoveryService: @unchecked Sendable {
 
     /// Create and configure multicast socket (matches Rust create_multicast_socket)
     private func createMulticastSocket() async throws {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             socketQueue.async {
                 do {
                     // Create UDP socket
@@ -256,7 +256,7 @@ public class DiscoveryService: @unchecked Sendable {
             let socket = self.udpSocket
             var buffer = [UInt8](repeating: 0, count: 4096)
 
-            while !Task.isCancelled && socket >= 0 {
+            while !Task.isCancelled, socket >= 0 {
                 do {
                     // Use non-blocking socket operations with timeout
                     let (data, _) = try await withCheckedThrowingContinuation { continuation in
@@ -278,7 +278,7 @@ public class DiscoveryService: @unchecked Sendable {
                             if bytesRead > 0 {
                                 let data = Data(buffer.prefix(bytesRead))
                                 continuation.resume(returning: (data, addr))
-                            } else if bytesRead == -1 && errno == EAGAIN {
+                            } else if bytesRead == -1, errno == EAGAIN {
                                 // No data available, continue
                                 continuation.resume(throwing: RunarTransportError.transportError("No data available"))
                             } else if bytesRead == 0 {
@@ -428,7 +428,7 @@ public class DiscoveryService: @unchecked Sendable {
 
     /// Send data to multicast group
     private func sendMulticastData(_ data: Data) async throws {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             socketQueue.async {
                 let socket = self.udpSocket
                 guard socket >= 0 else {
