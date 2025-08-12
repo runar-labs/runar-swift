@@ -486,7 +486,8 @@ private func createEndEntityExtensions(
         Critical(try ExtendedKeyUsage([.serverAuth, .clientAuth]))
         AuthorityKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: issuerPublicKey.subjectPublicKeyInfoBytes))))
         SubjectKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.subjectPublicKeyInfoBytes))))
-        if !sanEntries.isEmpty { SubjectAlternativeNames(sanEntries) }
+        // SANs are required by policy; include computed entries
+        SubjectAlternativeNames(sanEntries.isEmpty ? [] : sanEntries)
         // No AIA/CRLDP URIs are included. Revocation/distribution by URL is not intended in this environment.
     }
 }

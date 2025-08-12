@@ -264,6 +264,59 @@ public struct ECDHKeyPair: Sendable {
     }
 }
 
+// MARK: - Deterministic Key Derivation (HKDF-SHA-384)
+
+/// Utilities for deriving child keys (signing/agreement/storage) from a master scalar (P-384)
+enum KeyDeriver {
+    private static let derivationSalt = "RunarKeyDerivationSalt/v1".data(using: .utf8)!
+
+    /// Derive a P-384 signing private key from a master scalar
+    static func deriveSigningPrivateKey(masterScalar: Data, scope: String, label: String, counterStart: UInt32 = 0) throws -> P384.Signing.PrivateKey {
+        var counter = counterStart
+        while true {
+            let infoString = "runar-v1:\(scope):signing:\(label)\(counter == 0 ? "" : ":\(counter)")"
+            let info = infoString.data(using: .utf8)!
+            let derivedBytes = try hkdf(ikm: masterScalar, info: info, outputLength: 48)
+            if let key = try? P384.Signing.PrivateKey(rawRepresentation: derivedBytes) {
+                return key
+            }
+            counter &+= 1
+        }
+    }
+
+    /// Derive a P-384 agreement private key from a master scalar
+    static func deriveAgreementPrivateKey(masterScalar: Data, scope: String, label: String, counterStart: UInt32 = 0) throws -> P384.KeyAgreement.PrivateKey {
+        var counter = counterStart
+        while true {
+            let infoString = "runar-v1:\(scope):agreement:\(label)\(counter == 0 ? "" : ":\(counter)")"
+            let info = infoString.data(using: .utf8)!
+            let derivedBytes = try hkdf(ikm: masterScalar, info: info, outputLength: 48)
+            if let key = try? P384.KeyAgreement.PrivateKey(rawRepresentation: derivedBytes) {
+                return key
+            }
+            counter &+= 1
+        }
+    }
+
+    /// Derive a storage key (32 bytes) from a master scalar
+    static func deriveStorageKey(masterScalar: Data, scope: String, label: String) throws -> Data {
+        let infoString = "runar-v1:\(scope):storage:\(label)"
+        let info = infoString.data(using: .utf8)!
+        return try hkdf(ikm: masterScalar, info: info, outputLength: 32)
+    }
+
+    private static func hkdf(ikm: Data, info: Data, outputLength: Int) throws -> Data {
+        let key = SymmetricKey(data: ikm)
+        let derivedKey = HKDF<SHA384>.deriveKey(
+            inputKeyMaterial: key,
+            salt: derivationSalt,
+            info: info,
+            outputByteCount: outputLength
+        )
+        return derivedKey.withUnsafeBytes { Data($0) }
+    }
+}
+
 // MARK: - Codable Support
 
 extension ECDHKeyPair {

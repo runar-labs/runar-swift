@@ -160,8 +160,10 @@ public class MobileKeyManager {
     private var certificateValidator: CertificateValidator
     /// User root key - Master key for the user (never leaves mobile)
     private var userRootKey: ECDHKeyPair?
-    /// User profile keys indexed by profile ID - derived from root key
+    /// User profile agreement keys indexed by profile ID - derived from root key
     private var userProfileKeys: [String: ECDHKeyPair] = [:]
+    /// User profile signing scalars indexed by label (for CSR/signature usage)
+    private var userProfileSigningScalars: [String: Data] = [:]
     /// Mapping from human-readable label → compact-id for quick reuse
     private var labelToPid: [String: String] = [:]
     /// Network data keys indexed by network ID - for envelope encryption and decryption
@@ -248,10 +250,11 @@ public class MobileKeyManager {
         // Verify proof-of-possession by checking the CSR signature
         // swift-certificates verifies CSR signature during parsing; additional checks could be added if needed
 
-        // Validate subject CN matches DNS-safe node id
+        // Validate subject CN matches DNS-safe node id (exact match)
         let subjectDescription = csr.subject
-        guard subjectDescription.contains(nodeId) else {
-            throw KeyError.validationError("CSR CN must match node id")
+        let expectedCN = dnsSafeName(nodeId)
+        guard subjectDescription.contains("CN=\(expectedCN)") else {
+            throw KeyError.validationError("CSR CN must exactly match DNS-safe node id")
         }
 
         // Issue certificate from CSR
@@ -549,23 +552,12 @@ public class MobileKeyManager {
             let hash = SHA384.hash(data: rootScalarBytes)
             let derivedKey = Data(hash)
             
-            // Use HKDF to derive 48 bytes for P-384
-            let derivedBytes = try hkdf(
-                salt: salt,
-                ikm: derivedKey,
-                info: infoData,
-                outputLength: 48
-            )
-            
-            // Try to create a key agreement key from the derived bytes
-            do {
-                let keyAgreementPrivateKey = try P384.KeyAgreement.PrivateKey(rawRepresentation: derivedBytes)
-                profileKey = ECDHKeyPair(keyAgreementPrivateKey: keyAgreementPrivateKey)
-                break
-            } catch {
-                counter += 1
-                continue // try again with different info string
-            }
+            // Derive agreement and signing keys using deterministic HKDF-SHA-384
+            let agreementPriv = try KeyDeriver.deriveAgreementPrivateKey(masterScalar: rootScalarBytes, scope: "profile", label: label, counterStart: counter)
+            let signingPriv = try KeyDeriver.deriveSigningPrivateKey(masterScalar: rootScalarBytes, scope: "profile", label: label, counterStart: counter)
+            profileKey = ECDHKeyPair(keyAgreementPrivateKey: agreementPriv)
+            userProfileSigningScalars[label] = signingPriv.rawRepresentation
+            break
         } while true
         
         // Cache the profile key using the compact ID.
@@ -604,6 +596,17 @@ public class MobileKeyManager {
             networkKeysCount: networkDataKeys.count,
             caCertificateSubject: certificateAuthority.certificate.subject
         )
+    }
+    
+    /// Normalize arbitrary input into a DNS-safe label (lowercase, allowed chars [a-z0-9-.])
+    private func dnsSafeName(_ input: String) -> String {
+        let lowered = input.lowercased()
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789-.")
+        let filtered = lowered.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        var result = String(filtered)
+        while result.contains("--") { result = result.replacingOccurrences(of: "--", with: "-") }
+        result = result.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return result.isEmpty ? "node" : result
     }
     
     // MARK: - Legacy Compatibility Methods
@@ -843,17 +846,9 @@ public class MobileKeyManager {
             return storageKey
         }
         
-        // Derive storage key from root key using HKDF
-        // For P-384, rawScalarBytes() returns 48 bytes, but we need to handle this properly
+        // Derive storage key deterministically from root scalar using standardized labels
         let rootScalarBytes = rootKey.rawScalarBytes()
-        let salt = "RunarNodeStorageKey".data(using: .utf8)!
-        let info = "storage-key".data(using: .utf8)!
-        
-        // Use SHA-384 to prepare IKM for HKDF
-        let hash = SHA384.hash(data: rootScalarBytes)
-        let derivedKey = Data(hash)
-        
-        return try! hkdf(salt: salt, ikm: derivedKey, info: info, outputLength: 32)
+        return try! KeyDeriver.deriveStorageKey(masterScalar: rootScalarBytes, scope: "user-root", label: "storage-key")
     }
     
     /// Decrypt envelope-encrypted data using network key (NodeKeyManager compatibility)
