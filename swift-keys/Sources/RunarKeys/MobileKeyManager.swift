@@ -221,6 +221,25 @@ public class MobileKeyManager {
         
         return networkId
     }
+
+    /// Deterministically derive a network data key using a stable label. Returns the network ID.
+    public func deriveNetworkDataKey(label: String) throws -> String {
+        guard let rootKey = userRootKey else {
+            throw KeyError.keyNotFound("User root key not initialized")
+        }
+        let rootScalarBytes = rootKey.rawScalarBytes()
+        let agreementPriv = try KeyDeriver.deriveAgreementPrivateKey(
+            masterScalar: rootScalarBytes,
+            scope: "network",
+            label: label
+        )
+        let networkKey = ECDHKeyPair(keyAgreementPrivateKey: agreementPriv)
+        let publicKey = networkKey.publicKeyBytes()
+        let networkId = CryptoUtils.compactId(publicKey)
+        networkDataKeys[networkId] = networkKey
+        logger.info("Network data key derived with ID: \(networkId) (label: \(label))")
+        return networkId
+    }
     
     /// Get network public key by network ID
     public func getNetworkPublicKey(networkId: String) throws -> Data {
@@ -257,14 +276,14 @@ public class MobileKeyManager {
             throw KeyError.validationError("CSR CN must exactly match DNS-safe node id")
         }
 
-        // Issue certificate from CSR
+        // Issue certificate from CSR with monotonic serial number increment
         let validityDays: UInt32 = 365 // 1-year validity (consider shortening)
         let nodeCertificate = try certificateAuthority.signCertificateRequest(
             csrDer: setupToken.csrDer,
             validityDays: Int(validityDays)
         )
 
-        // Increment serial for next issuance
+        // Increment persisted serial counter for next issuance
         serialCounter = serialCounter &+ 1
 
         // Store the issued certificate

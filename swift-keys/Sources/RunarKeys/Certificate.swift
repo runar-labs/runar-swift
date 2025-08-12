@@ -342,6 +342,7 @@ private func createSelfSignedCACertificate(
     let subjectDN = try parseDistinguishedName(subject)
     
     // Create certificate template
+    // Use random serial for CA (self-signed acceptable)
     let certificate = try Certificate(
         version: .v3,
         serialNumber: Certificate.SerialNumber(),
@@ -398,6 +399,7 @@ private func createLeafCertificateFromPublicKey(
     let validityDuration: TimeInterval = TimeInterval(validityDays * 24 * 60 * 60)
     let subjectDN = try parseDistinguishedName(subject)
     
+    // Serial will be supplied by CA caller for leaves; keep default here for direct-from-public-key path
     let certificate = try Certificate(
         version: .v3,
         serialNumber: Certificate.SerialNumber(),
