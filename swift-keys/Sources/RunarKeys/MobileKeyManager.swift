@@ -278,8 +278,14 @@ public class MobileKeyManager {
 
         // Issue certificate from CSR with monotonic serial number increment
         let validityDays: UInt32 = 365 // 1-year validity (consider shortening)
-        // Build monotonic serial (big-endian, positive, <= 20 bytes)
-        var serialBytes = withUnsafeBytes(of: serialCounter.bigEndian, Array.init)
+        // Pre-allocate next serial, persist immediately to avoid reuse after crash
+        let allocatedSerialCounter = serialCounter &+ 1
+        serialCounter = allocatedSerialCounter
+        // Best-effort persist; do not fail issuance if persistence fails
+        do { try saveToKeychain() } catch { logger.warn("Failed to persist serialCounter pre-allocation: \(error)") }
+
+        // Build monotonic serial (big-endian, positive, <= 20 bytes) from allocated value
+        var serialBytes = withUnsafeBytes(of: allocatedSerialCounter.bigEndian, Array.init)
         // Trim leading zeros to keep it short; ensure at least 1 byte
         while serialBytes.first == 0 && serialBytes.count > 1 { serialBytes.removeFirst() }
         let serial = Certificate.SerialNumber(bytes: ArraySlice(serialBytes))
@@ -290,8 +296,7 @@ public class MobileKeyManager {
             serialNumber: serial
         )
 
-        // Increment persisted serial counter for next issuance
-        serialCounter = serialCounter &+ 1
+        // serialCounter was already incremented and persisted before issuance
 
         // Store the issued certificate
         issuedCertificates[nodeId] = nodeCertificate
