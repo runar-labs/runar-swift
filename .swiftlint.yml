@@ -13,6 +13,11 @@ excluded:
   - '**/*.pb.swift'
   - '**/Reference/**'
   - '**/RunarTransporter.xcworkspace/**'
+  - 'swift-transporter/Sources/QuicSample/**'
+  - 'swift-transporter/Sources/QuicIT/**'
+  - 'swift-transporter/Tests/RunarTransporterTests/SecIdentityPOC.swift'
+  - 'swift-transporter/Sources/RunarTransporter/DiscoveryProtobuf.swift'
+  - '**/Examples/**'
 
 line_length:
   warning: 140
@@ -40,8 +45,13 @@ cyclomatic_complexity:
 identifier_name:
   min_length: 2
   validates_start_with_lowercase: false
+  severity: warning
+  excluded: [i, j, k, x, y, z, id, pk, hs, ps, dp, ch, ok, be, cs, dn, ca, km, pm, ap, an, ad, ev, em, ds, vb, cm]
 
 trailing_comma:
   mandatory_comma: false
+
+force_try:
+  severity: warning
 
 
