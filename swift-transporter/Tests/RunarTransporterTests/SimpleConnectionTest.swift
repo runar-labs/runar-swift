@@ -136,7 +136,7 @@ final class SimpleConnectionTest: XCTestCase {
                 )
                 
                 do {
-                    self.logger.info("🔗 Attempting connection...")
+                    self.logger.info("🔗 Attempting connection (expect success with correct SPKI pin)...")
                     try await self.transport1.connect(to: peer2Info)
                     self.logger.info("✅ Connection attempt completed")
                 } catch {
@@ -149,6 +149,16 @@ final class SimpleConnectionTest: XCTestCase {
                 self.logger.info("🔍 Connection status: \(isConnected)")
                 
                 XCTAssertTrue(isConnected, "Connection should be established")
+                // Step 4: Negative pinning test: try wrong expected key (flip one byte)
+                let wrongKey = Data(self.node2PublicKey.enumerated().map { (i, b) in i == 0 ? b ^ 0xFF : b })
+                let badPeerInfo = RunarPeerInfo(publicKey: wrongKey, addresses: ["127.0.0.1:50070"])
+                do {
+                    self.logger.info("🔗 Attempting connection with WRONG SPKI (should fail)...")
+                    try await self.transport1.connect(to: badPeerInfo)
+                    XCTFail("Connection should have failed due to SPKI pin mismatch")
+                } catch {
+                    self.logger.info("✅ Expected failure with wrong SPKI: \(error)")
+                }
             }
         } catch {
             XCTFail("Test failed or timed out: \(error)")
