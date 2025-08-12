@@ -166,7 +166,7 @@ public struct CertificateRequest {
     }
     
     /// Create a CSR from a key pair and subject
-    public static func create(keyPair: ECDHKeyPair, subject: String) throws -> Data {
+    public static func create(keyPair: ECDHKeyPair, subject: String, subjectAltNames: [String] = []) throws -> Data {
         let subjectDN = try parseDistinguishedName(subject)
         let publicKey = try keyPair.toECDSAVerifyingKey()
         let privateKey = try keyPair.toECDSASigningKey()
@@ -486,11 +486,15 @@ private func createEndEntityExtensions(
         Critical(try ExtendedKeyUsage([.serverAuth, .clientAuth]))
         AuthorityKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: issuerPublicKey.subjectPublicKeyInfoBytes))))
         SubjectKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.subjectPublicKeyInfoBytes))))
-        // SANs are required by policy; include computed entries
-        SubjectAlternativeNames(sanEntries.isEmpty ? [] : sanEntries)
+        // SANs are required by policy; include entries
+        SubjectAlternativeNames(sanEntries)
         // No AIA/CRLDP URIs are included. Revocation/distribution by URL is not intended in this environment.
     }
 }
+
+/// Extract SANs from CSR extensionRequest if present
+// Unused placeholder (kept for potential future use)
+private func extractSansFromCsr(_ csr: CertificateSigningRequest) throws -> [GeneralName] { [] }
 
 /// Build Subject Alternative Names based on the subject CN, normalized to DNS-safe
 private func buildDNSSubjectAlternativeNames(from subject: DistinguishedName) -> [GeneralName] {
