@@ -243,8 +243,8 @@ final class TLSCertificateTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(caCert.extensions.count, 4, "CA certificate should have at least 4 extensions")
         
         // Verify leaf has proper extensions by checking extension count
-        // Our leaf extensions include: BasicConstraints, KeyUsage, ExtendedKeyUsage, AuthorityKeyIdentifier, SubjectKeyIdentifier, SubjectAlternativeName
-        XCTAssertGreaterThanOrEqual(leafCert.extensions.count, 6, "Leaf certificate should have at least 6 extensions")
+        // Our leaf extensions include: BasicConstraints, KeyUsage, ExtendedKeyUsage, AuthorityKeyIdentifier, SubjectKeyIdentifier, optional SAN
+        XCTAssertGreaterThanOrEqual(leafCert.extensions.count, 5, "Leaf certificate should have at least 5 extensions")
         
         // Verify certificates are not empty (basic sanity check)
         XCTAssertFalse(caCert.extensions.isEmpty, "CA certificate should have extensions")

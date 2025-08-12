@@ -220,14 +220,15 @@ final class MobileKeyManagerTests: XCTestCase {
     }
     
     func testCertificateIssuanceWithInvalidPublicKey() throws {
-        // Create a setup token with empty public key
+        // Create a setup token with empty CSR (should be rejected)
+        let nodeKeyPair = try ECDHKeyPair()
         let setupToken = SetupToken(
-            nodePublicKey: Data(),
+            nodePublicKey: nodeKeyPair.publicKeyBytes(),
             csrDer: Data(),
             nodeId: "test-node"
         )
         
-        // Test that processing fails
+        // Test that processing fails due to missing CSR
         XCTAssertThrowsError(try mobileKeyManager.processSetupToken(setupToken)) { error in
             XCTAssertTrue(error is KeyError)
         }
@@ -239,17 +240,20 @@ final class MobileKeyManagerTests: XCTestCase {
         let nodeId = "test-node-123"
         let wrongNodeId = "wrong-node-id"
         
-        // Create a setup token with mismatched node ID
+        // Create a CSR with CN=nodeId but pass wrongNodeId in token (should be rejected)
+        let csr = try CertificateRequest.create(
+            keyPair: nodeKeyPair,
+            subject: "CN=\(nodeId),O=Runar,C=US"
+        )
         let setupToken = SetupToken(
             nodePublicKey: nodeKeyPair.publicKeyBytes(),
-            csrDer: Data(), // Empty CSR since we use public key directly
+            csrDer: csr,
             nodeId: wrongNodeId
         )
         
-        // Test that processing succeeds (no CSR validation anymore)
-        // The certificate will be created with the wrong subject, but that's acceptable
-        let certificateMessage = try mobileKeyManager.processSetupToken(setupToken)
-        XCTAssertNotNil(certificateMessage)
+        XCTAssertThrowsError(try mobileKeyManager.processSetupToken(setupToken)) { error in
+            XCTAssertTrue(error is KeyError)
+        }
     }
     
     func testCertificateValidation() throws {
@@ -257,10 +261,14 @@ final class MobileKeyManagerTests: XCTestCase {
         let nodeKeyPair = try ECDHKeyPair()
         let nodeId = "test-node-123"
         
-        // Create a setup token
+        // Create a setup token with a valid CSR
+        let csr = try CertificateRequest.create(
+            keyPair: nodeKeyPair,
+            subject: "CN=\(nodeId),O=Runar,C=US"
+        )
         let setupToken = SetupToken(
             nodePublicKey: nodeKeyPair.publicKeyBytes(),
-            csrDer: Data(), // Empty CSR since we use public key directly
+            csrDer: csr,
             nodeId: nodeId
         )
         
@@ -280,9 +288,14 @@ final class MobileKeyManagerTests: XCTestCase {
         let nodeKeyPair = try ECDHKeyPair()
         let nodeId = "test-node-123"
         
+        // Create a valid CSR for this node
+        let csr = try CertificateRequest.create(
+            keyPair: nodeKeyPair,
+            subject: "CN=\(nodeId),O=Runar,C=US"
+        )
         let setupToken = SetupToken(
             nodePublicKey: nodeKeyPair.publicKeyBytes(),
-            csrDer: Data(), // Empty CSR since we use public key directly
+            csrDer: csr,
             nodeId: nodeId
         )
         

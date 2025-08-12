@@ -376,7 +376,11 @@ private func createLeafCertificate(
         issuer: caCertificate.subject,
         subject: csr.csr.subject,
         signatureAlgorithm: .ecdsaWithSHA384,
-        extensions: try createEndEntityExtensions(publicKey: csr.publicKey, issuerPublicKey: caCertificate.publicKey),
+        extensions: try createEndEntityExtensions(
+            publicKey: csr.publicKey,
+            issuerPublicKey: caCertificate.publicKey,
+            subject: csr.csr.subject
+        ),
         issuerPrivateKey: Certificate.PrivateKey(caPrivateKey)
     )
     
@@ -403,7 +407,11 @@ private func createLeafCertificateFromPublicKey(
         issuer: caCertificate.subject,
         subject: subjectDN,
         signatureAlgorithm: .ecdsaWithSHA384,
-        extensions: try createEndEntityExtensions(publicKey: Certificate.PublicKey(publicKey), issuerPublicKey: caCertificate.publicKey),
+        extensions: try createEndEntityExtensions(
+            publicKey: Certificate.PublicKey(publicKey),
+            issuerPublicKey: caCertificate.publicKey,
+            subject: subjectDN
+        ),
         issuerPrivateKey: Certificate.PrivateKey(caPrivateKey)
     )
     
@@ -427,7 +435,7 @@ private func parseDistinguishedName(_ dn: String) throws -> DistinguishedName {
         let key = keyValue[0].trimmingCharacters(in: .whitespaces).uppercased()
         let value = keyValue[1].trimmingCharacters(in: .whitespaces)
         
-        let attribute: RelativeDistinguishedName.Attribute
+        let attribute: RelativeDistinguishedName.Attribute?
         switch key {
         case "CN":
             attribute = .init(type: .RDNAttributeType.commonName, utf8String: value)
@@ -435,11 +443,20 @@ private func parseDistinguishedName(_ dn: String) throws -> DistinguishedName {
             attribute = try .init(type: .RDNAttributeType.countryName, printableString: value)
         case "O":
             attribute = .init(type: .RDNAttributeType.organizationName, utf8String: value)
+        case "OU":
+            attribute = .init(type: .RDNAttributeType.organizationalUnitName, utf8String: value)
+        case "ST":
+            attribute = .init(type: .RDNAttributeType.stateOrProvinceName, utf8String: value)
+        case "L":
+            attribute = .init(type: .RDNAttributeType.localityName, utf8String: value)
         default:
-            throw KeyError.certificateError("Unsupported DN attribute: \(key)")
+            // Ignore unknown attributes for robustness
+            attribute = nil
         }
         
-        components.append(RelativeDistinguishedName([attribute]))
+        if let attribute {
+            components.append(RelativeDistinguishedName([attribute]))
+        }
     }
     
     return DistinguishedName(components)
@@ -448,7 +465,7 @@ private func parseDistinguishedName(_ dn: String) throws -> DistinguishedName {
 /// Create CA certificate extensions
 private func createCAExtensions(publicKey: P384.Signing.PublicKey) throws -> Certificate.Extensions {
     return try Certificate.Extensions {
-        Critical(BasicConstraints.isCertificateAuthority(maxPathLength: nil))
+        Critical(BasicConstraints.isCertificateAuthority(maxPathLength: 0))
         Critical(KeyUsage(keyCertSign: true, cRLSign: true))
         AuthorityKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.x963Representation))))
         SubjectKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.x963Representation))))
@@ -456,7 +473,12 @@ private func createCAExtensions(publicKey: P384.Signing.PublicKey) throws -> Cer
 }
 
 /// Create end entity certificate extensions
-private func createEndEntityExtensions(publicKey: Certificate.PublicKey, issuerPublicKey: Certificate.PublicKey) throws -> Certificate.Extensions {
+private func createEndEntityExtensions(
+    publicKey: Certificate.PublicKey,
+    issuerPublicKey: Certificate.PublicKey,
+    subject: DistinguishedName
+) throws -> Certificate.Extensions {
+    let sanEntries = buildDNSSubjectAlternativeNames(from: subject)
     return try Certificate.Extensions {
         Critical(BasicConstraints.notCertificateAuthority)
         // For ECDSA TLS server/client certs, digitalSignature is sufficient. Avoid keyEncipherment for ECDSA.
@@ -464,6 +486,38 @@ private func createEndEntityExtensions(publicKey: Certificate.PublicKey, issuerP
         Critical(try ExtendedKeyUsage([.serverAuth, .clientAuth]))
         AuthorityKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: issuerPublicKey.subjectPublicKeyInfoBytes))))
         SubjectKeyIdentifier(keyIdentifier: ArraySlice(Data(SHA256.hash(data: publicKey.subjectPublicKeyInfoBytes))))
-        SubjectAlternativeNames([.dnsName("localhost"), .dnsName("runar.test")])
+        if !sanEntries.isEmpty { SubjectAlternativeNames(sanEntries) }
+        // No AIA/CRLDP URIs are included. Revocation/distribution by URL is not intended in this environment.
     }
-} 
+}
+
+/// Build Subject Alternative Names based on the subject CN, normalized to DNS-safe
+private func buildDNSSubjectAlternativeNames(from subject: DistinguishedName) -> [GeneralName] {
+    guard let cn = extractCommonName(subject) else { return [] }
+    let safe = dnsSafeName(cn)
+    return [.dnsName(safe)]
+}
+
+/// Extract commonName value from a DistinguishedName
+private func extractCommonName(_ subject: DistinguishedName) -> String? {
+    for rdn in subject { // RelativeDistinguishedName
+        for attr in rdn {
+            if attr.type == .RDNAttributeType.commonName {
+                // Fallback to description rendering of DirectoryString-like value
+                return String(describing: attr.value)
+            }
+        }
+    }
+    return nil
+}
+
+/// Normalize arbitrary input into a DNS-safe label
+private func dnsSafeName(_ input: String) -> String {
+    let lowered = input.lowercased()
+    let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789-.")
+    let filtered = lowered.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+    var result = String(filtered)
+    while result.contains("--") { result = result.replacingOccurrences(of: "--", with: "-") }
+    result = result.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    return result.isEmpty ? "node" : result
+}

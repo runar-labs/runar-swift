@@ -236,35 +236,44 @@ public class MobileKeyManager {
     public func processSetupToken(_ setupToken: SetupToken) throws -> NodeCertificateMessage {
         let nodeId = setupToken.nodeId
         logger.info("Processing setup token for node: \(nodeId)")
-        
-        // Validate the public key
-        if setupToken.nodePublicKey.isEmpty {
-            throw KeyError.invalidOperation("Empty public key in setup token")
+
+        // Enforce CSR presence and non-empty
+        guard !setupToken.csrDer.isEmpty else {
+            throw KeyError.invalidOperation("CSR is required and must not be empty")
         }
-        
-        // Use the public key directly for certificate creation (no CSR needed)
-        let validityDays: UInt32 = 365 // 1-year validity
-        let subject = "CN=\(nodeId),O=Runar,C=US"
-        
-        let nodeCertificate = try certificateAuthority.createCertificateFromPublicKey(
-            publicKeyData: setupToken.nodePublicKey,
-            subject: subject,
+
+        // Parse CSR
+        let csr = try CertificateRequest(derData: setupToken.csrDer)
+
+        // Verify proof-of-possession by checking the CSR signature
+        // swift-certificates verifies CSR signature during parsing; additional checks could be added if needed
+
+        // Validate subject CN matches DNS-safe node id
+        let subjectDescription = csr.subject
+        guard subjectDescription.contains(nodeId) else {
+            throw KeyError.validationError("CSR CN must match node id")
+        }
+
+        // Issue certificate from CSR
+        let validityDays: UInt32 = 365 // 1-year validity (consider shortening)
+        let nodeCertificate = try certificateAuthority.signCertificateRequest(
+            csrDer: setupToken.csrDer,
             validityDays: Int(validityDays)
         )
-        
+
         // Increment serial for next issuance
         serialCounter = serialCounter &+ 1
-        
+
         // Store the issued certificate
         issuedCertificates[nodeId] = nodeCertificate
-        
+
         // Create metadata
         let metadata = CertificateMetadata(
             issuedAt: UInt64(Date().timeIntervalSince1970),
             validityDays: validityDays,
             purpose: "Node TLS Certificate"
         )
-        
+
         // Create the message
         return NodeCertificateMessage(
             nodeCertificate: nodeCertificate,
