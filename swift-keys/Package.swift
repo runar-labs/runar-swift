@@ -19,12 +19,14 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-certificates.git", .upToNextMajor(from: "1.0.0")),
+        .package(path: "../swift-common"),
     ],
     targets: [
         .target(
             name: "RunarKeys",
             dependencies: [
                 .product(name: "X509", package: "swift-certificates"),
+                .product(name: "SwiftCommon", package: "swift-common"),
             ]
         ),
         .testTarget(
