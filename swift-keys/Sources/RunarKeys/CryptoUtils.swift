@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import SwiftCommon
 
 /// Utility functions for cryptographic operations
 public struct CryptoUtils {
@@ -9,12 +10,7 @@ public struct CryptoUtils {
     /// - Parameter publicKey: Public key bytes
     /// - Returns: Compact identifier string
     public static func compactId(_ publicKey: Data) -> String {
-        // Create a hash of the public key
-        let hash = SHA256.hash(data: publicKey)
-        
-        // Take the first 16 bytes and encode as base64url without padding
-        let prefix = Data(hash.prefix(16))
-        return base64URLEncode(prefix)
+        return NodeId.compactId(from: publicKey)
     }
     
     /// Generate a random identifier
@@ -38,9 +34,7 @@ public struct CryptoUtils {
     /// - Parameter data: Data to encode
     /// - Returns: Base58 encoded string
     private static func base64URLEncode(_ data: Data) -> String {
-        return data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+        // Deprecated: use NodeId directly for canonical encoding
+        return NodeId.compactId(from: data)
     }
 } 
