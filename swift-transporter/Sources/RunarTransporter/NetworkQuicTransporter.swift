@@ -129,7 +129,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         for address in peerInfo.addresses {
             do {
                 logger.info("🔗 [NetworkQuicTransporter] Attempting connection to \(peerId) via \(address)")
-                try await connectToAddress(address, peerId: peerId)
+                try await connectToAddress(address, peerId: peerId, expectedPeerPublicKey: peerInfo.publicKey)
                 logger.info("✅ [NetworkQuicTransporter] Connected to \(peerId) via \(address)")
                 return
             } catch {
@@ -659,7 +659,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
     }
     
-    private func buildQuicParametersForConnection(keyManager: MobileKeyManager, sniHost: String) throws -> NWParameters {
+    private func buildQuicParametersForConnection(keyManager: MobileKeyManager, sniHost: String, expectedPeerPublicKey: Data) throws -> NWParameters {
         logger.debug("🔐 [NetworkQuicTransporter] Building per-connection QUIC parameters with TLS config")
         let quic = NWProtocolQUIC.Options()
         // Set ALPN
@@ -692,8 +692,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 self.logger.debug("🔐 [Client verify] No certificates in trust object")
             }
             // Try evaluating NW-provided trust first
-            let policyHost = "localhost" as CFString
-            let clientPolicy = SecPolicyCreateSSL(true, policyHost)
+            // Use SNI host for TLS policy hostname checks
+            let clientPolicy = SecPolicyCreateSSL(true, sniHost as CFString)
             SecTrustSetPolicies(trustRef, clientPolicy)
             let anchors = [caCertificate] as CFArray
             let setAnchorStatus = SecTrustSetAnchorCertificates(trustRef, anchors)
@@ -703,8 +703,31 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             var ok = SecTrustEvaluateWithError(trustRef, &error)
             if ok {
                 self.logger.debug("✅ [NetworkQuicTransporter] [Client] trust OK (NW trust, anchors-only)")
-                complete(true)
-                return
+                // SPKI pinning: compare leaf public key bytes to expected peer public key (X9.63)
+                if let chain = SecTrustCopyCertificateChain(trustRef) as? [SecCertificate], let leaf = chain.first,
+                   let leafKey = SecCertificateCopyKey(leaf) {
+                    var pubErr: Unmanaged<CFError>?
+                    if let leafKeyData = SecKeyCopyExternalRepresentation(leafKey, &pubErr) as Data? {
+                        if leafKeyData == expectedPeerPublicKey {
+                            self.logger.debug("🔐 [NetworkQuicTransporter] [Client] SPKI pin OK")
+                            complete(true)
+                            return
+                        } else {
+                            self.logger.error("❌ [NetworkQuicTransporter] [Client] SPKI pin mismatch")
+                            complete(false)
+                            return
+                        }
+                    } else {
+                        let msg = pubErr?.takeRetainedValue().localizedDescription ?? "Unknown"
+                        self.logger.error("❌ [NetworkQuicTransporter] [Client] Failed to export leaf public key: \(msg)")
+                        complete(false)
+                        return
+                    }
+                } else {
+                    self.logger.error("❌ [NetworkQuicTransporter] [Client] Missing leaf certificate for SPKI pinning")
+                    complete(false)
+                    return
+                }
             }
             if let e = error { self.logger.error("❌ [NetworkQuicTransporter] [Client] NW trust failed: \(e). Trying rebuilt trust...") }
 
@@ -720,8 +743,26 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     ok = SecTrustEvaluateWithError(rebuilt, &e2)
                     if ok {
                         self.logger.debug("✅ [NetworkQuicTransporter] [Client] trust OK (rebuilt trust, anchors-only)")
-                        complete(true)
-                        return
+                        // SPKI pinning on rebuilt path
+                        if let leafKey = SecCertificateCopyKey(leaf) {
+                            var pubErr: Unmanaged<CFError>?
+                            if let leafKeyData = SecKeyCopyExternalRepresentation(leafKey, &pubErr) as Data? {
+                                if leafKeyData == expectedPeerPublicKey {
+                                    self.logger.debug("🔐 [NetworkQuicTransporter] [Client] SPKI pin OK (rebuilt)")
+                                    complete(true)
+                                    return
+                                } else {
+                                    self.logger.error("❌ [NetworkQuicTransporter] [Client] SPKI pin mismatch (rebuilt)")
+                                    complete(false)
+                                    return
+                                }
+                            } else {
+                                let msg = e2?.localizedDescription ?? "Unknown"
+                                self.logger.error("❌ [NetworkQuicTransporter] [Client] Failed to export leaf public key (rebuilt): \(msg)")
+                                complete(false)
+                                return
+                            }
+                        }
                     } else {
                         if let e2 = e2 { self.logger.error("❌ [NetworkQuicTransporter] [Client] rebuilt trust failed: \(e2)") }
                     }
@@ -755,7 +796,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         return params
     }
     
-    private func connectToAddress(_ address: String, peerId: String) async throws {
+    private func connectToAddress(_ address: String, peerId: String, expectedPeerPublicKey: Data) async throws {
         // Parse address
         let components = address.split(separator: ":")
         guard components.count == 2,
@@ -771,7 +812,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
         // Use SNI that matches certificate SAN regardless of numeric endpoint
         let sni = DnsSafeNodeId.convert(peerId)
-        let parameters = try buildQuicParametersForConnection(keyManager: keyManager, sniHost: sni)
+        // Expected peer public key for SPKI pinning (x963)
+        let parameters = try buildQuicParametersForConnection(keyManager: keyManager, sniHost: sni, expectedPeerPublicKey: expectedPeerPublicKey)
         logger.debug("🔧 [NetworkQuicTransporter] Created per-connection QUIC parameters for \(peerId)")
         
         // Create endpoint
