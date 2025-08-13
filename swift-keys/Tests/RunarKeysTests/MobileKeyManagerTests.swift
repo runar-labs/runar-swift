@@ -644,6 +644,69 @@ final class MobileKeyManagerTests: XCTestCase {
         }
     }
 
+    func testGenerateCSRCreatesKeyInKeychain() throws {
+        // Ensure root is initialized so getNodeId works
+        _ = try mobileKeyManager.initializeUserRootKey()
+
+        // Pre-clean any prior key material for idempotency (test-only cleanup)
+        let preNodeId = mobileKeyManager.getNodeId()
+        let preLabel = "Runar Node Private Key \(preNodeId)"
+        let preTag = ("com.runar.keys." + preNodeId).data(using: .utf8)!
+        let delQueries: [[String: Any]] = [
+            [
+                kSecClass as String: kSecClassKey,
+                kSecAttrApplicationTag as String: preTag,
+            ],
+            [
+                kSecClass as String: kSecClassKey,
+                kSecAttrLabel as String: preLabel,
+            ],
+        ]
+        for q in delQueries { SecItemDelete(q as CFDictionary) }
+
+        // Generate CSR (creates and persists a SecKey for the node)
+        let setup = try mobileKeyManager.generateCSR()
+        XCTAssertFalse(setup.csrDer.isEmpty)
+
+        // Parse CSR to ensure it's valid
+        let csr = try CertificateRequest(derData: setup.csrDer)
+        XCTAssertTrue(csr.subject.contains("CN="))
+
+        // Verify the SecKey exists in Keychain under the expected label
+        let nodeId = setup.nodeId
+        let keyLabel = "Runar Node Private Key \(nodeId)"
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrLabel as String: keyLabel,
+            kSecReturnRef as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        XCTAssertEqual(status, errSecSuccess)
+        guard status == errSecSuccess, let secKey = result as! SecKey? else {
+            XCTFail("SecKey not found in Keychain")
+            return
+        }
+
+        // Check the stored public key matches the one in SetupToken
+        var pubErr: Unmanaged<CFError>?
+        let secPub = SecKeyCopyPublicKey(secKey)!
+        let secPubData = SecKeyCopyExternalRepresentation(secPub, &pubErr)! as Data
+        XCTAssertEqual(secPubData, setup.nodePublicKey)
+
+        // Sanity: sign/verify using SecKey and public key
+        let message = "runar-csr-pop".data(using: .utf8)! as CFData
+        var signErr: Unmanaged<CFError>?
+        guard let sig = SecKeyCreateSignature(secKey, .ecdsaSignatureMessageX962SHA384, message, &signErr) as Data? else {
+            XCTFail("Failed to sign with SecKey: \(signErr?.takeRetainedValue().localizedDescription ?? "?")")
+            return
+        }
+        var verifyErr: Unmanaged<CFError>?
+        let ok = SecKeyVerifySignature(secPub, .ecdsaSignatureMessageX962SHA384, message, sig as CFData, &verifyErr)
+        XCTAssertTrue(ok)
+    }
+
     // MARK: - Helper Methods
 
     // Note: Proper CSR generation is handled by CertificateRequest.create() in the main codebase

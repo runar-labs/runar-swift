@@ -178,10 +178,11 @@ final class EndToEndTests: XCTestCase {
         let rootPublicKey = try keyManager.initializeUserRootKey()
         XCTAssertEqual(rootPublicKey.count, 97) // P-384 uncompressed public key
 
-        // Generate CSR
+        // Create CA and generate CSR
+        try keyManager.createCACertificate()
         let setupToken = try keyManager.generateCSR()
         XCTAssertFalse(setupToken.nodeId.isEmpty)
-        XCTAssertTrue(setupToken.csrDer.isEmpty) // CSR is now empty, we use public key directly
+        XCTAssertFalse(setupToken.csrDer.isEmpty)
         XCTAssertEqual(setupToken.nodePublicKey.count, 97)
 
         // Process the CSR to get a certificate
@@ -555,7 +556,7 @@ final class EndToEndTests: XCTestCase {
             let requestMessage = RunarNetworkMessage(
                 sourceNodeId: node1Id,
                 destinationNodeId: node2Id,
-                messageType: "REQUEST",
+                messageType: MessageTypes.request,
                 payloads: [
                     NetworkMessagePayloadItem(
                         path: "/api1/get",
@@ -590,7 +591,7 @@ final class EndToEndTests: XCTestCase {
             let eventMessage = RunarNetworkMessage(
                 sourceNodeId: node1Id,
                 destinationNodeId: node2Id,
-                messageType: "EVENT",
+                messageType: MessageTypes.event,
                 payloads: [
                     NetworkMessagePayloadItem(
                         path: "/api1/data_processed",

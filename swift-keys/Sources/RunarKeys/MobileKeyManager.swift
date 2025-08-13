@@ -753,35 +753,64 @@ public class MobileKeyManager {
     public func generateCSR() throws -> SetupToken {
         let nodeId = getNodeId()
 
-        // Step 1: Generate P-384 private key directly in Keychain (like the POC)
+        // 1) Generate P-384 signing key (CryptoKit) and import same key into Keychain as SecKey
         let keyLabel = "Runar Node Private Key \(nodeId)"
-        let secPrivateKey = try ECDHKeyPair.generateInKeychain(label: keyLabel)
+        let appTag = ("com.runar.keys." + nodeId).data(using: .utf8)!
+        let signingPrivateKey = P384.Signing.PrivateKey()
+        let signingScalar = signingPrivateKey.rawRepresentation // 48 bytes
+        let publicKeyBytes = signingPrivateKey.publicKey.x963Representation
+        let pkcs8Der = buildPKCS8ECPrivateKeyDER(privateScalar: signingScalar, publicX963: publicKeyBytes)
 
-        // Step 2: Get the public key from the Keychain key
-        guard let secPublicKey = SecKeyCopyPublicKey(secPrivateKey) else {
-            throw KeyError.keychainOperationFailed("Failed to get public key from SecKey")
+        // Create a transient SecKey and then persist via SecItemAdd
+        let transientAttrs: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
+        ]
+        var createErr: Unmanaged<CFError>?
+        guard let transientKey = SecKeyCreateWithData(pkcs8Der as CFData, transientAttrs as CFDictionary, &createErr) else {
+            throw KeyError.keychainOperationFailed("Failed to create SecKey from DER: \(createErr?.takeRetainedValue().localizedDescription ?? "Unknown")")
+        }
+        let addQuery: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
+            kSecAttrApplicationTag as String: appTag,
+            kSecAttrLabel as String: keyLabel,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecValueRef as String: transientKey,
+        ]
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess || addStatus == errSecDuplicateItem else {
+            throw KeyError.keychainOperationFailed("Failed to add SecKey to Keychain: \(addStatus)")
+        }
+        // Retrieve persisted key
+        let keyQuery: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: appTag,
+            kSecReturnRef as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var keyResult: AnyObject?
+        let copyStatus = SecItemCopyMatching(keyQuery as CFDictionary, &keyResult)
+        guard copyStatus == errSecSuccess, let secPrivateKey = keyResult as! SecKey? else {
+            throw KeyError.keychainOperationFailed("Persisted key not found in Keychain: \(copyStatus)")
         }
 
-        // Step 3: Export the public key for the CSR
-        var pubError: Unmanaged<CFError>?
-        guard let pubData = SecKeyCopyExternalRepresentation(secPublicKey, &pubError) as Data? else {
-            throw KeyError.keychainOperationFailed("Failed to export public key: \(pubError?.takeRetainedValue().localizedDescription ?? "Unknown")")
-        }
+        // 3) Export public key bytes already computed above for identity and peer info
 
-        // Step 4: Store the key label for later use
+        // 4) Store label and SecKey for later use (SecIdentity pairing after cert issuance)
         certificateKeyLabels[nodeId] = keyLabel
-
-        // Step 5: Store the SecKey reference for later use
-        // We'll use this SecKey directly for certificate operations, like the POC does
         certificateSecKeys[nodeId] = secPrivateKey
 
-        // Step 6: Return the public key for certificate creation
-        // The CA will create the certificate directly from this public key
-        let subject = "CN=\(nodeId),O=Runar,C=US"
+        // 5) Build a PKCS#10 CSR with CN = DNS-safe node id; SANs computed server-side
+        let subjectCN = dnsSafeName(nodeId)
+        let subject = "CN=\(subjectCN),O=Runar,C=US"
+        let ecdhKeyForCsr = try ECDHKeyPair(rawRepresentation: signingScalar)
+        let csrDer = try CertificateRequest.create(keyPair: ecdhKeyForCsr, subject: subject)
 
         return SetupToken(
-            nodePublicKey: pubData,
-            csrDer: Data(), // Empty - we'll use public key directly
+            nodePublicKey: publicKeyBytes,
+            csrDer: csrDer,
             nodeId: nodeId
         )
     }
@@ -1101,6 +1130,79 @@ public class MobileKeyManager {
         try ECDHKeyPair(rawRepresentation: data)
     }
 
+    /// Extract raw 48-byte P-384 private scalar from SecKey external representation.
+    /// Handles both RFC5915 ECPrivateKey and PKCS#8 PrivateKeyInfo wrapping ECPrivateKey.
+    private func extractP384PrivateScalar(fromECPrivateKeyExternal data: Data) -> Data? {
+        // Some keychain providers return raw big-endian scalar bytes
+        if data.count >= 48 && data.count <= 64 && data[0] != 0x30 {
+            return Data(data.suffix(48))
+        }
+        guard data.count > 0, data[0] == 0x30 else { return nil }
+        var idx = 1
+        func readLen() -> Int? {
+            guard idx < data.count else { return nil }
+            let first = Int(data[idx]); idx += 1
+            if first < 0x80 { return first }
+            let num = first & 0x7F
+            guard num > 0, idx + num <= data.count else { return nil }
+            var val = 0
+            for _ in 0..<num { val = (val << 8) | Int(data[idx]); idx += 1 }
+            return val
+        }
+        func readTLV() -> (UInt8, Data)? {
+            guard idx < data.count else { return nil }
+            let tag = data[idx]; idx += 1
+            guard let length = readLen(), idx + length <= data.count else { return nil }
+            let val = data[idx..<(idx + length)]
+            idx += length
+            return (tag, Data(val))
+        }
+        // Outer SEQUENCE
+        _ = readLen()
+        // Peek next TLV
+        let savedIdx = idx
+        guard let (tag1, v1) = readTLV(), tag1 == 0x02 else { return nil }
+        // If version INTEGER is 0, likely PKCS#8: SEQ { INT 0, SEQ algId, OCTET STRING privateKey }
+        if v1.count == 1, v1[0] == 0x00 {
+            // algId
+            guard let (algTag, _) = readTLV(), algTag == 0x30 else { return nil }
+            // privateKey OCTET STRING which contains ECPrivateKey DER
+            guard let (octTag, octVal) = readTLV(), octTag == 0x04 else { return nil }
+            // The octet itself may be the ECPrivateKey SEQUENCE
+            guard octVal.count > 0, octVal[0] == 0x30 else { return nil }
+            // Parse ECPrivateKey sequence to get scalar
+            var jdx = 1
+            func rdLen(_ buf: Data, _ pos: inout Int) -> Int? {
+                guard pos < buf.count else { return nil }
+                let first = Int(buf[pos]); pos += 1
+                if first < 0x80 { return first }
+                let num = first & 0x7F
+                guard num > 0, pos + num <= buf.count else { return nil }
+                var val = 0
+                for _ in 0..<num { val = (val << 8) | Int(buf[pos]); pos += 1 }
+                return val
+            }
+            _ = rdLen(octVal, &jdx)
+            // INTEGER version
+            guard jdx < octVal.count, octVal[jdx] == 0x02 else { return nil }
+            jdx += 1; _ = rdLen(octVal, &jdx); jdx += 1
+            // OCTET STRING privateKey
+            guard jdx < octVal.count, octVal[jdx] == 0x04 else { return nil }
+            jdx += 1
+            guard let pl = rdLen(octVal, &jdx), jdx + pl <= octVal.count else { return nil }
+            let scalar = octVal[jdx..<(jdx + pl)]
+            return Data(scalar.count == 48 ? Data(scalar) : Data(scalar.suffix(48)))
+        }
+        // Otherwise, attempt RFC5915 ECPrivateKey directly (we consumed first INTEGER already)
+        idx = savedIdx
+        // Expect INTEGER version
+        guard let (tVer, vVer) = readTLV(), tVer == 0x02 else { return nil }
+        _ = vVer
+        // OCTET STRING privateKey
+        guard let (tOct, vOct) = readTLV(), tOct == 0x04 else { return nil }
+        return Data(vOct.count == 48 ? vOct : Data(vOct.suffix(48)))
+    }
+
     /// Retrieve a SecKey from Keychain by label
     private func retrieveSecKeyFromKeychain(label: String) -> SecKey? {
         let query: [String: Any] = [
@@ -1114,7 +1216,7 @@ public class MobileKeyManager {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
 
         if status == errSecSuccess, let secKey = result {
-            return secKey as! SecKey
+            return (secKey as! SecKey)
         }
         return nil
     }
@@ -1152,6 +1254,80 @@ public class MobileKeyManager {
         }
 
         return DistinguishedName(components)
+    }
+
+    /// Build RFC5915 ECPrivateKey DER (P-384) from raw 48-byte scalar and public key (uncompressed SEC1)
+    private func buildECPrivateKeyDER(privateScalar: Data, publicX963: Data) -> Data {
+        precondition(privateScalar.count == 48, "P-384 scalar must be 48 bytes")
+        precondition(publicX963.count == 97 && publicX963.first == 0x04, "P-384 uncompressed public key must be 97 bytes starting with 0x04")
+
+        func derLength(_ n: Int) -> Data {
+            if n < 0x80 { return Data([UInt8(n)]) }
+            var bytes: [UInt8] = []
+            var val = n
+            while val > 0 {
+                bytes.insert(UInt8(val & 0xFF), at: 0)
+                val >>= 8
+            }
+            return Data([0x80 | UInt8(bytes.count)]) + Data(bytes)
+        }
+
+        func tlv(_ tag: UInt8, _ value: Data) -> Data {
+            Data([tag]) + derLength(value.count) + value
+        }
+
+        // INTEGER 1
+        let version = tlv(0x02, Data([0x01]))
+        // OCTET STRING of private key scalar
+        let privOctet = tlv(0x04, privateScalar)
+        // parameters [0] EXPLICIT namedCurve OID for secp384r1 (1.3.132.0.34)
+        let oidBytes = Data([0x2B, 0x81, 0x04, 0x00, 0x22])
+        let oid = tlv(0x06, oidBytes)
+        let params = tlv(0xA0, oid)
+        // publicKey [1] EXPLICIT BIT STRING of uncompressed public key
+        let pubBitString = tlv(0x03, Data([0x00]) + publicX963)
+        let pub = tlv(0xA1, pubBitString)
+
+        let seqValue = version + privOctet + params + pub
+        let seq = tlv(0x30, seqValue)
+        return seq
+    }
+
+    /// Build PKCS#8 PrivateKeyInfo wrapping an ECPrivateKey for P-384
+    private func buildPKCS8ECPrivateKeyDER(privateScalar: Data, publicX963: Data) -> Data {
+        precondition(privateScalar.count == 48, "P-384 scalar must be 48 bytes")
+        precondition(publicX963.count == 97 && publicX963.first == 0x04, "P-384 uncompressed public key must be 97 bytes starting with 0x04")
+
+        func derLength(_ n: Int) -> Data {
+            if n < 0x80 { return Data([UInt8(n)]) }
+            var bytes: [UInt8] = []
+            var val = n
+            while val > 0 {
+                bytes.insert(UInt8(val & 0xFF), at: 0)
+                val >>= 8
+            }
+            return Data([0x80 | UInt8(bytes.count)]) + Data(bytes)
+        }
+
+        func tlv(_ tag: UInt8, _ value: Data) -> Data {
+            Data([tag]) + derLength(value.count) + value
+        }
+
+        // version INTEGER 0
+        let version = tlv(0x02, Data([0x00]))
+
+        // privateKeyAlgorithm = SEQUENCE { OID id-ecPublicKey, OID secp384r1 }
+        let oidIdEcPublicKey = tlv(0x06, Data([0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01])) // 1.2.840.10045.2.1
+        let oidSecp384r1 = tlv(0x06, Data([0x2B, 0x81, 0x04, 0x00, 0x22])) // 1.3.132.0.34
+        let algId = tlv(0x30, oidIdEcPublicKey + oidSecp384r1)
+
+        // privateKey OCTET STRING = ECPrivateKey DER (with public key inside)
+        let ecPriv = buildECPrivateKeyDER(privateScalar: privateScalar, publicX963: publicX963)
+        let privOctet = tlv(0x04, ecPriv)
+
+        let seqValue = version + algId + privOctet
+        let seq = tlv(0x30, seqValue)
+        return seq
     }
 }
 
