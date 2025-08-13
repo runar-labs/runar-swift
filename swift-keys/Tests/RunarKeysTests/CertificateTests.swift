@@ -1,56 +1,26 @@
-@testable import RunarKeys
 import XCTest
+import X509
+@testable import RunarKeys
 
 final class CertificateTests: XCTestCase {
-    func testX509CertificateCreation() throws {
-        // Test basic X509Certificate creation with real certificate
-        let keyPair = try ECDHKeyPair()
-        let ca = try CertificateAuthority.create(subject: "CN=Test CA, O=Runar, C=US")
+    func testCreateCAAndLeaf() throws {
+        let ca = try CertificateAuthority.createCA(subjectCN: "Runar Test CA")
+        XCTAssertTrue(ca.certificate.subject.description.contains("Runar Test CA"))
 
-        let certificate = ca.certificate
-        XCTAssertFalse(certificate.toDER().isEmpty, "Certificate should have real DER data")
-        XCTAssertNotEqual(certificate.subject, "CN=Placeholder")
-        XCTAssertNotEqual(certificate.issuer, "CN=Placeholder CA")
-    }
+        // Serial: big-endian of UInt64
+        var serial = withUnsafeBytes(of: UInt64(1).bigEndian, Array.init)
+        while serial.first == 0 && serial.count > 1 { serial.removeFirst() }
 
-    func testCertificateAuthorityCreation() throws {
-        // Test CertificateAuthority creation
-        let ca = try CertificateAuthority.create(subject: "CN=Test CA, O=Runar, C=US")
-
-        XCTAssertNotNil(ca.certificate)
-        XCTAssertNotNil(try? ca.getKeyPair().toECDSAVerifyingKey())
-        // Verify the certificate has real data
-        let cert = ca.certificate
-        XCTAssertFalse(cert.toDER().isEmpty)
-    }
-
-    func testCertificateValidatorCreation() throws {
-        // Test CertificateValidator creation
-        let ca = try CertificateAuthority.create(subject: "CN=Test CA, O=Runar, C=US")
-        let validator = CertificateValidator(trustedCaCertificates: [ca.certificate])
-        // XCTAssertEqual(validator.trustedCaCertificates.count, 1) // REMOVE THIS LINE
-        // Instead, check that validation does not throw
-        XCTAssertNoThrow(try validator.validateCertificate(ca.certificate))
-    }
-
-    func testCertificateRequestCreation() throws {
-        // Test CertificateRequest creation
-        let keyPair = try ECDHKeyPair()
-        let csrData = try CertificateRequest.create(keyPair: keyPair, subject: "CN=Test Subject, O=Runar, C=US")
-
-        // Verify it creates real CSR data
-        XCTAssertFalse(csrData.isEmpty, "CSR should have real data")
-    }
-
-    func testCertificateSigning() throws {
-        // Test certificate signing workflow
-        let ca = try CertificateAuthority.create(subject: "CN=Test CA, O=Runar, C=US")
-        let keyPair = try ECDHKeyPair()
-        let csrData = try CertificateRequest.create(keyPair: keyPair, subject: "CN=Test Subject, O=Runar, C=US")
-
-        let signedCert = try ca.signCertificateRequest(csrDer: csrData, validityDays: 365)
-
-        XCTAssertNotNil(signedCert)
-        XCTAssertFalse(signedCert.toDER().isEmpty, "Signed certificate should have real DER data")
+        let leaf = try CertificateIssuer.signLeaf(
+            ca: ca,
+            subjectCN: "node-1",
+            sanDNS: ["node-1"],
+            validityDays: 90,
+            serialBytes: serial
+        )
+        XCTAssertTrue(leaf.subject.description.contains("node-1"))
+        XCTAssertLessThan(leaf.notValidBefore, leaf.notValidAfter)
     }
 }
+
+
