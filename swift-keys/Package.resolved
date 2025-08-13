@@ -12,10 +12,10 @@
     {
       "identity" : "swift-certificates",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-certificates.git",
+      "location" : "https://github.com/runar-labs/swift-certificates.git",
       "state" : {
-        "revision" : "c059d9c9d08d6654b9a92dda93d9049a278964c6",
-        "version" : "1.12.0"
+        "branch" : "feature/external-csr",
+        "revision" : "51411d737bef5b12dc1a9b998333333be10faab9"
       }
     },
     {

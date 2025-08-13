@@ -17,29 +17,22 @@ struct CSRBuilder {
         let p256Pub = try P256.Signing.PublicKey(x963Representation: pubX963)
         let certPub = try Certificate.PublicKey(p256Pub)
 
-        // Build CRI
-        let info = CertificationRequestInfo(
-            subject: subject,
-            publicKey: certPub,
-            attributes: .init()
-        )
-
-        // DER encode CRI and sign digest via SecKey
-        var s = DER.Serializer()
-        try info.serialize(into: &s)
-        let criDER = Data(s.serializedBytes)
-        let digest = Data(SHA256.hash(data: criDER))
+        // Build CSR using our fork's external-signing initializer (signatureDER = X9.62 ECDSA DER)
+        let criBytes = try CertificateSigningRequestHelper.infoBytes(version: .v1, subject: subject, publicKey: certPub, attributes: .init())
+        let digest = Data(SHA256.hash(data: Data(criBytes)))
         var serr: Unmanaged<CFError>?
         guard let sigDER = SecKeyCreateSignature(signingKey, SecKeyAlgorithm.ecdsaSignatureDigestX962SHA256, digest as CFData, &serr) as Data? else {
             throw NSError(domain: "CSR", code: -1, userInfo: [NSLocalizedDescriptionKey: serr?.takeRetainedValue().localizedDescription ?? "sign failed"])
         }
-
-        // Assemble CSR
-        let alg = AlgorithmIdentifier(algorithm: .ecdsaWithSHA256)
-        let csr = CertificationRequest(info: info, algorithm: alg, signature: ArraySlice(sigDER))
-        var out = DER.Serializer()
-        try csr.serialize(into: &out)
-        return Data(out.serializedBytes)
+        let csr = try CertificateSigningRequest(
+            version: .v1,
+            subject: subject,
+            publicKey: certPub,
+            attributes: .init(),
+            signatureAlgorithm: .ecdsaWithSHA256,
+            signatureDER: Array(sigDER)
+        )
+        return try Data(CertificateSigningRequestHelper.derEncoded(csr))
     }
 
     private static func distinguishedName(cn: String) throws -> DistinguishedName {
