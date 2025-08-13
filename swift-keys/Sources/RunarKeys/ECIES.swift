@@ -1,8 +1,8 @@
 import Foundation
 import CryptoKit
 
-struct ECIES {
-    static func encrypt(data: Data, recipientPublicKey: P256.KeyAgreement.PublicKey) throws -> Data {
+public struct ECIES {
+    public static func encrypt(data: Data, recipientPublicKey: P256.KeyAgreement.PublicKey) throws -> Data {
         let ephPriv = P256.KeyAgreement.PrivateKey()
         let ephPub = ephPriv.publicKey
         let secret = try ephPriv.sharedSecretFromKeyAgreement(with: recipientPublicKey)
@@ -12,7 +12,7 @@ struct ECIES {
         return ephPub.x963Representation + combined
     }
 
-    static func decrypt(encrypted: Data, recipientPrivateKey: P256.KeyAgreement.PrivateKey) throws -> Data {
+    public static func decrypt(encrypted: Data, recipientPrivateKey: P256.KeyAgreement.PrivateKey) throws -> Data {
         precondition(encrypted.count > 65)
         let ephPubBytes = encrypted.prefix(65)
         let ct = encrypted.dropFirst(65)

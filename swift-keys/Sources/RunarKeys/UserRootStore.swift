@@ -1,24 +1,34 @@
 import Foundation
 import Security
 
-enum UserRootStore {
+public enum UserRootStore {
     static let service = "com.runar.keys.user-root"
     static let account = "root"
 
-    static func save(_ secret: Data) throws {
-        let query: [String: Any] = [
+    public static func save(_ secret: Data) throws {
+        let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecValueData as String: secret,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
-        SecItemDelete(query as CFDictionary)
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        var addQuery = baseQuery
+        addQuery[kSecValueData as String] = secret
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let attrsToUpdate: [String: Any] = [
+                kSecValueData as String: secret,
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            ]
+            let upd = SecItemUpdate(baseQuery as CFDictionary, attrsToUpdate as CFDictionary)
+            guard upd == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(upd)) }
+        } else if status != errSecSuccess {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
     }
 
-    static func load() throws -> Data {
+    public static func load() throws -> Data {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

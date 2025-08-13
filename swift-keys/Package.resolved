@@ -15,7 +15,7 @@
       "location" : "https://github.com/runar-labs/swift-certificates.git",
       "state" : {
         "branch" : "feature/external-csr",
-        "revision" : "51411d737bef5b12dc1a9b998333333be10faab9"
+        "revision" : "091d66f40d9d35a39ae651c0ed4bb8578694026d"
       }
     },
     {

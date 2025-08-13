@@ -48,6 +48,49 @@ public struct CertificateIssuer {
         return cert
     }
 
+    public static func signLeafWithPublicKey(
+        ca: CertificateAuthority.GeneratedCA,
+        leafPublicKey: Certificate.PublicKey,
+        subjectCN: String,
+        sanDNS: [String],
+        validityDays: Int,
+        serialBytes: [UInt8]
+    ) throws -> Certificate {
+        let notBefore = Date().addingTimeInterval(-60)
+        let notAfter = Date().addingTimeInterval(TimeInterval(validityDays * 24 * 60 * 60))
+        let subject = try distinguishedName(cn: subjectCN)
+
+        // Compute SKI/AKI
+        let leafX963 = try leafPublicKey.exportedPublicKeyBytes()
+        let ski = ArraySlice(Data(SHA256.hash(data: leafX963)))
+        let caX963 = try Certificate.PublicKey(P256.Signing.PublicKey(x963Representation: ca.privateKey.publicKey.x963Representation)).exportedPublicKeyBytes()
+        let aki = ArraySlice(Data(SHA256.hash(data: caX963)))
+
+        let san = SubjectAlternativeNames(sanDNS.map { GeneralName.dnsName($0) })
+        let exts = try Certificate.Extensions {
+            Critical(BasicConstraints.notCertificateAuthority)
+            Critical(KeyUsage(digitalSignature: true))
+            try Critical(ExtendedKeyUsage([.serverAuth, .clientAuth]))
+            SubjectKeyIdentifier(keyIdentifier: ski)
+            AuthorityKeyIdentifier(keyIdentifier: aki)
+            san
+        }
+
+        let cert = try Certificate(
+            version: .v3,
+            serialNumber: Certificate.SerialNumber(bytes: ArraySlice(serialBytes)),
+            publicKey: leafPublicKey,
+            notValidBefore: notBefore,
+            notValidAfter: notAfter,
+            issuer: ca.certificate.subject,
+            subject: subject,
+            signatureAlgorithm: .ecdsaWithSHA256,
+            extensions: exts,
+            issuerPrivateKey: Certificate.PrivateKey(ca.privateKey)
+        )
+        return cert
+    }
+
     private static func distinguishedName(cn: String) throws -> DistinguishedName {
         let attr = try RelativeDistinguishedName.Attribute(type: .RDNAttributeType.commonName, printableString: cn)
         return DistinguishedName([RelativeDistinguishedName([attr])])
