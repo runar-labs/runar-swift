@@ -18,7 +18,7 @@ struct CSRBuilder {
         let certPub = try Certificate.PublicKey(p256Pub)
 
         // Build CRI
-        let info = CertificationRequest.Info(
+        let info = CertificationRequestInfo(
             subject: subject,
             publicKey: certPub,
             attributes: .init()
@@ -36,11 +36,7 @@ struct CSRBuilder {
 
         // Assemble CSR
         let alg = AlgorithmIdentifier(algorithm: .ecdsaWithSHA256)
-        let csr = CertificationRequest(
-            certificationRequestInfo: info,
-            signatureAlgorithm: alg,
-            signature: .init(bytes: ArraySlice(sigDER))
-        )
+        let csr = CertificationRequest(info: info, algorithm: alg, signature: ArraySlice(sigDER))
         var out = DER.Serializer()
         try csr.serialize(into: &out)
         return Data(out.serializedBytes)

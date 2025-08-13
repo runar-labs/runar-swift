@@ -9,7 +9,7 @@ final class CSRBuilderTests: XCTestCase {
         let cn = "node-csr-test"
         let der = try CSRBuilder.buildCSR(subjectCN: cn, signingKey: key)
         let parsed = try CertificationRequest(derEncoded: Array(der))
-        XCTAssertTrue(parsed.info.subject.description.contains("CN=\(cn)"))
+        XCTAssertTrue(parsed.certificationRequestInfo.subject.description.contains("CN=\(cn)"))
     }
 }
 

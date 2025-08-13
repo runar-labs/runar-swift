@@ -10,7 +10,7 @@ let package = Package(
         .library(name: "RunarKeys", targets: ["RunarKeys"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-certificates.git", from: "1.4.0"),
+        .package(url: "https://github.com/apple/swift-certificates.git", from: "1.12.0"),
     ],
     targets: [
         .target(
