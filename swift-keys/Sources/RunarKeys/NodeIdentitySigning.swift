@@ -2,8 +2,8 @@ import Foundation
 import Security
 import CryptoKit
 
-struct NodeIdentitySigning {
-    static func generateOrLoad(label: String) throws -> SecKey {
+public struct NodeIdentitySigning {
+    public static func generateOrLoad(label: String) throws -> SecKey {
         if let existing = findPrivateKey(label: label) { return existing }
 
         // Require Secure Enclave P-256 non-extractable key. No software fallback.
@@ -23,7 +23,7 @@ struct NodeIdentitySigning {
         return secKey
     }
 
-    static func sign(data: Data, with secKey: SecKey) throws -> Data {
+    public static func sign(data: Data, with secKey: SecKey) throws -> Data {
         let alg = SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(secKey, alg, data as CFData, &err) as Data? else {
@@ -32,7 +32,7 @@ struct NodeIdentitySigning {
         return sig
     }
 
-    static func publicKeyX963(from secKey: SecKey) throws -> Data {
+    public static func publicKeyX963(from secKey: SecKey) throws -> Data {
         guard let pub = SecKeyCopyPublicKey(secKey) else {
             throw NSError(domain: NSOSStatusErrorDomain, code: -1, userInfo: [NSLocalizedDescriptionKey: "No public key"])
         }

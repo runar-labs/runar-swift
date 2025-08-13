@@ -3,13 +3,13 @@ import CryptoKit
 import X509
 import SwiftASN1
 
-struct CertificateAuthority {
-    struct GeneratedCA {
-        let privateKey: P256.Signing.PrivateKey
-        let certificate: Certificate
+public struct CertificateAuthority {
+    public struct GeneratedCA {
+        public let privateKey: P256.Signing.PrivateKey
+        public let certificate: Certificate
     }
 
-    static func createCA(subjectCN: String, validityYears: Int = 10) throws -> GeneratedCA {
+    public static func createCA(subjectCN: String, validityYears: Int = 10) throws -> GeneratedCA {
         let key = P256.Signing.PrivateKey()
         let subject = try distinguishedName(cn: subjectCN)
         let notBefore = Date().addingTimeInterval(-60)

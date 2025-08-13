@@ -4,8 +4,8 @@ import CryptoKit
 import X509
 import SwiftASN1
 
-struct CSRBuilder {
-    static func buildCSR(subjectCN: String, signingKey: SecKey) throws -> Data {
+public struct CSRBuilder {
+    public static func buildCSR(subjectCN: String, signingKey: SecKey) throws -> Data {
         let subject = try distinguishedName(cn: subjectCN)
 
         // Build Certificate.PublicKey from SecKey public x963

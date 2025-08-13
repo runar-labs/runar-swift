@@ -3,8 +3,8 @@ import CryptoKit
 import X509
 import SwiftASN1
 
-struct CertificateIssuer {
-    static func signLeaf(
+public struct CertificateIssuer {
+    public static func signLeaf(
         ca: CertificateAuthority.GeneratedCA,
         subjectCN: String,
         sanDNS: [String],

@@ -67,6 +67,13 @@ struct RunarSEKeyManager {
         let digest = SHA256.hash(data: data)
         return digest.compactMap { String(format: "%02x", $0) }.joined()
     }
+
+    static func agreementPublicKey(from privateKey: SecKey) throws -> P256.KeyAgreement.PublicKey {
+        guard let pub = SecKeyCopyPublicKey(privateKey) else { throw RunarSEKeyManagerError.keyGenerationFailed(errSecInvalidKeyRef) }
+        var error: Unmanaged<CFError>?
+        guard let data = SecKeyCopyExternalRepresentation(pub, &error) as Data? else { throw RunarSEKeyManagerError.keyGenerationFailed(errSecParam) }
+        return try P256.KeyAgreement.PublicKey(x963Representation: data)
+    }
 }
 
 

@@ -1,8 +1,8 @@
 import Foundation
 import CryptoKit
 
-enum Ids {
-    static func compactId(_ publicKey: Data) -> String {
+public enum Ids {
+    public static func compactId(_ publicKey: Data) -> String {
         let digest = SHA256.hash(data: publicKey)
         let first16 = Data(digest.prefix(16))
         return base64url(first16)
