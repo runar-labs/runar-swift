@@ -123,7 +123,8 @@ public class CertificateAuthority {
         return X509Certificate(certificate: leafCertificate)
     }
 
-    /// Create a leaf certificate directly from a public key (for Keychain integration)
+    /// Create a leaf certificate directly from a public key (legacy path; prefer CSR-based issuance)
+    @available(*, deprecated, message: "Deprecated: Use CSR-based issuance via signCertificateRequest(...) to enforce PoP and policy.")
     public func createCertificateFromPublicKey(publicKeyData: Data, subject: String, validityDays: Int) throws -> X509Certificate {
         let publicKey = try P384.Signing.PublicKey(x963Representation: publicKeyData)
         let leafCertificate = try createLeafCertificateFromPublicKey(
@@ -400,6 +401,7 @@ private func createLeafCertificate(
 }
 
 /// Create a certificate directly from a public key (for Keychain integration)
+@available(*, deprecated, message: "Deprecated: Use CSR-based issuance via createLeafCertificate(csr:...).")
 private func createLeafCertificateFromPublicKey(
     caCertificate: Certificate,
     caPrivateKey: P384.Signing.PrivateKey,

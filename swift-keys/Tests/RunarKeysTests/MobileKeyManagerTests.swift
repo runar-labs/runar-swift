@@ -520,6 +520,9 @@ final class MobileKeyManagerTests: XCTestCase {
         // Skip this test if we can't access Keychain (e.g., in CI)
         // In a real app, you'd want to test this with proper Keychain access
 
+        // Ensure clean slate for this test
+        try? mobileKeyManager.clearKeychainState()
+
         // Initialize the key manager with some state
         _ = try mobileKeyManager.initializeUserRootKey()
         _ = try mobileKeyManager.deriveUserProfileKey(label: "personal")

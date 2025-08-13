@@ -561,35 +561,11 @@ public class MobileKeyManager {
         // Extract the raw 48-byte scalar of the root private key (P-384).
         let rootScalarBytes = rootKey.rawScalarBytes()
 
-        // Derive a profile-specific private scalar using HKDF-SHA-384.
-        let salt = "RunarUserProfileDerivationSalt".data(using: .utf8)!
-
-        // Attempt to create a valid P-384 signing key from the HKDF output.
-        // If the candidate scalar is out of range (rare) retry with a counter
-        // in the info field until success.
-        var counter: UInt32 = 0
-        let profileKey: ECDHKeyPair
-
-        repeat {
-            let info = if counter == 0 {
-                "runar-profile-\(label)"
-            } else {
-                "runar-profile-\(label)-\(counter)"
-            }
-
-            let infoData = info.data(using: .utf8)!
-
-            // Use SHA-384 to prepare IKM for HKDF
-            let hash = SHA384.hash(data: rootScalarBytes)
-            let derivedKey = Data(hash)
-
-            // Derive agreement and signing keys using deterministic HKDF-SHA-384
-            let agreementPriv = try KeyDeriver.deriveAgreementPrivateKey(masterScalar: rootScalarBytes, scope: "profile", label: label, counterStart: counter)
-            let signingPriv = try KeyDeriver.deriveSigningPrivateKey(masterScalar: rootScalarBytes, scope: "profile", label: label, counterStart: counter)
-            profileKey = ECDHKeyPair(keyAgreementPrivateKey: agreementPriv)
-            userProfileSigningScalars[label] = signingPriv.rawRepresentation
-            break
-        } while true
+        // Derive agreement and signing keys deterministically via centralized KeyDeriver (aligned salt/info)
+        let agreementPriv = try KeyDeriver.deriveAgreementPrivateKey(masterScalar: rootScalarBytes, scope: "profile", label: label)
+        let signingPriv = try KeyDeriver.deriveSigningPrivateKey(masterScalar: rootScalarBytes, scope: "profile", label: label)
+        let profileKey = ECDHKeyPair(keyAgreementPrivateKey: agreementPriv)
+        userProfileSigningScalars[label] = signingPriv.rawRepresentation
 
         // Cache the profile key using the compact ID.
         let publicKey = profileKey.publicKeyBytes()
@@ -597,7 +573,7 @@ public class MobileKeyManager {
         userProfileKeys[pid] = profileKey
         labelToPid[label] = pid
 
-        logger.info("User profile key derived using HKDF for label '\(label)' (attempts: \(counter), id: \(pid))")
+        logger.info("User profile key derived using HKDF for label '\(label)' (id: \(pid))")
 
         return publicKey
     }
@@ -753,50 +729,50 @@ public class MobileKeyManager {
     public func generateCSR() throws -> SetupToken {
         let nodeId = getNodeId()
 
-        // 1) Generate P-384 signing key (CryptoKit) and import same key into Keychain as SecKey
+        // 1) Generate P-384 key pair directly in Keychain (software token)
         let keyLabel = "Runar Node Private Key \(nodeId)"
-        let appTag = ("com.runar.keys." + nodeId).data(using: .utf8)!
-        let signingPrivateKey = P384.Signing.PrivateKey()
-        let signingScalar = signingPrivateKey.rawRepresentation // 48 bytes
-        let publicKeyBytes = signingPrivateKey.publicKey.x963Representation
-        let pkcs8Der = buildPKCS8ECPrivateKeyDER(privateScalar: signingScalar, publicX963: publicKeyBytes)
+        let appTag = Data(("com.runar.keys." + nodeId).utf8)
 
-        // Create a transient SecKey and then persist via SecItemAdd
-        let transientAttrs: [String: Any] = [
-            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
-        ]
-        var createErr: Unmanaged<CFError>?
-        guard let transientKey = SecKeyCreateWithData(pkcs8Der as CFData, transientAttrs as CFDictionary, &createErr) else {
-            throw KeyError.keychainOperationFailed("Failed to create SecKey from DER: \(createErr?.takeRetainedValue().localizedDescription ?? "Unknown")")
-        }
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassKey,
-            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
+        let privateAttrs: [String: Any] = [
+            kSecAttrIsPermanent as String: true,
             kSecAttrApplicationTag as String: appTag,
             kSecAttrLabel as String: keyLabel,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-            kSecValueRef as String: transientKey,
         ]
-        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-        guard addStatus == errSecSuccess || addStatus == errSecDuplicateItem else {
-            throw KeyError.keychainOperationFailed("Failed to add SecKey to Keychain: \(addStatus)")
+        let genParams: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeySizeInBits as String: 384,
+            kSecPrivateKeyAttrs as String: privateAttrs,
+        ]
+        var genError: Unmanaged<CFError>?
+        guard let secPrivateKey = SecKeyCreateRandomKey(genParams as CFDictionary, &genError) else {
+            let msg = genError?.takeRetainedValue().localizedDescription ?? "Unknown"
+            throw KeyError.keychainOperationFailed("SecKeyCreateRandomKey failed: \(msg)")
         }
-        // Retrieve persisted key
-        let keyQuery: [String: Any] = [
-            kSecClass as String: kSecClassKey,
-            kSecAttrApplicationTag as String: appTag,
-            kSecReturnRef as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var keyResult: AnyObject?
-        let copyStatus = SecItemCopyMatching(keyQuery as CFDictionary, &keyResult)
-        guard copyStatus == errSecSuccess, let secPrivateKey = keyResult as! SecKey? else {
-            throw KeyError.keychainOperationFailed("Persisted key not found in Keychain: \(copyStatus)")
+        guard let secPublicKey = SecKeyCopyPublicKey(secPrivateKey) else {
+            throw KeyError.keychainOperationFailed("Failed to copy public key from private key")
         }
 
-        // 3) Export public key bytes already computed above for identity and peer info
+        // 2) Export public key (x963) for identity/peer info
+        var pubErr: Unmanaged<CFError>?
+        guard let publicKeyBytes = SecKeyCopyExternalRepresentation(secPublicKey, &pubErr) as Data? else {
+            let msg = pubErr?.takeRetainedValue().localizedDescription ?? "Unknown"
+            throw KeyError.keychainOperationFailed("Failed to export public key: \(msg)")
+        }
+
+        // 3) Export private key external representation and derive signer scalar for CSR
+        var privErr: Unmanaged<CFError>?
+        guard let privExternal = SecKeyCopyExternalRepresentation(secPrivateKey, &privErr) as Data? else {
+            let msg = privErr?.takeRetainedValue().localizedDescription ?? "Unknown"
+            throw KeyError.keychainOperationFailed("Failed to export private key: \(msg)")
+        }
+        let signingScalar: Data
+        if privExternal.count >= 48 && privExternal.first != 0x30 {
+            signingScalar = Data(privExternal.suffix(48))
+        } else if let parsed = extractP384PrivateScalar(fromECPrivateKeyExternal: privExternal) {
+            signingScalar = parsed
+        } else {
+            throw KeyError.keychainOperationFailed("Unsupported EC private key external format for CSR signing")
+        }
 
         // 4) Store label and SecKey for later use (SecIdentity pairing after cert issuance)
         certificateKeyLabels[nodeId] = keyLabel
@@ -1107,17 +1083,7 @@ public class MobileKeyManager {
 
     // MARK: - Private Helper Methods
 
-    /// HKDF implementation using CryptoKit
-    private func hkdf(salt: Data, ikm: Data, info: Data, outputLength: Int) throws -> Data {
-        let key = SymmetricKey(data: ikm)
-        let derivedKey = HKDF<SHA384>.deriveKey(
-            inputKeyMaterial: key,
-            salt: salt,
-            info: info,
-            outputByteCount: outputLength
-        )
-        return derivedKey.withUnsafeBytes { Data($0) }
-    }
+    // Note: All HKDF derivations are centralized in KeyDeriver to ensure consistent salt/info strings.
 
     /// Serialize ECDHKeyPair to Data for storage
     private func serializeECDHKeyPair(_ keyPair: ECDHKeyPair) throws -> Data {
@@ -1221,7 +1187,7 @@ public class MobileKeyManager {
         return nil
     }
 
-    /// Parse string DN to X509 DistinguishedName (copied from POC)
+    /// Parse string DN to X509 DistinguishedName (relaxed: supports OU/ST/L and ignores unknown attributes)
     private func parseDistinguishedName(_ dn: String) throws -> DistinguishedName {
         var components: [RelativeDistinguishedName] = []
         let parts = dn.components(separatedBy: ",")
@@ -1238,19 +1204,26 @@ public class MobileKeyManager {
             let key = keyValue[0].trimmingCharacters(in: .whitespaces).uppercased()
             let value = keyValue[1].trimmingCharacters(in: .whitespaces)
 
-            let attribute: RelativeDistinguishedName.Attribute
-            switch key {
+            let attribute: RelativeDistinguishedName.Attribute? = switch key {
             case "CN":
-                attribute = .init(type: .RDNAttributeType.commonName, utf8String: value)
+                .init(type: .RDNAttributeType.commonName, utf8String: value)
             case "C":
-                attribute = try .init(type: .RDNAttributeType.countryName, printableString: value)
+                try .init(type: .RDNAttributeType.countryName, printableString: value)
             case "O":
-                attribute = .init(type: .RDNAttributeType.organizationName, utf8String: value)
+                .init(type: .RDNAttributeType.organizationName, utf8String: value)
+            case "OU":
+                .init(type: .RDNAttributeType.organizationalUnitName, utf8String: value)
+            case "ST":
+                .init(type: .RDNAttributeType.stateOrProvinceName, utf8String: value)
+            case "L":
+                .init(type: .RDNAttributeType.localityName, utf8String: value)
             default:
-                throw KeyError.invalidOperation("Unsupported DN attribute: \(key)")
+                nil
             }
 
-            components.append(RelativeDistinguishedName([attribute]))
+            if let attribute {
+                components.append(RelativeDistinguishedName([attribute]))
+            }
         }
 
         return DistinguishedName(components)
