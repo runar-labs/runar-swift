@@ -20,6 +20,43 @@ public enum NetworkKeys {
         let scalar = try ECIES.decrypt(encrypted: wrapped, recipientPrivateKey: recipientPriv)
         return try P256.KeyAgreement.PrivateKey(rawRepresentation: scalar)
     }
+
+    // Optional: encrypted at-rest storage for network private scalar (no plaintext persistence)
+    public static func storeEncryptedScalar(label: String, scalarCiphertext: Data) throws {
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.runar.keys.network",
+            kSecAttrAccount as String: label,
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+        ]
+        var add = base
+        add[kSecValueData as String] = scalarCiphertext
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(add as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let upd = SecItemUpdate(base as CFDictionary, [kSecValueData as String: scalarCiphertext] as CFDictionary)
+            guard upd == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(upd)) }
+        } else if status != errSecSuccess {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
+    }
+
+    public static func loadEncryptedScalar(label: String) throws -> Data {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.runar.keys.network",
+            kSecAttrAccount as String: label,
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
+        return data
+    }
 }
 
 

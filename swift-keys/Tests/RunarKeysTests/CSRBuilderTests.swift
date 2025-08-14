@@ -8,7 +8,7 @@ final class CSRBuilderTests: XCTestCase {
         let key: SecKey
         do { key = try NodeIdentitySigning.generateOrLoad(label: label) } catch { throw XCTSkip("SE unavailable: \(error)") }
         let cn = "node-csr-test"
-        let der = try CSRBuilder.buildCSR(subjectCN: cn, signingKey: key)
+        let der = try CSRBuilder.buildCSRMessageSignedManual(subjectCN: cn, signingKey: key, nodeIdSAN: "node.test")
         let parsed = try CertificateSigningRequest(derEncoded: Array(der))
         XCTAssertTrue(parsed.subject.description.contains("CN=\(cn)"))
     }
@@ -24,7 +24,7 @@ final class CSRBuilderTests: XCTestCase {
         guard let priv = SecKeyCreateRandomKey(params as CFDictionary, &err) else {
             throw XCTSkip("Cannot create software SecKey: \(err?.takeRetainedValue().localizedDescription ?? "unknown")")
         }
-        let der = try CSRBuilder.buildCSR(subjectCN: "software-csr-test", signingKey: priv)
+        let der = try CSRBuilder.buildCSRMessageSignedManual(subjectCN: "software-csr-test", signingKey: priv, nodeIdSAN: "node.test")
         let parsed = try CertificateSigningRequest(derEncoded: Array(der))
         XCTAssertTrue(parsed.subject.description.contains("software-csr-test"))
     }

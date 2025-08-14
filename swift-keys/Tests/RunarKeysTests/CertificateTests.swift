@@ -3,23 +3,45 @@ import X509
 @testable import RunarKeys
 
 final class CertificateTests: XCTestCase {
-    func testCreateCAAndLeaf() throws {
+    func testSerialNumberStoreMonotonic() throws {
+        let a = try SerialNumberStore.nextSerialUInt64()
+        let b = try SerialNumberStore.nextSerialUInt64()
+        XCTAssertGreaterThan(b, a)
+        let be = try SerialNumberStore.nextSerialBytesBigEndian()
+        XCTAssertEqual(be.count, 8)
+    }
+
+    func testCSRPoPVerificationAndIssuance() throws {
         let ca = try CertificateAuthority.createCA(subjectCN: "Runar Test CA")
-        XCTAssertTrue(ca.certificate.subject.description.contains("Runar Test CA"))
 
-        // Serial: big-endian of UInt64
-        var serial = withUnsafeBytes(of: UInt64(1).bigEndian, Array.init)
-        while serial.first == 0 && serial.count > 1 { serial.removeFirst() }
+        // Software P-256 SecKey for unit test
+        let params: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeySizeInBits as String: 256,
+            kSecAttrIsPermanent as String: false,
+        ]
+        var err: Unmanaged<CFError>?
+        guard let priv = SecKeyCreateRandomKey(params as CFDictionary, &err) else {
+            throw XCTSkip("Cannot create software SecKey: \(err?.takeRetainedValue().localizedDescription ?? "unknown")")
+        }
 
-        let leaf = try CertificateIssuer.signLeaf(
+        let csrDER = try CSRBuilder.buildCSRMessageSignedManual(subjectCN: "node-csr-test", signingKey: priv, nodeIdSAN: "node.test")
+        let csr = try CertificateSigningRequest(derEncoded: Array(csrDER))
+        XCTAssertTrue(csr.publicKey.isValidSignature(csr.signature, for: csr))
+
+        let leaf = try CertificateIssuer.signLeafWithCSR(
             ca: ca,
-            subjectCN: "node-1",
-            sanDNS: ["node-1"],
-            validityDays: 90,
-            serialBytes: serial
+            csr: csr,
+            subjectOverrideCN: "node-leaf",
+            sanDNS: ["node.test"],
+            validityDays: 30
         )
-        XCTAssertTrue(leaf.subject.description.contains("node-1"))
-        XCTAssertLessThan(leaf.notValidBefore, leaf.notValidAfter)
+
+        XCTAssertTrue(leaf.subject.description.contains("node-leaf"))
+        try CertificateValidator.validateChain(leaf: leaf, ca: ca.certificate, sniHost: "node.test")
+
+        let spki = CertificateUtils.spkiBytes(leaf.publicKey)
+        XCTAssertTrue(CertificateUtils.isSPKIPinned(leaf, pinnedSPKI: spki))
     }
 }
 

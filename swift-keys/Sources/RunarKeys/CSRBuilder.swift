@@ -19,7 +19,7 @@ public struct CSRBuilder {
             throw NSError(domain: "CSR", code: -1, userInfo: [NSLocalizedDescriptionKey: perr?.takeRetainedValue().localizedDescription ?? "pub export failed"])
         }
         let p256Pub = try P256.Signing.PublicKey(x963Representation: pubX963)
-        let certPub = try Certificate.PublicKey(p256Pub)
+        let certPub = Certificate.PublicKey(p256Pub)
 
         let attributes = try buildExtensionRequestAttributes(nodeIdSAN: nodeIdSAN)
         let infoBytes = try CertificateSigningRequestHelper.infoBytes(version: .v1, subject: subject, publicKey: certPub, attributes: attributes)

@@ -15,9 +15,10 @@ struct RunarSEHostApp: App {
 
 struct ContentView: View {
     @State private var log: String = ""
+    @State private var mk = MobileKeyManager()
     @State private var nodeAgreementPrivate: P256.KeyAgreement.PrivateKey? = nil
     @State private var nodeNetworkAgreementPrivate: P256.KeyAgreement.PrivateKey? = nil
-    @State private var ca: CertificateAuthority.GeneratedCA? = nil
+    @State private var caHandle: MobileKeyManager.CAHandle? = nil
     @State private var lastCSR: Data? = nil
     @State private var leafCert: Certificate? = nil
 
@@ -29,10 +30,10 @@ struct ContentView: View {
                 .frame(minHeight: 160)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2)))
             // 1) Mobile: Initialize user root
-            Button("1) Mobile: Initialize user root secret") {
+            Button("1) Mobile: Initialize user root secret (biometry)") {
                 do {
                     let secret = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-                    try UserRootStore.save(secret)
+                    try mk.initializeUserRoot(secret: secret, requireUserPresence: true, requireBiometryCurrentSet: true)
                     append("[Mobile] Initialize user root secret\n  root: \(secret.count) bytes\n")
                 } catch {
                     append("[Mobile] Initialize user root secret ERROR: \(error.localizedDescription)\n")
@@ -41,16 +42,16 @@ struct ContentView: View {
             // 2) Mobile: Create CA
             Button("2) Mobile: Create CA") {
                 do {
-                    let generated = try CertificateAuthority.createCA(subjectCN: "Runar Test CA", validityYears: 5)
-                    self.ca = generated
-                    append("[Mobile] CA created\n  subject: \(generated.certificate.subject)\n")
+                    let handle = try mk.createCA(subjectCN: "Runar Test CA", validityYears: 5)
+                    self.caHandle = handle
+                    append("[Mobile] CA created\n  subject: \(handle.generated.certificate.subject)\n")
                 } catch {
                     append("[Mobile] CA ERROR: \(error.localizedDescription)\n")
                 }
             }
             Button("3) Node: Generate or Load identity SE key") {
                 do {
-                    let key = try RunarSEKeyManager.createOrLoadP256SigningKey(label: "com.runar.keys.test.identity")
+                    let key = try mk.generateNodeIdentity(label: "com.runar.keys.test.identity")
                     let fp = RunarSEKeyManager.publicKeySHA256Hex(for: key) ?? "(no fp)"
                     append("[Node] Identity SE key\n  fp: \(fp)\n")
                 } catch {
@@ -59,7 +60,7 @@ struct ContentView: View {
             }
             Button("4) Node: Build CSR + SAN=node-id (message)") {
                 do {
-                    let secKey = try RunarSEKeyManager.createOrLoadP256SigningKey(label: "com.runar.keys.test.identity")
+                    let secKey = try mk.generateNodeIdentity(label: "com.runar.keys.test.identity")
                     // Compute CRI for logging
                     let subject = try dn(cn: "node-csr-test")
                     guard let pub = SecKeyCopyPublicKey(secKey) else { throw NSError(domain: "CSR", code: -1) }
@@ -74,7 +75,7 @@ struct ContentView: View {
                     var serr: Unmanaged<CFError>?
                     guard let sig = SecKeyCreateSignature(secKey, SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256, Data(cri) as CFData, &serr) as Data? else { throw serr!.takeRetainedValue() as Error }
                     append("[Node] CSR SIG (message) len=\(sig.count)\n\(hex(sig))\n")
-                    let csr = try CSRBuilder.buildCSRMessageSignedManual(subjectCN: "node-csr-test", signingKey: secKey, nodeIdSAN: "node-\(UUID().uuidString.prefix(8))")
+                    let csr = try mk.buildCSR(signingKey: secKey, subjectCN: "node-csr-test", nodeIdSAN: "node-\(UUID().uuidString.prefix(8))")
                     self.lastCSR = csr
                     append("[Node] CSR (message) DER len=\(csr.count)\n\(hex(csr))\n")
                     let parsed = try CertificateSigningRequest(derEncoded: Array(csr))
@@ -86,22 +87,22 @@ struct ContentView: View {
             // 5) Mobile: Issue leaf certificate from CSR
             Button("5) Mobile: Issue leaf cert from CSR") {
                 do {
-                    guard let ca = self.ca else { append("[Mobile] Issue leaf ERROR: CA not created\n"); return }
+                    guard let ca = self.caHandle else { append("[Mobile] Issue leaf ERROR: CA not created\n"); return }
                     guard let csr = self.lastCSR else { append("[Mobile] Issue leaf ERROR: CSR not available\n"); return }
+                    append("[Mobile] CSR PoP verify...\n")
                     let req = try CertificateSigningRequest(derEncoded: Array(csr))
-                    let leaf = try CertificateIssuer.signLeafWithPublicKey(
-                        ca: ca,
-                        leafPublicKey: req.publicKey,
-                        subjectCN: "node-leaf",
-                        sanDNS: ["node.runar"],
-                        validityDays: 180,
-                        serialBytes: Array((0..<8).map { _ in UInt8.random(in: 0...255) })
-                    )
+                    let isValid = req.publicKey.isValidSignature(req.signature, for: req)
+                    append("[Mobile] CSR PoP = \(isValid)\n")
+                    let leaf = try mk.issueLeaf(from: ca, csrDER: csr, subjectOverrideCN: "node-leaf", sanDNS: ["node.runar"], validityDays: 180)
                     self.leafCert = leaf
                     append("[Mobile] Leaf issued\n  subject: \(leaf.subject)\n")
                     // Validate chain with SNI
-                    try CertificateValidator.validateChain(leaf: leaf, ca: ca.certificate, sniHost: "node.runar")
+                    try mk.validateChain(leaf: leaf, ca: ca.generated.certificate, sniHost: "node.runar")
                     append("[Mobile] Chain OK (SNI=node.runar)\n")
+                    // SPKI pinning example
+                    let spki = CertificateUtils.spkiBytes(leaf.publicKey)
+                    let pinnedOk = mk.spkiPinned(leaf, expectedSPKI: spki)
+                    append("[Mobile] SPKI pin check = \(pinnedOk)\n")
                 } catch {
                     append("[Mobile] Issue leaf ERROR: \(error.localizedDescription)\n")
                 }
@@ -109,14 +110,20 @@ struct ContentView: View {
             // Removed non-recommended CSR paths; keeping only message-signed
             Divider()
             Group {
-                Button("6) Mobile→Node: Network key → wrap for node, node unwrap and store") {
+                Button("6) Mobile→Node: Network key → wrap for node, store blob, load, unwrap and store") {
                     do {
-                        let master = try UserRootStore.load()
-                        let networkPriv = try NetworkKeys.deriveAgreementPrivateKey(userRoot: master, label: "default")
+                        let master = try mk.loadUserRoot()
+                        let networkPriv = try mk.deriveNetworkAgreement(label: "default", userRoot: master)
                         // Simulated node agreement keypair
                         let nodePriv = P256.KeyAgreement.PrivateKey(); let nodePub = nodePriv.publicKey
-                        let wrapped = try NetworkKeys.exportWrappedPrivateScalar(networkPriv, to: nodePub)
-                        let imported = try NetworkKeys.importWrappedPrivateScalar(wrapped, for: nodePriv)
+                        let wrapped = try mk.exportNetworkAgreementWrapped(networkPriv, to: nodePub)
+                        let blobLabel = "net-enc-\(UUID().uuidString)"
+                        try NetworkKeys.storeEncryptedScalar(label: blobLabel, scalarCiphertext: wrapped)
+                        append("[Mobile] Stored network encrypted blob label=\(blobLabel) size=\(wrapped.count)\n")
+                        let loadedBlob = try NetworkKeys.loadEncryptedScalar(label: blobLabel)
+                        append("[Mobile] Loaded network encrypted blob size=\(loadedBlob.count)\n")
+                        precondition(loadedBlob == wrapped)
+                        let imported = try mk.importNetworkAgreementWrapped(loadedBlob, for: nodePriv)
                         precondition(imported.publicKey.rawRepresentation == networkPriv.publicKey.rawRepresentation)
                         self.nodeAgreementPrivate = nodePriv
                         self.nodeNetworkAgreementPrivate = imported
@@ -139,17 +146,25 @@ struct ContentView: View {
                         append("[Node] ECIES ERROR: \(error.localizedDescription)\n")
                     }
                 }
-                Button("8) Mobile: Profiles derive + envelope roundtrip") {
+                Button("8) Multi-recipient envelope: encrypt on mobile (profile+network), decrypt on node and mobile") {
                     do {
-                        let master = try UserRootStore.load()
-                        let personal = try ProfileKeys.deriveAgreementPrivateKey(userRoot: master, label: "personal")
-                        _ = try ProfileKeys.deriveAgreementPrivateKey(userRoot: master, label: "work")
-                        let message = Data("This is a test message".utf8)
-                        // Encrypt with ECIES for personal profile
-                        let ct = try ECIES.encrypt(data: message, recipientPublicKey: personal.publicKey)
-                        let pt = try ECIES.decrypt(encrypted: ct, recipientPrivateKey: personal)
-                        precondition(pt == message)
-                        append("[Mobile] Profiles + Envelope OK\n  personal/work derived, roundtrip OK\n")
+                        let master = try mk.loadUserRoot()
+                        let profileKey = try mk.deriveProfileAgreement(label: "personal", userRoot: master)
+                        guard let nodeNet = self.nodeNetworkAgreementPrivate else { append("[Node] Envelope ERROR: network key not installed\n"); return }
+                        let message = Data("This is a multi-recipient message".utf8)
+                        let env = try MultiRecipientEnvelope.encrypt(data: message, recipients: [
+                            "profile": profileKey.publicKey,
+                            "network": nodeNet.publicKey,
+                        ])
+                        append("[Mobile] Multi-recipient envelope created\n  ct=\(env.ciphertext.count) bytes, wraps=\(env.wraps.keys.sorted())\n")
+                        // Node decrypts with network key
+                        let nodePT = try MultiRecipientEnvelope.decrypt(env, recipientLabel: "network", recipientPrivateKey: nodeNet)
+                        precondition(nodePT == message)
+                        append("[Node] Envelope decrypt OK (network)\n")
+                        // Mobile decrypts with profile key
+                        let mobilePT = try MultiRecipientEnvelope.decrypt(env, recipientLabel: "profile", recipientPrivateKey: profileKey)
+                        precondition(mobilePT == message)
+                        append("[Mobile] Envelope decrypt OK (profile)\n")
                     } catch {
                         append("[Mobile] Profiles ERROR: \(error.localizedDescription)\n")
                     }
