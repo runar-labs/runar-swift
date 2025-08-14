@@ -25,7 +25,7 @@ export RUNAR_RUST_CLIENT_BIN="$CLIENT_BIN"
 export RUNAR_RUST_SERVER_BIN="$SERVER_BIN"
 export RUNAR_E2E_TMPDIR="$TEMP_DIR"
 
-swift test --filter CrossLanguageE2E | cat
+RUST_LOG=info,runar_node=debug,runar_transport_tests=debug,quinn=info swift test --filter CrossLanguageE2E | cat
 
 popd >/dev/null
 

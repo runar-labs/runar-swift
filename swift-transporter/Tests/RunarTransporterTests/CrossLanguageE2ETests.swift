@@ -17,18 +17,30 @@ final class CrossLanguageE2ETests: XCTestCase {
         try data.write(to: path, options: .atomic)
     }
 
-    private func spawn(_ bin: String, _ args: [String], env: [String: String] = [:]) throws -> Process {
+    private func spawn(_ bin: String, _ args: [String], env: [String: String] = [:], tag: String = "RUST") throws -> Process {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: bin)
         p.arguments = args
-        if !env.isEmpty {
-            var e = ProcessInfo.processInfo.environment
-            for (k, v) in env { e[k] = v }
-            p.environment = e
-        }
+        var e = ProcessInfo.processInfo.environment
+        for (k, v) in env { e[k] = v }
+        // Increase Rust logs by default
+        if e["RUST_LOG"] == nil { e["RUST_LOG"] = "info,runar_node=debug,runar_transport_tests=debug,quinn=info" }
+        p.environment = e
         let out = Pipe(); let err = Pipe()
         p.standardOutput = out
         p.standardError = err
+        out.fileHandleForReading.readabilityHandler = { fh in
+            let data = fh.availableData
+            guard !data.isEmpty, let s = String(data: data, encoding: .utf8), !s.isEmpty else { return }
+            FileHandle.standardError.write(Data("[\(tag)] ".utf8))
+            FileHandle.standardError.write(data)
+        }
+        err.fileHandleForReading.readabilityHandler = { fh in
+            let data = fh.availableData
+            guard !data.isEmpty, let s = String(data: data, encoding: .utf8), !s.isEmpty else { return }
+            FileHandle.standardError.write(Data("[\(tag) ERR] ".utf8))
+            FileHandle.standardError.write(data)
+        }
         try p.run()
         return p
     }
@@ -47,6 +59,8 @@ final class CrossLanguageE2ETests: XCTestCase {
         }
         return key
     }
+
+    // No helper: Swift `NodeId.compactId` now matches the Rust algorithm
 
     func test_swift_server_rust_client() async throws {
         try await runScenario(swiftIsServer: true)
@@ -71,8 +85,12 @@ final class CrossLanguageE2ETests: XCTestCase {
         let serverPub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: serverKey)
         let serverId = RunarKeys.Ids.compactId(serverPub)
         let serverCSR = try km.buildCSR(signingKey: serverKey, subjectCN: serverId, nodeIdSAN: serverId)
-        // For Swift server interop with Rust client, use fixed DNS SAN "swift-server" expected by Rust client
-        let serverCert = try km.issueLeaf(from: ca, csrDER: serverCSR, subjectOverrideCN: "swift-server", sanDNS: ["swift-server"], validityDays: 30)
+        // For Swift server interop with Rust client, derive DNS-safe node id the way Rust client expects:
+        // peer_node_id = compact_id("swift-server".bytes), then dns_safe ( - -> x, _ -> y )
+        let rustRemoteAscii = Data("swift-server".utf8)
+        let rustPeerId = NodeId.compactId(from: rustRemoteAscii)
+        let rustPeerIdDnsSafe = rustPeerId.replacingOccurrences(of: "-", with: "x").replacingOccurrences(of: "_", with: "y")
+        let serverCert = try km.issueLeaf(from: ca, csrDER: serverCSR, subjectOverrideCN: rustPeerIdDnsSafe, sanDNS: [rustPeerIdDnsSafe], validityDays: 30)
 
         // Create Swift client identity (for swift client in rust-server scenario)
         let swiftClientKey = try makeSoftwareSecKey(label: "swift-client-\(UUID().uuidString)")
@@ -185,9 +203,11 @@ final class CrossLanguageE2ETests: XCTestCase {
             XCTAssertEqual(proc.terminationStatus, 0)
             await swiftServer.stop()
         } else {
-            // Rust server
+            // Rust server: bind a high, likely-free port
+            let bindPort: UInt16 = 55000 + UInt16.random(in: 0..<4000)
+            let bindAddr = "127.0.0.1:\(bindPort)"
             let serverArgs = [
-                "--bind", "127.0.0.1:44445",
+                "--bind", bindAddr,
                 "--ca", caPath.path,
                 "--cert", rustServerCertPath.path,
                 "--key", rustServerKeyPath.path,
@@ -216,7 +236,7 @@ final class CrossLanguageE2ETests: XCTestCase {
             try await swiftClient.start()
 
             // Attempt to connect, send a simple handshake/update
-            let peerInfo = RunarPeerInfo(publicKey: Data(rustServerPub), addresses: ["127.0.0.1:44445"], name: "rust-server")
+            let peerInfo = RunarPeerInfo(publicKey: Data(rustServerPub), addresses: [bindAddr], name: "rust-server")
             try await swiftClient.connect(to: peerInfo)
 
             try await Task.sleep(nanoseconds: 1_000_000_000)
