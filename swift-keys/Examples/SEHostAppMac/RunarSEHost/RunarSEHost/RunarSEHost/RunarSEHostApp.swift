@@ -66,7 +66,7 @@ struct ContentView: View {
                     var perr: Unmanaged<CFError>?
                     guard let pubX963 = SecKeyCopyExternalRepresentation(pub, &perr) as Data? else { throw perr!.takeRetainedValue() as Error }
                     let p256Pub = try P256.Signing.PublicKey(x963Representation: pubX963)
-                    let certPub = try Certificate.PublicKey(p256Pub)
+                    let certPub = Certificate.PublicKey(p256Pub)
                     let attrs = try CSRBuilder.buildExtensionRequestAttributes(nodeIdSAN: "node-\(UUID().uuidString.prefix(8))")
                     let cri = try CertificateSigningRequestHelper.infoBytes(version: .v1, subject: subject, publicKey: certPub, attributes: attrs)
                     append("[Node] CSR (message) CRI bytes: \(cri.count)\n\(hex(Data(cri)))\n")
@@ -120,7 +120,8 @@ struct ContentView: View {
                         precondition(imported.publicKey.rawRepresentation == networkPriv.publicKey.rawRepresentation)
                         self.nodeAgreementPrivate = nodePriv
                         self.nodeNetworkAgreementPrivate = imported
-                        append("[Mobile→Node] Network key wrap/install\n  wrapped: \(wrapped.count) bytes\n")
+                        append("[Mobile→Node] Network key wrap\n  wrapped: \(wrapped.count) bytes\n")
+                        append("[Node] Network key installed\n  pub: \(imported.publicKey.x963Representation.base64EncodedString())\n")
                     } catch {
                         append("[Mobile→Node] Network key ERROR: \(error.localizedDescription)\n")
                     }
@@ -142,7 +143,7 @@ struct ContentView: View {
                     do {
                         let master = try UserRootStore.load()
                         let personal = try ProfileKeys.deriveAgreementPrivateKey(userRoot: master, label: "personal")
-                        let work = try ProfileKeys.deriveAgreementPrivateKey(userRoot: master, label: "work")
+                        _ = try ProfileKeys.deriveAgreementPrivateKey(userRoot: master, label: "work")
                         let message = Data("This is a test message".utf8)
                         // Encrypt with ECIES for personal profile
                         let ct = try ECIES.encrypt(data: message, recipientPublicKey: personal.publicKey)
