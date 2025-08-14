@@ -53,6 +53,7 @@ public struct MobileKeyManager {
 
     public func issueLeaf(from ca: CAHandle, csrDER: Data, subjectOverrideCN: String?, sanDNS: [String], validityDays: Int) throws -> Certificate {
         let req = try CertificateSigningRequest(derEncoded: Array(csrDER))
+        // Ensure serial number is minimally-encoded positive INTEGER
         return try CertificateIssuer.signLeafWithCSR(ca: ca.generated, csr: req, subjectOverrideCN: subjectOverrideCN, sanDNS: sanDNS, validityDays: validityDays)
     }
 

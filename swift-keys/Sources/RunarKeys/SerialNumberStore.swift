@@ -15,7 +15,12 @@ public enum SerialNumberStore {
     public static func nextSerialBytesBigEndian() throws -> [UInt8] {
         let value = try nextSerialUInt64()
         var be = value.bigEndian
-        return withUnsafeBytes(of: &be) { Array($0) }
+        var bytes = withUnsafeBytes(of: &be) { Array($0) }
+        // Trim leading 0x00 to produce minimal positive INTEGER per DER rules
+        while bytes.first == 0x00 && bytes.count > 1 {
+            bytes.removeFirst()
+        }
+        return bytes
     }
 
     private static func save(_ value: UInt64) throws {
