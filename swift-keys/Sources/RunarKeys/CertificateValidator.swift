@@ -2,8 +2,8 @@ import Foundation
 import Security
 import X509
 
-enum CertificateValidator {
-    static func validateChain(leaf: Certificate, ca: Certificate, sniHost: String? = nil) throws {
+public enum CertificateValidator {
+    public static func validateChain(leaf: Certificate, ca: Certificate, sniHost: String? = nil) throws {
         guard let secLeaf = CertificateUtils.toSecCertificate(leaf), let secCA = CertificateUtils.toSecCertificate(ca) else {
             throw NSError(domain: "Cert", code: -1, userInfo: [NSLocalizedDescriptionKey: "SecCertificate conversion failed"])
         }

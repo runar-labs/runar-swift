@@ -60,11 +60,17 @@ public struct CertificateIssuer {
         let notAfter = Date().addingTimeInterval(TimeInterval(validityDays * 24 * 60 * 60))
         let subject = try distinguishedName(cn: subjectCN)
 
-        // Compute SKI/AKI
-        let leafX963 = try leafPublicKey.exportedPublicKeyBytes()
-        let ski = ArraySlice(Data(SHA256.hash(data: leafX963)))
-        let caX963 = try Certificate.PublicKey(P256.Signing.PublicKey(x963Representation: ca.privateKey.publicKey.x963Representation)).exportedPublicKeyBytes()
-        let aki = ArraySlice(Data(SHA256.hash(data: caX963)))
+        // Compute SKI/AKI (hash of SPKI DER bytes)
+        var leafSer = DER.Serializer()
+        try leafPublicKey.serialize(into: &leafSer)
+        let leafSPKI = Data(leafSer.serializedBytes)
+        let ski = ArraySlice(Data(SHA256.hash(data: leafSPKI)))
+
+        let caCertPub = try Certificate.PublicKey(P256.Signing.PublicKey(x963Representation: ca.privateKey.publicKey.x963Representation))
+        var caSer = DER.Serializer()
+        try caCertPub.serialize(into: &caSer)
+        let caSPKI = Data(caSer.serializedBytes)
+        let aki = ArraySlice(Data(SHA256.hash(data: caSPKI)))
 
         let san = SubjectAlternativeNames(sanDNS.map { GeneralName.dnsName($0) })
         let exts = try Certificate.Extensions {

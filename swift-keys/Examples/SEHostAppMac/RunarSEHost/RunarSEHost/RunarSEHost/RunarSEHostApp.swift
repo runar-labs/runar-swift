@@ -16,24 +16,48 @@ struct RunarSEHostApp: App {
 struct ContentView: View {
     @State private var log: String = ""
     @State private var nodeAgreementPrivate: P256.KeyAgreement.PrivateKey? = nil
+    @State private var nodeNetworkAgreementPrivate: P256.KeyAgreement.PrivateKey? = nil
+    @State private var ca: CertificateAuthority.GeneratedCA? = nil
+    @State private var lastCSR: Data? = nil
+    @State private var leafCert: Certificate? = nil
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("Secure Enclave Test Host").font(.headline)
+            Text("Runar Keys E2E Host").font(.headline)
             TextEditor(text: $log)
                 .font(.system(.footnote, design: .monospaced))
                 .frame(minHeight: 160)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2)))
-            Button("1) Generate or Load SE Key") {
+            // 1) Mobile: Initialize user root
+            Button("1) Mobile: Initialize user root secret") {
+                do {
+                    let secret = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+                    try UserRootStore.save(secret)
+                    append("[Mobile] Initialize user root secret\n  root: \(secret.count) bytes\n")
+                } catch {
+                    append("[Mobile] Initialize user root secret ERROR: \(error.localizedDescription)\n")
+                }
+            }
+            // 2) Mobile: Create CA
+            Button("2) Mobile: Create CA") {
+                do {
+                    let generated = try CertificateAuthority.createCA(subjectCN: "Runar Test CA", validityYears: 5)
+                    self.ca = generated
+                    append("[Mobile] CA created\n  subject: \(generated.certificate.subject)\n")
+                } catch {
+                    append("[Mobile] CA ERROR: \(error.localizedDescription)\n")
+                }
+            }
+            Button("3) Node: Generate or Load identity SE key") {
                 do {
                     let key = try RunarSEKeyManager.createOrLoadP256SigningKey(label: "com.runar.keys.test.identity")
                     let fp = RunarSEKeyManager.publicKeySHA256Hex(for: key) ?? "(no fp)"
-                    append("SE key OK\n  fp: \(fp)")
+                    append("[Node] Identity SE key\n  fp: \(fp)\n")
                 } catch {
-                    append("SE key Error: \(error.localizedDescription)")
+                    append("[Node] Identity SE key ERROR: \(error.localizedDescription)\n")
                 }
             }
-            Button("2) Build CSR + SAN=node-id (message)") {
+            Button("4) Node: Build CSR + SAN=node-id (message)") {
                 do {
                     let secKey = try RunarSEKeyManager.createOrLoadP256SigningKey(label: "com.runar.keys.test.identity")
                     // Compute CRI for logging
@@ -45,54 +69,47 @@ struct ContentView: View {
                     let certPub = try Certificate.PublicKey(p256Pub)
                     let attrs = try CSRBuilder.buildExtensionRequestAttributes(nodeIdSAN: "node-\(UUID().uuidString.prefix(8))")
                     let cri = try CertificateSigningRequestHelper.infoBytes(version: .v1, subject: subject, publicKey: certPub, attributes: attrs)
-                    append("CRI (message) bytes: \(cri.count)\n\(hex(Data(cri)))")
+                    append("[Node] CSR (message) CRI bytes: \(cri.count)\n\(hex(Data(cri)))\n")
                     // Sign message
                     var serr: Unmanaged<CFError>?
                     guard let sig = SecKeyCreateSignature(secKey, SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256, Data(cri) as CFData, &serr) as Data? else { throw serr!.takeRetainedValue() as Error }
-                    append("SIG (message) len=\(sig.count)\n\(hex(sig))")
+                    append("[Node] CSR SIG (message) len=\(sig.count)\n\(hex(sig))\n")
                     let csr = try CSRBuilder.buildCSRMessageSignedManual(subjectCN: "node-csr-test", signingKey: secKey, nodeIdSAN: "node-\(UUID().uuidString.prefix(8))")
-                    append("CSR (message) DER len=\(csr.count)\n\(hex(csr))")
+                    self.lastCSR = csr
+                    append("[Node] CSR (message) DER len=\(csr.count)\n\(hex(csr))\n")
                     let parsed = try CertificateSigningRequest(derEncoded: Array(csr))
-                    append("CSR OK (message)\n  subject: \(parsed.subject)")
+                    append("[Node] CSR OK (message)\n  subject: \(parsed.subject)\n")
                 } catch {
-                    append("CSR Error (message): \(String(describing: error))")
+                    append("[Node] CSR Error (message): \(String(describing: error))\n")
                 }
             }
-            // Removed digest path buttons to keep only the proven working path
-            Button("Build CSR (message, manual) and parse subject") {
+            // 5) Mobile: Issue leaf certificate from CSR
+            Button("5) Mobile: Issue leaf cert from CSR") {
                 do {
-                    let secKey = try RunarSEKeyManager.createOrLoadP256SigningKey(label: "com.runar.keys.test.identity")
-                    let csr = try CSRBuilder.buildCSRMessageSignedManual(subjectCN: "node-csr-test", signingKey: secKey)
-                    append("CSR (message, manual) DER len=\(csr.count)\n\(hex(csr))")
-                    let parsed = try CertificateSigningRequest(derEncoded: Array(csr))
-                    append("CSR OK (message, manual)\n  subject: \(parsed.subject)")
+                    guard let ca = self.ca else { append("[Mobile] Issue leaf ERROR: CA not created\n"); return }
+                    guard let csr = self.lastCSR else { append("[Mobile] Issue leaf ERROR: CSR not available\n"); return }
+                    let req = try CertificateSigningRequest(derEncoded: Array(csr))
+                    let leaf = try CertificateIssuer.signLeafWithPublicKey(
+                        ca: ca,
+                        leafPublicKey: req.publicKey,
+                        subjectCN: "node-leaf",
+                        sanDNS: ["node.runar"],
+                        validityDays: 180,
+                        serialBytes: Array((0..<8).map { _ in UInt8.random(in: 0...255) })
+                    )
+                    self.leafCert = leaf
+                    append("[Mobile] Leaf issued\n  subject: \(leaf.subject)\n")
+                    // Validate chain with SNI
+                    try CertificateValidator.validateChain(leaf: leaf, ca: ca.certificate, sniHost: "node.runar")
+                    append("[Mobile] Chain OK (SNI=node.runar)\n")
                 } catch {
-                    append("CSR Error (message, manual): \(String(describing: error))")
+                    append("[Mobile] Issue leaf ERROR: \(error.localizedDescription)\n")
                 }
             }
-            Button("Build CSR (digest, manual) and parse subject") {
-                do {
-                    let secKey = try RunarSEKeyManager.createOrLoadP256SigningKey(label: "com.runar.keys.test.identity")
-                    let csr = try CSRBuilder.buildCSRDigestSignedManual(subjectCN: "node-csr-test", signingKey: secKey)
-                    append("CSR (digest, manual) DER len=\(csr.count)\n\(hex(csr))")
-                    let parsed = try CertificateSigningRequest(derEncoded: Array(csr))
-                    append("CSR OK (digest, manual)\n  subject: \(parsed.subject)")
-                } catch {
-                    append("CSR Error (digest, manual): \(String(describing: error))")
-                }
-            }
+            // Removed non-recommended CSR paths; keeping only message-signed
             Divider()
             Group {
-                Button("3) Mobile: Initialize user root secret") {
-                    do {
-                        let secret = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-                        try UserRootStore.save(secret)
-                        append("Mobile init OK\n  root: \(secret.count) bytes")
-                    } catch {
-                        append("Mobile init Error: \(error.localizedDescription)")
-                    }
-                }
-                Button("4) Network: derive key, wrap for node, unwrap and verify") {
+                Button("6) Mobile→Node: Network key → wrap for node, node unwrap and store") {
                     do {
                         let master = try UserRootStore.load()
                         let networkPriv = try NetworkKeys.deriveAgreementPrivateKey(userRoot: master, label: "default")
@@ -102,12 +119,26 @@ struct ContentView: View {
                         let imported = try NetworkKeys.importWrappedPrivateScalar(wrapped, for: nodePriv)
                         precondition(imported.publicKey.rawRepresentation == networkPriv.publicKey.rawRepresentation)
                         self.nodeAgreementPrivate = nodePriv
-                        append("Network key OK\n  wrapped: \(wrapped.count) bytes")
+                        self.nodeNetworkAgreementPrivate = imported
+                        append("[Mobile→Node] Network key wrap/install\n  wrapped: \(wrapped.count) bytes\n")
                     } catch {
-                        append("Network key Error: \(error.localizedDescription)")
+                        append("[Mobile→Node] Network key ERROR: \(error.localizedDescription)\n")
                     }
                 }
-                Button("5) Profiles: derive personal/work and envelope roundtrip") {
+                Button("7) Node: Use network key for ECIES decryption") {
+                    do {
+                        guard let nodeNet = self.nodeNetworkAgreementPrivate else { append("[Node] ECIES ERROR: network key not installed\n"); return }
+                        let message = Data("Hello Node with ECIES".utf8)
+                        // Mobile encrypts to Node's installed network public key
+                        let ct = try ECIES.encrypt(data: message, recipientPublicKey: nodeNet.publicKey)
+                        let pt = try ECIES.decrypt(encrypted: ct, recipientPrivateKey: nodeNet)
+                        precondition(pt == message)
+                        append("[Node] ECIES decrypt OK\n")
+                    } catch {
+                        append("[Node] ECIES ERROR: \(error.localizedDescription)\n")
+                    }
+                }
+                Button("8) Mobile: Profiles derive + envelope roundtrip") {
                     do {
                         let master = try UserRootStore.load()
                         let personal = try ProfileKeys.deriveAgreementPrivateKey(userRoot: master, label: "personal")
@@ -117,9 +148,9 @@ struct ContentView: View {
                         let ct = try ECIES.encrypt(data: message, recipientPublicKey: personal.publicKey)
                         let pt = try ECIES.decrypt(encrypted: ct, recipientPrivateKey: personal)
                         precondition(pt == message)
-                        append("Profiles OK\n  personal/work derived\n  envelope roundtrip OK (")
+                        append("[Mobile] Profiles + Envelope OK\n  personal/work derived, roundtrip OK\n")
                     } catch {
-                        append("Profiles Error: \(error.localizedDescription)")
+                        append("[Mobile] Profiles ERROR: \(error.localizedDescription)\n")
                     }
                 }
             }
