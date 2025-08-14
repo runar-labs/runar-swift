@@ -1185,40 +1185,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             logger.info("📥 [NetworkQuicTransporter] Received message from \(peerId) - Type: \(message.messageType)")
 
             if message.messageType == MessageTypes.handshake {
-                // Deliver handshake to handler for test visibility
-                messageQueue.async { self.messageHandler.handleMessage(message) }
-                if let payload = message.payloads.first {
-                    let pv = payload.valueBytes
-                    let pvPreview = pv.prefix(8).map { String(format: "%02x", $0) }.joined()
-                    logger.info("🔎 [NetworkQuicTransporter] HANDSHAKE payloadLen=\(pv.count) preview=\(pvPreview)")
-                    if let peerNode = try? decodeNodeInfo(from: pv) {
-                        // Remap temporary inbound peer key (endpoint string) to the real peer nodeId
-                        let realPeerId = peerNode.nodeId
-                        if realPeerId != peerId {
-                            logger.info("🔄 [NetworkQuicTransporter] Remapping peer \(peerId) -> \(realPeerId)")
-
-                            // Get or create the peer state for the real peer ID
-                            let peerState = connectionPool.getOrCreatePeer(peerId: realPeerId, address: peerId, logger: logger)
-
-                            // Associate this connection with the real peer and mark ready
-                            peerState.setConnection(connection)
-                            peerState.updateActivity()
-                            peerState.notifyConnectionReady()
-
-                            // Use connectionPool to alias the peer
-                            connectionPool.aliasPeer(existingId: peerId, aliasId: realPeerId)
-
-                            // Update the peer ID for future messages
-                            processReceivedMessage(messageData, from: realPeerId, connection: connection)
-                            return
-                        }
-                    }
-                }
+                handleHandshakeMessage(message, from: peerId, connection: connection)
+                return
             }
 
-            // Queue message for processing
             messageQueue.async { self.messageHandler.handleMessage(message) }
-
         } catch {
             logger.error("❌ [NetworkQuicTransporter] Failed to decode message from \(peerId): \(error)")
         }
@@ -1377,6 +1348,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
 
         do {
+            let pvPreview = payload.valueBytes.prefix(16).map { String(format: "%02x", $0) }.joined()
+            logger.debug("🔎 [NetworkQuicTransporter] Handshake payload bytes len=\(payload.valueBytes.count) head16=[\(pvPreview)]")
             if let hs = try? CborMessageDecoder.decodeHandshake(from: payload.valueBytes) {
                 let peerNodeInfo = hs.nodeInfo
                 let realPeerId = peerNodeInfo.nodeId

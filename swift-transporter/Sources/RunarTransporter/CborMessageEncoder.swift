@@ -32,33 +32,32 @@ public enum CborMessageEncoder {
         map[.utf8String("node_public_key")] = .byteString([UInt8](nodeInfo.nodePublicKey))
         map[.utf8String("network_ids")] = .array(nodeInfo.networkIds.map { .utf8String($0) })
         map[.utf8String("addresses")] = .array(nodeInfo.addresses.map { .utf8String($0) })
-        map[.utf8String("services")] = .array(nodeInfo.services.map { service in
+        // Rust expects node_metadata { services: [], subscriptions: [] }
+        var nodeMeta: [CBOR: CBOR] = [:]
+        // Map our services into Rust ServiceMetadata shape minimally
+        let services = nodeInfo.services.map { service -> CBOR in
             var s: [CBOR: CBOR] = [:]
-            s[.utf8String("service_path")] = .utf8String(service.servicePath)
             s[.utf8String("network_id")] = .utf8String(service.networkId)
-            s[.utf8String("service_name")] = .utf8String(service.serviceName)
+            s[.utf8String("service_path")] = .utf8String(service.servicePath)
+            s[.utf8String("name")] = .utf8String(service.serviceName)
+            s[.utf8String("version")] = .utf8String("1.0.0")
             s[.utf8String("description")] = .utf8String(service.description)
             s[.utf8String("actions")] = .array(service.actions.map { action in
                 var a: [CBOR: CBOR] = [:]
-                a[.utf8String("action_path")] = .utf8String(action.actionPath)
-                a[.utf8String("action_name")] = .utf8String(action.actionName)
+                a[.utf8String("name")] = .utf8String(action.actionName)
                 a[.utf8String("description")] = .utf8String(action.description)
                 if let input = action.inputSchema { a[.utf8String("input_schema")] = .utf8String(input) }
                 if let output = action.outputSchema { a[.utf8String("output_schema")] = .utf8String(output) }
                 return .map(a)
             })
-            s[.utf8String("events")] = .array(service.events.map { event in
-                var e: [CBOR: CBOR] = [:]
-                e[.utf8String("path")] = .utf8String(event.path)
-                e[.utf8String("description")] = .utf8String(event.description)
-                if let schema = event.dataSchema { e[.utf8String("data_schema")] = .utf8String(schema) }
-                return .map(e)
-            })
+            s[.utf8String("registration_time")] = .unsignedInt(UInt64(nodeInfo.createdAt.timeIntervalSince1970))
+            s[.utf8String("last_start_time")] = .null
             return .map(s)
-        })
-        // version is Int64; encode as CBOR integer
+        }
+        nodeMeta[.utf8String("services")] = .array(services)
+        nodeMeta[.utf8String("subscriptions")] = .array([])
+        map[.utf8String("node_metadata")] = .map(nodeMeta)
         map[.utf8String("version")] = CBOR(integerLiteral: Int(truncatingIfNeeded: nodeInfo.version))
-        map[.utf8String("created_at_ms")] = .unsignedInt(UInt64(nodeInfo.createdAt.timeIntervalSince1970 * 1000))
         return Data(CBOR.map(map).encode())
     }
 

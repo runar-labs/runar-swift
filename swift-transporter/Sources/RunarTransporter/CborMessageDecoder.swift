@@ -24,40 +24,32 @@ public enum CborMessageDecoder {
         } else { [] }
 
         var services: [ServiceMetadata] = []
-        if case let CBOR.array(svcs)? = map[str("services")] {
+        // Rust schema: node_metadata { services: [...], subscriptions: [...] }
+        if case let CBOR.map(meta)? = map[str("node_metadata")], case let CBOR.array(svcs)? = meta[str("services")] {
             for svc in svcs {
                 guard case let CBOR.map(sm) = svc else { continue }
                 let servicePath = (sm[str("service_path")]?.asString) ?? ""
                 let networkId = (sm[str("network_id")]?.asString) ?? ""
-                let serviceName = (sm[str("service_name")]?.asString) ?? ""
+                let serviceName = (sm[str("name")]?.asString) ?? ""
                 let description = (sm[str("description")]?.asString) ?? ""
                 let actions: [ActionMetadata] = if case let CBOR.array(act)? = sm[str("actions")] {
                     act.compactMap { a in
                         guard case let CBOR.map(am) = a else { return nil }
-                        let ap = (am[str("action_path")]?.asString) ?? ""
-                        let an = (am[str("action_name")]?.asString) ?? ""
+                        let ap = (sm[str("service_path")]?.asString) ?? ""
+                        let an = (am[str("name")]?.asString) ?? ""
                         let ad = (am[str("description")]?.asString) ?? ""
                         let ins = am[str("input_schema")]?.asString
                         let outs = am[str("output_schema")]?.asString
                         return ActionMetadata(actionPath: ap, actionName: an, description: ad, inputSchema: ins, outputSchema: outs)
                     }
                 } else { [] }
-                let events: [EventMetadata] = if case let CBOR.array(ev)? = sm[str("events")] {
-                    ev.compactMap { e in
-                        guard case let CBOR.map(em) = e else { return nil }
-                        let p = (em[str("path")]?.asString) ?? ""
-                        let d = (em[str("description")]?.asString) ?? ""
-                        let ds = em[str("data_schema")]?.asString
-                        return EventMetadata(path: p, description: d, dataSchema: ds)
-                    }
-                } else { [] }
+                let events: [EventMetadata] = []
                 services.append(ServiceMetadata(servicePath: servicePath, networkId: networkId, serviceName: serviceName, description: description, actions: actions, events: events))
             }
         }
 
         let version: Int64 = if let v = map[str("version")]?.asInt64 { v } else { 0 }
-        let createdAtMs = map[str("created_at_ms")]?.asUInt64 ?? 0
-        let createdAt = Date(timeIntervalSince1970: TimeInterval(createdAtMs) / 1000.0)
+        let createdAt = Date(timeIntervalSince1970: 0)
 
         return RunarNodeInfo(
             nodePublicKey: nodePublicKey,
