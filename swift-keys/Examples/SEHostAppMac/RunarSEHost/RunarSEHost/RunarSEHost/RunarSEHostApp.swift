@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var caHandle: MobileKeyManager.CAHandle? = nil
     @State private var lastCSR: Data? = nil
     @State private var leafCert: Certificate? = nil
+    @State private var currentNodeId: String? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -68,14 +69,16 @@ struct ContentView: View {
                     guard let pubX963 = SecKeyCopyExternalRepresentation(pub, &perr) as Data? else { throw perr!.takeRetainedValue() as Error }
                     let p256Pub = try P256.Signing.PublicKey(x963Representation: pubX963)
                     let certPub = Certificate.PublicKey(p256Pub)
-                    let attrs = try CSRBuilder.buildExtensionRequestAttributes(nodeIdSAN: "node-\(UUID().uuidString.prefix(8))")
+                    let nodeId = Ids.compactId(pubX963)
+                    self.currentNodeId = nodeId
+                    let attrs = try CSRBuilder.buildExtensionRequestAttributes(nodeIdSAN: nodeId)
                     let cri = try CertificateSigningRequestHelper.infoBytes(version: .v1, subject: subject, publicKey: certPub, attributes: attrs)
                     append("[Node] CSR (message) CRI bytes: \(cri.count)\n\(hex(Data(cri)))\n")
                     // Sign message
                     var serr: Unmanaged<CFError>?
                     guard let sig = SecKeyCreateSignature(secKey, SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256, Data(cri) as CFData, &serr) as Data? else { throw serr!.takeRetainedValue() as Error }
                     append("[Node] CSR SIG (message) len=\(sig.count)\n\(hex(sig))\n")
-                    let csr = try mk.buildCSR(signingKey: secKey, subjectCN: "node-csr-test", nodeIdSAN: "node-\(UUID().uuidString.prefix(8))")
+                    let csr = try mk.buildCSR(signingKey: secKey, subjectCN: "node-csr-test", nodeIdSAN: nodeId)
                     self.lastCSR = csr
                     append("[Node] CSR (message) DER len=\(csr.count)\n\(hex(csr))\n")
                     let parsed = try CertificateSigningRequest(derEncoded: Array(csr))
@@ -93,12 +96,13 @@ struct ContentView: View {
                     let req = try CertificateSigningRequest(derEncoded: Array(csr))
                     let isValid = req.publicKey.isValidSignature(req.signature, for: req)
                     append("[Mobile] CSR PoP = \(isValid)\n")
-                    let leaf = try mk.issueLeaf(from: ca, csrDER: csr, subjectOverrideCN: "node-leaf", sanDNS: ["node.runar"], validityDays: 180)
+                    guard let nodeId = self.currentNodeId else { append("[Mobile] Issue leaf ERROR: node-id not available\n"); return }
+                    let leaf = try mk.issueLeaf(from: ca, csrDER: csr, subjectOverrideCN: nodeId, sanDNS: [nodeId], validityDays: 180)
                     self.leafCert = leaf
                     append("[Mobile] Leaf issued\n  subject: \(leaf.subject)\n")
                     // Validate chain with SNI
-                    try mk.validateChain(leaf: leaf, ca: ca.generated.certificate, sniHost: "node.runar")
-                    append("[Mobile] Chain OK (SNI=node.runar)\n")
+                    try mk.validateChain(leaf: leaf, ca: ca.generated.certificate, sniHost: nodeId)
+                    append("[Mobile] Chain OK (SNI=\(nodeId))\n")
                     // SPKI pinning example
                     let spki = CertificateUtils.spkiBytes(leaf.publicKey)
                     let pinnedOk = mk.spkiPinned(leaf, expectedSPKI: spki)
