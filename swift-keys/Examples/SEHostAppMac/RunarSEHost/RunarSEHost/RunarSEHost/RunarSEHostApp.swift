@@ -173,6 +173,23 @@ struct ContentView: View {
                         append("[Mobile] Profiles ERROR: \(error.localizedDescription)\n")
                     }
                 }
+                Button("9) Envelope API (facade): encrypt on mobile (profile+network), decrypt via facade") {
+                    do {
+                        let message = Data("Envelope API test payload".utf8)
+                        let netId = "default"
+                        let profileId = "personal"
+                        let env = try mk.encryptWithEnvelope(data: message, networkId: netId, profileIds: [profileId])
+                        append("[Mobile] Envelope API created\n  ct=\(env.encryptedData.count) bytes, netId=\(env.networkId ?? "nil"), wraps: net=\(env.networkEncryptedKey.count) profileKeys=\(env.profileEncryptedKeys.keys.sorted())\n")
+                        let ptNet = try mk.decryptWithNetwork(envelopeData: env)
+                        precondition(ptNet == message)
+                        append("[Mobile] Envelope API decrypt OK (network)\n")
+                        let ptProf = try mk.decryptWithProfile(envelopeData: env, profileId: profileId)
+                        precondition(ptProf == message)
+                        append("[Mobile] Envelope API decrypt OK (profile)\n")
+                    } catch {
+                        append("[Mobile] Envelope API ERROR: \(error.localizedDescription)\n")
+                    }
+                }
             }
         }
         .padding(24)

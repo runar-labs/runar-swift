@@ -874,7 +874,7 @@ public actor TypeRegistry {
 
 /// Protocol for envelope encryption operations
 /// Matches the MobileKeyManager interface from swift-keys
-public protocol EnvelopeCrypto: AnyObject {
+public protocol EnvelopeCrypto {
     /// Encrypt data with envelope encryption
     func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData
 
@@ -886,11 +886,10 @@ public protocol EnvelopeCrypto: AnyObject {
 }
 
 /// KeyStore abstraction for tests/apps to supply an implementation
-public protocol KeyStore: EnvelopeCrypto {
-    func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData
-    func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId: String) throws -> Data
-    func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data
-}
+public typealias KeyStore = EnvelopeCrypto
+
+// Bridge RunarKeys.MobileKeyManager to EnvelopeCrypto expected by serializer
+extension MobileKeyManager: EnvelopeCrypto {}
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto

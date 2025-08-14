@@ -63,7 +63,7 @@ public enum EnvelopeEncryption {
     /// - Parameter envelopeData: Envelope encrypted data to serialize
     /// - Returns: CBOR encoded data
     public static func serializeToCBOR(_ envelopeData: EnvelopeEncryptedData) throws -> Data {
-        // Use CBOR-like map encoding compatible with our decode
+        // Keep serializer’s own CBOR encoding for transport
         var dict: [String: Any] = [
             "encryptedData": Array(envelopeData.encryptedData),
             "networkEncryptedKey": Array(envelopeData.networkEncryptedKey),

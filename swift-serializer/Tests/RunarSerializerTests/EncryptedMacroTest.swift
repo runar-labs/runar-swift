@@ -5,15 +5,7 @@ import SwiftCBOR
 import XCTest
 
 final class EncryptedMacroTest: XCTestCase {
-    final class DummyKeystore: KeyStore {
-        func encryptWithEnvelope(data: Data, networkId: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData {
-            // Provide a non-empty networkEncryptedKey when networkId is present so macro selects network path
-            let nek = (networkId != nil) ? Data([0x01]) : Data()
-            return EnvelopeEncryptedData(encryptedData: data, networkId: networkId, networkEncryptedKey: nek, profileEncryptedKeys: [:])
-        }
-        func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId _: String) throws -> Data { envelopeData.encryptedData }
-        func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data { envelopeData.encryptedData }
-    }
+    typealias DummyKeystore = MobileKeyManager
     func testBasicEncryptionDecryption() async throws {
         // Test basic encryption/decryption without macro
         struct TestUser: Codable {
