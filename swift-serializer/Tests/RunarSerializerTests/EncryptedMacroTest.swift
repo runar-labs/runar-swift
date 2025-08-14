@@ -5,7 +5,6 @@ import SwiftCBOR
 import XCTest
 
 final class EncryptedMacroTest: XCTestCase {
-    typealias DummyKeystore = MobileKeyManager
     func testBasicEncryptionDecryption() async throws {
         // Test basic encryption/decryption without macro
         struct TestUser: Codable {
@@ -19,8 +18,8 @@ final class EncryptedMacroTest: XCTestCase {
         let encoder = JSONEncoder()
         let jsonData = try encoder.encode(user)
 
-        // Use dummy keystore
-        let keystore = DummyKeystore()
+        // Use real keystore
+        let keystore = RunarKeys.MobileKeyManager()
         let networkId = "test-network"
         let resolver = MockLabelResolver(networkId: networkId)
 
@@ -60,8 +59,8 @@ final class EncryptedMacroTest: XCTestCase {
             isActive: true
         )
 
-        // Create a dummy keystore and resolver
-        let keystore = DummyKeystore()
+        // Create a real keystore and resolver
+        let keystore = RunarKeys.MobileKeyManager()
         let resolver = MockLabelResolver(networkId: "test-network")
 
         // Test encryption
@@ -103,7 +102,7 @@ final class EncryptedMacroTest: XCTestCase {
             settings: UserSettings(theme: "dark", notifications: true, language: "en")
         )
 
-        let keystore = DummyKeystore()
+        let keystore = RunarKeys.MobileKeyManager()
         let resolver = MockLabelResolver(networkId: "test-network")
 
         // Test encryption
@@ -147,7 +146,7 @@ final class EncryptedMacroTest: XCTestCase {
             numbers: numbers
         )
 
-        let keystore = DummyKeystore()
+        let keystore = RunarKeys.MobileKeyManager()
         let resolver = MockLabelResolver(networkId: "test-network")
 
         // Test encryption performance
