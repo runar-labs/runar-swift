@@ -16,7 +16,7 @@ public struct EnvelopeEncryptedData: Codable {
 }
 
 public extension MobileKeyManager {
-    func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData {
+    public func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData {
         let userRoot = try UserRootStore.load()
 		let symmetricKey = SymmetricKey(size: .bits256)
 		let sealed = try AES.GCM.seal(data, using: symmetricKey)
@@ -45,7 +45,7 @@ public extension MobileKeyManager {
 		)
 	}
 
-    func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data {
+    public func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data {
         let userRoot = try UserRootStore.load()
 		guard let nid = envelopeData.networkId, !envelopeData.networkEncryptedKey.isEmpty else {
 			throw NSError(domain: "Envelope", code: -1, userInfo: [NSLocalizedDescriptionKey: "No network wrap present"])
@@ -57,7 +57,7 @@ public extension MobileKeyManager {
 		return try AES.GCM.open(box, using: symmetricKey)
 	}
 
-    func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId: String) throws -> Data {
+    public func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId: String) throws -> Data {
         let userRoot = try UserRootStore.load()
 		guard let wrapped = envelopeData.profileEncryptedKeys[profileId] else {
 			throw NSError(domain: "Envelope", code: -1, userInfo: [NSLocalizedDescriptionKey: "No profile wrap for \(profileId)"])

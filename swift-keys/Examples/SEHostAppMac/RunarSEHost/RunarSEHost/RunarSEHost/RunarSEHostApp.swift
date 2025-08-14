@@ -3,6 +3,10 @@ import RunarKeys
 import X509
 import CryptoKit
 import Security
+import SwiftCommon
+import RunarTransporter
+
+ 
 
 @main
 struct RunarSEHostApp: App {
@@ -22,6 +26,11 @@ struct ContentView: View {
     @State private var lastCSR: Data? = nil
     @State private var leafCert: Certificate? = nil
     @State private var currentNodeId: String? = nil
+    @State private var t1: NetworkQuicTransporter? = nil
+    @State private var t2: NetworkQuicTransporter? = nil
+    @State private var t1NodeId: String = ""
+    @State private var t2NodeId: String = ""
+ 
 
     var body: some View {
         VStack(spacing: 12) {
@@ -137,6 +146,33 @@ struct ContentView: View {
                     append("[Mobile] Issue leaf ERROR: \(error.localizedDescription)\n")
                 }
             })
+            // 5b) Node: Install issued leaf certificate into Keychain
+            Button("5b) Node: Install issued leaf cert into Keychain", action: {
+                do {
+                    guard let leaf = self.leafCert else { append("[Node] Install cert ERROR: leaf cert not available\n"); return }
+                    guard let nodeId = self.currentNodeId else { append("[Node] Install cert ERROR: node-id not available\n"); return }
+                    // Ensure node private key exists (same label used earlier)
+                    _ = try mk.generateNodeIdentity(label: "com.runar.keys.test.identity")
+                    // Convert to SecCertificate and add to keychain with a friendly label
+                    guard let secCert = CertificateUtils.toSecCertificate(leaf) else { append("[Node] Install cert ERROR: could not convert to SecCertificate\n"); return }
+                    let label = "Runar Node Certificate \(nodeId)"
+                    let addQuery: [String: Any] = [
+                        kSecClass as String: kSecClassCertificate,
+                        kSecValueRef as String: secCert,
+                        kSecAttrLabel as String: label
+                    ]
+                    let status = SecItemAdd(addQuery as CFDictionary, nil)
+                    if status == errSecDuplicateItem {
+                        append("[Node] Certificate already installed label=\(label)\n")
+                    } else if status == errSecSuccess {
+                        append("[Node] Certificate installed label=\(label) size=\(CertificateUtils.toDER(leaf).count) bytes\n")
+                    } else {
+                        append("[Node] Install cert ERROR: OSStatus \(status)\n")
+                    }
+                } catch {
+                    append("[Node] Install cert ERROR: \(error.localizedDescription)\n")
+                }
+            })
             // Removed non-recommended CSR paths; keeping only message-signed
             Divider()
             Group {
@@ -216,6 +252,67 @@ struct ContentView: View {
                         append("[Mobile] Envelope API ERROR: \(error.localizedDescription)\n")
                     }
                 }
+                // Transporter E2E (optional)
+                Group {
+                Divider()
+                Button("10) Transporter TLS E2E: start two nodes", action: {
+                    Task {
+                        do {
+                            append("[Transport] Setting up CA and two nodes...\n")
+                            let ca = try mk.createCA(subjectCN: "Runar Test CA")
+                            let sk1 = try mk.generateNodeIdentity(label: "hostapp-node1")
+                            let pk1 = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: sk1)
+                            let id1 = RunarKeys.Ids.compactId(pk1)
+                            let csr1 = try mk.buildCSR(signingKey: sk1, subjectCN: id1, nodeIdSAN: id1)
+                            let cert1 = try mk.issueLeaf(from: ca, csrDER: csr1, subjectOverrideCN: id1, sanDNS: [id1], validityDays: 90)
+                            let sk2 = try mk.generateNodeIdentity(label: "hostapp-node2")
+                            let pk2 = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: sk2)
+                            let id2 = RunarKeys.Ids.compactId(pk2)
+                            let csr2 = try mk.buildCSR(signingKey: sk2, subjectCN: id2, nodeIdSAN: id2)
+                            let cert2 = try mk.issueLeaf(from: ca, csrDER: csr2, subjectOverrideCN: id2, sanDNS: [id2], validityDays: 90)
+ 
+                             let chain1 = [RunarKeys.CertificateUtils.toDER(cert1), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
+                             let chain2 = [RunarKeys.CertificateUtils.toDER(cert2), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
+ 
+                             let node1Info = RunarNodeInfo(nodePublicKey: pk1, addresses: ["127.0.0.1:50091"], services: [])
+                             let node2Info = RunarNodeInfo(nodePublicKey: pk2, addresses: ["127.0.0.1:50092"], services: [])
+ 
+                             let opt1 = NetworkQuicTransportOptions(verifyCertificates: true, keepAliveInterval: 15, connectionIdleTimeout: 60, streamIdleTimeout: 30, maxIdleStreamsPerPeer: 10, certificates: chain1, secKey: sk1, mobileKeyManager: nil)
+                             let opt2 = NetworkQuicTransportOptions(verifyCertificates: true, keepAliveInterval: 15, connectionIdleTimeout: 60, streamIdleTimeout: 30, maxIdleStreamsPerPeer: 10, certificates: chain2, secKey: sk2, mobileKeyManager: nil)
+ 
+                             let handler1 = HostEchoHandler(nodeId: id1)
+                             let handler2 = HostEchoHandler(nodeId: id2)
+                             let tr1 = NetworkQuicTransporter(nodeInfo: node1Info, bindAddress: "127.0.0.1:50091", messageHandler: handler1, options: opt1, logger: RunarLogger(subsystem: "com.runar.transporter", category: "hostapp-1"))
+                             let tr2 = NetworkQuicTransporter(nodeInfo: node2Info, bindAddress: "127.0.0.1:50092", messageHandler: handler2, options: opt2, logger: RunarLogger(subsystem: "com.runar.transporter", category: "hostapp-2"))
+                             handler1.transporter = tr1
+                             handler2.transporter = tr2
+                             try await tr1.start(); try await tr2.start()
+                             self.t1 = tr1; self.t2 = tr2
+                             self.t1NodeId = id1; self.t2NodeId = id2
+                             append("[Transport] Started transporter1 + transporter2\n")
+ 
+                             // connect both ways
+                             let peer1 = RunarPeerInfo(publicKey: pk1, addresses: ["127.0.0.1:50091"]) // seen by node2
+                             let peer2 = RunarPeerInfo(publicKey: pk2, addresses: ["127.0.0.1:50092"]) // seen by node1
+                             try await tr1.connect(to: peer2)
+                             try await tr2.connect(to: peer1)
+                             append("[Transport] Connected both directions\n")
+                         } catch {
+                             append("[Transport] ERROR: \(error.localizedDescription)\n")
+                         }
+                     }
+                 })
+                 Button("10b) Transporter: send request from node1 to node2", action: {
+                     Task {
+                         guard let tr1 = self.t1 else { append("[Transport] ERROR: transporter1 not started\n"); return }
+                         let msg = RunarNetworkMessage(sourceNodeId: self.t1NodeId, destinationNodeId: self.t2NodeId, messageType: MessageTypes.request, payloads: [NetworkMessagePayloadItem(path: "/echo", valueBytes: Data("ping".utf8), correlationId: "req-1")])
+                         do { try await tr1.send(message: msg); append("[Transport] Sent request ping\n") } catch { append("[Transport] send ERROR: \(error.localizedDescription)\n") }
+                     }
+                 })
+                 Button("10c) Transporter: stop both", action: {
+                     Task { await self.t1?.stop(); await self.t2?.stop(); append("[Transport] Stopped both transporters\n") }
+                 })
+                 }
             }
         }
         .padding(24)
@@ -235,5 +332,26 @@ struct ContentView: View {
         data.map { String(format: "%02x", $0) }.joined()
     }
 }
+
+ 
+final class HostEchoHandler: MessageHandlerProtocol {
+    let nodeId: String
+    weak var transporter: TransportProtocol?
+    init(nodeId: String) { self.nodeId = nodeId }
+    func handleMessage(_ message: RunarNetworkMessage) {
+        if message.messageType == MessageTypes.request, let corr = message.payloads.first?.correlationId {
+            let response = RunarNetworkMessage(
+                sourceNodeId: nodeId,
+                destinationNodeId: message.sourceNodeId,
+                messageType: MessageTypes.response,
+                payloads: [NetworkMessagePayloadItem(path: "/echo", valueBytes: message.payloads.first?.valueBytes ?? Data(), correlationId: corr)]
+            )
+            Task { try? await transporter?.send(message: response) }
+        }
+    }
+    func peerConnected(_ peerInfo: RunarNodeInfo) {}
+    func peerDisconnected(_ peerId: String) {}
+}
+ 
 
 

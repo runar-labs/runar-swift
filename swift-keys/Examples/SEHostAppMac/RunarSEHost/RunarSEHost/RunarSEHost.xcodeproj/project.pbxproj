@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		53B3F7232E4CB12300879965 /* RunarKeys in Frameworks */ = {isa = PBXBuildFile; productRef = 53B3F7222E4CB12300879965 /* RunarKeys */; };
+		53B3F7262E4DA9DD00879965 /* RunarTransporter in Frameworks */ = {isa = PBXBuildFile; productRef = 53B3F7252E4DA9DD00879965 /* RunarTransporter */; };
+		53B3F7292E4DAAEC00879965 /* SwiftCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 53B3F7282E4DAAEC00879965 /* SwiftCommon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +58,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				53B3F7262E4DA9DD00879965 /* RunarTransporter in Frameworks */,
+				53B3F7292E4DAAEC00879965 /* SwiftCommon in Frameworks */,
 				53B3F7232E4CB12300879965 /* RunarKeys in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -118,6 +122,8 @@
 			name = RunarSEHost;
 			packageProductDependencies = (
 				53B3F7222E4CB12300879965 /* RunarKeys */,
+				53B3F7252E4DA9DD00879965 /* RunarTransporter */,
+				53B3F7282E4DAAEC00879965 /* SwiftCommon */,
 			);
 			productName = RunarSEHost;
 			productReference = 53B3F6E72E4CA82C00879965 /* RunarSEHost.app */;
@@ -203,6 +209,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				53B3F7212E4CB12300879965 /* XCLocalSwiftPackageReference "../../../../../swift-keys" */,
+				53B3F7242E4DA9DD00879965 /* XCLocalSwiftPackageReference "../../../../../swift-transporter" */,
+				53B3F7272E4DAAEC00879965 /* XCLocalSwiftPackageReference "../../../../../swift-common" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 53B3F6E82E4CA82C00879965 /* Products */;
@@ -566,12 +574,28 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../../../../../swift-keys";
 		};
+		53B3F7242E4DA9DD00879965 /* XCLocalSwiftPackageReference "../../../../../swift-transporter" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../../../../swift-transporter";
+		};
+		53B3F7272E4DAAEC00879965 /* XCLocalSwiftPackageReference "../../../../../swift-common" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../../../../swift-common";
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		53B3F7222E4CB12300879965 /* RunarKeys */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RunarKeys;
+		};
+		53B3F7252E4DA9DD00879965 /* RunarTransporter */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RunarTransporter;
+		};
+		53B3F7282E4DAAEC00879965 /* SwiftCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftCommon;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

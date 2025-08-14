@@ -30,17 +30,13 @@ public enum EnvelopeEncryption {
     /// - Returns: Envelope encrypted data
     public static func encrypt(
         _ data: Data,
-        context _: SerializationContext
+        context: SerializationContext
     ) throws -> EnvelopeEncryptedData {
-        // For now, use a simple implementation
-        // In production, this would use the actual swift-keys package
-        let encryptedData = data // Placeholder - would be actual encryption
-        return EnvelopeEncryptedData(
-            encryptedData: encryptedData,
-            networkId: nil,
-            networkEncryptedKey: Data(),
-            profileEncryptedKeys: [:]
-        )
+        let km = context.keystore as! MobileKeyManager
+        let networkId = context.networkId
+        // Use resolver to map type labels to profile IDs if needed; here we reuse provided single profileId
+        let profileIds = [context.profileId]
+        return try km.encryptWithEnvelope(data: data, networkId: networkId, profileIds: profileIds)
     }
 
     /// Decrypt data using envelope encryption
@@ -51,12 +47,15 @@ public enum EnvelopeEncryption {
     /// - Returns: Decrypted data
     public static func decrypt(
         _ envelopeData: EnvelopeEncryptedData,
-        context _: SerializationContext,
-        profileId _: String? = nil
+        context: SerializationContext,
+        profileId: String? = nil
     ) throws -> Data {
-        // For now, return the data as-is
-        // In production, this would use the actual swift-keys package
-        envelopeData.encryptedData
+        let km = context.keystore as! MobileKeyManager
+        if let pid = profileId {
+            return try km.decryptWithProfile(envelopeData: envelopeData, profileId: pid)
+        } else {
+            return try km.decryptWithNetwork(envelopeData: envelopeData)
+        }
     }
 
     /// Serialize EnvelopeEncryptedData to CBOR format
