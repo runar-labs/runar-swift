@@ -42,6 +42,7 @@ struct ContentView: View {
             // 1) Mobile: Initialize user root
             Button("1) Mobile: Initialize user root secret (biometry)") {
                 do {
+                    append("Step 1")
                     let secret = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
                     try mk.initializeUserRoot(secret: secret, requireUserPresence: true, requireBiometryCurrentSet: true)
                     append("[Mobile] Initialize user root secret\n  root: \(secret.count) bytes\n")
@@ -52,6 +53,8 @@ struct ContentView: View {
             // 2) Mobile: Create CA
             Button("2) Mobile: Create CA") {
                 do {
+                    append("Step 2")
+                    
                     let handle = try mk.createCA(subjectCN: "Runar Test CA", validityYears: 5)
                     self.caHandle = handle
                     append("[Mobile] CA created\n  subject: \(handle.generated.certificate.subject)\n")
@@ -61,6 +64,7 @@ struct ContentView: View {
             }
             Button("3) Node: Generate or Load identity SE key") {
                 do {
+                    append("Step 3")
                     let key = try mk.generateNodeIdentity(label: "com.runar.keys.test.identity")
                     let fp = RunarSEKeyManager.publicKeySHA256Hex(for: key) ?? "(no fp)"
                     append("[Node] Identity SE key\n  fp: \(fp)\n")
@@ -70,6 +74,7 @@ struct ContentView: View {
             }
             Button("4) Node: Build CSR + SAN=node-id (message)") {
                 do {
+                    append("Step 4")
                     let secKey = try mk.generateNodeIdentity(label: "com.runar.keys.test.identity")
                     // Compute CRI for logging
                     let subject = try dn(cn: "node-csr-test")
@@ -99,6 +104,7 @@ struct ContentView: View {
             // 5) Mobile: Issue leaf certificate from CSR
             Button("5) Mobile: Issue leaf cert from CSR", action: {
                 do {
+                    append("Step 5")
                     guard let ca = self.caHandle else { append("[Mobile] Issue leaf ERROR: CA not created\n"); return }
                     guard let csr = self.lastCSR else { append("[Mobile] Issue leaf ERROR: CSR not available\n"); return }
                     append("[Mobile] CSR PoP verify...\n")
@@ -149,6 +155,7 @@ struct ContentView: View {
             // 5b) Node: Install issued leaf certificate into Keychain
             Button("5b) Node: Install issued leaf cert into Keychain", action: {
                 do {
+                    append("Step 5b")
                     guard let leaf = self.leafCert else { append("[Node] Install cert ERROR: leaf cert not available\n"); return }
                     guard let nodeId = self.currentNodeId else { append("[Node] Install cert ERROR: node-id not available\n"); return }
                     // Ensure node private key exists (same label used earlier)
@@ -178,6 +185,7 @@ struct ContentView: View {
             Group {
                 Button("6) Mobile→Node: Network key → wrap for node, store blob, load, unwrap and store") {
                     do {
+                        append("Step 6")
                         let master = try mk.loadUserRoot()
                         let networkPriv = try mk.deriveNetworkAgreement(label: "default", userRoot: master)
                         // Simulated node agreement keypair
@@ -201,6 +209,7 @@ struct ContentView: View {
                 }
                 Button("7) Node: Use network key for ECIES decryption") {
                     do {
+                        append("Step 7")
                         guard let nodeNet = self.nodeNetworkAgreementPrivate else { append("[Node] ECIES ERROR: network key not installed\n"); return }
                         let message = Data("Hello Node with ECIES".utf8)
                         // Mobile encrypts to Node's installed network public key
@@ -214,6 +223,7 @@ struct ContentView: View {
                 }
                 Button("8) Multi-recipient envelope: encrypt on mobile (profile+network), decrypt on node and mobile") {
                     do {
+                        append("Step 8")
                         let master = try mk.loadUserRoot()
                         let profileKey = try mk.deriveProfileAgreement(label: "personal", userRoot: master)
                         guard let nodeNet = self.nodeNetworkAgreementPrivate else { append("[Node] Envelope ERROR: network key not installed\n"); return }
@@ -237,6 +247,7 @@ struct ContentView: View {
                 }
                 Button("9) Envelope API (facade): encrypt on mobile (profile+network), decrypt via facade") {
                     do {
+                        append("Step 9")
                         let message = Data("Envelope API test payload".utf8)
                         let netId = "default"
                         let profileId = "personal"
@@ -258,6 +269,7 @@ struct ContentView: View {
                 Button("10) Transporter TLS E2E: start two nodes", action: {
                     Task {
                         do {
+                            append("Step 10")
                             append("[Transport] Setting up CA and two nodes...\n")
                             let ca = try mk.createCA(subjectCN: "Runar Test CA")
                             let sk1 = try mk.generateNodeIdentity(label: "hostapp-node1")
@@ -277,11 +289,11 @@ struct ContentView: View {
                              let node1Info = RunarNodeInfo(nodePublicKey: pk1, addresses: ["127.0.0.1:50091"], services: [])
                              let node2Info = RunarNodeInfo(nodePublicKey: pk2, addresses: ["127.0.0.1:50092"], services: [])
  
-                             let opt1 = NetworkQuicTransportOptions(verifyCertificates: true, keepAliveInterval: 15, connectionIdleTimeout: 60, streamIdleTimeout: 30, maxIdleStreamsPerPeer: 10, certificates: chain1, secKey: sk1, mobileKeyManager: nil)
-                             let opt2 = NetworkQuicTransportOptions(verifyCertificates: true, keepAliveInterval: 15, connectionIdleTimeout: 60, streamIdleTimeout: 30, maxIdleStreamsPerPeer: 10, certificates: chain2, secKey: sk2, mobileKeyManager: nil)
+                             let opt1 = NetworkQuicTransportOptions(verifyCertificates: true, keepAliveInterval: 15, connectionIdleTimeout: 60, streamIdleTimeout: 30, maxIdleStreamsPerPeer: 10, certificates: chain1, secKey: sk1, mobileKeyManager: mk)
+                             let opt2 = NetworkQuicTransportOptions(verifyCertificates: true, keepAliveInterval: 15, connectionIdleTimeout: 60, streamIdleTimeout: 30, maxIdleStreamsPerPeer: 10, certificates: chain2, secKey: sk2, mobileKeyManager: mk)
  
-                             let handler1 = HostEchoHandler(nodeId: id1)
-                             let handler2 = HostEchoHandler(nodeId: id2)
+                             let handler1 = HostEchoHandler(nodeId: id1, log: { line in append(line) })
+                             let handler2 = HostEchoHandler(nodeId: id2, log: { line in append(line) })
                              let tr1 = NetworkQuicTransporter(nodeInfo: node1Info, bindAddress: "127.0.0.1:50091", messageHandler: handler1, options: opt1, logger: RunarLogger(subsystem: "com.runar.transporter", category: "hostapp-1"))
                              let tr2 = NetworkQuicTransporter(nodeInfo: node2Info, bindAddress: "127.0.0.1:50092", messageHandler: handler2, options: opt2, logger: RunarLogger(subsystem: "com.runar.transporter", category: "hostapp-2"))
                              handler1.transporter = tr1
@@ -304,12 +316,21 @@ struct ContentView: View {
                  })
                  Button("10b) Transporter: send request from node1 to node2", action: {
                      Task {
+                         append("Step 10b")
                          guard let tr1 = self.t1 else { append("[Transport] ERROR: transporter1 not started\n"); return }
                          let msg = RunarNetworkMessage(sourceNodeId: self.t1NodeId, destinationNodeId: self.t2NodeId, messageType: MessageTypes.request, payloads: [NetworkMessagePayloadItem(path: "/echo", valueBytes: Data("ping".utf8), correlationId: "req-1")])
                          do { try await tr1.send(message: msg); append("[Transport] Sent request ping\n") } catch { append("[Transport] send ERROR: \(error.localizedDescription)\n") }
                      }
                  })
-                 Button("10c) Transporter: stop both", action: {
+                 Button("10c) Transporter: send request from node2 to node1", action: {
+                     Task {
+                         append("Step 10c")
+                         guard let tr2 = self.t2 else { append("[Transport] ERROR: transporter2 not started\n"); return }
+                         let msg = RunarNetworkMessage(sourceNodeId: self.t2NodeId, destinationNodeId: self.t1NodeId, messageType: MessageTypes.request, payloads: [NetworkMessagePayloadItem(path: "/echo", valueBytes: Data("pong".utf8), correlationId: "req-2")])
+                         do { try await tr2.send(message: msg); append("[Transport] Sent request pong\n") } catch { append("[Transport] send ERROR: \(error.localizedDescription)\n") }
+                     }
+                 })
+                 Button("10d) Transporter: stop both", action: {
                      Task { await self.t1?.stop(); await self.t2?.stop(); append("[Transport] Stopped both transporters\n") }
                  })
                  }
@@ -337,8 +358,10 @@ struct ContentView: View {
 final class HostEchoHandler: MessageHandlerProtocol {
     let nodeId: String
     weak var transporter: TransportProtocol?
-    init(nodeId: String) { self.nodeId = nodeId }
+    let log: (String) -> Void
+    init(nodeId: String, log: @escaping (String) -> Void) { self.nodeId = nodeId; self.log = log }
     func handleMessage(_ message: RunarNetworkMessage) {
+        log("[Handler \(nodeId)] received: type=\(message.messageType) from=\(message.sourceNodeId) path=\(message.payloads.first?.path ?? "-") corr=\(message.payloads.first?.correlationId ?? "-")")
         if message.messageType == MessageTypes.request, let corr = message.payloads.first?.correlationId {
             let response = RunarNetworkMessage(
                 sourceNodeId: nodeId,
@@ -346,11 +369,12 @@ final class HostEchoHandler: MessageHandlerProtocol {
                 messageType: MessageTypes.response,
                 payloads: [NetworkMessagePayloadItem(path: "/echo", valueBytes: message.payloads.first?.valueBytes ?? Data(), correlationId: corr)]
             )
+            log("[Handler \(nodeId)] sending response corr=\(corr)")
             Task { try? await transporter?.send(message: response) }
         }
     }
-    func peerConnected(_ peerInfo: RunarNodeInfo) {}
-    func peerDisconnected(_ peerId: String) {}
+    func peerConnected(_ peerInfo: RunarNodeInfo) { log("[Handler \(nodeId)] peer connected: \(peerInfo.nodeId)") }
+    func peerDisconnected(_ peerId: String) { log("[Handler \(nodeId)] peer disconnected: \(peerId)") }
 }
  
 
