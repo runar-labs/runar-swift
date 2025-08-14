@@ -17,6 +17,7 @@ let package = Package(
             targets: ["RunarTransporter"]
         ),
         .executable(name: "QuicIT", targets: ["QuicIT"]),
+        .executable(name: "InteropE2E", targets: ["InteropE2E"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "3.14.0")),
@@ -57,14 +58,26 @@ let package = Package(
                 .product(name: "SwiftCommon", package: "swift-common"),
             ]
         ),
+        .executableTarget(
+            name: "InteropE2E",
+            dependencies: [
+                .target(name: "RunarTransporter"),
+                .product(name: "RunarKeys", package: "swift-keys"),
+                .product(name: "SwiftCommon", package: "swift-common"),
+                .product(name: "SwiftASN1", package: "swift-asn1"),
+                .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "X509", package: "swift-certificates"),
+            ]
+        ),
 
         .testTarget(
             name: "RunarTransporterTests",
             dependencies: [
                 "RunarTransporter",
                 .product(name: "SwiftCBOR", package: "SwiftCBOR"),
-                .product(name: "X509", package: "swift-certificates"),
                 .product(name: "SwiftASN1", package: "swift-asn1"),
+                .product(name: "X509", package: "swift-certificates"),
+                .product(name: "Crypto", package: "swift-crypto"),
             ]
         ),
     ]
