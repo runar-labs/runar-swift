@@ -88,7 +88,7 @@ struct ContentView: View {
                 }
             }
             // 5) Mobile: Issue leaf certificate from CSR
-            Button("5) Mobile: Issue leaf cert from CSR") {
+            Button("5) Mobile: Issue leaf cert from CSR", action: {
                 do {
                     guard let ca = self.caHandle else { append("[Mobile] Issue leaf ERROR: CA not created\n"); return }
                     guard let csr = self.lastCSR else { append("[Mobile] Issue leaf ERROR: CSR not available\n"); return }
@@ -115,7 +115,8 @@ struct ContentView: View {
                         do {
                             let req2 = try CertificateSigningRequest(derEncoded: Array(csr))
                             append("[Diag] CSR subject=\(req2.subject)\n")
-                            append("[Diag] CSR pub algo=\(req2.publicKey.algorithm)\n")
+                            let spkiLen = CertificateUtils.spkiBytes(req2.publicKey).count
+                            append("[Diag] CSR pub spkiLen=\(spkiLen) bytes\n")
                             append("[Diag] CSR sig algo=ecdsaWithSHA256\n")
                             // Attempt to build a cert with a constant small serial to check DER constraints
                             let testSerial: [UInt8] = [0x01]
@@ -135,7 +136,7 @@ struct ContentView: View {
                 } catch {
                     append("[Mobile] Issue leaf ERROR: \(error.localizedDescription)\n")
                 }
-            }
+            })
             // Removed non-recommended CSR paths; keeping only message-signed
             Divider()
             Group {
