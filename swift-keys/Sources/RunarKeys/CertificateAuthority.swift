@@ -15,7 +15,10 @@ public struct CertificateAuthority {
         let notBefore = Date().addingTimeInterval(-60)
         let notAfter = Date().addingTimeInterval(TimeInterval(validityYears * 365 * 24 * 60 * 60))
         let pub = try Certificate.PublicKey(P256.Signing.PublicKey(x963Representation: key.publicKey.x963Representation))
-        let ski = ArraySlice(Data(SHA256.hash(data: key.publicKey.x963Representation)))
+        var ser = DER.Serializer()
+        try pub.serialize(into: &ser)
+        let spki = Data(ser.serializedBytes)
+        let ski = ArraySlice(Data(Insecure.SHA1.hash(data: spki)))
 
         let exts = try Certificate.Extensions {
             Critical(BasicConstraints.isCertificateAuthority(maxPathLength: 0))

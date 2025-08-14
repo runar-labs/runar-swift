@@ -64,13 +64,13 @@ public struct CertificateIssuer {
         var leafSer = DER.Serializer()
         try leafPublicKey.serialize(into: &leafSer)
         let leafSPKI = Data(leafSer.serializedBytes)
-        let ski = ArraySlice(Data(SHA256.hash(data: leafSPKI)))
+        let ski = ArraySlice(Data(Insecure.SHA1.hash(data: leafSPKI)))
 
         let caCertPub = try Certificate.PublicKey(P256.Signing.PublicKey(x963Representation: ca.privateKey.publicKey.x963Representation))
         var caSer = DER.Serializer()
         try caCertPub.serialize(into: &caSer)
         let caSPKI = Data(caSer.serializedBytes)
-        let aki = ArraySlice(Data(SHA256.hash(data: caSPKI)))
+        let aki = ArraySlice(Data(Insecure.SHA1.hash(data: caSPKI)))
 
         let san = SubjectAlternativeNames(sanDNS.map { GeneralName.dnsName($0) })
         let exts = try Certificate.Extensions {
