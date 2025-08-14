@@ -130,7 +130,7 @@ public struct CertificateIssuer {
     }
 
     private static func distinguishedName(cn: String) throws -> DistinguishedName {
-        let attr = try RelativeDistinguishedName.Attribute(type: .RDNAttributeType.commonName, printableString: cn)
+        let attr = try RelativeDistinguishedName.Attribute(type: .RDNAttributeType.commonName, utf8String: cn)
         return DistinguishedName([RelativeDistinguishedName([attr])])
     }
 }

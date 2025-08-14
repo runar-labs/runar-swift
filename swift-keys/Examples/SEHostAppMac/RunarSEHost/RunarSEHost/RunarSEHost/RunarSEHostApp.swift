@@ -97,16 +97,41 @@ struct ContentView: View {
                     let isValid = req.publicKey.isValidSignature(req.signature, for: req)
                     append("[Mobile] CSR PoP = \(isValid)\n")
                     guard let nodeId = self.currentNodeId else { append("[Mobile] Issue leaf ERROR: node-id not available\n"); return }
-                    let leaf = try mk.issueLeaf(from: ca, csrDER: csr, subjectOverrideCN: nodeId, sanDNS: [nodeId], validityDays: 180)
-                    self.leafCert = leaf
-                    append("[Mobile] Leaf issued\n  subject: \(leaf.subject)\n")
-                    // Validate chain with SNI
-                    try mk.validateChain(leaf: leaf, ca: ca.generated.certificate, sniHost: nodeId)
-                    append("[Mobile] Chain OK (SNI=\(nodeId))\n")
-                    // SPKI pinning example
-                    let spki = CertificateUtils.spkiBytes(leaf.publicKey)
-                    let pinnedOk = mk.spkiPinned(leaf, expectedSPKI: spki)
-                    append("[Mobile] SPKI pin check = \(pinnedOk)\n")
+                    do {
+                        let leaf = try mk.issueLeaf(from: ca, csrDER: csr, subjectOverrideCN: nodeId, sanDNS: [nodeId], validityDays: 180)
+                        self.leafCert = leaf
+                        append("[Mobile] Leaf issued\n  subject: \(leaf.subject)\n")
+                        // Validate chain with SNI
+                        try mk.validateChain(leaf: leaf, ca: ca.generated.certificate, sniHost: nodeId)
+                        append("[Mobile] Chain OK (SNI=\(nodeId))\n")
+                        // SPKI pinning example
+                        let spki = CertificateUtils.spkiBytes(leaf.publicKey)
+                        let pinnedOk = mk.spkiPinned(leaf, expectedSPKI: spki)
+                        append("[Mobile] SPKI pin check = \(pinnedOk)\n")
+                    } catch {
+                        // Extra diagnostics
+                        append("[Mobile] Issue leaf ERROR: \(error.localizedDescription)\n")
+                        // Try to parse CSR again and dump minimal components
+                        do {
+                            let req2 = try CertificateSigningRequest(derEncoded: Array(csr))
+                            append("[Diag] CSR subject=\(req2.subject)\n")
+                            append("[Diag] CSR pub algo=\(req2.publicKey.algorithm)\n")
+                            append("[Diag] CSR sig algo=ecdsaWithSHA256\n")
+                            // Attempt to build a cert with a constant small serial to check DER constraints
+                            let testSerial: [UInt8] = [0x01]
+                            _ = try CertificateIssuer.signLeafWithPublicKey(
+                                ca: ca.generated,
+                                leafPublicKey: req2.publicKey,
+                                subjectCN: nodeId,
+                                sanDNS: [nodeId],
+                                validityDays: 30,
+                                serialBytes: testSerial
+                            )
+                            append("[Diag] Fallback issuance with serial=01 succeeded\n")
+                        } catch {
+                            append("[Diag] Additional failure: \(error.localizedDescription)\n")
+                        }
+                    }
                 } catch {
                     append("[Mobile] Issue leaf ERROR: \(error.localizedDescription)\n")
                 }
