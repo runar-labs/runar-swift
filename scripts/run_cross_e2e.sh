@@ -17,7 +17,7 @@ trap cleanup EXIT
 
 echo "[run_cross_e2e] Temp dir: $TEMP_DIR" >&2
 
-echo "[run_cross_e2e] Running Swift tests (filter CrossLanguageE2E)..." >&2
+echo "[run_cross_e2e] Running Swift tests (filter CrossLanguageE2E) with timeout..." >&2
 pushd "$ROOT_DIR/swift-transporter" >/dev/null
 
 # Export paths for the XCTest to consume
@@ -25,7 +25,12 @@ export RUNAR_RUST_CLIENT_BIN="$CLIENT_BIN"
 export RUNAR_RUST_SERVER_BIN="$SERVER_BIN"
 export RUNAR_E2E_TMPDIR="$TEMP_DIR"
 
-RUST_LOG=info,runar_node=debug,runar_transport_tests=debug,quinn=info swift test --filter CrossLanguageE2E | cat
+# Use gtimeout if available (macOS), fallback to timeout
+TIMEOUT_CMD="timeout"
+if command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout"; fi
+
+# 90s overall timeout for this focused suite
+RUST_LOG=info,runar_node=debug,runar_transport_tests=debug,quinn=info $TIMEOUT_CMD 90 swift test --filter CrossLanguageE2E | cat
 
 popd >/dev/null
 

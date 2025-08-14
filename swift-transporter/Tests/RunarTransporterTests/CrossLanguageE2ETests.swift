@@ -182,7 +182,7 @@ final class CrossLanguageE2ETests: XCTestCase {
             )
             let swiftServer = RunarTransporter.createQuicTransport(
                 nodeInfo: nodeInfoServer,
-                bindAddress: "127.0.0.1:44444",
+                bindAddress: "127.0.0.1:0",
                 messageHandler: handler,
                 options: options,
                 logger: logger
@@ -190,8 +190,10 @@ final class CrossLanguageE2ETests: XCTestCase {
             try await swiftServer.start()
 
             // Rust client connects to Swift server
+            // Resolve actual bound address from transporter
+            let serverAddr = await swiftServer.getLocalAddress()
             let args = [
-                "--peer", "127.0.0.1:44444",
+                "--peer", serverAddr,
                 "--ca", caPath.path,
                 "--cert", rustClientCertPath.path,
                 "--key", rustClientKeyPath.path,

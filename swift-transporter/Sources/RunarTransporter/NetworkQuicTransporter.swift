@@ -32,6 +32,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     // State management
     private var isRunning = false
     private let stateQueue = DispatchQueue(label: "com.runar.quic.state", qos: .userInitiated)
+    // Actual bound address after listener becomes ready (captures ephemeral port if bound to :0)
+    private var actualLocalAddress: String?
 
     // Enhanced request tracking with stream correlation
     private var pendingRequests: [String: RequestState] = [:]
@@ -204,7 +206,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     }
 
     public func getLocalAddress() -> String {
-        bindAddress
+        actualLocalAddress ?? bindAddress
     }
 
     public func subscribeToPeerNodeInfo() -> AsyncStream<RunarNodeInfo> {
@@ -860,6 +862,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         switch state {
         case .ready:
             logger.info("✅ [NetworkQuicTransporter] Listener ready on \(bindAddress)")
+            // Resolve actual bound address (consider ephemeral port assignment)
+            if let p = listener?.port?.rawValue {
+                let host = String(bindAddress.split(separator: ":").first ?? Substring("0.0.0.0"))
+                actualLocalAddress = "\(host):\(p)"
+            }
         case let .failed(error):
             logger.error("❌ [NetworkQuicTransporter] Listener failed: \(error)")
         case .cancelled:
@@ -1053,13 +1060,12 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                     processMessageBuffer(messageBuffer, from: peerId, connection: connection)
                 }
 
-                // Continue receiving if connection is still active
-                if !isComplete {
-                    // Use the nested function to continue the receive loop
-                    receiveNextChunk()
-                } else {
-                    logger.debug("🔚 [NetworkQuicTransporter] Connection \(peerId) marked as complete")
+                // Continue receiving regardless; for QUIC message-based API, isComplete marks end of a message, not the connection
+                if isComplete {
+                    logger.debug("📥 [NetworkQuicTransporter] Message complete from \(peerId); awaiting further data")
                 }
+                // Use the nested function to continue the receive loop
+                receiveNextChunk()
             }
         }
 
@@ -1362,22 +1368,31 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 // Duplicate-resolution: determine desired local role and pick winner using stable id heuristic
                 if let ps = connectionPool.getPeer(peerId: realPeerId) {
                     let localId = nodeInfo.nodeId
-                    let keepExisting = decideKeepExisting(localId: localId, peerId: realPeerId, ps: ps)
-                    if keepExisting {
-                        // Reject current inbound candidate
-                        connection.cancel()
+                    // If the handshake arrived on the same underlying connection already tracked, do not dedupe/close
+                    if let existingConn = ps.getConnection(), existingConn === connection {
+                        ps.activate()
+                        // Send handshake response back (Responder role) to align with Rust expectations
+                        Task { try await self.sendHandshakeDataResponse(to: realPeerId, correlationId: payload.correlationId) }
                     } else {
-                        // Replace existing with current inbound
-                        ps.closeConnection()
-                        ps.setConnection(connection)
-                        // Set dup metadata for inbound: remote(peer)=initiator if we desire responder
-                        let desireInitiator = (localId < realPeerId)
-                        let candInitiator = desireInitiator ? localId : realPeerId
-                        let candResponder = desireInitiator ? realPeerId : localId
-                        ps.setDupMetadata(initiatorPeerId: candInitiator, initiatorNonce: 0, responderPeerId: candResponder, responderNonce: 0)
+                        let keepExisting = decideKeepExisting(localId: localId, peerId: realPeerId, ps: ps)
+                        if keepExisting {
+                            // Reject only if this is a distinct, duplicate candidate
+                            connection.cancel()
+                        } else {
+                            // Replace existing with current inbound
+                            ps.closeConnection()
+                            ps.setConnection(connection)
+                            // Set dup metadata for inbound: remote(peer)=initiator if we desire responder
+                            let desireInitiator = (localId < realPeerId)
+                            let candInitiator = desireInitiator ? localId : realPeerId
+                            let candResponder = desireInitiator ? realPeerId : localId
+                            ps.setDupMetadata(initiatorPeerId: candInitiator, initiatorNonce: 0, responderPeerId: candResponder, responderNonce: 0)
+                        }
+                        // Activate peer after dedupe + handshake
+                        ps.activate()
+                        // Send handshake response after activation
+                        Task { try await self.sendHandshakeDataResponse(to: realPeerId, correlationId: payload.correlationId) }
                     }
-                    // Activate peer after dedupe + handshake
-                    ps.activate()
                 }
                 messageQueue.async { self.messageHandler.peerConnected(peerNodeInfo) }
                 subscriptionQueue.async { self.peerNodeInfoStream?.yield(peerNodeInfo) }
@@ -1474,6 +1489,44 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
                 self?.logger.error("❌ [NetworkQuicTransporter] Failed to send handshake response to \(peerId): \(error)")
             } else {
                 self?.logger.debug("✅ [NetworkQuicTransporter] Handshake response sent to \(peerId)")
+            }
+        })
+    }
+
+    // Send HandshakeData (Rust v2) as response with Responder role
+    private func sendHandshakeDataResponse(to peerId: String, correlationId: String) async throws {
+        logger.info("🤝 [NetworkQuicTransporter] Sending HandshakeData response to \(peerId)")
+
+        let hs = HandshakeData(nodeInfo: nodeInfo, nonce: UInt64.random(in: 0 ... UInt64.max), role: .responder)
+        let responseMessage = try RunarNetworkMessage(
+            sourceNodeId: nodeInfo.nodeId,
+            destinationNodeId: peerId,
+            messageType: MessageTypes.handshake,
+            payloads: [
+                NetworkMessagePayloadItem(
+                    path: "handshake",
+                    valueBytes: CborMessageEncoder.encodeHandshake(hs),
+                    correlationId: correlationId
+                ),
+            ]
+        )
+
+        guard let ps = connectionPool.getPeer(peerId: peerId), let connection = ps.getConnection() else {
+            throw RunarTransportError.connectionError("No connection available for handshake response to \(peerId)")
+        }
+
+        let messageData = try TransportWireCodec.encodeBody(from: responseMessage)
+        var data = Data()
+        var length = UInt32(messageData.count).bigEndian
+        withUnsafeBytes(of: &length) { rawBuffer in
+            data.append(rawBuffer.bindMemory(to: UInt8.self))
+        }
+        data.append(messageData)
+        connection.send(content: data, contentContext: appMessageContext, isComplete: true, completion: .contentProcessed { [weak self] error in
+            if let error {
+                self?.logger.error("❌ [NetworkQuicTransporter] Failed to send HandshakeData response to \(peerId): \(error)")
+            } else {
+                self?.logger.debug("✅ [NetworkQuicTransporter] HandshakeData response sent to \(peerId)")
             }
         })
     }
