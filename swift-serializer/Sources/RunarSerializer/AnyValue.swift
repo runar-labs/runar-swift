@@ -886,7 +886,11 @@ public protocol EnvelopeCrypto: AnyObject {
 }
 
 /// KeyStore abstraction for tests/apps to supply an implementation
-public typealias KeyStore = EnvelopeCrypto
+public protocol KeyStore: EnvelopeCrypto {
+    func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData
+    func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId: String) throws -> Data
+    func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data
+}
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto

@@ -5,7 +5,7 @@ import SwiftCBOR
 import XCTest
 
 final class EncryptedMacroTest: XCTestCase {
-    final class DummyKeystore: EnvelopeCrypto {
+    final class DummyKeystore: KeyStore {
         func encryptWithEnvelope(data: Data, networkId: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData {
             // Provide a non-empty networkEncryptedKey when networkId is present so macro selects network path
             let nek = (networkId != nil) ? Data([0x01]) : Data()

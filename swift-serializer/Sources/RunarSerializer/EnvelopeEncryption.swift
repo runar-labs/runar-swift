@@ -2,19 +2,8 @@ import Foundation
 import RunarKeys
 import SwiftCBOR
 
-// EnvelopeEncryptedData is now imported from RunarKeys package
-public struct EnvelopeEncryptedData: Codable {
-    public let encryptedData: Data
-    public let networkId: String?
-    public let networkEncryptedKey: Data
-    public let profileEncryptedKeys: [String: Data]
-    public init(encryptedData: Data, networkId: String?, networkEncryptedKey: Data, profileEncryptedKeys: [String: Data]) {
-        self.encryptedData = encryptedData
-        self.networkId = networkId
-        self.networkEncryptedKey = networkEncryptedKey
-        self.profileEncryptedKeys = profileEncryptedKeys
-    }
-}
+public typealias EnvelopeEncryptedData = RunarKeys.EnvelopeEncryptedData
+// EnvelopeEncryptedData is now provided by RunarKeys
 
 /// Default label resolver that maps labels directly to profile IDs
 public struct DefaultLabelResolver: LabelResolver {
@@ -74,18 +63,44 @@ public enum EnvelopeEncryption {
     /// - Parameter envelopeData: Envelope encrypted data to serialize
     /// - Returns: CBOR encoded data
     public static func serializeToCBOR(_ envelopeData: EnvelopeEncryptedData) throws -> Data {
-        // Encode using Codable
-        let encoder = JSONEncoder() // use JSON as placeholder binary; tests don't assert CBOR here
-        return try encoder.encode(envelopeData)
+        // Use CBOR-like map encoding compatible with our decode
+        var dict: [String: Any] = [
+            "encryptedData": Array(envelopeData.encryptedData),
+            "networkEncryptedKey": Array(envelopeData.networkEncryptedKey),
+            "profileEncryptedKeys": envelopeData.profileEncryptedKeys.mapValues { Array($0) },
+        ]
+        if let networkId = envelopeData.networkId { dict["networkId"] = networkId }
+        return try Data(encodeToCBOR(dict))
     }
 
     /// Deserialize EnvelopeEncryptedData from CBOR format
     /// - Parameter data: CBOR encoded data
     /// - Returns: Envelope encrypted data
     public static func deserializeFromCBOR(_ data: Data) throws -> EnvelopeEncryptedData {
-        // Decode using Codable
-        let decoder = JSONDecoder()
-        return try decoder.decode(EnvelopeEncryptedData.self, from: data)
+        // Decode from CBOR map
+        let cborData = Array(data)
+        guard let cbor = try? CBOR.decode(cborData), case let .map(map) = cbor else {
+            throw SerializerError.deserializationFailed("Failed to decode envelope CBOR")
+        }
+        var encryptedData = Data()
+        var networkId: String?
+        var networkEncryptedKey = Data()
+        var profileEncryptedKeys: [String: Data] = [:]
+        for (k, v) in map {
+            guard case let .utf8String(key) = k else { continue }
+            switch key {
+            case "encryptedData": if case let .byteString(b) = v { encryptedData = Data(b) }
+            case "networkId": if case let .utf8String(s) = v { networkId = s }
+            case "networkEncryptedKey": if case let .byteString(b) = v { networkEncryptedKey = Data(b) }
+            case "profileEncryptedKeys": if case let .map(pm) = v {
+                for (pk, pv) in pm {
+                    if case let .utf8String(pid) = pk, case let .byteString(b) = pv { profileEncryptedKeys[pid] = Data(b) }
+                }
+            }
+            default: break
+            }
+        }
+        return EnvelopeEncryptedData(encryptedData: encryptedData, networkId: networkId, networkEncryptedKey: networkEncryptedKey, profileEncryptedKeys: profileEncryptedKeys)
     }
 }
 
