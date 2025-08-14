@@ -27,11 +27,20 @@ final class NetworkMessageRustCborHandshakeTests: XCTestCase {
             payloads: [payload]
         )
 
+        // Encode handshake payload (inner) and print hex for Rust interop test
+        let hsBytes = try CborMessageEncoder.encodeHandshake(hs)
+        let hsHex = hsBytes.map { String(format: "%02x", $0) }.joined()
+        print("CBOR(HandshakeData) hex=\(hsHex)")
+        // Also persist to file for Rust tests
+        try? hsBytes.write(to: URL(fileURLWithPath: "/tmp/runar_swift_handshake.cbor"))
+
         // Encode using Rust-aligned codec
         let bytes = try TransportWireCodec.encodeBody(from: msg)
         // Log hex for debugging interop
         let hex = bytes.map { String(format: "%02x", $0) }.joined()
         print("CBOR(NetworkMessage/handshake) hex=\(hex)")
+        // Persist to file for Rust tests
+        try? bytes.write(to: URL(fileURLWithPath: "/tmp/runar_swift_network_message_handshake.cbor"))
 
         // Decode back and validate
         let decoded = try TransportWireCodec.decodeBody(to: bytes)

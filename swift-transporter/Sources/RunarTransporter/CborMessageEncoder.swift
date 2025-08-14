@@ -63,10 +63,17 @@ public enum CborMessageEncoder {
 
     public static func encodeHandshake(_ hs: HandshakeData) throws -> Data {
         var map: [CBOR: CBOR] = [:]
-        // Embed node_info as CBOR map
-        let nodeInfoBytes = try encodeNodeInfo(hs.nodeInfo)
-        let nodeInfoItem = try CBORDecoder(input: [UInt8](nodeInfoBytes)).decodeItem() ?? CBOR.null
-        map[.utf8String("node_info")] = nodeInfoItem
+        // Build node_info map inline to avoid accidental wrapping
+        var nodeMap: [CBOR: CBOR] = [:]
+        nodeMap[.utf8String("node_public_key")] = .byteString([UInt8](hs.nodeInfo.nodePublicKey))
+        nodeMap[.utf8String("network_ids")] = .array(hs.nodeInfo.networkIds.map { .utf8String($0) })
+        nodeMap[.utf8String("addresses")] = .array(hs.nodeInfo.addresses.map { .utf8String($0) })
+        var nodeMeta: [CBOR: CBOR] = [:]
+        nodeMeta[.utf8String("services")] = .array([])
+        nodeMeta[.utf8String("subscriptions")] = .array([])
+        nodeMap[.utf8String("node_metadata")] = .map(nodeMeta)
+        nodeMap[.utf8String("version")] = CBOR(integerLiteral: Int(truncatingIfNeeded: hs.nodeInfo.version))
+        map[.utf8String("node_info")] = .map(nodeMap)
         map[.utf8String("nonce")] = .unsignedInt(hs.nonce)
         let roleStr = hs.role == .initiator ? "Initiator" : "Responder"
         map[.utf8String("role")] = .utf8String(roleStr)

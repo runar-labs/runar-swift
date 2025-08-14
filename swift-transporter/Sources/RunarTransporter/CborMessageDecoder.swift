@@ -10,10 +10,26 @@ public enum CborMessageDecoder {
         }
         func str(_ k: String) -> CBOR { .utf8String(k) }
 
-        guard case let CBOR.byteString(keyBytes)? = map[str("node_public_key")] else {
+        // Accept byteString or an array of unsigned ints as bytes
+        let nodePublicKey: Data = {
+            if case let CBOR.byteString(keyBytes)? = map[str("node_public_key")] {
+                return Data(keyBytes)
+            }
+            if case let CBOR.array(arr)? = map[str("node_public_key")] {
+                let bytes = arr.compactMap { item -> UInt8? in
+                    if case let CBOR.unsignedInt(u) = item, u <= 0xFF { return UInt8(u) }
+                    return nil
+                }
+                return Data(bytes)
+            }
+            if case let CBOR.utf8String(s)? = map[str("node_public_key")] {
+                return Data(s.utf8)
+            }
+            return Data()
+        }()
+        if nodePublicKey.isEmpty {
             throw RunarTransportError.serializationError("Missing node_public_key")
         }
-        let nodePublicKey = Data(keyBytes)
 
         let networkIds: [String] = if case let CBOR.array(ids)? = map[str("network_ids")] {
             ids.compactMap { if case let CBOR.utf8String(s) = $0 { s } else { nil } }
@@ -70,6 +86,11 @@ public enum CborMessageDecoder {
 
         guard let nodeItem = map[str("node_info")], case .map = nodeItem else {
             throw RunarTransportError.serializationError("Missing node_info")
+        }
+        // Debug: list node_info keys
+        if case let CBOR.map(nm) = nodeItem {
+            let keys = nm.keys.compactMap { if case let .utf8String(s) = $0 { s } else { nil } }.joined(separator: ",")
+            print("[Handshake decode] node_info keys=\(keys)")
         }
         let nodeInfo = try decodeNodeInfo(from: Data(CBOR.encode(nodeItem)))
         let nonce = map[str("nonce")]?.asUInt64 ?? 0
