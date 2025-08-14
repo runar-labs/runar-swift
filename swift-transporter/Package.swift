@@ -6,10 +6,10 @@ import PackageDescription
 let package = Package(
     name: "RunarTransporter",
     platforms: [
-        .macOS(.v12), // Updated for Network.framework QUIC support and SwiftCommon
-        .iOS(.v15), // Updated for Network.framework QUIC support and SwiftCommon
-        .tvOS(.v15), // Updated for Network.framework QUIC support and SwiftCommon
-        .watchOS(.v8), // Updated for consistency
+        .macOS(.v13), // Align with RunarKeys requirement
+        .iOS(.v15),
+        .tvOS(.v15),
+        .watchOS(.v8),
     ],
     products: [
         .library(
@@ -19,11 +19,11 @@ let package = Package(
         .executable(name: "QuicIT", targets: ["QuicIT"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "2.6.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", .upToNextMajor(from: "3.14.0")),
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.25.0"),
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.4.5"),
-        .package(url: "https://github.com/apple/swift-asn1.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-certificates.git", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-asn1.git", .upToNextMajor(from: "1.4.0")),
+        .package(url: "https://github.com/runar-labs/swift-certificates.git", branch: "feature/external-csr"),
         .package(path: "../swift-common"),
         .package(path: "../swift-keys"),
         .package(path: "../swift-serializer"),

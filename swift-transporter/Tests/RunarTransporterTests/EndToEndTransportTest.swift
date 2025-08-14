@@ -12,8 +12,8 @@ final class EndToEndTransportTest: XCTestCase {
     private var node2PublicKey: Data!
     private var node1Id: String!
     private var node2Id: String!
-    private var nodeKeyManager1: MobileKeyManager!
-    private var nodeKeyManager2: MobileKeyManager!
+    private var nodeSecKey1: SecKey!
+    private var nodeSecKey2: SecKey!
 
     // Message tracking for validation
     private var transport1Messages: [RunarNetworkMessage] = []
@@ -32,27 +32,26 @@ final class EndToEndTransportTest: XCTestCase {
         }
 
         // Prepare certificate infrastructure: one CA and two nodes
-        let mobileCA = try MobileKeyManager(logger: ConsoleLogger(prefix: "E2E-CA"))
-        _ = try mobileCA.initializeUserRootKey()
-        try mobileCA.createCACertificate()
+        let mobileKM = RunarKeys.MobileKeyManager()
+        let ca = try mobileKM.createCA(subjectCN: "Runar Test CA")
 
-        nodeKeyManager1 = try MobileKeyManager(logger: ConsoleLogger(prefix: "E2E-Node1"))
-        _ = try nodeKeyManager1.initializeUserRootKey()
-        let setupToken1 = try nodeKeyManager1.generateCSR()
-        let cert1 = try mobileCA.processSetupToken(setupToken1)
-        try nodeKeyManager1.installCertificate(cert1)
+        nodeSecKey1 = try mobileKM.generateNodeIdentity(label: "node1-\(UUID().uuidString)")
+        let node1Pub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecKey1)
+        let node1IdLocal = RunarKeys.Ids.compactId(node1Pub)
+        let csr1 = try mobileKM.buildCSR(signingKey: nodeSecKey1, subjectCN: node1IdLocal, nodeIdSAN: node1IdLocal)
+        let cert1 = try mobileKM.issueLeaf(from: ca, csrDER: csr1, subjectOverrideCN: node1IdLocal, sanDNS: [node1IdLocal], validityDays: 180)
 
-        nodeKeyManager2 = try MobileKeyManager(logger: ConsoleLogger(prefix: "E2E-Node2"))
-        _ = try nodeKeyManager2.initializeUserRootKey()
-        let setupToken2 = try nodeKeyManager2.generateCSR()
-        let cert2 = try mobileCA.processSetupToken(setupToken2)
-        try nodeKeyManager2.installCertificate(cert2)
+        nodeSecKey2 = try mobileKM.generateNodeIdentity(label: "node2-\(UUID().uuidString)")
+        let node2Pub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecKey2)
+        let node2IdLocal = RunarKeys.Ids.compactId(node2Pub)
+        let csr2 = try mobileKM.buildCSR(signingKey: nodeSecKey2, subjectCN: node2IdLocal, nodeIdSAN: node2IdLocal)
+        let cert2 = try mobileKM.issueLeaf(from: ca, csrDER: csr2, subjectOverrideCN: node2IdLocal, sanDNS: [node2IdLocal], validityDays: 180)
 
         // Compute real node public keys and ids
-        node1PublicKey = nodeKeyManager1.getNodePublicKey()
-        node2PublicKey = nodeKeyManager2.getNodePublicKey()
-        node1Id = CryptoUtils.compactId(node1PublicKey)
-        node2Id = CryptoUtils.compactId(node2PublicKey)
+        node1PublicKey = node1Pub
+        node2PublicKey = node2Pub
+        node1Id = node1IdLocal
+        node2Id = node2IdLocal
 
         // Create node info for both transports
         let node1Info = RunarNodeInfo(
@@ -68,8 +67,8 @@ final class EndToEndTransportTest: XCTestCase {
         )
 
         // Create transport options including certificates and SecKey
-        let node1CertConfig = try nodeKeyManager1.getQuicCertificateConfig()
-        let node2CertConfig = try nodeKeyManager2.getQuicCertificateConfig()
+        let node1Chain = [RunarKeys.CertificateUtils.toDER(cert1), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
+        let node2Chain = [RunarKeys.CertificateUtils.toDER(cert2), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
 
         let options1 = NetworkQuicTransportOptions(
             verifyCertificates: true,
@@ -77,9 +76,9 @@ final class EndToEndTransportTest: XCTestCase {
             connectionIdleTimeout: 60.0,
             streamIdleTimeout: 30.0,
             maxIdleStreamsPerPeer: 10,
-            certificates: node1CertConfig.certificateChain,
-            secKey: node1CertConfig.secKey,
-            mobileKeyManager: nodeKeyManager1
+            certificates: node1Chain,
+            secKey: nodeSecKey1,
+            mobileKeyManager: nil
         )
         let options2 = NetworkQuicTransportOptions(
             verifyCertificates: true,
@@ -87,9 +86,9 @@ final class EndToEndTransportTest: XCTestCase {
             connectionIdleTimeout: 60.0,
             streamIdleTimeout: 30.0,
             maxIdleStreamsPerPeer: 10,
-            certificates: node2CertConfig.certificateChain,
-            secKey: node2CertConfig.secKey,
-            mobileKeyManager: nodeKeyManager2
+            certificates: node2Chain,
+            secKey: nodeSecKey2,
+            mobileKeyManager: nil
         )
 
         // Initialize transports

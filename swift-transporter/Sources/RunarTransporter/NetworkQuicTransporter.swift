@@ -17,7 +17,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     private let options: NetworkQuicTransportOptions
     private let logger: RunarLogger
     private let messageHandler: MessageHandlerProtocol
-    private var mobileKeyManager: MobileKeyManager?
+    private var mobileKeyManager: RunarKeys.MobileKeyManager?
     private var caCertificate: SecCertificate?
     private var configuredQuicOptions: NWProtocolQUIC.Options?
 
@@ -221,27 +221,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         logger.debug("🔧 [NetworkQuicTransporter] Initializing MobileKeyManager for QUIC certificates")
 
         // Create MobileKeyManager with logger
-        let keyManager = try MobileKeyManager(logger: ConsoleLogger())
+        // Use the options-provided key manager externally; do not create here
+        throw RunarTransportError.configurationError("initializeKeyManager should not be called; certificates must be provided via options")
 
-        // Initialize user root key
-        let rootPublicKey = try keyManager.initializeUserRootKey()
-        logger.debug("🔧 [NetworkQuicTransporter] User root key initialized: \(rootPublicKey.count) bytes")
-
-        // Generate CSR for this node
-        let setupToken = try keyManager.generateCSR()
-        logger.debug("🔧 [NetworkQuicTransporter] Generated CSR for node: \(setupToken.nodeId)")
-
-        // Process the CSR to get a certificate (self-signing for testing)
-        let certMessage = try keyManager.processSetupToken(setupToken)
-        logger.debug("🔧 [NetworkQuicTransporter] Generated certificate for node: \(setupToken.nodeId)")
-
-        // Import certificate and private key into Keychain for Network.framework
-        try await importCertificateToKeychain(keyManager: keyManager, certMessage: certMessage)
-
-        // Store the key manager
-        mobileKeyManager = keyManager
-
-        logger.info("✅ [NetworkQuicTransporter] MobileKeyManager initialized with QUIC certificates")
+        // No-op
+        logger.info("✅ [NetworkQuicTransporter] initializeKeyManager unused in new flow")
     }
 
     private func importCertificatesFromOptions() async throws {
@@ -253,16 +237,14 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
 
         // Get the node certificate from the MobileKeyManager
-        let nodeId = keyManager.getNodeId()
-        guard let nodeCertificate = keyManager.getIssuedCertificate(nodeId: nodeId) else {
-            throw RunarTransportError.configurationError("Node certificate not found")
-        }
+        let nodeId = nodeInfo.nodeId
+        guard let chain = options.certificates, let leaf = chain.first else { throw RunarTransportError.configurationError("Leaf certificate DER not provided in options") }
 
         // Get the CA certificate from the MobileKeyManager
-        _ = keyManager.getCaCertificate()
+        // CA must be passed in options.certificates last element or handled via trust anchors
 
         // Get certificate data
-        let certificateData = nodeCertificate.toDER()
+        let certificateData = leaf
 
         // The swift-keys package already generated the key in Keychain during CSR creation
         // We don't need to generate a new key - we just import the certificates
@@ -294,15 +276,15 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         logger.debug("🔐 [NetworkQuicTransporter] Certificates imported - Keychain will synthesize SecIdentity automatically")
     }
 
-    private func importCertificateToKeychain(keyManager: MobileKeyManager, certMessage: NodeCertificateMessage) async throws {
+    private func importCertificateToKeychain(keyManager: RunarKeys.MobileKeyManager, nodeCertificateDER: Data) async throws {
         logger.debug("🔧 [NetworkQuicTransporter] Importing certificate to Keychain for Network.framework")
 
         // Get the QUIC certificate configuration which includes the actual private key (unused here)
-        _ = try keyManager.getQuicCertificateConfig()
+        // QUIC configuration is provided via options; nothing to fetch here
 
-        // Get certificate data from the cert message
-        let certificateData = certMessage.nodeCertificate.toDER()
-        let nodeId = keyManager.getNodeId()
+        // Use provided certificate DER
+        let certificateData = nodeCertificateDER
+        let nodeId = nodeInfo.nodeId
 
         // The swift-keys package already generated the key in Keychain during CSR creation
         // We don't need to generate a new key - we just import the certificates
@@ -344,13 +326,8 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
         logger.info("🔧 [NetworkQuicTransporter] Starting listener on \(bindAddress)")
 
-        // Configure TLS with real certificates from MobileKeyManager
-        guard let keyManager = options.mobileKeyManager else {
-            throw RunarTransportError.configurationError("MobileKeyManager not initialized in transport options")
-        }
-
-        _ = try keyManager.getQuicCertificateConfig()
-        logger.debug("🔧 [NetworkQuicTransporter] QUIC certificate config available for listener")
+        // Ensure certs provided via options
+        guard options.certificates != nil else { throw RunarTransportError.configurationError("Certificates not provided in options") }
 
         // Load CA certificate for trust anchors
         let caCertificate = try getCACertificateFromKeychain()
@@ -416,7 +393,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }, connectionQueue)
 
         // Set local identity for TLS (our node certificate and private key)
-        try setLocalIdentityWithChain(securityProtocolOptions: securityProtocolOptions, keyManager: keyManager)
+        try setLocalIdentityWithChain(securityProtocolOptions: securityProtocolOptions)
         // Log identity subject used on listener to ensure correct certificate is presented
         do {
             let id = try getClientIdentityFromKeychain()
@@ -481,7 +458,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
     // configureTLSWithCustomCertificates no longer used
 
-    private func setLocalIdentity(securityProtocolOptions: sec_protocol_options_t, keyManager _: MobileKeyManager) throws {
+    private func setLocalIdentity(securityProtocolOptions: sec_protocol_options_t, keyManager _: RunarKeys.MobileKeyManager) throws {
         logger.debug("🔐 [NetworkQuicTransporter] Setting local identity for TLS")
         // Use Keychain-linked identity to ensure certificate and private key are paired
         let secIdentity = try getClientIdentityFromKeychain()
@@ -496,7 +473,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         logger.debug("🔐 [NetworkQuicTransporter] Local identity set successfully for TLS")
     }
 
-    private func setLocalIdentityWithChain(securityProtocolOptions: sec_protocol_options_t, keyManager _: MobileKeyManager) throws {
+    private func setLocalIdentityWithChain(securityProtocolOptions: sec_protocol_options_t) throws {
         // Build an identity with certificate chain so the peer gets full chain
         let secIdentity = try getClientIdentityFromKeychain()
         guard let identityHandle = sec_identity_create(secIdentity) else {
@@ -586,33 +563,17 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             }
         }
 
-        if let km = options.mobileKeyManager {
-            let kmNodeId = km.getNodeId()
-            if let issuedCert = km.getIssuedCertificate(nodeId: kmNodeId) {
-                let der = issuedCert.toDER() as CFData
-                if let leafCert = SecCertificateCreateWithData(nil, der) {
-                    var identity: SecIdentity?
-                    let status = SecIdentityCreateWithCertificate(nil, leafCert, &identity)
-                    if status == errSecSuccess, let id = identity {
-                        logger.debug("🔐 [NetworkQuicTransporter] Created SecIdentity from MobileKeyManager-issued certificate for nodeId=\(kmNodeId)")
-                        return id
-                    } else {
-                        logger.error("❌ [NetworkQuicTransporter] Failed to create identity from MobileKeyManager-issued cert (status: \(status))")
-                    }
-                }
-            }
-            // As last resort: lookup by node-specific label derived from MobileKeyManager's nodeId
-            let identityQuery: [String: Any] = [
-                kSecClass as String: kSecClassIdentity,
-                kSecAttrLabel as String: "Runar Node Certificate \(kmNodeId)",
-                kSecReturnRef as String: true,
-            ]
-            var identityItem: CFTypeRef?
-            let status = SecItemCopyMatching(identityQuery as CFDictionary, &identityItem)
-            if status == errSecSuccess, let identityRef = identityItem {
-                logger.debug("🔐 [NetworkQuicTransporter] Found SecIdentity by MobileKeyManager node-specific label")
-                return unsafeBitCast(identityRef, to: SecIdentity.self)
-            }
+        // As last resort: identity by node label if previously imported
+        let identityQuery: [String: Any] = [
+            kSecClass as String: kSecClassIdentity,
+            kSecAttrLabel as String: "Runar Node Certificate \(nodeInfo.nodeId)",
+            kSecReturnRef as String: true,
+        ]
+        var identityItem: CFTypeRef?
+        let status = SecItemCopyMatching(identityQuery as CFDictionary, &identityItem)
+        if status == errSecSuccess, let identityRef = identityItem {
+            logger.debug("🔐 [NetworkQuicTransporter] Found SecIdentity by node-specific label")
+            return unsafeBitCast(identityRef, to: SecIdentity.self)
         }
 
         throw RunarTransportError.configurationError("Failed to resolve SecIdentity for this transporter instance")
@@ -628,17 +589,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
             logger.debug("🔐 [NetworkQuicTransporter] Using CA certificate from provided chain")
             return caSec
         }
-        // Fallback to MobileKeyManager's CA for this instance
-        guard let keyManager = options.mobileKeyManager else {
-            throw RunarTransportError.configurationError("MobileKeyManager not initialized in transport options")
-        }
-        let caCertificate = keyManager.getCaCertificate()
-        let caCertificateData = caCertificate.toDER()
-        guard let secCertificate = SecCertificateCreateWithData(nil, caCertificateData as CFData) else {
-            throw RunarTransportError.configurationError("Failed to create SecCertificate from CA certificate data")
-        }
-        logger.debug("🔐 [NetworkQuicTransporter] Retrieved CA certificate from MobileKeyManager")
-        return secCertificate
+        throw RunarTransportError.configurationError("CA certificate DER not provided in options")
     }
 
     private func stopListener() async {
@@ -656,7 +607,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }
     }
 
-    private func buildQuicParametersForConnection(keyManager: MobileKeyManager, sniHost: String, expectedPeerPublicKey: Data) throws -> NWParameters {
+    private func buildQuicParametersForConnection(keyManager: RunarKeys.MobileKeyManager, sniHost: String, expectedPeerPublicKey: Data) throws -> NWParameters {
         logger.debug("🔐 [NetworkQuicTransporter] Building per-connection QUIC parameters with TLS config")
         let quic = NWProtocolQUIC.Options()
         // Set ALPN
@@ -774,7 +725,7 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
         }, connectionQueue)
 
         // Local identity per-connection
-        try setLocalIdentityWithChain(securityProtocolOptions: sec, keyManager: keyManager)
+        try setLocalIdentityWithChain(securityProtocolOptions: sec)
         // Log identity subject client-side as well
         do {
             let id = try getClientIdentityFromKeychain()

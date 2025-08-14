@@ -24,38 +24,35 @@ struct QuicITMain {
                     fputs("SELFTEST ok\n", stderr)
                     exit(0)
                 }
-                let mobileCA = try MobileKeyManager(logger: ConsoleLogger(prefix: "IT-CA"))
-                _ = try mobileCA.initializeUserRootKey()
-                try mobileCA.createCACertificate()
+                let mobileKM = RunarKeys.MobileKeyManager()
+                let ca = try mobileKM.createCA(subjectCN: "Runar Test CA")
 
-                let km1 = try MobileKeyManager(logger: ConsoleLogger(prefix: "IT-Node1"))
-                _ = try km1.initializeUserRootKey()
-                let st1 = try km1.generateCSR()
-                let cert1 = try mobileCA.processSetupToken(st1)
-                try km1.installCertificate(cert1)
+                let nodeSecKey1 = try mobileKM.generateNodeIdentity(label: "node1-\(UUID().uuidString)")
+                let node1Pub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecKey1)
+                let node1Id = RunarKeys.Ids.compactId(node1Pub)
+                let csr1 = try mobileKM.buildCSR(signingKey: nodeSecKey1, subjectCN: node1Id, nodeIdSAN: node1Id)
+                let cert1 = try mobileKM.issueLeaf(from: ca, csrDER: csr1, subjectOverrideCN: node1Id, sanDNS: [node1Id], validityDays: 180)
 
-                let km2 = try MobileKeyManager(logger: ConsoleLogger(prefix: "IT-Node2"))
-                _ = try km2.initializeUserRootKey()
-                let st2 = try km2.generateCSR()
-                let cert2 = try mobileCA.processSetupToken(st2)
-                try km2.installCertificate(cert2)
+                let nodeSecKey2 = try mobileKM.generateNodeIdentity(label: "node2-\(UUID().uuidString)")
+                let node2Pub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecKey2)
+                let node2Id = RunarKeys.Ids.compactId(node2Pub)
+                let csr2 = try mobileKM.buildCSR(signingKey: nodeSecKey2, subjectCN: node2Id, nodeIdSAN: node2Id)
+                let cert2 = try mobileKM.issueLeaf(from: ca, csrDER: csr2, subjectOverrideCN: node2Id, sanDNS: [node2Id], validityDays: 180)
 
-                let node1Pk = km1.getNodePublicKey()
-                let node2Pk = km2.getNodePublicKey()
-                let node1Id = CryptoUtils.compactId(node1Pk)
-                let node2Id = CryptoUtils.compactId(node2Pk)
+                let node1Pk = node1Pub
+                let node2Pk = node2Pub
 
-                let cfg1 = try km1.getQuicCertificateConfig()
-                let cfg2 = try km2.getQuicCertificateConfig()
+                let cfg1Chain = [RunarKeys.CertificateUtils.toDER(cert1), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
+                let cfg2Chain = [RunarKeys.CertificateUtils.toDER(cert2), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
                 let opt1 = NetworkQuicTransportOptions(
                     verifyCertificates: true,
                     keepAliveInterval: 15,
                     connectionIdleTimeout: 60,
                     streamIdleTimeout: 30,
                     maxIdleStreamsPerPeer: 10,
-                    certificates: cfg1.certificateChain,
-                    secKey: cfg1.secKey,
-                    mobileKeyManager: km1
+                    certificates: cfg1Chain,
+                    secKey: nodeSecKey1,
+                    mobileKeyManager: nil
                 )
                 let opt2 = NetworkQuicTransportOptions(
                     verifyCertificates: true,
@@ -63,9 +60,9 @@ struct QuicITMain {
                     connectionIdleTimeout: 60,
                     streamIdleTimeout: 30,
                     maxIdleStreamsPerPeer: 10,
-                    certificates: cfg2.certificateChain,
-                    secKey: cfg2.secKey,
-                    mobileKeyManager: km2
+                    certificates: cfg2Chain,
+                    secKey: nodeSecKey2,
+                    mobileKeyManager: nil
                 )
 
                 // Explicit handlers we can inspect later

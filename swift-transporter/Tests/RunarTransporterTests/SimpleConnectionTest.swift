@@ -26,27 +26,26 @@ final class SimpleConnectionTest: XCTestCase {
         }
 
         // Set up certificate infrastructure: CA and two nodes
-        let ca = try MobileKeyManager(logger: ConsoleLogger(prefix: "CA"))
-        _ = try ca.initializeUserRootKey()
-        try ca.createCACertificate()
+        let caKM = RunarKeys.MobileKeyManager()
+        let ca = try caKM.createCA(subjectCN: "Runar Test CA")
 
-        let km1 = try MobileKeyManager(logger: ConsoleLogger(prefix: "Node1"))
-        _ = try km1.initializeUserRootKey()
-        let st1 = try km1.generateCSR()
-        let cert1 = try ca.processSetupToken(st1)
-        try km1.installCertificate(cert1)
+        let nodeSecKey1 = try caKM.generateNodeIdentity(label: "node1-\(UUID().uuidString)")
+        let node1Pub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecKey1)
+        let node1IdLocal = RunarKeys.Ids.compactId(node1Pub)
+        let csr1 = try caKM.buildCSR(signingKey: nodeSecKey1, subjectCN: node1IdLocal, nodeIdSAN: node1IdLocal)
+        let cert1 = try caKM.issueLeaf(from: ca, csrDER: csr1, subjectOverrideCN: node1IdLocal, sanDNS: [node1IdLocal], validityDays: 180)
 
-        let km2 = try MobileKeyManager(logger: ConsoleLogger(prefix: "Node2"))
-        _ = try km2.initializeUserRootKey()
-        let st2 = try km2.generateCSR()
-        let cert2 = try ca.processSetupToken(st2)
-        try km2.installCertificate(cert2)
+        let nodeSecKey2 = try caKM.generateNodeIdentity(label: "node2-\(UUID().uuidString)")
+        let node2Pub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecKey2)
+        let node2IdLocal = RunarKeys.Ids.compactId(node2Pub)
+        let csr2 = try caKM.buildCSR(signingKey: nodeSecKey2, subjectCN: node2IdLocal, nodeIdSAN: node2IdLocal)
+        let cert2 = try caKM.issueLeaf(from: ca, csrDER: csr2, subjectOverrideCN: node2IdLocal, sanDNS: [node2IdLocal], validityDays: 180)
 
         // Real node keys and ids
-        node1PublicKey = km1.getNodePublicKey()
-        node2PublicKey = km2.getNodePublicKey()
-        node1Id = CryptoUtils.compactId(node1PublicKey)
-        node2Id = CryptoUtils.compactId(node2PublicKey)
+        node1PublicKey = node1Pub
+        node2PublicKey = node2Pub
+        node1Id = node1IdLocal
+        node2Id = node2IdLocal
 
         // Create node info for both transports
         let node1Info = RunarNodeInfo(
@@ -62,17 +61,17 @@ final class SimpleConnectionTest: XCTestCase {
         )
 
         // Create transport options with certificates and MobileKeyManager
-        let cfg1 = try km1.getQuicCertificateConfig()
-        let cfg2 = try km2.getQuicCertificateConfig()
+        let cfg1Chain = [RunarKeys.CertificateUtils.toDER(cert1), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
+        let cfg2Chain = [RunarKeys.CertificateUtils.toDER(cert2), RunarKeys.CertificateUtils.toDER(ca.generated.certificate)]
         let options1 = NetworkQuicTransportOptions(
             verifyCertificates: true,
             keepAliveInterval: 15,
             connectionIdleTimeout: 60,
             streamIdleTimeout: 30,
             maxIdleStreamsPerPeer: 10,
-            certificates: cfg1.certificateChain,
-            secKey: cfg1.secKey,
-            mobileKeyManager: km1
+            certificates: cfg1Chain,
+            secKey: nodeSecKey1,
+            mobileKeyManager: nil
         )
         let options2 = NetworkQuicTransportOptions(
             verifyCertificates: true,
@@ -80,9 +79,9 @@ final class SimpleConnectionTest: XCTestCase {
             connectionIdleTimeout: 60,
             streamIdleTimeout: 30,
             maxIdleStreamsPerPeer: 10,
-            certificates: cfg2.certificateChain,
-            secKey: cfg2.secKey,
-            mobileKeyManager: km2
+            certificates: cfg2Chain,
+            secKey: nodeSecKey2,
+            mobileKeyManager: nil
         )
 
         // Initialize transports

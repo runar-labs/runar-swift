@@ -5,6 +5,15 @@ import SwiftCBOR
 import XCTest
 
 final class EncryptedMacroTest: XCTestCase {
+    final class DummyKeystore: EnvelopeCrypto {
+        func encryptWithEnvelope(data: Data, networkId: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData {
+            // Provide a non-empty networkEncryptedKey when networkId is present so macro selects network path
+            let nek = (networkId != nil) ? Data([0x01]) : Data()
+            return EnvelopeEncryptedData(encryptedData: data, networkId: networkId, networkEncryptedKey: nek, profileEncryptedKeys: [:])
+        }
+        func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId _: String) throws -> Data { envelopeData.encryptedData }
+        func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data { envelopeData.encryptedData }
+    }
     func testBasicEncryptionDecryption() async throws {
         // Test basic encryption/decryption without macro
         struct TestUser: Codable {
@@ -18,16 +27,10 @@ final class EncryptedMacroTest: XCTestCase {
         let encoder = JSONEncoder()
         let jsonData = try encoder.encode(user)
 
-        // Use real encryption/decryption
-        let logger = ConsoleLogger(prefix: "Test")
-        let keystore = try MobileKeyManager(logger: logger)
-        let resolver = MockLabelResolver()
-
-        // Initialize user root key first
-        _ = try keystore.initializeUserRootKey()
-
-        // Generate network key only (simpler test)
-        let networkId = try keystore.generateNetworkDataKey()
+        // Use dummy keystore
+        let keystore = DummyKeystore()
+        let networkId = "test-network"
+        let resolver = MockLabelResolver(networkId: networkId)
 
         // Encrypt with envelope encryption (network only)
         let envelopeData = try keystore.encryptWithEnvelope(
@@ -65,19 +68,9 @@ final class EncryptedMacroTest: XCTestCase {
             isActive: true
         )
 
-        // Create a real keystore and resolver
-        let logger = ConsoleLogger(prefix: "Test")
-        let keystore = try MobileKeyManager(logger: logger)
-
-        // Initialize user root key first
-        _ = try keystore.initializeUserRootKey()
-
-        // Generate keys
-        let networkId = try keystore.generateNetworkDataKey()
-        _ = try keystore.generateUserProfileKey(profileId: "user-profile")
-
-        // Create resolver with the actual network ID
-        let resolver = MockLabelResolver(networkId: networkId)
+        // Create a dummy keystore and resolver
+        let keystore = DummyKeystore()
+        let resolver = MockLabelResolver(networkId: "test-network")
 
         // Test encryption
         let encrypted = try await user.encryptWithKeystore(keystore, resolver: resolver)
@@ -118,18 +111,8 @@ final class EncryptedMacroTest: XCTestCase {
             settings: UserSettings(theme: "dark", notifications: true, language: "en")
         )
 
-        let logger = ConsoleLogger(prefix: "Test")
-        let keystore = try MobileKeyManager(logger: logger)
-
-        // Initialize user root key first
-        _ = try keystore.initializeUserRootKey()
-
-        // Generate keys
-        let networkId = try keystore.generateNetworkDataKey()
-        _ = try keystore.generateUserProfileKey(profileId: "profile-profile")
-
-        // Create resolver with the actual network ID
-        let resolver = MockLabelResolver(networkId: networkId)
+        let keystore = DummyKeystore()
+        let resolver = MockLabelResolver(networkId: "test-network")
 
         // Test encryption
         let encrypted = try await profile.encryptWithKeystore(keystore, resolver: resolver)
@@ -172,18 +155,8 @@ final class EncryptedMacroTest: XCTestCase {
             numbers: numbers
         )
 
-        let logger = ConsoleLogger(prefix: "Test")
-        let keystore = try MobileKeyManager(logger: logger)
-
-        // Initialize user root key first
-        _ = try keystore.initializeUserRootKey()
-
-        // Generate keys
-        let networkId = try keystore.generateNetworkDataKey()
-        _ = try keystore.generateUserProfileKey(profileId: "data-profile")
-
-        // Create resolver with the actual network ID
-        let resolver = MockLabelResolver(networkId: networkId)
+        let keystore = DummyKeystore()
+        let resolver = MockLabelResolver(networkId: "test-network")
 
         // Test encryption performance
         let encryptionStart = Date()

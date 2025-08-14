@@ -273,8 +273,7 @@ public enum NodeUtils {
     /// Generate a compact node ID from a public key
     /// Matches the Rust compact_id function
     public static func compactId(from publicKey: Data) -> String {
-        // Delegate to swift-keys' implementation to ensure consistency across packages/tests
-        RunarKeys.CryptoUtils.compactId(publicKey)
+        RunarKeys.Ids.compactId(publicKey)
     }
 
     /// Generate a correlation ID for request-response matching

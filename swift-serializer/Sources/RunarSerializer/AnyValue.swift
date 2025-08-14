@@ -885,13 +885,8 @@ public protocol EnvelopeCrypto: AnyObject {
     func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data
 }
 
-/// KeyStore type alias for MobileKeyManager
-public typealias KeyStore = MobileKeyManager
-
-// Make MobileKeyManager conform to EnvelopeCrypto
-extension MobileKeyManager: EnvelopeCrypto {
-    // The methods are already implemented in MobileKeyManager
-}
+/// KeyStore abstraction for tests/apps to supply an implementation
+public typealias KeyStore = EnvelopeCrypto
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto

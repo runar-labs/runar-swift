@@ -21,8 +21,17 @@ public struct CSRBuilder {
         let p256Pub = try P256.Signing.PublicKey(x963Representation: pubX963)
         let certPub = Certificate.PublicKey(p256Pub)
 
-        let attributes = try buildExtensionRequestAttributes(nodeIdSAN: nodeIdSAN)
-        let infoBytes = try CertificateSigningRequestHelper.infoBytes(version: .v1, subject: subject, publicKey: certPub, attributes: attributes)
+        // Build CertificationRequestInfo (version, subject, subjectPublicKeyInfo, attributes)
+        var infoCoder = DER.Serializer()
+        try infoCoder.appendConstructedNode(identifier: .sequence) { seq in
+            // version INTEGER 0 (v1)
+            seq.serializeRawBytes([0x02, 0x01, 0x00])
+            try seq.serialize(subject)
+            try seq.serialize(certPub)
+            // Attributes: use empty implicit tag [0] for simplicity (SANs provided at issuance time)
+            seq.serializeRawBytes([0xA0, 0x00])
+        }
+        let infoBytes = Array(infoCoder.serializedBytes)
         var serr: Unmanaged<CFError>?
         guard let sigDER = SecKeyCreateSignature(signingKey, SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256, Data(infoBytes) as CFData, &serr) as Data? else {
             throw NSError(domain: "CSR", code: -1, userInfo: [NSLocalizedDescriptionKey: serr?.takeRetainedValue().localizedDescription ?? "sign failed"])

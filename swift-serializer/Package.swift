@@ -4,10 +4,10 @@ import PackageDescription
 let package = Package(
     name: "RunarSerializer",
     platforms: [
-        .iOS(.v13),
-        .macOS(.v12),
-        .tvOS(.v13),
-        .watchOS(.v6),
+        .iOS(.v15),
+        .macOS(.v13),
+        .tvOS(.v15),
+        .watchOS(.v8),
     ],
     products: [
         .library(
@@ -16,7 +16,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.4.0"),
+        .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
         .package(path: "../swift-serializer-macros"),
         .package(path: "../swift-keys"),
         .package(path: "../swift-common"),

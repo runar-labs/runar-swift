@@ -13,39 +13,37 @@ struct QuicSampleApp {
             var clientConnection: NWConnection?
 
             // CA and two nodes
-            let caKM = try MobileKeyManager(logger: ConsoleLogger(prefix: "CA"))
-            _ = try caKM.initializeUserRootKey()
-            try caKM.createCACertificate()
+            let km = RunarKeys.MobileKeyManager()
+            let ca = try km.createCA(subjectCN: "Runar Test CA")
 
-            let kmServer = try MobileKeyManager(logger: ConsoleLogger(prefix: "S"))
-            _ = try kmServer.initializeUserRootKey()
-            let stS = try kmServer.generateCSR()
-            let certS = try caKM.processSetupToken(stS)
-            try kmServer.installCertificate(certS)
+            let nodeSecS = try km.generateNodeIdentity(label: "server-\(UUID().uuidString)")
+            let nodePubS = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecS)
+            let nodeIdS = RunarKeys.Ids.compactId(nodePubS)
+            let csrS = try km.buildCSR(signingKey: nodeSecS, subjectCN: nodeIdS, nodeIdSAN: nodeIdS)
+            let certS = try km.issueLeaf(from: ca, csrDER: csrS, subjectOverrideCN: nodeIdS, sanDNS: [nodeIdS], validityDays: 180)
 
-            let kmClient = try MobileKeyManager(logger: ConsoleLogger(prefix: "C"))
-            _ = try kmClient.initializeUserRootKey()
-            let stC = try kmClient.generateCSR()
-            let certC = try caKM.processSetupToken(stC)
-            try kmClient.installCertificate(certC)
+            let nodeSecC = try km.generateNodeIdentity(label: "client-\(UUID().uuidString)")
+            let nodePubC = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSecC)
+            let nodeIdC = RunarKeys.Ids.compactId(nodePubC)
+            let csrC = try km.buildCSR(signingKey: nodeSecC, subjectCN: nodeIdC, nodeIdSAN: nodeIdC)
+            let certC = try km.issueLeaf(from: ca, csrDER: csrC, subjectOverrideCN: nodeIdC, sanDNS: [nodeIdC], validityDays: 180)
 
             // Expected DERs for comparison in verify blocks
-            let expectedServerLeafDER = certS.nodeCertificate.toDER()
-            let expectedClientLeafDER = certC.nodeCertificate.toDER()
-            let expectedCaDER = caKM.getCaCertificate().toDER()
+            let expectedServerLeafDER = RunarKeys.CertificateUtils.toDER(certS)
+            let expectedClientLeafDER = RunarKeys.CertificateUtils.toDER(certC)
+            let expectedCaDER = RunarKeys.CertificateUtils.toDER(ca.generated.certificate)
 
             // Note: CA export/Keychain experiments removed to avoid confusion
 
-            func makeSecCert(_ x: X509Certificate) throws -> SecCertificate {
-                guard let c = SecCertificateCreateWithData(nil, x.toDER() as CFData) else {
+            func makeSecCert(_ data: Data) throws -> SecCertificate {
+                guard let c = SecCertificateCreateWithData(nil, data as CFData) else {
                     throw NSError(domain: "cert", code: -1)
                 }
                 return c
             }
 
-            func findIdentity(for leaf: X509Certificate) throws -> SecIdentity {
+            func findIdentity(for leafDER: Data) throws -> SecIdentity {
                 // Find the certificate item in Keychain by exact DER match
-                let leafDER = leaf.toDER()
                 let certQuery: [String: Any] = [
                     kSecClass as String: kSecClassCertificate,
                     kSecReturnRef as String: true,
@@ -68,8 +66,8 @@ struct QuicSampleApp {
                 return id
             }
 
-            func makeIdentity(from certificate: X509Certificate) throws -> SecIdentity {
-                let secCert = try makeSecCert(certificate)
+            func makeIdentity(from certificateDER: Data) throws -> SecIdentity {
+                let secCert = try makeSecCert(certificateDER)
                 var identity: SecIdentity?
                 let status = SecIdentityCreateWithCertificate(nil, secCert, &identity)
                 guard status == errSecSuccess, let id = identity else {
@@ -91,7 +89,7 @@ struct QuicSampleApp {
                 let sec = quic.securityProtocolOptions
                 sec_protocol_options_set_min_tls_protocol_version(sec, .TLSv13)
                 sec_protocol_options_set_peer_authentication_required(sec, requireClientAuth)
-                let caSec = try makeSecCert(caKM.getCaCertificate())
+                let caSec = try makeSecCert(RunarKeys.CertificateUtils.toDER(ca.generated.certificate))
                 sec_protocol_options_set_verify_block(sec, { (_: sec_protocol_metadata_t, trust: sec_trust_t, complete: @escaping sec_protocol_verify_complete_t) in
                     let nwTrust = sec_trust_copy_ref(trust).takeRetainedValue()
                     let chainArr = SecTrustCopyCertificateChain(nwTrust) as? [SecCertificate] ?? []
@@ -113,7 +111,7 @@ struct QuicSampleApp {
                     // }
                     complete(ok)
                 }, DispatchQueue.global())
-                let identity = try findIdentity(for: certS.nodeCertificate)
+                let identity = try findIdentity(for: expectedServerLeafDER)
                 var certOut: SecCertificate?
                 SecIdentityCopyCertificate(identity, &certOut)
                 if let cert = certOut {
@@ -142,7 +140,7 @@ struct QuicSampleApp {
                 "localhost".utf8CString.withUnsafeBufferPointer { buf in
                     if let base = buf.baseAddress { sec_protocol_options_set_tls_server_name(sec, base) }
                 }
-                let caSec = try makeSecCert(caKM.getCaCertificate())
+                let caSec = try makeSecCert(expectedCaDER)
                 sec_protocol_options_set_verify_block(sec, { (_: sec_protocol_metadata_t, trust: sec_trust_t, complete: @escaping sec_protocol_verify_complete_t) in
                     let nwTrust = sec_trust_copy_ref(trust).takeRetainedValue()
                     let chainArr = SecTrustCopyCertificateChain(nwTrust) as? [SecCertificate] ?? []
@@ -168,7 +166,7 @@ struct QuicSampleApp {
                     // }
                     complete(ok)
                 }, DispatchQueue.global())
-                let identity = try findIdentity(for: certC.nodeCertificate)
+                let identity = try findIdentity(for: expectedClientLeafDER)
                 var certOut: SecCertificate?
                 SecIdentityCopyCertificate(identity, &certOut)
                 if let cert = certOut {

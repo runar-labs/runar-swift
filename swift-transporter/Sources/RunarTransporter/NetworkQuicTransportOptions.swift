@@ -29,7 +29,7 @@ public struct NetworkQuicTransportOptions {
     public let secKey: SecKey?
 
     /// MobileKeyManager instance that created the certificates (for CA certificate access)
-    public let mobileKeyManager: MobileKeyManager?
+    public let mobileKeyManager: RunarKeys.MobileKeyManager?
 
     /// Root certificates for CA validation
     public let rootCertificates: [Data]?
@@ -45,7 +45,7 @@ public struct NetworkQuicTransportOptions {
         maxIdleStreamsPerPeer: Int = 100,
         certificates: [Data]? = nil,
         secKey: SecKey? = nil,
-        mobileKeyManager: MobileKeyManager? = nil,
+        mobileKeyManager: RunarKeys.MobileKeyManager? = nil,
         rootCertificates: [Data]? = nil,
         logLevel: OSLogType = .default
     ) {
@@ -70,7 +70,7 @@ public struct NetworkQuicTransportOptions {
     public static func withCertificates(
         certificates: [Data],
         secKey: SecKey,
-        mobileKeyManager: MobileKeyManager? = nil,
+        mobileKeyManager: RunarKeys.MobileKeyManager? = nil,
         verifyCertificates: Bool = true
     ) -> NetworkQuicTransportOptions {
         NetworkQuicTransportOptions(

@@ -5,20 +5,18 @@ import XCTest
 
 final class TrustEvaluationTests: XCTestCase {
     func testSecTrustEvaluationWithRunarCA() throws {
-        let caKM = try MobileKeyManager(logger: ConsoleLogger(prefix: "CA"))
-        _ = try caKM.initializeUserRootKey()
-        try caKM.createCACertificate()
-        let caCert = caKM.getCaCertificate()
+        let km = RunarKeys.MobileKeyManager()
+        let ca = try km.createCA(subjectCN: "Runar Test CA")
+        let caCert = ca.generated.certificate
 
-        let nodeKM = try MobileKeyManager(logger: ConsoleLogger(prefix: "N"))
-        _ = try nodeKM.initializeUserRootKey()
-        let st = try nodeKM.generateCSR()
-        let issued = try caKM.processSetupToken(st)
-        try nodeKM.installCertificate(issued)
-        let leafCert = issued.nodeCertificate
+        let nodeSec = try km.generateNodeIdentity(label: "node-\(UUID().uuidString)")
+        let nodePub = try RunarKeys.NodeIdentitySigning.publicKeyX963(from: nodeSec)
+        let nodeId = RunarKeys.Ids.compactId(nodePub)
+        let csr = try km.buildCSR(signingKey: nodeSec, subjectCN: nodeId, nodeIdSAN: nodeId)
+        let leafCert = try km.issueLeaf(from: ca, csrDER: csr, subjectOverrideCN: nodeId, sanDNS: [nodeId], validityDays: 180)
 
-        guard let secLeaf = SecCertificateCreateWithData(nil, leafCert.toDER() as CFData) else { XCTFail("leaf to SecCertificate"); return }
-        guard let secCA = SecCertificateCreateWithData(nil, caCert.toDER() as CFData) else { XCTFail("ca to SecCertificate"); return }
+        guard let secLeaf = SecCertificateCreateWithData(nil, RunarKeys.CertificateUtils.toDER(leafCert) as CFData) else { XCTFail("leaf to SecCertificate"); return }
+        guard let secCA = SecCertificateCreateWithData(nil, RunarKeys.CertificateUtils.toDER(caCert) as CFData) else { XCTFail("ca to SecCertificate"); return }
 
         // SSL policy for server certificate with hostname
         let policy = SecPolicyCreateSSL(true, "localhost" as CFString)
