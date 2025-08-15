@@ -169,8 +169,8 @@ final class CrossLanguageE2ETests: XCTestCase {
             services: []
         )
 
-        let handler = TestHandler()
         let logger = RunarLogger(category: "CrossE2E")
+        let handler = TestHandler(logger: logger)
 
         if swiftIsServer {
             // Swift server
@@ -187,6 +187,8 @@ final class CrossLanguageE2ETests: XCTestCase {
                 options: options,
                 logger: logger
             )
+            // Set the transporter reference in the handler so it can send responses
+            handler.setTransporter(swiftServer)
             try await swiftServer.start()
 
             // Rust client connects to Swift server
@@ -235,6 +237,8 @@ final class CrossLanguageE2ETests: XCTestCase {
                 options: options,
                 logger: logger
             )
+            // Set the transporter reference in the handler so it can send responses
+            handler.setTransporter(swiftClient)
             try await swiftClient.start()
 
             // Attempt to connect, send a simple handshake/update
@@ -251,9 +255,62 @@ final class CrossLanguageE2ETests: XCTestCase {
 
 @available(macOS 13.0, *)
 private final class TestHandler: MessageHandlerProtocol {
-    func handleMessage(_ message: RunarNetworkMessage) {}
-    func peerConnected(_ peerInfo: RunarNodeInfo) {}
-    func peerDisconnected(_ peerId: String) {}
+    private let logger: RunarLogger
+    private weak var transporter: TransportProtocol?
+    
+    init(logger: RunarLogger) {
+        self.logger = logger
+    }
+    
+    func setTransporter(_ transporter: TransportProtocol) {
+        self.transporter = transporter
+    }
+    
+    func handleMessage(_ message: RunarNetworkMessage) {
+        logger.info("📥 [TestHandler] Received message type \(message.messageType) from \(message.sourceNodeId)")
+        
+        // Handle request messages (type 5) by sending a response
+        if message.messageType == MessageTypes.request {
+            logger.info("🔄 [TestHandler] Processing request from \(message.sourceNodeId)")
+            
+            // Extract correlation ID from the request
+            let correlationId = message.payloads.first?.correlationId ?? ""
+            
+            // Create a response message
+            let responseMessage = RunarNetworkMessage(
+                sourceNodeId: message.destinationNodeId, // Our node ID
+                destinationNodeId: message.sourceNodeId,  // Respond to sender
+                messageType: MessageTypes.response,       // Type 6 = response
+                payloads: [
+                    NetworkMessagePayloadItem(
+                        path: "echo_response",
+                        valueBytes: "Echo response from Swift".data(using: .utf8) ?? Data(),
+                        correlationId: correlationId
+                    )
+                ]
+            )
+            
+            // Send the response using the transporter
+            Task {
+                do {
+                    try await self.transporter?.send(message: responseMessage)
+                    self.logger.info("📤 [TestHandler] Successfully sent response to \(message.sourceNodeId)")
+                } catch {
+                    self.logger.error("❌ [TestHandler] Failed to send response: \(error)")
+                }
+            }
+        } else {
+            logger.info("📥 [TestHandler] Non-request message type \(message.messageType), no action needed")
+        }
+    }
+    
+    func peerConnected(_ peerInfo: RunarNodeInfo) {
+        logger.info("🔗 [TestHandler] Peer connected: \(peerInfo.nodeId)")
+    }
+    
+    func peerDisconnected(_ peerId: String) {
+        logger.info("🔚 [TestHandler] Peer disconnected: \(peerId)")
+    }
 }
 
 

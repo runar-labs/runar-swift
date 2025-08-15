@@ -336,6 +336,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
 
         // Create QUIC options explicitly and configure TLS prior to attaching to parameters
         let quicOptions = NWProtocolQUIC.Options()
+        
+        // Configure connection persistence to prevent premature closure after handshake
+        // Set idle timeout to 60 seconds (much higher than default ~10-30s)
+        quicOptions.idleTimeout = 60_000 // 60 seconds in milliseconds
+        
         // Set ALPN
         "runar".utf8CString.withUnsafeBufferPointer { buf in
             if let base = buf.baseAddress { sec_protocol_options_add_tls_application_protocol(quicOptions.securityProtocolOptions, base) }
@@ -612,6 +617,11 @@ public class NetworkQuicTransporter: TransportProtocol, @unchecked Sendable {
     private func buildQuicParametersForConnection(keyManager: RunarKeys.MobileKeyManager, sniHost: String, expectedPeerPublicKey: Data) throws -> NWParameters {
         logger.debug("🔐 [NetworkQuicTransporter] Building per-connection QUIC parameters with TLS config")
         let quic = NWProtocolQUIC.Options()
+        
+        // Configure connection persistence to prevent premature closure after handshake
+        // Set idle timeout to 60 seconds (much higher than default ~10-30s)
+        quic.idleTimeout = 60_000 // 60 seconds in milliseconds
+        
         // Set ALPN
         "runar".utf8CString.withUnsafeBufferPointer { buf in
             if let base = buf.baseAddress { sec_protocol_options_add_tls_application_protocol(quic.securityProtocolOptions, base) }
