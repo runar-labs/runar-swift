@@ -98,4 +98,9 @@ public class ConnectionPool {
             return false
         }
     }
+    
+    /// Check if we have a connection to a specific peer ID
+    public func hasConnection(to peerId: String) -> Bool {
+        queue.sync { peers[peerId]?.isConnected ?? false }
+    }
 }
