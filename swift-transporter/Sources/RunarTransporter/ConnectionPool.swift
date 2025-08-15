@@ -13,8 +13,10 @@ public class ConnectionPool {
     public func getOrCreatePeer(peerId: String, address: String, logger: RunarLogger) -> PeerState {
         queue.sync(flags: .barrier) {
             if let existing = peers[peerId] {
+                logger.debug("🔍 [ConnectionPool] Found existing peer \(peerId)")
                 return existing
             } else {
+                logger.info("➕ [ConnectionPool] Creating new peer \(peerId) at \(address)")
                 let peer = PeerState(peerNodeId: peerId, address: address, logger: logger)
                 peers[peerId] = peer
                 return peer

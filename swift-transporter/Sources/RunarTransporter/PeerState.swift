@@ -37,6 +37,7 @@ public class PeerState {
 
     public func setConnection(_ conn: NWConnection) {
         queue.async(flags: .barrier) {
+            self.logger.info("🔗 [PeerState] Setting connection for peer \(self.peerNodeId)")
             self.connection = conn
             self.lastActivity = Date()
         }
@@ -75,12 +76,14 @@ public class PeerState {
 
     public func closeConnection() {
         queue.async(flags: .barrier) {
+            self.logger.info("🔚 [PeerState] Closing connection for peer \(self.peerNodeId)")
             self.connection?.cancel()
             self.connection = nil
         }
     }
 
     public func activate() {
+        self.logger.info("✅ [PeerState] Activating peer \(self.peerNodeId)")
         activation.activate()
     }
 
