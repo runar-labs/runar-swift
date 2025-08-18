@@ -80,6 +80,7 @@ public final class SwiftNode {
 		let lifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$registry", config: nil, logger: logger, nodeDelegate: self)
 		try await lifecycle.registerAction("services/list") { _, _ in
 			let services = self.registry.getLocalServices()
+			self.logger.debug("$registry/services/list returning count=\(services.count)")
 			let list = services.map { svc in
 				AnyValue.map([
 					"service_path": AnyValue.primitive(svc.servicePath),
@@ -115,8 +116,8 @@ public final class SwiftNode {
 
 	public func request(_ path: String, payload: AnyValue?) async throws -> AnyValue {
 		let full = qualify(path)
-		if let handler = registry.getLocalAction(topicPath: full) {
-			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: [:], userProfilePublicKey: Data())
+		if let (handler, params) = registry.getLocalAction(topicPath: full) {
+			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: params, userProfilePublicKey: Data())
 			return try await handler(payload, ctx)
 		}
 		// Try remote handlers (round-robin naive)
@@ -131,6 +132,7 @@ public final class SwiftNode {
 	public func publish(_ topic: String, data: AnyValue?) async throws {
 		let qualified = qualify(topic)
 		let targets = registry.snapshotSubscribers(topicPath: qualified)
+		logger.debug("publish to \(qualified) subscribers=\(targets.count)")
 		if targets.isEmpty { return }
 		for callback in targets {
 			let ctx = EventContext(topic: qualified, logger: logger, nodeDelegate: self, isLocal: true)
@@ -175,6 +177,7 @@ extension SwiftNode: NodeDelegate {
 	public func publish(topic: String, data: AnyValue?) async throws {
 		let full = topic.contains(":") ? topic : qualify(topic)
 		let targets = registry.snapshotSubscribers(topicPath: full)
+		logger.debug("delegate publish to \(full) subscribers=\(targets.count)")
 		for callback in targets {
 			let ctx = EventContext(topic: full, logger: logger, nodeDelegate: self, isLocal: true)
 			await callback(ctx, data)
