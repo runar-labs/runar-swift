@@ -24,4 +24,64 @@ final class SwiftNodeTests: XCTestCase {
 		let text: String = try await res.asType()
 		XCTAssertEqual(text, "hello")
 	}
+
+	func testRegistryServicesList() async throws {
+		let node = SwiftNode(config: .init(defaultNetworkId: "net"))
+		final class Svc: AbstractService {
+			var name: String { "svc" }
+			var version: String { "0.1.0" }
+			var path: String { "svc" }
+			var description: String { "svc desc" }
+			var networkId: String?
+			func initService(_ context: LifecycleContext) async throws {}
+			func start(_ context: LifecycleContext) async throws {}
+			func stop(_ context: LifecycleContext) async throws {}
+		}
+		try await node.addService(Svc())
+		try await node.start()
+		let res = try await node.request("$registry/services/list", payload: nil)
+		struct ServiceInfo: Decodable, Equatable { let service_path: String; let name: String; let version: String; let description: String }
+		let list: [ServiceInfo] = try await res.asType()
+		XCTAssertTrue(list.contains(where: { $0.service_path == "svc" && $0.name == "svc" }))
+	}
+
+	func testPublishSubscribeDirect() async throws {
+		let node = SwiftNode(config: .init(defaultNetworkId: "net"))
+		var received: String? = nil
+		_ = try await node.subscribe("echo/data", options: nil) { _, data in
+			let val: String? = try? await data?.asType()
+			received = val
+		}
+		try await node.publish("echo/data", data: AnyValue.primitive("ping"))
+		try await Task.sleep(nanoseconds: 100_000_000)
+		XCTAssertEqual(received, "ping")
+	}
+
+	func testActionPublishesEvent() async throws {
+		let node = SwiftNode(config: .init(defaultNetworkId: "net"))
+		final class PubService: AbstractService {
+			var name: String { "pub" }
+			var version: String { "1.0.0" }
+			var path: String { "pub" }
+			var description: String { "pub service" }
+			var networkId: String?
+			func initService(_ context: LifecycleContext) async throws {
+				try await context.registerAction("trigger") { _, ctx in
+					try await ctx.nodeDelegate.publish(topic: "pub/evt", data: AnyValue.primitive("event"))
+					return AnyValue.null()
+				}
+			}
+			func start(_ context: LifecycleContext) async throws {}
+			func stop(_ context: LifecycleContext) async throws {}
+		}
+		try await node.addService(PubService())
+		var got: String? = nil
+		_ = try await node.subscribe("pub/evt", options: nil) { _, data in
+			let val: String? = try? await data?.asType()
+			got = val
+		}
+		_ = try await node.request("pub/trigger", payload: nil)
+		try await Task.sleep(nanoseconds: 100_000_000)
+		XCTAssertEqual(got, "event")
+	}
 }
