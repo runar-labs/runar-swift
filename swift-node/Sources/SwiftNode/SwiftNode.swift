@@ -2,6 +2,7 @@ import Foundation
 import SwiftCommon
 import RunarSerializer
 import RunarFFI
+import SwiftCBOR
 
 public struct SwiftNetworkConfig {
 	public var enabled: Bool
@@ -45,6 +46,9 @@ public final class SwiftNode {
 	private var nodeId: String
 	private var ffiKeys: FFIKeys?
 	private var transport: FFITransport?
+	private var eventLoopTask: Task<Void, Never>?
+	private let pendingLock = NSLock()
+	private var pendingByCorrelationId: [String: (resume: (Result<AnyValue, Error>) -> Void, timeoutAt: Date)] = [:]
 
 	public init(config: SwiftNodeConfig, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
 		self.config = config
@@ -76,15 +80,105 @@ public final class SwiftNode {
 			let emptyOptions = Data()
 			self.transport = try? FFITransport(keys: keys, optionsCBOR: emptyOptions)
 			try? self.transport?.start()
+			startEventLoop()
 		}
 	}
 
 	public func stop() async {
 		logger.info("Node stopped")
+		eventLoopTask?.cancel()
+		eventLoopTask = nil
 		do { try transport?.stop() } catch { logger.error("transport stop error: \(error)") }
 		transport = nil
 		ffiKeys = nil
 	}
+
+	private func startEventLoop() {
+		guard eventLoopTask == nil, let transport else { return }
+		let log = logger
+		eventLoopTask = Task.detached { [weak self] in
+			let pollInterval = UInt64(50_000_000) // 50ms
+			while let strong = self, !Task.isCancelled {
+				do {
+					if let data = try transport.pollEvent() {
+						strong.handleTransportEvent(data)
+						continue
+					}
+				} catch {
+					log.error("pollEvent error: \(error)")
+				}
+				try? await Task.sleep(nanoseconds: pollInterval)
+			}
+		}
+	}
+
+	private func handleTransportEvent(_ data: Data) {
+		guard let item = try? CBORDecoder(input: [UInt8](data)).decodeItem(), case let CBOR.map(map) = item else {
+			logger.debug("transport event decode failure: invalid CBOR")
+			return
+		}
+		func str(_ k: String) -> String? {
+			if let v = map[.utf8String(k)], case let CBOR.utf8String(s) = v { return s }
+			return nil
+		}
+		func bytes(_ k: String) -> Data? {
+			if let v = map[.utf8String(k)] {
+				switch v {
+				case let .byteString(bs): return Data(bs)
+				case let .tagged(_, inner): if case let .byteString(bs) = inner { return Data(bs) }
+				default: break
+				}
+			}
+			return nil
+		}
+		guard let type = str("t") else {
+			logger.debug("transport event missing type")
+			return
+		}
+		switch type {
+		case "ResponseReceived":
+			guard let cid = str("correlation_id") else { return }
+			let payload = bytes("payload")
+			completePending(correlationId: cid, payload: payload)
+		case "RequestReceived":
+			guard let path = str("path"), let reqId = str("request_id") else { return }
+			let payload = bytes("payload")
+			Task {
+				do {
+					let any = decodeAnyValue(from: payload)
+					let result = try await self.request(path, payload: any)
+					let respBytes = try result.serialize(context: nil)
+					try self.transport?.completeRequest(requestId: reqId, responsePayload: respBytes, profilePublicKey: nil)
+				} catch {
+					self.logger.error("request handling error: \(error)")
+				}
+			}
+		case "PeerConnected":
+			logger.info("peer connected")
+		case "PeerDisconnected":
+			logger.info("peer disconnected")
+		default:
+			logger.debug("unknown transport event type=\(type)")
+		}
+	}
+
+	private func completePending(correlationId: String, payload: Data?) {
+		pendingLock.lock()
+		let entry = pendingByCorrelationId.removeValue(forKey: correlationId)
+		pendingLock.unlock()
+		guard let entry else { return }
+		let any = decodeAnyValue(from: payload)
+		entry.resume(.success(any))
+	}
+
+	private func decodeAnyValue(from data: Data?) -> AnyValue {
+		guard let data, !data.isEmpty else { return AnyValue.null() }
+		if let value = try? AnyValue.deserialize(data) {
+			return value
+		}
+		return AnyValue.bytes(data)
+	}
+
 
 	private func registerInternalServices() async throws {
 		// $registry: list services, service info, state
@@ -186,6 +280,11 @@ public final class SwiftNode {
 		return s
 	}
 }
+
+// Concurrency sendability allowances for background event handling
+extension SwiftNode: @unchecked Sendable {}
+extension FFITransport: @unchecked Sendable {}
+extension RunarLogger: @unchecked Sendable {}
 
 extension SwiftNode: NodeDelegate {
 	public func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws {
