@@ -133,7 +133,7 @@ public final class SwiftNode {
 		if subs.isEmpty { return }
 		for callback in subs {
 			let ctx = EventContext(topic: qualify(topic), logger: logger, nodeDelegate: self, isLocal: true)
-			await callback(ctx, data)
+			Task { await callback(ctx, data) }
 		}
 	}
 
@@ -174,7 +174,7 @@ extension SwiftNode: NodeDelegate {
 		let subs = registry.snapshotSubscribers(topicPath: topic)
 		for callback in subs {
 			let ctx = EventContext(topic: topic, logger: logger, nodeDelegate: self, isLocal: true)
-			await callback(ctx, data)
+			Task { await callback(ctx, data) }
 		}
 	}
 }

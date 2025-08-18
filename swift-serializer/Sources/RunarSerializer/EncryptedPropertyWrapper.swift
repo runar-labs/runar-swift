@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(RunarKeys)
 import RunarKeys
+#endif
 
 /// Protocol for encrypted field types that can be detected during serialization
 public protocol EncryptedFieldProtocol {

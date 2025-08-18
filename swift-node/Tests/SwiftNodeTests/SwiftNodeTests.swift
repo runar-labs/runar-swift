@@ -40,9 +40,11 @@ final class SwiftNodeTests: XCTestCase {
 		try await node.addService(Svc())
 		try await node.start()
 		let res = try await node.request("$registry/services/list", payload: nil)
-		struct ServiceInfo: Decodable, Equatable { let service_path: String; let name: String; let version: String; let description: String }
-		let list: [ServiceInfo] = try await res.asType()
-		XCTAssertTrue(list.contains(where: { $0.service_path == "svc" && $0.name == "svc" }))
+		let list: [[String: AnyValue]] = try await res.asType()
+		XCTAssertTrue(list.contains(where: { m in
+			(try? await m["service_path"]?.asType() as String?) == "svc"
+			&& (try? await m["name"]?.asType() as String?) == "svc"
+		}))
 	}
 
 	func testPublishSubscribeDirect() async throws {
@@ -53,7 +55,6 @@ final class SwiftNodeTests: XCTestCase {
 			received = val
 		}
 		try await node.publish("echo/data", data: AnyValue.primitive("ping"))
-		try await Task.sleep(nanoseconds: 100_000_000)
 		XCTAssertEqual(received, "ping")
 	}
 
@@ -81,7 +82,6 @@ final class SwiftNodeTests: XCTestCase {
 			got = val
 		}
 		_ = try await node.request("pub/trigger", payload: nil)
-		try await Task.sleep(nanoseconds: 100_000_000)
 		XCTAssertEqual(got, "event")
 	}
 }

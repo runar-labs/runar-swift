@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(RunarKeys)
 import RunarKeys
+#endif
 import SwiftCBOR
 
 // Note: Macro declarations are now in the swift-serializer-macros package
@@ -889,7 +891,9 @@ public protocol EnvelopeCrypto {
 public typealias KeyStore = EnvelopeCrypto
 
 // Bridge RunarKeys.MobileKeyManager to EnvelopeCrypto expected by serializer
+#if canImport(RunarKeys)
 extension MobileKeyManager: EnvelopeCrypto {}
+#endif
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto
