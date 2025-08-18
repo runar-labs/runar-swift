@@ -50,18 +50,9 @@ final class ServiceRegistry {
 		}
 	}
 
-	func publish(topicPath: String, data: AnyValue?) {
-		let subscribers: [EventHandler]
-		lock.lock()
-		subscribers = localSubscriptions[topicPath]?.map { $0.handler } ?? []
-		lock.unlock()
-		if subscribers.isEmpty { return }
-		Task { [logger] in
-			for callback in subscribers {
-				let ctx = EventContext(topic: topicPath, logger: logger, nodeDelegate: DummyNodeDelegate(), isLocal: true)
-				await callback(ctx, data)
-			}
-		}
+	func snapshotSubscribers(topicPath: String) -> [EventHandler] {
+		lock.lock(); defer { lock.unlock() }
+		return localSubscriptions[topicPath]?.map { $0.handler } ?? []
 	}
 }
 

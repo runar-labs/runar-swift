@@ -236,3 +236,100 @@ CLARIFICATION.. `swift-serializer`: `AnyValue`, `EnvelopeEncryption`, protocols 
 - `runar-swift/swift-ffi`: Swift wrappers around `runar_ffi`.
 - `runar-swift/swift-node`: new Swift Node library.
 - Existing Swift modules remain; only keystore bridge changes.
+
+## Swift service macros (ergonomics)
+
+We will add Swift macros to mirror the ergonomics of `runar-rust/runar-macros`, so services can be defined declaratively without manually implementing `AbstractService` each time.
+
+### Goals
+- Eliminate boilerplate by generating `AbstractService` conformance, metadata, and handler registration.
+- Provide `@Service`, `@Action`, `@Publish`, and `@Subscribe` macros analogous to Rust `#[service]`, `#[action]`, `#[publish]`, and `#[subscribe]`.
+- Integrate with `SwiftNode` so generated code registers actions/subscriptions during `initService` automatically.
+- Leverage `RunarSerializer.AnyValue` for param/result serialization and Swift macro diagnostics for better developer feedback.
+
+### Proposed package
+- New SwiftPM package: `swift-node-macros`
+  - Product: `SwiftNodeMacros`
+  - Dependencies: `swift-syntax` (matching Swift toolchain), `SwiftCBOR` (optional for compile-time schema helpers), and `swift-common` for common names.
+  - Emits macros:
+    - `@Service(name: String, path: String, description: String, version: String)`
+    - `@Action(_ name: String? = nil, path: String? = nil)`
+    - `@Publish(path: String)` — attaches to an `@Action` to auto-publish the action result to a topic
+    - `@Subscribe(path: String)` — defines event handlers as methods
+
+### Behavior mapping
+- `@Service` on a type:
+  - Synthesizes `AbstractService` conformance with computed properties `name`, `version`, `path`, `description`.
+  - Generates `initService(_:)` to register all `@Action` methods and `@Subscribe` callbacks on the provided `LifecycleContext` (using `registerAction` / `subscribe`).
+  - Optionally generates `start(_:)`/`stop(_:)` no-ops.
+- `@Action` on an instance method:
+  - Generates a wrapper `ActionHandler` bridging from `AnyValue` parameters to strongly typed parameters (positional or map-like), using `RunarSerializer` conversions.
+  - Registers under derived path: `servicePath/actionName` unless overridden by `path` or full `network:service/action` format.
+- `@Publish` on an `@Action` method:
+  - After the action returns a result `R`, generates `context.publish(topic, AnyValue.struct(R))` (or appropriate category) with topic resolution rules identical to Rust macros.
+- `@Subscribe` on an instance method:
+  - Generates an event subscription that deserializes payload to the method’s parameter type, then invokes the method with an `EventContext`.
+
+### Example (Swift) based on Rust test `runar-macros/tests/simple_service_macros.rs`
+```swift
+import SwiftNode
+import SwiftNodeMacros
+import RunarSerializer
+
+@Service(
+  name: "Test Service Name",
+  path: "math",
+  description: "Test Service Description",
+  version: "0.0.1"
+)
+struct TestService {
+  var store: [String: AnyValue] = [:]
+
+  @Action
+  func echo(_ message: String) async throws -> String {
+    message
+  }
+
+  @Publish(path: "added")
+  @Action
+  func add(_ a: Double, _ b: Double, _ ctx: RequestContext) async throws -> Double {
+    ctx.debug("Adding \(a) + \(b)")
+    return a + b
+  }
+
+  @Action(path: "multiply_numbers")
+  func multiply(_ a: Double, _ b: Double, _ ctx: RequestContext) async throws -> Double {
+    a * b
+  }
+
+  @Subscribe(path: "math/added")
+  func onAdded(_ total: Double, _ ctx: EventContext) async {
+    ctx.debug("on_added: \(total)")
+    // update store, etc.
+  }
+}
+
+// Usage
+let node = SwiftNode(config: .init(defaultNetworkId: "net"))
+try await node.addService(TestService())
+try await node.start()
+let result = try await node.request("math/add", payload: AnyValue.map([
+  "a": AnyValue.primitive(10.0),
+  "b": AnyValue.primitive(5.0)
+]))
+```
+
+### Design notes
+- Parameter decoding strategy: if the action has a single non-context parameter and the payload is a map with a matching key, accept both direct and map-wrapped forms (gateway ergonomics). For multi-arg, accept map with keys matching parameter names.
+- Return value encoding: primitives → `AnyValue.primitive`, structs → `AnyValue.struct`, lists/maps → corresponding categories. If already `AnyValue`, pass through.
+- Topic resolution: identical to Rust macros: relative paths resolved to `network:service/path`.
+- Metadata: macros generate `ActionMetadata` and optionally `FieldSchema` stubs for discovery.
+
+### Tasks
+- [ ] Create `swift-node-macros` package with macro scaffolding.
+- [ ] Implement `@Service` to synthesize `AbstractService` and registration in `initService(_:)`.
+- [ ] Implement `@Action` wrapper generation with parameter/return bridging to `AnyValue`.
+- [ ] Implement `@Publish` to auto-publish action results.
+- [ ] Implement `@Subscribe` to generate event subscriptions and payload decoding.
+- [ ] Add tests mirroring Rust macro tests (echo/add/multiply/divide, complex structs, publish/subscribe).
+- [ ] Docs with examples and migration guide.

@@ -58,7 +58,12 @@ public final class SwiftNode {
 	}
 
 	public func publish(_ topic: String, data: AnyValue?) async throws {
-		registry.publish(topicPath: qualify(topic), data: data)
+		let subs = registry.snapshotSubscribers(topicPath: qualify(topic))
+		if subs.isEmpty { return }
+		for callback in subs {
+			let ctx = EventContext(topic: qualify(topic), logger: logger, nodeDelegate: self, isLocal: true)
+			await callback(ctx, data)
+		}
 	}
 
 	public func subscribe(_ topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
@@ -95,6 +100,10 @@ extension SwiftNode: NodeDelegate {
 	}
 
 	public func publish(topic: String, data: AnyValue?) async throws {
-		registry.publish(topicPath: topic, data: data)
+		let subs = registry.snapshotSubscribers(topicPath: topic)
+		for callback in subs {
+			let ctx = EventContext(topic: topic, logger: logger, nodeDelegate: self, isLocal: true)
+			await callback(ctx, data)
+		}
 	}
 }
