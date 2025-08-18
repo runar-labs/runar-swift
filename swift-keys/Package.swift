@@ -10,7 +10,8 @@ let package = Package(
         .library(name: "RunarKeys", targets: ["RunarKeys"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/runar-labs/swift-certificates.git", branch: "feature/external-csr"),
+        // Use vendored swift-certificates during local development to avoid missing remote branch
+        .package(path: "../Vendor/swift-certificates"),
     ],
     targets: [
         .target(

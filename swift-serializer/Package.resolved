@@ -1,5 +1,5 @@
 {
-  "originHash" : "9908dfc21fe33b83ef012a63d4660c83d1fa1871756f05331d1cc80bbf0d1b17",
+  "originHash" : "55f329ee6484eb9f55bb16af0245d4a481c892a6cb349f888caaf499eaf7918a",
   "pins" : [
     {
       "identity" : "swift-asn1",
@@ -8,15 +8,6 @@
       "state" : {
         "revision" : "f70225981241859eb4aa1a18a75531d26637c8cc",
         "version" : "1.4.0"
-      }
-    },
-    {
-      "identity" : "swift-certificates",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/runar-labs/swift-certificates.git",
-      "state" : {
-        "branch" : "feature/external-csr",
-        "revision" : "e4cb2994bf8fb0d957f5a434ceb6afaf270b6210"
       }
     },
     {

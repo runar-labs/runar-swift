@@ -10,15 +10,6 @@
       }
     },
     {
-      "identity" : "swift-certificates",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/runar-labs/swift-certificates.git",
-      "state" : {
-        "branch" : "feature/external-csr",
-        "revision" : "091d66f40d9d35a39ae651c0ed4bb8578694026d"
-      }
-    },
-    {
       "identity" : "swift-crypto",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
