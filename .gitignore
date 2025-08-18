@@ -62,3 +62,4 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 swift-keys-v1/
 .DS_Store
+runar-rust

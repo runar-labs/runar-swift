@@ -169,16 +169,14 @@ CLARIFICATION.. `swift-serializer`: `AnyValue`, `EnvelopeEncryption`, protocols 
 - [ ] CI: build Apple slices; produce `.xcframework` + header.
 
 ### B. Create Swift FFI package (runar-swift/swift-ffi)
-- [ ] Add Swift Package `swift-ffi` with a binary target pointing to `runar_ffi.xcframework` and header.
-- [ ] Keys wrapper:
-  - `final class FFIKeys { init(), deinit, var nodeId: String, var publicKey: Data, func generateCSR() -> Data, func installCertificate(_ ncm: Data) }`
-  - State: `exportState() -> Data`, `importState(_ state: Data)`, plus mobile state helpers as needed.
-- [ ] Transport wrapper:
-  - `final class FFITransport { init(keys: FFIKeys, options: TransportOptions), start/stop, localAddr, connectPeer, disconnectPeer, isConnected, request, publish, completeRequest, updateLocalNodeInfo }`
-  - Polling: `pollEvent() -> Data?` with decode helpers.
-- [ ] Implement `FFIKeyStore: EnvelopeCrypto` calling the new FFI encrypt/decrypt helpers.
-- [ ] Error mapping: convert `RnError` to Swift `Error`, free all allocations.
-- [ ] Unit tests: conversions, memory ownership, CSR/cert flow using Rust mobile CA.
+- [x] Add Swift Package `swift-ffi` with C module importing `runar_ffi.h` and Swift target `RunarFFI`.
+- [x] Keys wrapper:
+  - Implemented `FFIKeys` with `init()/deinit`, `nodeId()`, `publicKey()`, `generateCSR()`, `processSetupToken(_:)`, `installCertificate(_:)`, `exportState()`, `importState(_:)`.
+- [x] Transport wrapper skeleton:
+  - Implemented `FFITransport` with `init(keys:optionsCBOR:)`, `start/stop`, `localAddr`, `connectPeer`, `disconnectPeer`, `isConnected`, `request`, `publish`, `completeRequest`, `pollEvent`, `updateLocalNodeInfo`.
+  - Options passed as CBOR `Data` to match FFI contract.
+- [ ] Implement `FFIKeyStore: EnvelopeCrypto` calling the new FFI encrypt/decrypt helpers (pending FFI functions).
+- [ ] Error mapping tests and memory ownership tests.
 
 ### C. Implement Swift Node (runar-swift/swift-node)
 - [ ] Package skeleton with dependency on `swift-ffi`, `swift-common`, `swift-serializer`, `swift-serializer-macros`.

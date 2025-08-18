@@ -78,33 +78,16 @@ public final class SwiftNode {
 	private func registerInternalServices() async throws {
 		// $registry: list services, service info, state
 		let lifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$registry", config: nil, logger: logger, nodeDelegate: self)
-		struct ServiceMetadata: Codable {
-			let network_id: String
-			let service_path: String
-			let name: String
-			let version: String
-			let description: String
-			let actions: [ActionMetadata]
-			let registration_time: UInt64
-			let last_start_time: UInt64?
-		}
-		struct ActionMetadata: Codable {
-			let name: String
-			let description: String
-			let input_schema: AnyValue?
-			let output_schema: AnyValue?
-		}
 		try await lifecycle.registerAction("services/list") { _, _ in
 			let services = self.registry.getLocalServices()
 			let now = UInt64(Date().timeIntervalSince1970)
-			let typed = services.map { svc in
-				ServiceMetadata(
+			let typed: [RegistryServiceMetadata] = services.map { svc in
+				RegistryServiceMetadata(
 					network_id: self.config.defaultNetworkId,
 					service_path: svc.servicePath,
 					name: svc.name,
 					version: svc.version,
 					description: svc.description,
-					actions: [],
 					registration_time: now,
 					last_start_time: now
 				)
@@ -112,25 +95,35 @@ public final class SwiftNode {
 			return AnyValue.struct(typed)
 		}
 		try await lifecycle.registerAction("services/{service_path}") { _, ctx in
-			// In this minimal version, extract last path component as service path
 			let path = ctx.servicePath
-			let info = self.registry.getLocalService(servicePath: path)
-			if let info {
-				return AnyValue.map([
-					"service_path": AnyValue.primitive(info.servicePath),
-					"name": AnyValue.primitive(info.name),
-					"version": AnyValue.primitive(info.version),
-					"description": AnyValue.primitive(info.description)
-				])
+			if let info = self.registry.getLocalService(servicePath: path) {
+				let now = UInt64(Date().timeIntervalSince1970)
+				let meta = RegistryServiceMetadata(
+					network_id: self.config.defaultNetworkId,
+					service_path: info.servicePath,
+					name: info.name,
+					version: info.version,
+					description: info.description,
+					registration_time: now,
+					last_start_time: now
+				)
+				return AnyValue.struct(meta)
 			}
 			return AnyValue.null()
 		}
 		// $keys: ensure_symmetric_key (placeholder wired to FFI later)
 		let keysLifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$keys", config: nil, logger: logger, nodeDelegate: self)
+		struct EnsureKeyRequest: Codable { let name: String }
+		struct EnsureKeyResponse: Codable { let ensured: Bool; let key_name: String }
 		try await keysLifecycle.registerAction("ensure_symmetric_key") { params, _ in
-			// Placeholder return value until FFI-backed keystore exists
-			let keyName: String = try await (params ?? AnyValue.null()).asType()
-			return AnyValue.map(["ensured": AnyValue.primitive(true), "key_name": AnyValue.primitive(keyName)])
+			// Expect a typed request later; for now accept string name or struct
+			if let p = params, let name: String = try? await p.asType() {
+				return AnyValue.struct(EnsureKeyResponse(ensured: true, key_name: name))
+			}
+			if let p = params, let req: EnsureKeyRequest = try? await p.asType() {
+				return AnyValue.struct(EnsureKeyResponse(ensured: true, key_name: req.name))
+			}
+			return AnyValue.struct(EnsureKeyResponse(ensured: true, key_name: "default"))
 		}
 	}
 

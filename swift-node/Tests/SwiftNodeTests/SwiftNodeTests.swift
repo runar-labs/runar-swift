@@ -39,10 +39,8 @@ final class SwiftNodeTests: XCTestCase {
 		}
 		try await node.addService(Svc())
 		try await node.start()
-		struct ServiceMetadata: Codable { let network_id: String; let service_path: String; let name: String; let version: String; let description: String; let actions: [ActionMeta]; let registration_time: UInt64; let last_start_time: UInt64? }
-		struct ActionMeta: Codable { let name: String; let description: String; let input_schema: AnyValue?; let output_schema: AnyValue? }
 		let res = try await node.request("$registry/services/list", payload: nil)
-		let list: [ServiceMetadata] = try await res.asType()
+		let list: [RegistryServiceMetadata] = try await res.asType()
 		XCTAssertTrue(list.contains(where: { $0.service_path == "svc" && $0.name == "svc" }))
 	}
 
