@@ -314,10 +314,8 @@ public final class SwiftNode {
 		if let transport {
 			let bytes = try data?.serialize(context: nil) ?? Data()
 			let correlationId = UUID().uuidString
-			// If topic includes a service path, choose a peer that serves it, else broadcast via transport
-			let service = parseService(qualified)
-			let destPeer = registry.nextPeerForService(service)
-			try? transport.publish(path: qualified, correlationId: correlationId, payload: bytes, destPeerId: destPeer)
+			// Mirror Rust: publish is broadcast when dest peer is not specified
+			try? transport.publish(path: qualified, correlationId: correlationId, payload: bytes, destPeerId: nil)
 		}
 	}
 
