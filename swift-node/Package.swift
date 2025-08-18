@@ -18,6 +18,7 @@ let package = Package(
     dependencies: [
         .package(path: "../swift-common"),
         .package(path: "../swift-serializer"),
+        .package(path: "../swift-ffi"),
     ],
     targets: [
         .target(
@@ -25,6 +26,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftCommon", package: "swift-common"),
                 .product(name: "RunarSerializer", package: "swift-serializer"),
+                .product(name: "RunarFFI", package: "swift-ffi"),
             ],
             path: "Sources/SwiftNode"
         ),

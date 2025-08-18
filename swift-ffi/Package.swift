@@ -17,7 +17,11 @@ let package = Package(
 		.target(
 			name: "RunarFFI",
 			dependencies: ["CRunarFFI"],
-			swiftSettings: []
+			swiftSettings: [],
+			linkerSettings: [
+				.linkedLibrary("runar_ffi"),
+				.unsafeFlags(["-L", "../runar-rust/target/debug"]) // local dev: search path for librunar_ffi.{dylib,a}
+			]
 		),
 		.testTarget(
 			name: "RunarFFITests",
