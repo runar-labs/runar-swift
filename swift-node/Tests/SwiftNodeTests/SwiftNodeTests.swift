@@ -39,17 +39,11 @@ final class SwiftNodeTests: XCTestCase {
 		}
 		try await node.addService(Svc())
 		try await node.start()
+		struct ServiceMetadata: Codable { let network_id: String; let service_path: String; let name: String; let version: String; let description: String; let actions: [ActionMeta]; let registration_time: UInt64; let last_start_time: UInt64? }
+		struct ActionMeta: Codable { let name: String; let description: String; let input_schema: AnyValue?; let output_schema: AnyValue? }
 		let res = try await node.request("$registry/services/list", payload: nil)
-		let listValues: [AnyValue] = try await res.asType()
-		var found = false
-		for v in listValues {
-			if let item: [String: AnyValue] = try? await v.asType() {
-				let sp: String? = try? await item["service_path"]?.asType()
-				let nm: String? = try? await item["name"]?.asType()
-				if sp == "svc" && nm == "svc" { found = true; break }
-			}
-		}
-		XCTAssertTrue(found)
+		let list: [ServiceMetadata] = try await res.asType()
+		XCTAssertTrue(list.contains(where: { $0.service_path == "svc" && $0.name == "svc" }))
 	}
 
 	func testPublishSubscribeDirect() async throws {
@@ -57,11 +51,12 @@ final class SwiftNodeTests: XCTestCase {
 		try await node.start()
 		var received: String? = nil
 		_ = try await node.subscribe("echo/data", options: nil) { _, data in
-			let val: String? = try? await data?.asType()
-			received = val
+			if let d = data {
+				let val: String = try await d.asType()
+				received = val
+			}
 		}
 		try await node.publish("echo/data", data: AnyValue.primitive("ping"))
-		await Task.yield()
 		XCTAssertEqual(received, "ping")
 	}
 
@@ -86,11 +81,12 @@ final class SwiftNodeTests: XCTestCase {
 		try await node.start()
 		var got: String? = nil
 		_ = try await node.subscribe("pub/evt", options: nil) { _, data in
-			let val: String? = try? await data?.asType()
-			got = val
+			if let d = data {
+				let val: String = try await d.asType()
+				got = val
+			}
 		}
 		_ = try await node.request("pub/trigger", payload: nil)
-		await Task.yield()
 		XCTAssertEqual(got, "event")
 	}
 }

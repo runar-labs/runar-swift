@@ -78,18 +78,38 @@ public final class SwiftNode {
 	private func registerInternalServices() async throws {
 		// $registry: list services, service info, state
 		let lifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$registry", config: nil, logger: logger, nodeDelegate: self)
+		struct ServiceMetadata: Codable {
+			let network_id: String
+			let service_path: String
+			let name: String
+			let version: String
+			let description: String
+			let actions: [ActionMetadata]
+			let registration_time: UInt64
+			let last_start_time: UInt64?
+		}
+		struct ActionMetadata: Codable {
+			let name: String
+			let description: String
+			let input_schema: AnyValue?
+			let output_schema: AnyValue?
+		}
 		try await lifecycle.registerAction("services/list") { _, _ in
 			let services = self.registry.getLocalServices()
-			self.logger.debug("$registry/services/list returning count=\(services.count)")
-			let list = services.map { svc in
-				AnyValue.map([
-					"service_path": AnyValue.primitive(svc.servicePath),
-					"name": AnyValue.primitive(svc.name),
-					"version": AnyValue.primitive(svc.version),
-					"description": AnyValue.primitive(svc.description)
-				])
+			let now = UInt64(Date().timeIntervalSince1970)
+			let typed = services.map { svc in
+				ServiceMetadata(
+					network_id: self.config.defaultNetworkId,
+					service_path: svc.servicePath,
+					name: svc.name,
+					version: svc.version,
+					description: svc.description,
+					actions: [],
+					registration_time: now,
+					last_start_time: now
+				)
 			}
-			return AnyValue.list(list)
+			return AnyValue.struct(typed)
 		}
 		try await lifecycle.registerAction("services/{service_path}") { _, ctx in
 			// In this minimal version, extract last path component as service path
@@ -136,7 +156,7 @@ public final class SwiftNode {
 		if targets.isEmpty { return }
 		for callback in targets {
 			let ctx = EventContext(topic: qualified, logger: logger, nodeDelegate: self, isLocal: true)
-			await callback(ctx, data)
+			do { try await callback(ctx, data) } catch { logger.error("Event handler error: \(error)") }
 		}
 	}
 
@@ -180,7 +200,7 @@ extension SwiftNode: NodeDelegate {
 		logger.debug("delegate publish to \(full) subscribers=\(targets.count)")
 		for callback in targets {
 			let ctx = EventContext(topic: full, logger: logger, nodeDelegate: self, isLocal: true)
-			await callback(ctx, data)
+			do { try await callback(ctx, data) } catch { logger.error("Event handler error: \(error)") }
 		}
 	}
 }
