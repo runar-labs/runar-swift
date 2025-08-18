@@ -20,7 +20,7 @@ let package = Package(
 			swiftSettings: [],
 			linkerSettings: [
 				.linkedLibrary("runar_ffi"),
-				.unsafeFlags(["-L", "../runar-rust/target/debug"]) // local dev: search path for librunar_ffi.{dylib,a}
+				.unsafeFlags(["-L", "/Users/rafael/dev/runar-swift/runar-rust/target/debug"]) // local dev: search path for librunar_ffi.{dylib,a}
 			]
 		),
 		.testTarget(

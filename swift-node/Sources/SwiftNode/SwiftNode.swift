@@ -1,6 +1,7 @@
 import Foundation
 import SwiftCommon
 import RunarSerializer
+import RunarFFI
 
 public struct SwiftNetworkConfig {
 	public var enabled: Bool
@@ -41,7 +42,9 @@ public final class SwiftNode {
 	private let config: SwiftNodeConfig
 	private let logger: RunarLogger
 	private let registry: ServiceRegistry
-	private let nodeId: String
+	private var nodeId: String
+	private var ffiKeys: FFIKeys?
+	private var transport: FFITransport?
 
 	public init(config: SwiftNodeConfig, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
 		self.config = config
@@ -65,14 +68,22 @@ public final class SwiftNode {
 		try await registerInternalServices()
 		// Set services running
 		registry.setAllLocalServicesRunning()
-		// Placeholder: transport initialization when FFI is ready
+		// Initialize keys/transport via FFI when networking is enabled
 		if config.network?.enabled == true {
-			logger.info("Networking placeholder initialized (FFI pending)")
+			let keys = try FFIKeys()
+			self.nodeId = (try? keys.nodeId()) ?? "local"
+			self.ffiKeys = keys
+			let emptyOptions = Data()
+			self.transport = try? FFITransport(keys: keys, optionsCBOR: emptyOptions)
+			try? self.transport?.start()
 		}
 	}
 
 	public func stop() async {
 		logger.info("Node stopped")
+		do { try transport?.stop() } catch { logger.error("transport stop error: \(error)") }
+		transport = nil
+		ffiKeys = nil
 	}
 
 	private func registerInternalServices() async throws {
