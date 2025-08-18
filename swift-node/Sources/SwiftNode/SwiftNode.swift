@@ -129,10 +129,11 @@ public final class SwiftNode {
 	}
 
 	public func publish(_ topic: String, data: AnyValue?) async throws {
-		let subs = registry.snapshotSubscribers(topicPath: qualify(topic))
-		if subs.isEmpty { return }
-		for callback in subs {
-			let ctx = EventContext(topic: qualify(topic), logger: logger, nodeDelegate: self, isLocal: true)
+		let qualified = qualify(topic)
+		let targets = registry.snapshotSubscribers(topicPath: qualified)
+		if targets.isEmpty { return }
+		for callback in targets {
+			let ctx = EventContext(topic: qualified, logger: logger, nodeDelegate: self, isLocal: true)
 			await callback(ctx, data)
 		}
 	}
@@ -167,13 +168,15 @@ extension SwiftNode: NodeDelegate {
 	}
 
 	public func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
-		registry.subscribe(topicPath: topic, handler: callback)
+		let full = topic.contains(":") ? topic : qualify(topic)
+		return registry.subscribe(topicPath: full, handler: callback)
 	}
 
 	public func publish(topic: String, data: AnyValue?) async throws {
-		let subs = registry.snapshotSubscribers(topicPath: topic)
-		for callback in subs {
-			let ctx = EventContext(topic: topic, logger: logger, nodeDelegate: self, isLocal: true)
+		let full = topic.contains(":") ? topic : qualify(topic)
+		let targets = registry.snapshotSubscribers(topicPath: full)
+		for callback in targets {
+			let ctx = EventContext(topic: full, logger: logger, nodeDelegate: self, isLocal: true)
 			await callback(ctx, data)
 		}
 	}

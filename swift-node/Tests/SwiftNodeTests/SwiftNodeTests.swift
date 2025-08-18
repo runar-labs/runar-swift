@@ -40,21 +40,28 @@ final class SwiftNodeTests: XCTestCase {
 		try await node.addService(Svc())
 		try await node.start()
 		let res = try await node.request("$registry/services/list", payload: nil)
-		let list: [[String: AnyValue]] = try await res.asType()
-		XCTAssertTrue(list.contains(where: { m in
-			(try? await m["service_path"]?.asType() as String?) == "svc"
-			&& (try? await m["name"]?.asType() as String?) == "svc"
-		}))
+		let listValues: [AnyValue] = try await res.asType()
+		var found = false
+		for v in listValues {
+			if let item: [String: AnyValue] = try? await v.asType() {
+				let sp: String? = try? await item["service_path"]?.asType()
+				let nm: String? = try? await item["name"]?.asType()
+				if sp == "svc" && nm == "svc" { found = true; break }
+			}
+		}
+		XCTAssertTrue(found)
 	}
 
 	func testPublishSubscribeDirect() async throws {
 		let node = SwiftNode(config: .init(defaultNetworkId: "net"))
+		try await node.start()
 		var received: String? = nil
 		_ = try await node.subscribe("echo/data", options: nil) { _, data in
 			let val: String? = try? await data?.asType()
 			received = val
 		}
 		try await node.publish("echo/data", data: AnyValue.primitive("ping"))
+		await Task.yield()
 		XCTAssertEqual(received, "ping")
 	}
 
@@ -76,12 +83,14 @@ final class SwiftNodeTests: XCTestCase {
 			func stop(_ context: LifecycleContext) async throws {}
 		}
 		try await node.addService(PubService())
+		try await node.start()
 		var got: String? = nil
 		_ = try await node.subscribe("pub/evt", options: nil) { _, data in
 			let val: String? = try? await data?.asType()
 			got = val
 		}
 		_ = try await node.request("pub/trigger", payload: nil)
+		await Task.yield()
 		XCTAssertEqual(got, "event")
 	}
 }
