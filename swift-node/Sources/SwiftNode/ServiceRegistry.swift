@@ -32,6 +32,10 @@ final class ServiceRegistry {
 	private var localSubscriptions: PathTrie<(id: String, handler: EventHandler)> = PathTrie()
 	private var localServices: [String: LocalServiceEntry] = [:] // key: servicePath (no network prefix)
 	private var remoteActionHandlers: PathTrie<ActionHandler> = PathTrie()
+	// Remote service tracking by peer
+	private var remoteServicesByPeer: [String: Set<String>] = [:] // peerNodeId -> set(servicePath)
+	private var peersByService: [String: [String]] = [:] // servicePath -> ordered peer list for round-robin
+	private var rrIndexByService: [String: Int] = [:]
 	private let lock = NSLock()
 	private let logger: RunarLogger
 
@@ -99,6 +103,50 @@ final class ServiceRegistry {
 	func getRemoteActionHandlers(topicPath: String) -> [ActionHandler] {
 		lock.lock(); defer { lock.unlock() }
 		return remoteActionHandlers.findMatches(topic: TopicPath.parse(topicPath)).map { $0.content }
+	}
+
+	// MARK: Remote service presence per peer
+	func updatePeerServices(peerNodeId: String, servicePaths: [String]) {
+		lock.lock(); defer { lock.unlock() }
+		let newSet = Set(servicePaths)
+		let oldSet = remoteServicesByPeer[peerNodeId] ?? []
+		remoteServicesByPeer[peerNodeId] = newSet
+		// Remove peer from services no longer offered
+		for svc in oldSet.subtracting(newSet) {
+			if var list = peersByService[svc] {
+				peersByService[svc] = list.filter { $0 != peerNodeId }
+				if peersByService[svc]?.isEmpty == true { peersByService.removeValue(forKey: svc) }
+			}
+		}
+		// Add/update peer in new services
+		for svc in newSet {
+			var list = peersByService[svc] ?? []
+			if !list.contains(peerNodeId) { list.append(peerNodeId) }
+			peersByService[svc] = list
+		}
+	}
+
+	func removePeer(_ peerNodeId: String) {
+		lock.lock(); defer { lock.unlock() }
+		if let svcs = remoteServicesByPeer.removeValue(forKey: peerNodeId) {
+			for svc in svcs {
+				if var list = peersByService[svc] {
+					peersByService[svc] = list.filter { $0 != peerNodeId }
+					if peersByService[svc]?.isEmpty == true { peersByService.removeValue(forKey: svc) }
+				}
+			}
+		}
+		// Clear any rr index for services affected
+		rrIndexByService.removeAll(keepingCapacity: true)
+	}
+
+	func nextPeerForService(_ servicePath: String) -> String? {
+		lock.lock(); defer { lock.unlock() }
+		guard var list = peersByService[servicePath], !list.isEmpty else { return nil }
+		let idx = rrIndexByService[servicePath] ?? 0
+		let sel = list[idx % list.count]
+		rrIndexByService[servicePath] = (idx + 1) % max(1, list.count)
+		return sel
 	}
 
 	// MARK: Subscriptions (local)

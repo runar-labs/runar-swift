@@ -47,8 +47,17 @@ public final class SwiftNode {
 	private var ffiKeys: FFIKeys?
 	private var transport: FFITransport?
 	private var eventLoopTask: Task<Void, Never>?
-	private let pendingLock = NSLock()
-	private var pendingByCorrelationId: [String: (resume: (Result<AnyValue, Error>) -> Void, timeoutAt: Date)] = [:]
+	private let pendingQueue = DispatchQueue(label: "com.runar.swiftnode.pending")
+	private final class ContinuationBox: @unchecked Sendable { let cont: CheckedContinuation<AnyValue, Error>; init(_ c: CheckedContinuation<AnyValue, Error>) { cont = c } }
+	private var pendingByCorrelationId: [String: (box: ContinuationBox, timeoutAt: Date)] = [:]
+	private func setPending(_ id: String, box: ContinuationBox, timeoutAt: Date) {
+		pendingQueue.sync { pendingByCorrelationId[id] = (box, timeoutAt) }
+	}
+	private func takePending(_ id: String) -> ContinuationBox? {
+		var r: ContinuationBox?
+		pendingQueue.sync { r = pendingByCorrelationId.removeValue(forKey: id)?.box }
+		return r
+	}
 
 	public init(config: SwiftNodeConfig, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
 		self.config = config
@@ -131,7 +140,7 @@ public final class SwiftNode {
 			}
 			return nil
 		}
-		guard let type = str("t") else {
+		guard let type = str("type") else {
 			logger.debug("transport event missing type")
 			return
 		}
@@ -154,21 +163,38 @@ public final class SwiftNode {
 				}
 			}
 		case "PeerConnected":
-			logger.info("peer connected")
+			if let peerId = str("peer_node_id") {
+				logger.info("peer connected id=\(peerId)")
+				// Immediately query peer registry for services to mirror Rust behavior
+				Task { [weak self] in
+					guard let self else { return }
+					do {
+						let full = "\(self.config.defaultNetworkId):$registry/services/list"
+						let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
+						if let metas: [RegistryServiceMetadata] = try? await resp.asType() {
+							let svcPaths = metas.map { $0.service_path }
+							self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
+						}
+					} catch {
+						self.logger.debug("peer registry query failed id=\(peerId): \(error)")
+					}
+				}
+			}
 		case "PeerDisconnected":
-			logger.info("peer disconnected")
+			if let peerId = str("peer_node_id") {
+				registry.removePeer(peerId)
+				logger.info("peer disconnected id=\(peerId)")
+			}
 		default:
 			logger.debug("unknown transport event type=\(type)")
 		}
 	}
 
 	private func completePending(correlationId: String, payload: Data?) {
-		pendingLock.lock()
-		let entry = pendingByCorrelationId.removeValue(forKey: correlationId)
-		pendingLock.unlock()
-		guard let entry else { return }
-		let any = decodeAnyValue(from: payload)
-		entry.resume(.success(any))
+		if let box = takePending(correlationId) {
+			let any = decodeAnyValue(from: payload)
+			box.cont.resume(returning: any)
+		}
 	}
 
 	private func decodeAnyValue(from data: Data?) -> AnyValue {
@@ -238,7 +264,35 @@ public final class SwiftNode {
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: params, userProfilePublicKey: Data())
 			return try await handler(payload, ctx)
 		}
-		// Try remote handlers (round-robin naive)
+		// If transport is available, send network request with correlation
+		if let transport {
+			let correlationId = UUID().uuidString
+			let bytes = try payload?.serialize(context: nil) ?? Data()
+			let timeout = TimeInterval(config.requestTimeoutMs) / 1000.0
+			return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AnyValue, Error>) in
+				// Register pending continuation
+				let box = ContinuationBox(continuation)
+				setPending(correlationId, box: box, timeoutAt: Date().addingTimeInterval(timeout))
+				// Timeout task
+				Task.detached { [weak self] in
+					try? await Task.sleep(nanoseconds: UInt64(max(0, timeout)) * 1_000_000_000)
+					guard let self else { return }
+					if let box = self.takePending(correlationId) {
+						box.cont.resume(throwing: NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Request timeout: \(full)"]))
+					}
+				}
+				// Resolve destination peer for the target service if available, else broadcast
+				let service = parseService(full)
+				let destPeer = registry.nextPeerForService(service)
+				do {
+					try transport.request(path: full, correlationId: correlationId, payload: bytes, destPeerId: destPeer, profilePublicKey: nil)
+				} catch {
+					// Fail fast and remove pending
+					if let box = self.takePending(correlationId) { box.cont.resume(throwing: error) }
+				}
+			}
+		}
+		// Try registered remote handlers (round-robin naive) as fallback for tests/dev
 		let remotes = registry.getRemoteActionHandlers(topicPath: full)
 		if let handler = remotes.first {
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: [:], userProfilePublicKey: Data())
@@ -256,6 +310,15 @@ public final class SwiftNode {
 			let ctx = EventContext(topic: qualified, logger: logger, nodeDelegate: self, isLocal: true)
 			do { try await callback(ctx, data) } catch { logger.error("Event handler error: \(error)") }
 		}
+		// Forward over transport if enabled
+		if let transport {
+			let bytes = try data?.serialize(context: nil) ?? Data()
+			let correlationId = UUID().uuidString
+			// If topic includes a service path, choose a peer that serves it, else broadcast via transport
+			let service = parseService(qualified)
+			let destPeer = registry.nextPeerForService(service)
+			try? transport.publish(path: qualified, correlationId: correlationId, payload: bytes, destPeerId: destPeer)
+		}
 	}
 
 	public func subscribe(_ topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
@@ -270,6 +333,32 @@ public final class SwiftNode {
 		if pathOrTopic.contains(":") { return pathOrTopic }
 		if pathOrTopic.contains("/") { return "\(config.defaultNetworkId):\(pathOrTopic)" }
 		return "\(config.defaultNetworkId):default/\(pathOrTopic)"
+	}
+
+	// Send a request explicitly to a given peer
+	private func requestAtPeer(_ fullPath: String, payload: AnyValue?, peerNodeId: String, timeoutMs: UInt64) async throws -> AnyValue {
+		guard let transport else {
+			throw NSError(domain: "SwiftNode", code: 503, userInfo: [NSLocalizedDescriptionKey: "Transport not started"])
+		}
+		let correlationId = UUID().uuidString
+		let bytes = try payload?.serialize(context: nil) ?? Data()
+		let timeout = TimeInterval(timeoutMs) / 1000.0
+		return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AnyValue, Error>) in
+			let box = ContinuationBox(continuation)
+			setPending(correlationId, box: box, timeoutAt: Date().addingTimeInterval(timeout))
+			Task.detached { [weak self] in
+				try? await Task.sleep(nanoseconds: UInt64(max(0, timeout)) * 1_000_000_000)
+				guard let self else { return }
+				if let box = self.takePending(correlationId) {
+					box.cont.resume(throwing: NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Request timeout: \(fullPath)"]))
+				}
+			}
+			do {
+				try transport.request(path: fullPath, correlationId: correlationId, payload: bytes, destPeerId: peerNodeId, profilePublicKey: nil)
+			} catch {
+				if let box = self.takePending(correlationId) { box.cont.resume(throwing: error) }
+			}
+		}
 	}
 
 	private func parseNetwork(_ full: String) -> String { full.split(separator: ":").first.map(String.init) ?? config.defaultNetworkId }
@@ -306,4 +395,19 @@ extension SwiftNode: NodeDelegate {
 			do { try await callback(ctx, data) } catch { logger.error("Event handler error: \(error)") }
 		}
 	}
+}
+
+// Public networking control APIs mirroring Rust Node delegations
+extension SwiftNode {
+    public func connectPeer(_ peerInfoCBOR: Data) throws {
+        try transport?.connectPeer(peerInfoCBOR)
+    }
+
+    public func disconnectPeer(_ peerNodeId: String) throws {
+        try transport?.disconnectPeer(peerNodeId)
+    }
+
+    public func isConnected(_ peerNodeId: String) throws -> Bool {
+        try transport?.isConnected(peerNodeId) ?? false
+    }
 }
