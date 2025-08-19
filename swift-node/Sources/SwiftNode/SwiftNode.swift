@@ -193,18 +193,25 @@ public final class SwiftNode {
 		case "PeerConnected":
 			if let peerId = str("peer_node_id") {
 				logger.info("peer connected id=\(peerId)")
-				// Immediately query peer registry for services to mirror Rust behavior
-				Task { [weak self] in
-					guard let self else { return }
-					do {
-						let full = "\(self.config.defaultNetworkId):$registry/services/list"
-						let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
-						if let metas: [RegistryServiceMetadata] = try? await resp.asType() {
-							let svcPaths = metas.map { $0.service_path }
-							self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
+				// If event carries services list, use it immediately; else query peer registry
+				if let bs = bytes("services"),
+				   let item = try? CBORDecoder(input: [UInt8](bs)).decodeItem(),
+				   case let CBOR.array(arr) = item {
+					let services = arr.compactMap { if case let .utf8String(s) = $0 { return s } else { return nil } }
+					registry.updatePeerServices(peerNodeId: peerId, servicePaths: services)
+				} else {
+					Task { [weak self] in
+						guard let self else { return }
+						do {
+							let full = "\(self.config.defaultNetworkId):$registry/services/list"
+							let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
+							if let metas: [RegistryServiceMetadata] = try? await resp.asType() {
+								let svcPaths = metas.map { $0.service_path }
+								self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
+							}
+						} catch {
+							self.logger.debug("peer registry query failed id=\(peerId): \(error)")
 						}
-					} catch {
-						self.logger.debug("peer registry query failed id=\(peerId): \(error)")
 					}
 				}
 			}
