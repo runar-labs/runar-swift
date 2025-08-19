@@ -132,9 +132,21 @@ public final class SwiftNode {
 			self.ffiKeys = keys
 		}
 		self.nodeId = (try? keys.nodeId()) ?? "local"
+		// Push initial NodeInfo using configured bind address (may be ephemerally port 0).
+		let initialAddrs: [String] = {
+			if let b = config.network?.bindAddress, !b.isEmpty { return [b] }
+			return []
+		}()
+		let initialNodeInfo = try buildLocalNodeInfoCBOR(addresses: initialAddrs)
+		try keys.setLocalNodeInfo(initialNodeInfo)
 		let options = buildTransportOptionsCBOR()
 		self.transport = try FFITransport(keys: keys, optionsCBOR: options)
 		try self.transport?.start()
+		// Now update NodeInfo with the actual bound address
+		if let addr = try? self.transport?.localAddr() {
+			let updated = try buildLocalNodeInfoCBOR(addresses: [addr])
+			try self.transport?.updateLocalNodeInfo(updated)
+		}
 		startEventLoop()
 	}
 
@@ -345,6 +357,20 @@ public final class SwiftNode {
 		)
 		let encoder = CodableCBOREncoder()
 		return (try? encoder.encode(opts)) ?? Data()
+	}
+
+	private func buildLocalNodeInfoCBOR(addresses: [String]) throws -> Data {
+		var map: [CBOR: CBOR] = [:]
+		let pk = try ffiKeys?.publicKey() ?? Data()
+		map[.utf8String("node_public_key")] = .array([UInt8](pk).map { .unsignedInt(UInt64($0)) })
+		map[.utf8String("network_ids")] = .array(config.networkIds.map { .utf8String($0) })
+		map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
+		map[.utf8String("node_metadata")] = .map([
+			.utf8String("services"): .array([]),
+			.utf8String("subscriptions"): .array([])
+		])
+		map[.utf8String("version")] = .unsignedInt(0)
+		return Data(CBOR.map(map).encode())
 	}
 
 	public func request(_ path: String, payload: AnyValue?) async throws -> AnyValue {

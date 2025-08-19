@@ -87,6 +87,8 @@ public final class FFITransport {
 		if let e = err { throw e }
 	}
 
+	// Note: mapping updates are pushed via keys before creating transport (no callback path).
+
 	public func request(path: String, correlationId: String, payload: Data, destPeerId: String?, profilePublicKey: Data?) throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
 		let (_, err) = withRnError { errPtr in

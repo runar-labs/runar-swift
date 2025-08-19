@@ -1,5 +1,6 @@
 import Foundation
 import CRunarFFI
+import Darwin
 
 public final class FFIKeys {
 	var handle: UnsafeMutableRawPointer?
@@ -22,6 +23,42 @@ public final class FFIKeys {
 		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
 		return body(h)
 	}
+
+	// MARK: - Mapping-based resolver and NodeInfo (push APIs)
+
+	// Mapping-based API: pass CBOR map<String, LabelKeyInfo>
+	public func setLabelMapping(_ mappingCBOR: Data) throws {
+		let rc: Int32 = try withHandle { h in
+			mappingCBOR.withUnsafeBytes { raw in
+				let p = raw.bindMemory(to: UInt8.self).baseAddress
+				return rn_keys_set_label_mapping(h, p, mappingCBOR.count)
+			}
+		}
+		if rc != 0 {
+			var buf = [CChar](repeating: 0, count: 1024)
+			_ = buf.withUnsafeMutableBufferPointer { bp in rn_last_error(bp.baseAddress, bp.count) }
+			let msg = String(cString: buf)
+			throw FFIError(code: rc, message: msg.isEmpty ? "rn_keys_set_label_mapping failed: rc=\(rc)" : msg)
+		}
+	}
+
+	// Push current Local NodeInfo as CBOR into the holder on the Rust side
+	public func setLocalNodeInfo(_ nodeInfoCBOR: Data) throws {
+		let rc: Int32 = try withHandle { h in
+			nodeInfoCBOR.withUnsafeBytes { raw in
+				let p = raw.bindMemory(to: UInt8.self).baseAddress
+				return rn_keys_set_local_node_info(h, p, nodeInfoCBOR.count)
+			}
+		}
+		if rc != 0 {
+			var buf = [CChar](repeating: 0, count: 1024)
+			_ = buf.withUnsafeMutableBufferPointer { bp in rn_last_error(bp.baseAddress, bp.count) }
+			let msg = String(cString: buf)
+			throw FFIError(code: rc, message: msg.isEmpty ? "rn_keys_set_local_node_info failed: rc=\(rc)" : msg)
+		}
+	}
+
+    // Removed: per-call label resolver. Mapping-only API is used instead.
 
 	public func nodeId() throws -> String {
 		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
@@ -141,5 +178,4 @@ public final class FFIKeys {
 		if let e = err { throw e }
 	}
 }
-
 

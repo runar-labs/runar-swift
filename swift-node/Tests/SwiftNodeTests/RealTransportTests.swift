@@ -23,13 +23,17 @@ final class RealTransportTests: XCTestCase {
         // Keys (single lifecycle per node)
         let keysA = try TestFixtures.createKeyManagerWithCert()
         let keysB = try TestFixtures.createKeyManagerWithCert()
+        // NodeInfo is push-based; already set in fixture with empty addresses.
         // Node A (inject keys so start() uses them)
         let nodeA = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysA)
         try await nodeA.addService(EchoService())
         try await nodeA.start()
+        // After start, update NodeInfo with actual bound addresses
+        _ = try nodeA.exportPeerInfoCBOR()
         // Node B
         let nodeB = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysB)
         try await nodeB.start()
+        _ = try nodeB.exportPeerInfoCBOR()
         // Export peer info from A and connect B
         let peerInfoA = try nodeA.exportPeerInfoCBOR()
         try nodeB.connectPeer(peerInfoA)
