@@ -51,6 +51,7 @@ protocol NodeTransport {
 	func disconnectPeer(_ peerNodeId: String) throws
 	func isConnected(_ peerNodeId: String) throws -> Bool
 	func updateLocalNodeInfo(_ nodeInfoCBOR: Data) throws
+    func localAddr() throws -> String
 }
 
 extension FFITransport: NodeTransport {}
@@ -479,5 +480,16 @@ extension SwiftNode {
 
     public func isConnected(_ peerNodeId: String) throws -> Bool {
         try transport?.isConnected(peerNodeId) ?? false
+    }
+
+    public func exportPeerInfoCBOR() throws -> Data {
+        guard let keys = ffiKeys, let transport else {
+            throw NSError(domain: "SwiftNode", code: 503, userInfo: [NSLocalizedDescriptionKey: "Transport not started"])
+        }
+        let pk = try keys.publicKey()
+        let addr = try transport.localAddr()
+        struct PeerInfo: Codable { let public_key: Data; let addresses: [String] }
+        let info = PeerInfo(public_key: pk, addresses: [addr])
+        return try CodableCBOREncoder().encode(info)
     }
 }
