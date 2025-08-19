@@ -15,13 +15,17 @@ The goal is to make Swift’s `AnyValue` feature‑for‑feature equivalent to R
 Rust now writes a platform‑neutral wire name into the header:
 - Header: `[category:u8][is_encrypted:u8][name_len:u8][name_bytes][payload]`
 - For primitives: fixed wire names like `string`, `bool`, `i64`, `bytes`, etc.
-- For containers: reserved names `list`, `map`, `json` (element types NOT encoded in the name).
+- For containers: parameterized wire names (deterministic grammar):
+  - Typed lists: `list<ElemWire>` (e.g., `list<string>`, `list<profile.User>`, `list<u64>`)
+  - Typed maps (keys are always strings): `map<string,ElemWire>`
+  - Heterogeneous (AnyValue/ArcValue elements): `list<any>`, `map<string,any>`
+  - JSON category: `json`
 - For structs: default to the simple ident (e.g., `User`), or an explicit override via macro attribute (e.g., `profile.User`).
 - Unknown wire names must error on decode.
 
 Findings in Swift:
 - `AnyValue.serialize` writes `box.typeName` (e.g., "String", "Data", "Array<AnyValue>") into the header, not normalized wire names.
-- Containers write Swift type names ("Array<AnyValue>", "Dictionary<String, AnyValue>") instead of `list`/`map`.
+- Containers write Swift type names ("Array<AnyValue>", "Dictionary<String, AnyValue>") instead of parameterized `list<...>`/`map<string,...>`.
 - JSON writes type name "JSON" instead of `json`.
 
 Required changes (Swift):
@@ -29,8 +33,8 @@ Required changes (Swift):
   - `String` → `"string"`
   - `Bool` → `"bool"`
   - `Data` (bytes) → `"bytes"`
-  - Integer/float types use exact variants: `Int8/Int16/Int32/Int64/UInt8/.../Float/Double` → `"i8"/"i16"/.../"f32"/"f64"`. Avoid ambiguous `Int`/`UInt` or map them deterministically (see §10).
-  - Containers: `list`, `map`, `json`.
+  - Integer/float types use exact variants: `Int8/Int16/Int32/Int64/UInt8/.../Float/Double` → `"i8"/"i16"/.../"f32"/"f64"`. Avoid ambiguous `Int`/`UInt` or map them deterministically (see §11).
+  - Containers: parameterized names as above; must be emitted deterministically. Use `list<any>` / `map<string,any>` when elements are `AnyValue`. For typed constructors (see §12 and §13), use `list<ElemWire>` / `map<string,ElemWire>`.
   - Structs: default to simple ident or macro override (see §3 and §6).
 
 ---
@@ -46,13 +50,24 @@ Findings in Swift:
 - JSON: raw JSON bytes – NOT CBOR `serde_json::Value` representation.
 
 Required changes (Swift):
-- Switch list payloads to CBOR array encoding of either:
-  - `[AnyValue]` encoded as CBOR using the same header+payload per entry? Rust does NOT nest headers in CBOR; instead, the list’s CBOR payload is a `Vec<T>` or `Vec<ArcValue>` depending on creation. For cross‑SDK parity: encode the payload as CBOR array of element payloads matching the Rust shape for `Vec<ArcValue>` (i.e., the elements themselves are ArcValue/AnyValue and serialize to the same header+payload binary blocks). To align with Rust tests that decode `Vec<ArcValue>` for JSON conversion, the Swift list serialization should CBOR‑encode the element sequence where each element is an `AnyValue` serialized buffer.
-- Switch map payloads to CBOR map encoding using the same approach (`HashMap<String, ArcValue>` parity).
+- Switch list payloads to CBOR array encoding matching Rust serde for `Vec<ArcValue>` when `AnyValue.list(_:)` is used (heterogeneous container `list<any>`):
+  - Each element MUST be CBOR‑encoded as the serde representation of `ArcValue`, i.e., a CBOR map with fields:
+    - `category: u8`
+    - `typename: string` (normalized wire name)
+    - `value: byte string` (the inner serialized bytes for that element)
+  - This mirrors `ArcValue::serialize_serde` for non‑JSON serializers and enables Rust to decode `Vec<ArcValue>` for JSON conversion.
+- Switch map payloads to CBOR map encoding matching Rust serde for `HashMap<String, ArcValue>` with the same element shape as above for each value (`map<string,any>`).
 - Switch JSON payloads to CBOR encoding of a JSON value (mirror `serde_json::Value`), not raw JSON text. Keep header name = `json`.
 
 Notes:
-- The Rust implementation supports generic fallbacks in JSON conversion. Matching that requires the CBOR payloads to be compatible.
+- For container payloads created from typed elements (e.g., `Vec<String>` in Rust, `list<string>`), Rust encodes the CBOR of the typed vector directly. Swift MUST add typed constructors (e.g., `AnyValue.listTyped<T: Codable>(_ values: [T])` / `AnyValue.mapTyped<T: Codable>(_: [String: T])`) that CBOR‑encode `[T]` / `[String: T]` directly.
+- Deserialization MUST accept both shapes strictly based on the parameterized wire name:
+  - `list<any>` / `map<string,any>` → CBOR collection of `{category, typename, value}` entries
+  - `list<ElemWire>` / `map<string,ElemWire>` → CBOR collection of plain `T` or CBOR byte‑strings per element when element‑level encryption is in effect (see §8 and §9)
+- The `typename` field inside CBOR container entries for `any` MUST be the normalized wire name (not the Rust path). This standardizes cross‑SDK behavior and matches the determinism policy.
+
+Notes:
+- The Rust implementation supports generic fallbacks in JSON conversion. Matching that requires the CBOR payloads to be compatible as described above.
 
 ---
 
@@ -83,7 +98,8 @@ Required changes (Swift):
   - `wireName (String) → swiftTypeName (String)` (diagnostics)
   - Duplicate handling: first‑wins with a warning, matching Rust.
 - Pre‑register all primitives and containers at init:
-  - `String→"string"`, `Bool→"bool"`, `Data→"bytes"`, `Int8→"i8"`, …, `Double→"f64"`, plus container wire names `list`, `map`, `json`.
+  - `String→"string"`, `Bool→"bool"`, `Data→"bytes"`, `Int8→"i8"`, …, `Double→"f64"`
+  - Containers: register `list<any>`, `map<string,any>`, and support parameterized registration for typed containers (`list<ElemWire>`, `map<string,ElemWire>`) as needed by macros/SDKs.
 - Public API to mirror Rust:
   - `registerTypeName<T>(wireName: String)` to be called by Swift macros (Plain/Encrypt) at load time.
   - `lookupWireName(swiftTypeName: String) -> String?`
@@ -96,7 +112,7 @@ Required changes (Swift):
 ### 4) Header Resolution on Serialize and Strict Lookup on Deserialize
 
 Rust behavior:
-- Serialize: resolve inner type to wire name via registry; containers/bytes/json use reserved names.
+- Serialize: resolve inner type to wire name via registry; containers/bytes/json use reserved/parameterized names.
 - Deserialize: treat header name as the wire name; for primitives, dispatch by the wire name; for containers/json, use lazy structures; unknown names → error.
 
 Findings in Swift:
@@ -105,10 +121,13 @@ Findings in Swift:
 
 Required changes (Swift):
 - Serialize must use wire names from the new registry.
-- Deserialize must treat header name as a wire name and dispatch accordingly:
-  - For primitives: decode by fixed wire names table.
+- Deserialize must treat header name as a wire name and dispatch accordingly (no heuristic fallbacks):
+  - For primitives: decode by fixed wire names table; unknown wire names error.
   - For `bytes`: CBOR byte string.
-  - For containers/json: construct lazy structures and use wire‑name keyed JSON converters.
+  - For `json`: CBOR `serde_json::Value` equivalent.
+  - For containers: parse parameterized names strictly:
+    - `list<any>` / `map<string,any>`: CBOR collection of ArcValue/AnyValue entries.
+    - `list<ElemWire>` / `map<string,ElemWire>`: CBOR collection of plain `T` or CBOR byte‑strings per element when element‑level encryption is present (see §8/§9). Any mismatch must error.
 - Remove all heuristics using Swift display type names.
 
 ---
@@ -117,7 +136,7 @@ Required changes (Swift):
 
 Rust:
 - Keeps the original buffer (`Arc<[u8]>`) and slice offsets in `LazyDataWithOffset` to avoid copies.
-- On access, decrypts if needed, then CBOR‑decodes to the requested type, with fallbacks and registry integration.
+- On access, decrypts if needed, then CBOR‑decodes to the requested type, with registry integration.
 
 Findings in Swift:
 - `LazyData` stores a `Data` copy of the payload rather than the full original buffer with offsets.
@@ -127,7 +146,7 @@ Findings in Swift:
 Required changes (Swift):
 - Store the original serialized buffer and offsets to minimize copies (mirror `LazyDataWithOffset`). Use copy‑on‑write `Data` slices when available, but ensure we do not clone unnecessarily.
 - For JSON category and containers, implement the same lazy strategy: defer CBOR decode until the typed accessor or JSON conversion is invoked.
-- Replace the current struct CBOR→dictionary fallback with proper type‑directed decode using registry or direct CBOR decode to `T`.
+- Replace the current struct CBOR→dictionary fallback with proper type‑directed decode using registry and direct CBOR decode to `T`. No generic fallbacks.
 
 ---
 
@@ -153,16 +172,17 @@ Required changes (Swift):
 Rust `ArcValue::to_json()`:
 - Primitives: numbers mapped precisely; 128‑bit and bytes are strings (bytes as base64 string).
 - `Json` category returns stored JSON value.
-- `List`/`Map`/`Struct`: prefer stored `to_json_fn` or registry wire‑name JSON converters; fallback to CBOR→JSON value.
+- `List`/`Map`/`Struct`: prefer stored `to_json_fn` or registry wire‑name JSON converters; no generic CBOR→JSON fallback.
 
 Findings in Swift:
 - No top‑level `toJSON()` on `AnyValue`. Tests focus on round‑trips via `asType`.
 - No registry of JSON converters by wire name.
 
 Required changes (Swift):
-- Implement `toJSON()` on `AnyValue` mirroring Rust:
-  - Primitive mappings (including base64 for bytes and stringification for 128‑bit integers if supported).
-  - For containers and structs: consult registry JSON converters by wire name, fallback to CBOR→JSON where applicable.
+- Implement JSON output APIs on `AnyValue`:
+  - `toJSONObject() throws -> Any`: returns Foundation JSON graph (`[String: Any]` / `[Any]` / `String` / `NSNumber` / `NSNull`) applying mappings: bytes as base64 strings; 128‑bit ints as decimal strings; numeric fidelity for 64‑bit; booleans/strings/null unchanged. For containers/structs, use wire‑name keyed converters. If no converter exists, return an error (no generic fallback).
+  - `toJSONData(prettyPrinted: Bool = false) throws -> Data`: encodes the graph via `JSONSerialization`.
+  - `toJSONString(prettyPrinted: Bool = false) throws -> String`: UTF‑8 wrapper over `toJSONData`.
 
 ---
 
@@ -179,13 +199,27 @@ Findings in Swift:
 - Swift `SerializationContext` uses `profileId` (string) rather than an optional public key list equivalent.
 
 Required changes (Swift):
-- Align `SerializationContext` fields with Rust: `keystore`, `resolver`, `networkId`, `profilePublicKey: Data?` (or a generic recipient key representation matching `RunarKeys`).
-- Remove using the type name as a label. Field‑level encryption should be applied by the macro‑generated `Encrypted` type when serializing structs; envelope encryption remains the outer layer when a context is provided.
+- Align `SerializationContext` fields with Rust: `keystore`, `resolver`, `networkId`, `profilePublicKey: Data?`.
+- Remove using the type name as a label. Field‑level encryption should be applied by the macro‑generated `Encrypted` type when serializing structs or by the typed container element encryption path (see §9); envelope encryption remains the outer layer when a context is provided.
 - Deserialization must decrypt when `is_encrypted` is set, using the provided keystore, before attempting CBOR decode for the category.
 
 ---
 
-### 9) Error Handling and Unknown Names
+### 9) Container Element Encryption (typed containers)
+
+Rust adds element‑level encryption for typed containers when a `SerializationContext` is present and an encryptor is registered for the element type:
+- Wire names become parameterized `list<ElemWire>` / `map<string,ElemWire>`.
+- Payload encodes each element as a CBOR byte‑string (`CBOR(EncryptedT)`), or as plain `T` values when no context/registration is present.
+- Heterogeneous containers (`list<any>` / `map<string,any>`) remain as collections of `{category, typename, value}` entries and do not auto‑encrypt elements; struct elements can still be explicitly inserted in encrypted form.
+
+Required changes (Swift):
+- Add a Swift encrypt registry mirroring Rust (type → encryptor) wired up by macros, so `listTyped/mapTyped` can element‑encrypt when context exists.
+- On serialize of typed containers, if context + encryptor available, emit CBOR collection of byte‑strings; else emit CBOR of `[T]`/`[String: T]`.
+- On deserialize of typed containers, accept exactly these two encodings and decrypt per element when needed.
+
+---
+
+### 10) Error Handling and Unknown Names
 
 Rust:
 - Unknown wire names → error on deserialize.
@@ -195,11 +229,11 @@ Findings in Swift:
 - Errors exist for invalid category/empty/type name length; but there is no error for unknown wire names because Swift treats names as display type names.
 
 Required changes (Swift):
-- On deserialize, if the header `name` (wire name) is not recognized for the category, return an error. For containers/json, only `list`/`map`/`json` are valid wire names.
+- On deserialize, if the header `name` (wire name) is not recognized for the category, return an error. For containers/json, only the parameterized forms and `json` are valid wire names. No heuristics, no legacy fallbacks.
 
 ---
 
-### 10) Primitive Mapping Table (Swift ↔ wire)
+### 11) Primitive Mapping Table (Swift ↔ wire)
 
 Adopt the same table as Rust:
 - `String` → `string`
@@ -210,17 +244,13 @@ Adopt the same table as Rust:
 - `UInt8/UInt16/UInt32/UInt64` → `u8/u16/u32/u64`
 - `Float` → `f32`, `Double` → `f64`
 
-Notes:
-- Swift `Int`/`UInt` are platform‑width. For cross‑platform determinism, either:
-  - Disallow `Int/UInt` in public APIs and prefer explicit sizes; or
-  - Normalize `Int` as `i64` and `UInt` as `u64` on 64‑bit Apple platforms, documenting the rule. Tests should fixate this mapping. [Sounds good. go ahead with  Normalize `Int` as `i64` and `UInt` as `u64` on 64‑bit Apple platforms]
-
-- 128‑bit integers do not exist natively; if supported in Swift SDK, encode/decode as `String` or via BigInt lib consistent with the spec.
-Lets go with String an developers using this can then convert the string representaqtion to a BigInt using their library of choice.
+Decisions (Swift):
+- Normalize `Int` as `i64` and `UInt` as `u64` on 64‑bit Apple platforms. Prefer explicit fixed‑width integer types in public models; add tests to enforce the mapping.
+- Represent 128‑bit integers (`i128`/`u128`) as `String` in Swift for encode/decode. Developers can convert to BigInt using a library of their choice if needed.
 
 ---
 
-### 11) API Parity: Typed Accessors and No‑Copy Goals
+### 12) API Parity: Typed Accessors and No‑Copy Goals
 
 Rust accessors:
 - `as_type_ref::<T>() -> Arc<T>` lazy‑materializes on demand with decrypt fallback via registry.
@@ -230,13 +260,18 @@ Findings in Swift:
 - `asType<T>() async throws -> T` returns a value; there is no separate ref‑returning API.
 - `LazyData` uses `Data` blobs; ensure we avoid unnecessary copies and decryption only when needed.
 
-Required changes (Swift):
-- Keep `asType<T>()` but ensure backing data is lazily decoded and minimize copying by slicing the original buffer where possible.
-- Provide typed accessors for lists/maps analogous to Rust (`asListRef()`, `asMapRef()`) that return `[AnyValue]` / `[String: AnyValue]` built lazily from CBOR payload, again without extra copies.
+Decisions (Swift API surface):
+- Provide a single accessor `asType<T>() async throws -> T` in Swift. Internally it will:
+  - Return in‑memory values without copies when already materialized.
+  - For lazy values, decrypt on demand (if needed), CBOR‑decode to the requested `T`, and cache the result by requested type to avoid repeat work.
+  - Support extracting multiple representations from the same serialized value when applicable, notably for encrypted structs: the same `AnyValue` MUST allow `asType<PlainStruct>()` and `asType<EncryptedStruct>()` to both succeed, enabling storage of encrypted data or obtaining the plain view depending on context.
+- No separate `*_Ref` accessors are required in Swift as long as we preserve zero‑copy semantics where possible and cache materialized results.
 
+Additional requirements:
+- For lists/maps, keep lazy decoding from CBOR payloads and avoid intermediate copies; build `[AnyValue]` / `[String: AnyValue]` views directly from CBOR.
 ---
 
-### 12) Tests to Mirror Rust Coverage
+### 13) Tests to Mirror Rust Coverage
 
 Add or update Swift tests to match Rust’s:
 - Primitive round‑trip by wire names (including `bytes`, `char`, all ints/floats).
@@ -248,14 +283,14 @@ Add or update Swift tests to match Rust’s:
 
 ---
 
-### 13) File‑by‑File Swift Findings and Actions
+### 14) File‑by‑File Swift Findings and Actions
 
 - `AnyValue.swift`
   - Header type name must be normalized wire name, not Swift display name.
   - List/map serialization must switch from custom length‑prefix format to CBOR payloads.
   - JSON payload must be CBOR of a JSON value, not raw JSON bytes; header `json`.
   - Deserialize must treat `name` as wire name and dispatch strictly.
-  - Implement `toJSON()` parity (using a registry function and CBOR fallbacks) and base64 for bytes.
+  - Implement `toJSON()` parity (using a registry function; no generic CBOR fallback) and base64 for bytes.
   - Replace string‑based heuristics in lazy decode with wire‑name dispatch.
   - Rework `LazyData` to retain original buffer + offsets to reduce copies.
 
@@ -270,25 +305,41 @@ Add or update Swift tests to match Rust’s:
 - Tests under `RunarSerializerTests`
   - Update binary format expectations for header names to normalized wire names.
   - Replace assumptions about list/map custom layout with CBOR expectations.
-  - Add missing parity tests listed in §12.
+  - Add missing parity tests listed in §13.
 
 ---
 
-### 14) Open Decisions to Close Before Implementation
+### 15) Open Decisions to Close Before Implementation
 
-- Swift `Int/UInt` mapping (§10). Recommend: map `Int`→`i64`, `UInt`→`u64` on all Apple 64‑bit targets and document this invariant; prefer explicit sizes in public models.
-- 128‑bit integer support: decide on `String` or BigInt library for decode/encode; mirror JS guidance: prefer `String` in Swift for now.
-- Swift JSON conversion: expose `toJSON()` API on `AnyValue` returning `Any`/`[String: Any]`/`[Any]` tree or `Foundation.JSONValue` wrapper; ensure parity with Rust output (bytes base64, 128‑bit ints as strings).
+Resolved:
+- `Int`/`UInt` mapping and 128‑bit representation as above.
+- CBOR also uses wire names everywhere (including container entry `typename`).
+- JSON API in Swift provides `toJSONData`, `toJSONString`, and `toJSONObject` as specified in §7; primary return for REST/files is `Data` with optional pretty printing.
+- `SerializationContext` recipients: pass actual public key bytes for `profilePublicKey` (not a profile ID), matching Rust semantics; keep `networkId` as string.
+
+- Swift macros attribute for wire‑name override: confirm attribute spelling and usage (e.g., `@Runar(name: "profile.User")`) and when registration occurs (module load). 
+Answer: Yes `@Runar(name: "profile.User") looks good. .
+
+
+
+- [RESOLVED] Typed container constructors: Swift will support both heterogeneous and typed container forms, mirroring Rust.
+  - Heterogeneous: `list(_ values: [AnyValue])` → wire name `list<any>`; `map(_ values: [String: AnyValue])` → wire name `map<string,any>`. Payload is CBOR array/map of `{category, typename, value}` entries.
+  - Typed: `listTyped<T: Codable>(_ values: [T])` → wire name `list<ElemWire>`; `mapTyped<T: Codable>(_ values: [String: T])` → wire name `map<string,ElemWire>`. Payload is CBOR encoding of `[T]` / `[String: T]`. With a `SerializationContext` and a registered encryptor for `T`, element values are CBOR byte-strings of the encrypted form per element.
+  - Decoding is strict based on the parameterized wire name. Mismatches or unknown wire names are errors.
+
+
+
 
 ---
 
-### 15) Summary of Breaking Changes in Swift
+### 16) Summary of Breaking Changes in Swift
 
 - Header `name` becomes normalized wire name; old Swift type names in headers are no longer valid.
-- Container and JSON payloads change to CBOR.
+- Container and JSON payloads change to CBOR with strict parameterized wire names.
 - Deserialize rejects unknown wire names.
 - New `TypeNameRegistry` with pre‑registered primitives/containers and macro‑driven registrations for structs.
 - `SerializationContext` shape changes; encryption recipient selection no longer derives from type names.
+- Element‑level encryption added for typed containers when supported by registry + context.
 
 These changes are required to achieve 1:1 behavior with Rust and cross‑SDK compatibility.
 

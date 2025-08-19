@@ -62,7 +62,7 @@ final class CBORTests: XCTestCase {
             // Verify type name
             let typeNameData = serialized[3 ..< (3 + Int(typeNameLen))]
             let typeName = String(data: Data(typeNameData), encoding: .utf8)!
-            XCTAssertEqual(typeName, "String")
+            XCTAssertEqual(typeName, "string")
 
             // Verify CBOR data follows
             let cborData = serialized[(3 + Int(typeNameLen))...]

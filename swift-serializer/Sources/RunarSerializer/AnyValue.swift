@@ -125,7 +125,7 @@ public class AnyValue {
 
     /// Create a primitive value
     public static func primitive<T: CBOREncodable>(_ value: T) -> AnyValue {
-        let typeName = String(describing: T.self)
+        let typeName = WireNames.primitiveWireName(T.self) ?? String(describing: T.self)
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
             // Use SwiftCBOR for binary compatibility with Rust
             Data(value.encode(options: CBOROptions()))
@@ -151,7 +151,7 @@ public class AnyValue {
 
     /// Create a bytes value
     public static func bytes(_ data: Data) -> AnyValue {
-        let typeName = "Data"
+        let typeName = "bytes"
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
             data
         }
@@ -176,6 +176,7 @@ public class AnyValue {
 
     /// Create a struct value
     public static func `struct`<T: Codable>(_ value: T) -> AnyValue {
+        // TODO: replace with registry wire name when available
         let typeName = String(describing: T.self)
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
             // Use CBOR encoding directly for structs
@@ -203,19 +204,20 @@ public class AnyValue {
 
     /// Create a list value (array of AnyValue)
     public static func list(_ values: [AnyValue]) -> AnyValue {
-        let typeName = "Array<AnyValue>"
+        let typeName = "list<any>"
         let serializeFn: (SerializationContext?) throws -> Data = { context in
-            // Serialize each AnyValue in the list
-            var serializedData = Data()
+            // CBOR array of element maps: {category:u8, typename:string, value:bytes}
+            var cborElements: [CBOR] = []
             for value in values {
-                let valueData = try value.serialize(context: context)
-                // Add length prefix for each value
-                let length = UInt32(valueData.count)
-                let lengthBytes = withUnsafeBytes(of: length.bigEndian) { Data($0) }
-                serializedData.append(lengthBytes)
-                serializedData.append(valueData)
+                let full = try value.serialize(context: context)
+                let (cat, _, name, payload) = try Self.parseSerializedHeader(full)
+                var map: [CBOR: CBOR] = [:]
+                map[.utf8String("category")] = .unsignedInt(UInt64(cat.rawValue))
+                map[.utf8String("typename")] = .utf8String(name)
+                map[.utf8String("value")] = .byteString([UInt8](payload))
+                cborElements.append(.map(map))
             }
-            return serializedData
+            return Data(CBOR.array(cborElements).encode())
         }
 
         let asTypeFn: (Any.Type) -> Any? = { targetType in
@@ -236,28 +238,49 @@ public class AnyValue {
         return AnyValue(box: box, category: .list)
     }
 
+    /// Create a typed list value (array of Codable T), encoded as CBOR
+    public static func listTyped<T: Codable>(_ values: [T]) -> AnyValue {
+        let typeName = WireNames.listWireName(T.self)
+
+        let serializeFn: (SerializationContext?) throws -> Data = { _ in
+            let encoder = CodableCBOREncoder()
+            return try encoder.encode(values)
+        }
+
+        let asTypeFn: (Any.Type) -> Any? = { targetType in
+            if targetType == [T].self {
+                return values
+            }
+            return nil
+        }
+
+        let box = AnyValueBox(
+            value: values,
+            typeName: typeName,
+            category: .list,
+            serializeFn: serializeFn,
+            asTypeFn: asTypeFn
+        )
+
+        return AnyValue(box: box, category: .list)
+    }
+
     /// Create a map value (dictionary of String to AnyValue)
     public static func map(_ values: [String: AnyValue]) -> AnyValue {
-        let typeName = "Dictionary<String, AnyValue>"
+        let typeName = "map<string,any>"
         let serializeFn: (SerializationContext?) throws -> Data = { context in
-            // Serialize each key-value pair in the map
-            var serializedData = Data()
+            // CBOR map of key -> {category, typename, value}
+            var cborMap: [CBOR: CBOR] = [:]
             for (key, value) in values {
-                // Serialize key
-                let keyData = key.data(using: .utf8)!
-                let keyLength = UInt32(keyData.count)
-                let keyLengthBytes = withUnsafeBytes(of: keyLength.bigEndian) { Data($0) }
-                serializedData.append(keyLengthBytes)
-                serializedData.append(keyData)
-
-                // Serialize value
-                let valueData = try value.serialize(context: context)
-                let valueLength = UInt32(valueData.count)
-                let valueLengthBytes = withUnsafeBytes(of: valueLength.bigEndian) { Data($0) }
-                serializedData.append(valueLengthBytes)
-                serializedData.append(valueData)
+                let full = try value.serialize(context: context)
+                let (cat, _, name, payload) = try Self.parseSerializedHeader(full)
+                var map: [CBOR: CBOR] = [:]
+                map[.utf8String("category")] = .unsignedInt(UInt64(cat.rawValue))
+                map[.utf8String("typename")] = .utf8String(name)
+                map[.utf8String("value")] = .byteString([UInt8](payload))
+                cborMap[.utf8String(key)] = .map(map)
             }
-            return serializedData
+            return Data(CBOR.map(cborMap).encode())
         }
 
         let asTypeFn: (Any.Type) -> Any? = { targetType in
@@ -278,12 +301,40 @@ public class AnyValue {
         return AnyValue(box: box, category: .map)
     }
 
+    /// Create a typed map value (dictionary of String to Codable T), encoded as CBOR
+    public static func mapTyped<T: Codable>(_ values: [String: T]) -> AnyValue {
+        let typeName = WireNames.mapWireName(T.self)
+
+        let serializeFn: (SerializationContext?) throws -> Data = { _ in
+            let encoder = CodableCBOREncoder()
+            return try encoder.encode(values)
+        }
+
+        let asTypeFn: (Any.Type) -> Any? = { targetType in
+            if targetType == [String: T].self {
+                return values
+            }
+            return nil
+        }
+
+        let box = AnyValueBox(
+            value: values,
+            typeName: typeName,
+            category: .map,
+            serializeFn: serializeFn,
+            asTypeFn: asTypeFn
+        )
+
+        return AnyValue(box: box, category: .map)
+    }
+
     /// Create a JSON value (JSON string as Data)
     public static func json(_ jsonData: Data) -> AnyValue {
-        let typeName = "JSON"
+        let typeName = "json"
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
-            // Return the JSON data as-is
-            jsonData
+            // Encode JSON value to CBOR (mirror serde_json::Value)
+            let obj = try JSONSerialization.jsonObject(with: jsonData)
+            return try Data(encodeToCBOR(obj))
         }
 
         let asTypeFn: (Any.Type) -> Any? = { targetType in
@@ -375,17 +426,9 @@ public class AnyValue {
         }
 
         if let ctx = context {
-            // Encrypted serialization
+            // Encrypted serialization (envelope around payload)
             let bytes = try box.serialize(context: context)
-
-            // Use real envelope encryption from swift-keys
-            let envelopeData = try ctx.keystore.encryptWithEnvelope(
-                data: bytes,
-                networkId: ctx.networkId,
-                profileIds: ctx.resolver.resolveLabel(typeName)?.profileIds ?? []
-            )
-
-            // Serialize the envelope data to CBOR
+            let envelopeData = try EnvelopeEncryption.encrypt(bytes, context: ctx)
             let envelopeBytes = try EnvelopeEncryption.serializeToCBOR(envelopeData)
 
             let isEncryptedByte: UInt8 = 0x01
@@ -423,20 +466,16 @@ public class AnyValue {
 
         // Try lazy deserialization
         if let lazyData {
-            let value = try await deserializeLazyData(lazyData)
+            let value: T = try await deserializeLazyData(lazyData, to: T.self)
             materializedValue = value
-
-            guard let result = value as? T else {
-                throw SerializerError.typeMismatch("Cannot cast deserialized value to \(T.self)")
-            }
-            return result
+            return value
         }
 
         throw SerializerError.typeMismatch("Cannot get value as \(T.self)")
     }
 
-    /// Deserialize lazy data into a concrete value
-    private func deserializeLazyData(_ lazyData: LazyData) async throws -> Any {
+    /// Deserialize lazy data into a concrete value of target type
+    private func deserializeLazyData<T>(_ lazyData: LazyData, to targetType: T.Type) async throws -> T {
         // Handle encrypted data using real decryption
         if lazyData.encrypted {
             // Deserialize the envelope data from CBOR
@@ -465,10 +504,10 @@ public class AnyValue {
                 data: decryptedData,
                 keystore: nil, // No longer encrypted
                 encrypted: false
-            ))
+            ), to: targetType)
         }
 
-        // Handle JSON-encoded structs and basic primitive types
+        // Handle by strict wire names for known categories and primitives
         switch lazyData.typeName {
         case let typeName where typeName.contains("Struct") || typeName.contains("struct"):
             // Try CBOR deserialization for structs
@@ -483,155 +522,182 @@ public class AnyValue {
                             dict[keyStr] = value
                         }
                     }
-                    return dict
+                    guard let casted = dict as? T else { throw SerializerError.typeMismatch("Cannot cast struct to \(T.self)") }
+                    return casted
                 default:
                     throw SerializerError.deserializationFailed("Invalid CBOR format for struct")
                 }
             }
             throw SerializerError.deserializationFailed("Failed to decode struct from CBOR")
 
-        case "String":
+        case "string":
             // Try to decode as CBOR string
             let cborData = Array(lazyData.data)
             if let cbor = try? CBOR.decode(cborData) {
                 switch cbor {
                 case let .utf8String(string):
-                    return string
+                    guard let casted = string as? T else { throw SerializerError.typeMismatch("Cannot cast string to \(T.self)") }
+                    return casted
                 default:
                     throw SerializerError.deserializationFailed("Invalid CBOR format for String")
                 }
             }
             throw SerializerError.deserializationFailed("Failed to decode String from CBOR")
 
-        case "Int":
+        case "i64":
             // Try to decode as CBOR integer
             let cborData = Array(lazyData.data)
             if let cbor = try? CBOR.decode(cborData) {
                 switch cbor {
                 case let .unsignedInt(int):
-                    return Int(int)
+                    guard let casted = Int(int) as? T else { throw SerializerError.typeMismatch("Cannot cast i64 to \(T.self)") }
+                    return casted
                 case let .negativeInt(int):
-                    return -Int(int) - 1
+                    guard let casted = (-Int(int) - 1) as? T else { throw SerializerError.typeMismatch("Cannot cast i64 to \(T.self)") }
+                    return casted
                 default:
                     throw SerializerError.deserializationFailed("Invalid CBOR format for Int")
                 }
             }
             throw SerializerError.deserializationFailed("Failed to decode Int from CBOR")
 
-        case "Bool":
+        case "bool":
             // Try to decode as CBOR boolean
             let cborData = Array(lazyData.data)
             if let cbor = try? CBOR.decode(cborData) {
                 switch cbor {
                 case let .boolean(bool):
-                    return bool
+                    guard let casted = bool as? T else { throw SerializerError.typeMismatch("Cannot cast bool to \(T.self)") }
+                    return casted
                 default:
                     throw SerializerError.deserializationFailed("Invalid CBOR format for Bool")
                 }
             }
             throw SerializerError.deserializationFailed("Failed to decode Bool from CBOR")
 
-        case "Array<AnyValue>":
-            // Deserialize list of AnyValue
-            var values: [AnyValue] = []
-            var offset = 0
-            let data = lazyData.data
-
-            while offset < data.count {
-                guard offset + 4 <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete list data")
-                }
-
-                // Read length of next value
-                guard offset + 4 <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete list data")
-                }
-                let length = UInt32(data[offset]) << 24 |
-                    UInt32(data[offset + 1]) << 16 |
-                    UInt32(data[offset + 2]) << 8 |
-                    UInt32(data[offset + 3])
-                offset += 4
-
-                guard offset + Int(length) <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete list value data")
-                }
-
-                // Deserialize the value
-                let valueData = data[offset ..< (offset + Int(length))]
-                let value = try AnyValue.deserialize(Data(valueData), keystore: lazyData.keystore)
-                values.append(value)
-                offset += Int(length)
+        case "json":
+            // Decode CBOR-encoded JSON value and return requested representation
+            let cborData = Array(lazyData.data)
+            guard let cbor = try? CBOR.decode(cborData) else {
+                throw SerializerError.deserializationFailed("Invalid CBOR for json")
             }
-
-            return values
-
-        case "Dictionary<String, AnyValue>":
-            // Deserialize map of String to AnyValue
-            var values: [String: AnyValue] = [:]
-            var offset = 0
-            let data = lazyData.data
-
-            while offset < data.count {
-                guard offset + 4 <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete map data")
-                }
-
-                // Read length of key
-                guard offset + 4 <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete map data")
-                }
-                let keyLength = UInt32(data[offset]) << 24 |
-                    UInt32(data[offset + 1]) << 16 |
-                    UInt32(data[offset + 2]) << 8 |
-                    UInt32(data[offset + 3])
-                offset += 4
-
-                guard offset + Int(keyLength) <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete map key data")
-                }
-
-                // Read key
-                let keyData = data[offset ..< (offset + Int(keyLength))]
-                guard let key = String(data: Data(keyData), encoding: .utf8) else {
-                    throw SerializerError.deserializationFailed("Invalid map key encoding")
-                }
-                offset += Int(keyLength)
-
-                guard offset + 4 <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete map value length")
-                }
-
-                // Read length of value
-                guard offset + 4 <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete map value length")
-                }
-                let valueLength = UInt32(data[offset]) << 24 |
-                    UInt32(data[offset + 1]) << 16 |
-                    UInt32(data[offset + 2]) << 8 |
-                    UInt32(data[offset + 3])
-                offset += 4
-
-                guard offset + Int(valueLength) <= data.count else {
-                    throw SerializerError.deserializationFailed("Incomplete map value data")
-                }
-
-                // Deserialize the value
-                let valueData = data[offset ..< (offset + Int(valueLength))]
-                let value = try AnyValue.deserialize(Data(valueData), keystore: lazyData.keystore)
-                values[key] = value
-                offset += Int(valueLength)
+            let foundationObject = try cborToFoundationJSON(cbor)
+            if T.self == Data.self {
+                let data = try JSONSerialization.data(withJSONObject: foundationObject, options: [])
+                return data as! T
             }
+            if T.self == String.self {
+                let data = try JSONSerialization.data(withJSONObject: foundationObject, options: [])
+                guard let str = String(data: data, encoding: .utf8) else {
+                    throw SerializerError.deserializationFailed("Failed to re-encode JSON to UTF-8 string")
+                }
+                return str as! T
+            }
+            guard let casted = foundationObject as? T else {
+                throw SerializerError.typeMismatch("Cannot cast JSON object to \(T.self)")
+            }
+            return casted
 
-            return values
+        case "list<any>":
+            // CBOR array of element maps
+            let cborData = Array(lazyData.data)
+            guard let cbor = try? CBOR.decode(cborData) else {
+                throw SerializerError.deserializationFailed("Invalid CBOR for list<any>")
+            }
+            guard case let .array(elements) = cbor else {
+                throw SerializerError.deserializationFailed("Expected CBOR array for list<any>")
+            }
+            var out: [AnyValue] = []
+            for el in elements {
+                guard case let .map(map) = el else { throw SerializerError.deserializationFailed("Invalid element in list<any>") }
+                guard let catEntry = map[.utf8String("category")], let nameEntry = map[.utf8String("typename")], let valEntry = map[.utf8String("value")] else {
+                    throw SerializerError.deserializationFailed("Missing fields in list<any> element")
+                }
+                let cat: ValueCategory
+                switch catEntry {
+                case let .unsignedInt(u):
+                    guard let c = ValueCategory.from(UInt8(u)) else { throw SerializerError.deserializationFailed("Bad category") }
+                    cat = c
+                default: throw SerializerError.deserializationFailed("Bad category type")
+                }
+                let name: String
+                switch nameEntry { case let .utf8String(s): name = s; default: throw SerializerError.deserializationFailed("Bad typename type") }
+                let payload: Data
+                switch valEntry { case let .byteString(b): payload = Data(b); default: throw SerializerError.deserializationFailed("Bad value type") }
+                let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, keystore: lazyData.keystore, encrypted: false))
+                out.append(child)
+            }
+            guard let casted = out as? T else { throw SerializerError.typeMismatch("Cannot cast list<any> to \(T.self)") }
+            return casted
+
+        case "map<string,any>":
+            // CBOR map of key -> element map
+            let cborData = Array(lazyData.data)
+            guard let cbor = try? CBOR.decode(cborData) else {
+                throw SerializerError.deserializationFailed("Invalid CBOR for map<string,any>")
+            }
+            guard case let .map(entries) = cbor else {
+                throw SerializerError.deserializationFailed("Expected CBOR map for map<string,any>")
+            }
+            var out: [String: AnyValue] = [:]
+            for (k, v) in entries {
+                guard case let .utf8String(key) = k, case let .map(map) = v else {
+                    throw SerializerError.deserializationFailed("Invalid entry in map<string,any>")
+                }
+                guard let catEntry = map[.utf8String("category")], let nameEntry = map[.utf8String("typename")], let valEntry = map[.utf8String("value")] else {
+                    throw SerializerError.deserializationFailed("Missing fields in map<string,any> element")
+                }
+                let cat: ValueCategory
+                switch catEntry {
+                case let .unsignedInt(u):
+                    guard let c = ValueCategory.from(UInt8(u)) else { throw SerializerError.deserializationFailed("Bad category") }
+                    cat = c
+                default: throw SerializerError.deserializationFailed("Bad category type")
+                }
+                let name: String
+                switch nameEntry { case let .utf8String(s): name = s; default: throw SerializerError.deserializationFailed("Bad typename type") }
+                let payload: Data
+                switch valEntry { case let .byteString(b): payload = Data(b); default: throw SerializerError.deserializationFailed("Bad value type") }
+                let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, keystore: lazyData.keystore, encrypted: false))
+                out[key] = child
+            }
+            guard let casted = out as? T else { throw SerializerError.typeMismatch("Cannot cast map<string,any> to \(T.self)") }
+            return casted
 
         default:
+            // Typed containers: list<ElemWire> or map<string,ElemWire>
+            if (lazyData.typeName.hasPrefix("list<") && lazyData.typeName != "list<any>") ||
+                (lazyData.typeName.hasPrefix("map<string,") && lazyData.typeName != "map<string,any>") {
+                // Typed containers decode requires requesting a Decodable concrete type.
+                // This generic path does not have that constraint; return an error for now.
+                throw SerializerError.deserializationFailed("Decoding typed container requires requesting a Decodable type; wire name: \(lazyData.typeName)")
+            }
+
             // Try to find a registered decoder for this type
             if let decoder = await TypeRegistry.shared.getDecoder(for: lazyData.typeName) {
-                return try decoder(lazyData.data)
+                guard let result = try decoder(lazyData.data) as? T else {
+                    throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
+                }
+                return result
             }
 
             throw SerializerError.deserializationFailed("Unsupported type for lazy deserialization: \(lazyData.typeName)")
         }
+    }
+
+    // Parse our header: [category][encrypted][name_len][name_bytes][payload]
+    private static func parseSerializedHeader(_ data: Data) throws -> (ValueCategory, Bool, String, Data) {
+        guard !data.isEmpty else { throw SerializerError.emptyData }
+        let categoryByte = data[0]
+        guard let category = ValueCategory.from(categoryByte) else { throw SerializerError.invalidCategory(categoryByte) }
+        guard data.count >= 3 else { throw SerializerError.deserializationFailed("Data too short for header") }
+        let isEncrypted = data[1] == 0x01
+        let nameLen = Int(data[2])
+        guard data.count >= 3 + nameLen else { throw SerializerError.deserializationFailed("Data too short for type name") }
+        let nameData = data[3..<(3 + nameLen)]
+        guard let name = String(data: Data(nameData), encoding: .utf8) else { throw SerializerError.deserializationFailed("Invalid type name encoding") }
+        let payload = data[(3 + nameLen)...]
+        return (category, isEncrypted, name, Data(payload))
     }
 
     /// Deserialize from data
@@ -684,8 +750,8 @@ public class AnyValue {
             // For bytes, the data is already in the correct format
             return AnyValue.bytes(Data(valueData))
         case .json:
-            // For JSON, the data is already in the correct format
-            return AnyValue.json(Data(valueData))
+            // JSON payload is CBOR-encoded; keep lazy to decode on demand
+            return AnyValue.lazy(category: category, lazyData: lazyData)
         default:
             // For other categories, create lazy deserialization
             return AnyValue.lazy(category: category, lazyData: lazyData)

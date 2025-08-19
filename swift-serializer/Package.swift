@@ -19,6 +19,7 @@ let package = Package(
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
         .package(path: "../swift-serializer-macros"),
         .package(path: "../swift-common"),
+        .package(path: "../swift-keys"),
     ],
     targets: [
         .target(
@@ -36,6 +37,7 @@ let package = Package(
                 "RunarSerializer",
                 .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
                 "SwiftCBOR",
+                .product(name: "RunarKeys", package: "swift-keys"),
             ],
             path: "Tests/RunarSerializerTests"
         ),

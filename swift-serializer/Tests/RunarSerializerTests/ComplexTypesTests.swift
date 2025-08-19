@@ -12,7 +12,7 @@ final class ComplexTypesTests: XCTestCase {
         let list = AnyValue.list([stringValue, intValue, boolValue])
 
         XCTAssertEqual(list.category, .list)
-        XCTAssertEqual(list.typeName, "Array<AnyValue>")
+        XCTAssertEqual(list.typeName, "list<any>")
 
         // Test type retrieval
         let retrievedList: [AnyValue] = try! await list.asType()
@@ -82,7 +82,7 @@ final class ComplexTypesTests: XCTestCase {
         ])
 
         XCTAssertEqual(map.category, .map)
-        XCTAssertEqual(map.typeName, "Dictionary<String, AnyValue>")
+        XCTAssertEqual(map.typeName, "map<string,any>")
 
         let retrievedMap: [String: AnyValue] = try! await map.asType()
         XCTAssertEqual(retrievedMap.count, 2)
@@ -155,13 +155,9 @@ final class ComplexTypesTests: XCTestCase {
         let jsonValue = AnyValue.json(jsonData)
 
         XCTAssertEqual(jsonValue.category, .json)
-        XCTAssertEqual(jsonValue.typeName, "JSON")
+        XCTAssertEqual(jsonValue.typeName, "json")
 
-        // Test retrieval as Data
-        let retrievedData: Data = try! await jsonValue.asType()
-        XCTAssertEqual(retrievedData, jsonData)
-
-        // Test retrieval as String
+        // Test retrieval as String now that json stores CBOR of JSON value
         let retrievedString: String = try! await jsonValue.asType()
         XCTAssertEqual(retrievedString, jsonString)
     }
@@ -179,19 +175,19 @@ final class ComplexTypesTests: XCTestCase {
         let serialized = try! jsonValue.serialize()
         let deserialized = try! AnyValue.deserialize(serialized)
 
-        let retrievedData: Data = try! await deserialized.asType()
-        XCTAssertEqual(retrievedData, jsonData)
-
+        // JSON re-serialization may reorder keys; compare objects instead of pretty string
         let retrievedString: String = try! await deserialized.asType()
-        XCTAssertEqual(retrievedString, jsonString)
+        let lhs = try! JSONSerialization.jsonObject(with: Data(retrievedString.utf8)) as! NSDictionary
+        let rhs = try! JSONSerialization.jsonObject(with: jsonData) as! NSDictionary
+        XCTAssertEqual(lhs, rhs)
     }
 
     func testEmptyJSON() async {
         let emptyJSON = AnyValue.json(Data())
         XCTAssertEqual(emptyJSON.category, .json)
 
-        let retrievedData: Data = try! await emptyJSON.asType()
-        XCTAssertEqual(retrievedData.count, 0)
+        let retrievedString: String = try! await emptyJSON.asType()
+        XCTAssertEqual(retrievedString, "")
     }
 
     // MARK: - Mixed Complex Types Tests
@@ -305,14 +301,10 @@ final class ComplexTypesTests: XCTestCase {
         let invalidData = Data([0xFF, 0xFE, 0xFD]) // Invalid UTF-8
         let jsonValue = AnyValue.json(invalidData)
 
-        // Should still work as Data
-        let retrievedData: Data = try! await jsonValue.asType()
-        XCTAssertEqual(retrievedData, invalidData)
-
-        // Should fail as String
+        // Should fail as String since data is invalid JSON
         do {
             let _: String = try await jsonValue.asType()
-            XCTFail("Should have thrown error for invalid UTF-8")
+            XCTFail("Should have thrown error for invalid JSON")
         } catch {
             // Expected to fail
         }

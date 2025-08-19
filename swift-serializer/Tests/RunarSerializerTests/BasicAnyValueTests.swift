@@ -25,7 +25,7 @@ final class BasicAnyValueTests: XCTestCase {
 
         XCTAssertFalse(primitiveValue.isNull)
         XCTAssertEqual(primitiveValue.category, .primitive)
-        XCTAssertEqual(primitiveValue.typeName, "String")
+        XCTAssertEqual(primitiveValue.typeName, "string")
 
         // Test type retrieval
         do {
@@ -50,7 +50,7 @@ final class BasicAnyValueTests: XCTestCase {
 
         XCTAssertFalse(bytesValue.isNull)
         XCTAssertEqual(bytesValue.category, .bytes)
-        XCTAssertEqual(bytesValue.typeName, "Data")
+        XCTAssertEqual(bytesValue.typeName, "bytes")
 
         // Test type retrieval
         do {
@@ -63,11 +63,10 @@ final class BasicAnyValueTests: XCTestCase {
         // Test serialization
         do {
             let serialized = try bytesValue.serialize()
-            // The new format includes: [category][encrypted][type_name_len][type_name][data]
-            // For bytes: [5][0][4]["Data"][actual_data]
+            // Format: [category][encrypted][type_name_len][type_name][data]
+            // For bytes: [5][0][5]["bytes"][actual_data]
             XCTAssertGreaterThan(serialized.count, testData.count)
-            // Verify the data is at the end
-            let dataStart = 3 + 4 // category + encrypted + type_name_len + "Data"
+            let dataStart = 3 + 5 // category + encrypted + type_name_len + "bytes"
             let actualData = serialized[dataStart...]
             XCTAssertEqual(Data(actualData), testData)
         } catch {
