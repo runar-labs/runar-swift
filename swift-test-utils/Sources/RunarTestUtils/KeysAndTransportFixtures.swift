@@ -41,8 +41,10 @@ public enum TestFixtures {
     }
 
     public static func peerInfo(publicKey: Data, addresses: [String]) -> Data {
-        let p = PeerInfo(public_key: publicKey, addresses: addresses)
-        return (try? CodableCBOREncoder().encode(p)) ?? Data()
+        var map: [CBOR: CBOR] = [:]
+        map[.utf8String("public_key")] = .array([UInt8](publicKey).map { .unsignedInt(UInt64($0)) })
+        map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
+        return Data(CBOR.map(map).encode())
     }
 
     public static func nodeInfo(publicKey: Data, addresses: [String], networks: [String], version: Int64 = 0) -> Data {

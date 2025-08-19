@@ -530,8 +530,9 @@ extension SwiftNode {
         }
         let pk = try keys.publicKey()
         let addr = try transport.localAddr()
-        struct PeerInfo: Codable { let public_key: Data; let addresses: [String] }
-        let info = PeerInfo(public_key: pk, addresses: [addr])
-        return try CodableCBOREncoder().encode(info)
+        var map: [CBOR: CBOR] = [:]
+        map[.utf8String("public_key")] = .array([UInt8](pk).map { .unsignedInt(UInt64($0)) })
+        map[.utf8String("addresses")] = .array([.utf8String(addr)])
+        return Data(CBOR.map(map).encode())
     }
 }
