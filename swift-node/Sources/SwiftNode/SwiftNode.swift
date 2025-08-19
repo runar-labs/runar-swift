@@ -39,13 +39,29 @@ public protocol NodeDelegate {
 	func publish(topic: String, data: AnyValue?) async throws
 }
 
+// Internal abstraction to allow testing without FFI
+protocol NodeTransport {
+	func start() throws
+	func stop() throws
+	func pollEvent() throws -> Data?
+	func request(path: String, correlationId: String, payload: Data, destPeerId: String?, profilePublicKey: Data?) throws
+	func publish(path: String, correlationId: String, payload: Data, destPeerId: String?) throws
+	func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) throws
+	func connectPeer(_ peerInfoCBOR: Data) throws
+	func disconnectPeer(_ peerNodeId: String) throws
+	func isConnected(_ peerNodeId: String) throws -> Bool
+	func updateLocalNodeInfo(_ nodeInfoCBOR: Data) throws
+}
+
+extension FFITransport: NodeTransport {}
+
 public final class SwiftNode {
 	private let config: SwiftNodeConfig
 	private let logger: RunarLogger
 	private let registry: ServiceRegistry
 	private var nodeId: String
 	private var ffiKeys: FFIKeys?
-	private var transport: FFITransport?
+	private var transport: (any NodeTransport)?
 	private var eventLoopTask: Task<Void, Never>?
 	private let pendingQueue = DispatchQueue(label: "com.runar.swiftnode.pending")
 	private final class ContinuationBox: @unchecked Sendable { let cont: CheckedContinuation<AnyValue, Error>; init(_ c: CheckedContinuation<AnyValue, Error>) { cont = c } }
@@ -66,6 +82,15 @@ public final class SwiftNode {
 		self.nodeId = "local"
 	}
 
+	// Internal/testing initializer to inject a custom transport
+	init(config: SwiftNodeConfig, transport: any NodeTransport, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
+		self.config = config
+		self.logger = logger
+		self.registry = ServiceRegistry(logger: logger)
+		self.nodeId = "local"
+		self.transport = transport
+	}
+
 	public func addService(_ service: AbstractService) async throws {
 		// Register local service metadata
 		registry.registerLocalService(servicePath: service.path, name: service.name, version: service.version, description: service.description)
@@ -82,7 +107,10 @@ public final class SwiftNode {
 		// Set services running
 		registry.setAllLocalServicesRunning()
 		// Initialize keys/transport via FFI when networking is enabled
-		if config.network?.enabled == true {
+		if let transport {
+			try? transport.start()
+			startEventLoop()
+		} else if config.network?.enabled == true {
 			let keys = try FFIKeys()
 			self.nodeId = (try? keys.nodeId()) ?? "local"
 			self.ffiKeys = keys

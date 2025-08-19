@@ -19,6 +19,7 @@ let package = Package(
         .package(path: "../swift-common"),
         .package(path: "../swift-serializer"),
         .package(path: "../swift-ffi"),
+        .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
     ],
     targets: [
         .target(
@@ -32,7 +33,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftNodeTests",
-            dependencies: ["SwiftNode"],
+            dependencies: ["SwiftNode", .product(name: "SwiftCBOR", package: "SwiftCBOR")],
             path: "Tests/SwiftNodeTests"
         ),
     ]
