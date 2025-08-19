@@ -86,8 +86,8 @@ public final class SwiftNode {
 			let keys = try FFIKeys()
 			self.nodeId = (try? keys.nodeId()) ?? "local"
 			self.ffiKeys = keys
-			let emptyOptions = Data()
-			self.transport = try? FFITransport(keys: keys, optionsCBOR: emptyOptions)
+			let options = buildTransportOptionsCBOR()
+			self.transport = try? FFITransport(keys: keys, optionsCBOR: options)
 			try? self.transport?.start()
 			startEventLoop()
 		}
@@ -256,6 +256,43 @@ public final class SwiftNode {
 			}
 			return AnyValue.struct(EnsureKeyResponse(ensured: true, key_name: "default"))
 		}
+
+		// $registry: service state, pause/resume (local only)
+		try await lifecycle.registerAction("services/{service_path}/state") { _, ctx in
+			let path = ctx.servicePath
+			if let entry = self.registry.getLocalService(servicePath: path) {
+				return AnyValue.primitive(entry.state.rawValue)
+			}
+			return AnyValue.null()
+		}
+		try await lifecycle.registerAction("services/{service_path}/pause") { _, ctx in
+			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused)
+			return AnyValue.primitive(true)
+		}
+		try await lifecycle.registerAction("services/{service_path}/resume") { _, ctx in
+			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running)
+			return AnyValue.primitive(true)
+		}
+	}
+
+	private func buildTransportOptionsCBOR() -> Data {
+		struct Opts: Codable {
+			let v: UInt32
+			let bind_addr: String?
+			let handshake_timeout_ms: UInt64?
+			let open_stream_timeout_ms: UInt64?
+			let max_message_size: UInt64?
+		}
+		let net = config.network
+		let opts = Opts(
+			v: 1,
+			bind_addr: net?.bindAddress,
+			handshake_timeout_ms: net?.handshakeTimeoutMs,
+			open_stream_timeout_ms: net?.openStreamTimeoutMs,
+			max_message_size: net?.maxMessageSize.map { UInt64($0) }
+		)
+		let encoder = CodableCBOREncoder()
+		return (try? encoder.encode(opts)) ?? Data()
 	}
 
 	public func request(_ path: String, payload: AnyValue?) async throws -> AnyValue {
