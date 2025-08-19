@@ -83,6 +83,15 @@ public final class SwiftNode {
 		self.nodeId = "local"
 	}
 
+	// Public initializer allowing dependency injection of pre-provisioned keys
+	public init(config: SwiftNodeConfig, keys: FFIKeys, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
+		self.config = config
+		self.logger = logger
+		self.registry = ServiceRegistry(logger: logger)
+		self.nodeId = (try? keys.nodeId()) ?? "local"
+		self.ffiKeys = keys
+	}
+
 	// Internal/testing initializer to inject a custom transport
 	init(config: SwiftNodeConfig, transport: any NodeTransport, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
 		self.config = config
@@ -109,17 +118,24 @@ public final class SwiftNode {
 		registry.setAllLocalServicesRunning()
 		// Initialize keys/transport via FFI when networking is enabled
 		if let transport {
-			try? transport.start()
+			try transport.start()
 			startEventLoop()
-		} else if config.network?.enabled == true {
-			let keys = try FFIKeys()
-			self.nodeId = (try? keys.nodeId()) ?? "local"
-			self.ffiKeys = keys
-			let options = buildTransportOptionsCBOR()
-			self.transport = try? FFITransport(keys: keys, optionsCBOR: options)
-			try? self.transport?.start()
-			startEventLoop()
+			return
 		}
+		guard config.network?.enabled == true else { return }
+		// Prefer injected keys if available
+		let keys: FFIKeys
+		if let injected = self.ffiKeys {
+			keys = injected
+		} else {
+			keys = try FFIKeys()
+			self.ffiKeys = keys
+		}
+		self.nodeId = (try? keys.nodeId()) ?? "local"
+		let options = buildTransportOptionsCBOR()
+		self.transport = try FFITransport(keys: keys, optionsCBOR: options)
+		try self.transport?.start()
+		startEventLoop()
 	}
 
 	public func stop() async {

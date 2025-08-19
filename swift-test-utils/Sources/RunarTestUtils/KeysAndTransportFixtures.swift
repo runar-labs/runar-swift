@@ -42,6 +42,14 @@ public enum TestFixtures {
         let info = NodeInfo(node_public_key: publicKey, network_ids: networks, addresses: addresses, node_metadata: meta, version: version)
         return (try? CodableCBOREncoder().encode(info)) ?? Data()
     }
+
+    public static func exportState(_ keys: FFIKeys) throws -> Data {
+        try keys.exportState()
+    }
+
+    public static func importState(_ keys: FFIKeys, state: Data) throws {
+        try keys.importState(state)
+    }
 }
 
 
