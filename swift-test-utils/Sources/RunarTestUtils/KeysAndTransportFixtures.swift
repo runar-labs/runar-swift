@@ -67,6 +67,46 @@ public enum TestFixtures {
     public static func importState(_ keys: FFIKeys, state: Data) throws {
         try keys.importState(state)
     }
+
+    // MARK: - Networked key states (Rust parity)
+
+    public struct NetworkedKeyStates {
+        public let mobileState: Data
+        public let nodeStates: [Data]
+        public let defaultNetworkId: String
+    }
+
+    // Create a single mobile/master key manager and N node key managers, all signed by the same mobile.
+    // Returns serialized states to be imported into fresh FFIKeys instances in tests.
+    // Note: Network ID comes from the test harness; until FFI exposes mobile network id APIs, we use a caller-provided id.
+    public static func createNetworkedKeyStates(total: Int, defaultNetworkId: String = "net") throws -> NetworkedKeyStates {
+        precondition(total >= 0, "total must be non-negative")
+        let mobile = try FFIKeys()
+        _ = try mobile.nodeId() // ensure ok
+        var nodeStates: [Data] = []
+        nodeStates.reserveCapacity(max(0, total))
+        for _ in 0..<total {
+            let node = try FFIKeys()
+            let csr = try node.generateCSR()
+            let ncm = try mobile.processSetupToken(csr)
+            try node.installCertificate(ncm)
+            // Minimal resolver + node info; tests may update addresses post-start
+            let emptyMapping = CBOR.map([:])
+            try node.setLabelMapping(Data(emptyMapping.encode()))
+            let placeholderInfo = nodeInfo(publicKey: try node.publicKey(), addresses: ["127.0.0.1:0"], networks: [defaultNetworkId], version: 0)
+            try node.setLocalNodeInfo(placeholderInfo)
+            nodeStates.append(try node.exportState())
+        }
+        let mobileState = try mobile.mobileExportState()
+        return NetworkedKeyStates(mobileState: mobileState, nodeStates: nodeStates, defaultNetworkId: defaultNetworkId)
+    }
+
+    // Convenience: build FFIKeys from exported node state
+    public static func makeNodeKeys(from state: Data) throws -> FFIKeys {
+        let k = try FFIKeys()
+        try k.importState(state)
+        return k
+    }
 }
 
 

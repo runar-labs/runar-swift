@@ -3,6 +3,7 @@ import XCTest
 import RunarFFI
 import RunarSerializer
 import RunarTestUtils
+import SwiftCBOR
 
 final class RealTransportTests: XCTestCase {
     final class EchoService: AbstractService {
@@ -20,15 +21,18 @@ final class RealTransportTests: XCTestCase {
         func stop(_ context: LifecycleContext) async throws {}
     }
     func testTwoNodesRequestRoundTrip() async throws {
-        // Keys (single lifecycle per node)
-        let keysA = try TestFixtures.createKeyManagerWithCert()
-        let keysB = try TestFixtures.createKeyManagerWithCert()
-        // NodeInfo is push-based; already set in fixture with empty addresses.
+        // Create two node states signed by the same mobile master (Rust parity)
+        let states = try TestFixtures.createNetworkedKeyStates(total: 2, defaultNetworkId: "net")
+        var keysA = try TestFixtures.makeNodeKeys(from: states.nodeStates[0])
+        var keysB = try TestFixtures.makeNodeKeys(from: states.nodeStates[1])
+        // Ensure resolver mapping exists before transport creation
+        let emptyMapping = CBOR.map([:])
+        try keysA.setLabelMapping(Data(emptyMapping.encode()))
+        try keysB.setLabelMapping(Data(emptyMapping.encode()))
         // Node A (inject keys so start() uses them)
         let nodeA = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysA)
         try await nodeA.addService(EchoService())
         try await nodeA.start()
-        // After start, update NodeInfo with actual bound addresses
         _ = try nodeA.exportPeerInfoCBOR()
         // Node B
         let nodeB = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysB)

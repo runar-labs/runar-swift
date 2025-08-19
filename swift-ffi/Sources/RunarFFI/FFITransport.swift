@@ -92,25 +92,60 @@ public final class FFITransport {
 	public func request(path: String, correlationId: String, payload: Data, destPeerId: String?, profilePublicKey: Data?) throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
 		let (_, err) = withRnError { errPtr in
-			payload.withUnsafeBytes { payloadRaw in
-				let p = payloadRaw.bindMemory(to: UInt8.self).baseAddress
+			// Prepare non-null C strings for path, correlationId, destPeerId (empty string when nil)
+			let destCString = (destPeerId ?? "").withCString { strdup($0) }
+			defer { if let c = destCString { free(c) } }
+			if payload.isEmpty {
+				var zero: UInt8 = 0
+				let p: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
 				if let dest = destPeerId {
 					if let pk = profilePublicKey {
 						pk.withUnsafeBytes { pkRaw in
 							let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-							rn_transport_request(h, path, correlationId, p, payload.count, dest, pkp, pk.count, errPtr)
+							rn_transport_request(h, path, correlationId, p, 0, dest, pkp, pk.count, errPtr)
 						}
 					} else {
-						rn_transport_request(h, path, correlationId, p, payload.count, dest, nil, 0, errPtr)
+						var z: UInt8 = 0
+						let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
+						rn_transport_request(h, path, correlationId, p, 0, dest, pkp, 0, errPtr)
 					}
 				} else {
 					if let pk = profilePublicKey {
 						pk.withUnsafeBytes { pkRaw in
 							let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-							rn_transport_request(h, path, correlationId, p, payload.count, nil, pkp, pk.count, errPtr)
+							rn_transport_request(h, path, correlationId, p, 0, destCString, pkp, pk.count, errPtr)
 						}
 					} else {
-						rn_transport_request(h, path, correlationId, p, payload.count, nil, nil, 0, errPtr)
+						var z: UInt8 = 0
+						let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
+						rn_transport_request(h, path, correlationId, p, 0, destCString, pkp, 0, errPtr)
+					}
+				}
+			} else {
+				payload.withUnsafeBytes { payloadRaw in
+					let p = payloadRaw.bindMemory(to: UInt8.self).baseAddress
+					if let dest = destPeerId {
+						if let pk = profilePublicKey {
+							pk.withUnsafeBytes { pkRaw in
+								let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
+								rn_transport_request(h, path, correlationId, p, payload.count, dest, pkp, pk.count, errPtr)
+							}
+						} else {
+							var z: UInt8 = 0
+							let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
+							rn_transport_request(h, path, correlationId, p, payload.count, dest, pkp, 0, errPtr)
+						}
+					} else {
+						if let pk = profilePublicKey {
+							pk.withUnsafeBytes { pkRaw in
+								let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
+								rn_transport_request(h, path, correlationId, p, payload.count, destCString, pkp, pk.count, errPtr)
+							}
+						} else {
+							var z: UInt8 = 0
+							let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
+							rn_transport_request(h, path, correlationId, p, payload.count, destCString, pkp, 0, errPtr)
+						}
 					}
 				}
 			}
@@ -121,9 +156,19 @@ public final class FFITransport {
 	public func publish(path: String, correlationId: String, payload: Data, destPeerId: String?) throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
 		let (_, err) = withRnError { errPtr in
-			payload.withUnsafeBytes { rawBuf in
-				let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-				rn_transport_publish(h, path, correlationId, p, payload.count, destPeerId, errPtr)
+			if payload.isEmpty {
+				var zero: UInt8 = 0
+				let p: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+				let destCString = (destPeerId ?? "").withCString { strdup($0) }
+				defer { if let c = destCString { free(c) } }
+				rn_transport_publish(h, path, correlationId, p, 0, destCString, errPtr)
+			} else {
+				payload.withUnsafeBytes { rawBuf in
+					let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
+					let destCString = (destPeerId ?? "").withCString { strdup($0) }
+					defer { if let c = destCString { free(c) } }
+					rn_transport_publish(h, path, correlationId, p, payload.count, destCString, errPtr)
+				}
 			}
 		}
 		if let e = err { throw e }
@@ -132,15 +177,28 @@ public final class FFITransport {
 	public func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
 		let (_, err) = withRnError { errPtr in
-			responsePayload.withUnsafeBytes { rawBuf in
-				let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
+			if responsePayload.isEmpty {
+				var zero: UInt8 = 0
+				let p: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
 				if let pk = profilePublicKey {
 					pk.withUnsafeBytes { pkRaw in
 						let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-						rn_transport_complete_request(h, requestId, p, responsePayload.count, pkp, pk.count, errPtr)
+						rn_transport_complete_request(h, requestId, p, 0, pkp, pk.count, errPtr)
 					}
 				} else {
-					rn_transport_complete_request(h, requestId, p, responsePayload.count, nil, 0, errPtr)
+					rn_transport_complete_request(h, requestId, p, 0, nil, 0, errPtr)
+				}
+			} else {
+				responsePayload.withUnsafeBytes { rawBuf in
+					let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
+					if let pk = profilePublicKey {
+						pk.withUnsafeBytes { pkRaw in
+							let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
+							rn_transport_complete_request(h, requestId, p, responsePayload.count, pkp, pk.count, errPtr)
+						}
+					} else {
+						rn_transport_complete_request(h, requestId, p, responsePayload.count, nil, 0, errPtr)
+					}
 				}
 			}
 		}
