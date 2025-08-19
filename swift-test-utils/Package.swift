@@ -21,6 +21,11 @@ let package = Package(
 				"SwiftCBOR"
 			],
 			path: "Sources/RunarTestUtils"
+		),
+		.testTarget(
+			name: "RunarTestUtilsTests",
+			dependencies: ["RunarTestUtils", .product(name: "RunarFFI", package: "swift-ffi"), "SwiftCBOR"],
+			path: "Tests/RunarTestUtilsTests"
 		)
 	]
 )
