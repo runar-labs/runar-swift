@@ -178,21 +178,40 @@ CLARIFICATION.. `swift-serializer`: `AnyValue`, `EnvelopeEncryption`, protocols 
 - [ ] Implement `FFIKeyStore: EnvelopeCrypto` calling the new FFI encrypt/decrypt helpers (pending FFI functions).
 - [ ] Error mapping tests and memory ownership tests.
 
+Progress/decisions:
+- We import the Rust header via a C target `CRunarFFI` and link locally to the Rust debug library for dev. For CI, we will switch to an `.xcframework` binary target.
+- Wrappers return `Data`/`String` and free all FFI-owned buffers via `rn_free`/`rn_string_free` immediately after copying. Errors are mapped to `FFIError`.
+- Transport options are passed as canonical CBOR using `CodableCBOREncoder` to match Rust’s expected schema.
+
 ### C. Implement Swift Node (runar-swift/swift-node)
 - [ ] Package skeleton with dependency on `swift-ffi`, `swift-common`, `swift-serializer`, `swift-serializer-macros`.
 - [ ] Implement Swift `ServiceRegistry` (local/remote actions, subscriptions, state, unsubscribe, wildcard matching).
 - [ ] Implement `SwiftNodeConfig` and `SwiftNode` lifecycle.
-- [ ] Event loop: read `pollEvent`, dispatch `PeerConnected/Disconnected`, `RequestReceived/ResponseReceived`.
-- [ ] `$registry` service parity (list/info/state, pause/resume).
+- [x] Event loop: read `pollEvent`, dispatch `PeerConnected/Disconnected`, `RequestReceived/ResponseReceived`.
+- [x] `$registry` service parity (list/info/state, pause/resume).
 - [ ] `$keys` service parity (`ensure_symmetric_key`).
 - [ ] Remote service proxies and round-robin load balancing.
 - [ ] Serialization integration with `FFIKeyStore` and `LabelResolver`.
-- [ ] Tests for local-only and networked flows.
+- [x] Tests for local-only flows and an initial network stub test that exercises request round-trip through the event loop.
+
+Progress/decisions:
+- The Swift Node mirrors Rust behavior: publish is broadcast (no peer selection). Requests select a destination peer using round-robin per service when available; otherwise, they are sent without a destination.
+- Peer events use Rust’s CBOR keys (`type`, `peer_node_id`, etc.). On `PeerConnected`, we proactively query the peer’s `$registry/services/list` to register remote services.
+- We added a `NodeTransport` protocol and an internal initializer for dependency injection in tests (no hacks in production code paths).
+
+Planned:
+- Expose connect/disconnect/isConnected/updateLocalNodeInfo to public API (already present) and add integration tests when FFI transport is fully available on macOS.
 
 ### D. Samples and docs
 - [ ] Example app: CSR flow, Keychain persistence, local service.
 - [ ] Example: two macOS nodes discovering and communicating.
 - [ ] Docs: building Rust FFI, integrating XCFramework, using `swift-node` APIs.
+
+### New: Swift Test Utilities (swift-test-utils)
+- A lightweight package mirroring Rust `runar-test-utils` that helps tests build realistic setups:
+  - `TestFixtures.createKeyManagerWithCert()` builds a CA and a node `FFIKeys`, runs CSR/CA flow, installs cert.
+  - CBOR encoders for `PeerInfo`, `NodeInfo`, and transport options matching Rust schemas.
+- Used to bootstrap transporter/network tests once FFI transport is enabled in CI.
 
 ### E. Quality gates
 - [ ] Lint/format: Rust `cargo clippy --all-targets --all-features -- -D warnings`; `cargo test --all`. SwiftLint as needed.
