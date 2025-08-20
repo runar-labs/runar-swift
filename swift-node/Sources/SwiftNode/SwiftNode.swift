@@ -32,6 +32,51 @@ public struct SwiftNodeConfig {
 	}
 }
 
+public struct OnOptions {
+	public var timeout: TimeInterval
+	public var includePast: TimeInterval?
+	public init(timeout: TimeInterval = 5.0, includePast: TimeInterval? = nil) {
+		self.timeout = timeout
+		self.includePast = includePast
+	}
+}
+
+public struct PublishOptions {
+	public var broadcast: Bool
+	public var guaranteedDelivery: Bool
+	public var retainFor: TimeInterval?
+	public var target: String?
+	public init(broadcast: Bool = true, guaranteedDelivery: Bool = false, retainFor: TimeInterval? = nil, target: String? = nil) {
+		self.broadcast = broadcast
+		self.guaranteedDelivery = guaranteedDelivery
+		self.retainFor = retainFor
+		self.target = target
+	}
+}
+
+public final class JoinHandle<T> {
+	private let task: Task<Result<Data?, Error>, Never>
+	private let mapper: (Result<Data?, Error>) -> T
+	public init(task: Task<Result<Data?, Error>, Never>, mapper: @escaping (Result<Data?, Error>) -> T) {
+		self.task = task
+		self.mapper = mapper
+	}
+	public func value() async -> T {
+		let r = await task.value
+		return mapper(r)
+	}
+	public func cancel() { task.cancel() }
+}
+
+actor OneShotBox {
+	private var v: Result<Data?, Error>?
+	func setIfEmpty(_ nv: Result<Data?, Error>) -> Bool {
+		if v == nil { v = nv; return true }
+		return false
+	}
+	func get() -> Result<Data?, Error>? { v }
+}
+
 public protocol NodeDelegate {
 	func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws
 	func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String
@@ -51,7 +96,7 @@ protocol NodeTransport {
 	func disconnectPeer(_ peerNodeId: String) throws
 	func isConnected(_ peerNodeId: String) throws -> Bool
 	func updateLocalNodeInfo(_ nodeInfoCBOR: Data) throws
-    func localAddr() throws -> String
+	func localAddr() throws -> String
 }
 
 extension FFITransport: NodeTransport {}
@@ -68,7 +113,12 @@ public final class SwiftNode {
 	private var eventLoopTask: Task<Void, Never>?
 	private let pendingQueue = DispatchQueue(label: "com.runar.swiftnode.pending")
 	private final class ContinuationBox: @unchecked Sendable { let cont: CheckedContinuation<AnyValue, Error>; init(_ c: CheckedContinuation<AnyValue, Error>) { cont = c } }
+	// Removed OnceFlag; use actor OneShotBox for single-result synchronization
 	private var pendingByCorrelationId: [String: (box: ContinuationBox, timeoutAt: Date)] = [:]
+	// Retained events storage (serial queue for async-safety)
+	private let retainedQueue = DispatchQueue(label: "com.runar.swiftnode.retained")
+	private var retainedByTopic: [String: [(ts: Date, data: Data)]] = [:]
+	private let maxRetainedPerTopic = 16
 	private func setPending(_ id: String, box: ContinuationBox, timeoutAt: Date) {
 		pendingQueue.sync { pendingByCorrelationId[id] = (box, timeoutAt) }
 	}
@@ -133,6 +183,9 @@ public final class SwiftNode {
 			keys = try FFIKeys()
 			self.ffiKeys = keys
 		}
+		// Ensure label resolver is configured (empty mapping satisfies transporter requirement)
+		let emptyMapping = CBOR.map([:])
+		try keys.setLabelMapping(Data(emptyMapping.encode()))
 		self.nodeId = (try? keys.nodeId()) ?? "local"
 		// Push initial NodeInfo using configured bind address (may be ephemerally port 0).
 		let initialAddrs: [String] = {
@@ -172,7 +225,7 @@ public final class SwiftNode {
 	private func startEventLoop() {
 		guard eventLoopTask == nil, let transport else { return }
 		let log = logger
-		eventLoopTask = Task.detached { [weak self] in
+		eventLoopTask = Task { [weak self] in
 			let pollInterval = UInt64(50_000_000) // 50ms
 			while let strong = self, !Task.isCancelled {
 				do {
@@ -393,14 +446,6 @@ public final class SwiftNode {
 		return Data(CBOR.map(map).encode())
 	}
 
-	private func buildPeerInfoCBOR(addresses: [String]) throws -> Data {
-		var map: [CBOR: CBOR] = [:]
-		let pk = try ffiKeys?.publicKey() ?? Data()
-		map[.utf8String("public_key")] = .array([UInt8](pk).map { .unsignedInt(UInt64($0)) })
-		map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
-		return Data(CBOR.map(map).encode())
-	}
-
 	public func request(_ path: String, payload: AnyValue?) async throws -> AnyValue {
 		let full = qualify(path)
 		if let (handler, params) = registry.getLocalAction(topicPath: full) {
@@ -417,7 +462,7 @@ public final class SwiftNode {
 				let box = ContinuationBox(continuation)
 				setPending(correlationId, box: box, timeoutAt: Date().addingTimeInterval(timeout))
 				// Timeout task
-				Task.detached { [weak self] in
+				Task { [weak self] in
 					try? await Task.sleep(nanoseconds: UInt64(max(0, timeout)) * 1_000_000_000)
 					guard let self else { return }
 					if let box = self.takePending(correlationId) {
@@ -445,25 +490,102 @@ public final class SwiftNode {
 	}
 
 	public func publish(_ topic: String, data: AnyValue?) async throws {
+		let options = PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: nil, target: nil)
+		try await publishWithOptions(topic, data: data, options: options)
+	}
+
+	public func publish(_ topic: String, data: AnyValue?, retainFor: TimeInterval?) async throws {
+		let options = PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: retainFor, target: nil)
+		try await publishWithOptions(topic, data: data, options: options)
+	}
+
+	public func publishWithOptions(_ topic: String, data: AnyValue?, options: PublishOptions) async throws {
 		let qualified = qualify(topic)
 		let targets = registry.snapshotSubscribers(topicPath: qualified)
 		logger.debug("publish to \(qualified) subscribers=\(targets.count)")
-		if targets.isEmpty { return }
 		for callback in targets {
 			let ctx = EventContext(topic: qualified, logger: logger, nodeDelegate: self, isLocal: true)
 			do { try await callback(ctx, data) } catch { logger.error("Event handler error: \(error)") }
 		}
-		// Forward over transport if enabled
-		if let transport {
+		// Forward over transport if enabled and requested
+		if options.broadcast, let transport {
 			let bytes = try data?.serialize(context: nil) ?? Data()
 			let correlationId = UUID().uuidString
-			// Mirror Rust: publish is broadcast when dest peer is not specified
-			try? transport.publish(path: qualified, correlationId: correlationId, payload: bytes, destPeerId: nil)
+			try? transport.publish(path: qualified, correlationId: correlationId, payload: bytes, destPeerId: options.target)
+		}
+		// Retain locally if configured
+		if let retain = options.retainFor, retain > 0 {
+			let now = Date()
+			let cutoff = now.addingTimeInterval(-retain)
+			retainedQueue.sync {
+				var deque = retainedByTopic[qualified] ?? []
+				deque.removeAll { $0.ts < cutoff }
+				while deque.count >= maxRetainedPerTopic { _ = deque.removeFirst() }
+				let bytes = (try? data?.serialize(context: nil)) ?? Data()
+				deque.append((now, bytes))
+				retainedByTopic[qualified] = deque
+			}
 		}
 	}
 
 	public func subscribe(_ topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
-		registry.subscribe(topicPath: qualify(topic), handler: callback)
+		let full = qualify(topic)
+		let id = registry.subscribe(topicPath: full, handler: callback)
+		// Deliver past retained event if requested (exact-topic only)
+		if let lookback = options?.includePast, lookback > 0 {
+			let cutoff = Date().addingTimeInterval(-lookback)
+			var latest: (Date, Data)?
+			retainedQueue.sync {
+				if let deque = retainedByTopic[full] {
+					latest = deque.last(where: { $0.ts >= cutoff })
+				}
+			}
+			if let (_, bytes) = latest {
+				let ctx = EventContext(topic: full, logger: logger, nodeDelegate: self, isLocal: true)
+				let av = decodeAnyValue(from: bytes)
+				Task { try? await callback(ctx, av) }
+			}
+		}
+		return id
+	}
+
+	public func on(_ topic: String, options: OnOptions? = nil) -> JoinHandle<Result<AnyValue?, Error>> {
+		let full = qualify(topic)
+		let opts = options ?? OnOptions()
+		let timeoutNs = UInt64(max(0, opts.timeout)) * 1_000_000_000
+		let includePast = opts.includePast
+		let box = OneShotBox()
+		let task: Task<Result<Data?, Error>, Never> = Task { [weak self] in
+			guard let self else { return Result<Data?, Error>.failure(NSError(domain: "SwiftNode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Node deallocated"])) }
+			let subId = try? await self.subscribe(full, options: nil, callback: { _, data in
+				let bytes = (try? data?.serialize(context: nil)) ?? Data()
+				_ = await box.setIfEmpty(.success(bytes))
+				return
+			})
+			// includePast immediate delivery
+			if let lookback = includePast {
+				let cutoff = Date().addingTimeInterval(-lookback)
+				var latest: (Date, Data)?
+				self.retainedQueue.sync {
+					if let deque = self.retainedByTopic[full] { latest = deque.last(where: { $0.ts >= cutoff }) }
+				}
+				if let (_, bytes) = latest { _ = await box.setIfEmpty(.success(bytes)) }
+			}
+			// wait for timeout
+			try? await Task.sleep(nanoseconds: timeoutNs)
+			_ = await box.setIfEmpty(.failure(NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Timeout waiting for event on topic: \(full)"])) )
+			// cleanup
+			if let subId { try? await self.unsubscribe(subId) }
+			let res = await box.get() ?? Result<Data?, Error>.failure(NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Timeout waiting for event on topic: \(full)"]))
+			return res
+		}
+		return JoinHandle(task: task) { [weak self] r in
+			guard let self else { return .failure(NSError(domain: "SwiftNode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Node deallocated"])) }
+			return r.map { bytesOpt in
+				guard let b = bytesOpt else { return AnyValue.null() }
+				return self.decodeAnyValue(from: b)
+			}
+		}
 	}
 
 	public func unsubscribe(_ id: String) async throws {
@@ -487,7 +609,7 @@ public final class SwiftNode {
 		return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AnyValue, Error>) in
 			let box = ContinuationBox(continuation)
 			setPending(correlationId, box: box, timeoutAt: Date().addingTimeInterval(timeout))
-			Task.detached { [weak self] in
+			Task { [weak self] in
 				try? await Task.sleep(nanoseconds: UInt64(max(0, timeout)) * 1_000_000_000)
 				guard let self else { return }
 				if let box = self.takePending(correlationId) {
@@ -518,8 +640,10 @@ public final class SwiftNode {
 
 // Concurrency sendability allowances for background event handling
 extension SwiftNode: @unchecked Sendable {}
-extension FFITransport: @unchecked Sendable {}
-extension RunarLogger: @unchecked Sendable {}
+// TODO: Replace these with native Sendable in upstream modules
+extension FFITransport: @retroactive @unchecked Sendable {}
+extension RunarLogger: @retroactive @unchecked Sendable {}
+// Removed retroactive Sendable for AnyValue by keeping Data across tasks
 
 extension SwiftNode: NodeDelegate {
 	public func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws {

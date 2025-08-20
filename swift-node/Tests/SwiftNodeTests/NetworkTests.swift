@@ -1,6 +1,7 @@
 import XCTest
 @testable import SwiftNode
 import RunarSerializer
+import RunarTestUtils
 
 final class NetworkTests: XCTestCase {
     final class PubService: AbstractService {
@@ -20,14 +21,19 @@ final class NetworkTests: XCTestCase {
     }
 
     func testPublishSubscribeOverNetwork() async throws {
-        // Start two nodes back-to-back
-        let n1 = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:50621")))
-        let n2 = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:50622")))
+        // CA + two node keys with certificates
+        let can = try TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:50621", "127.0.0.1:50622"], defaultNetworkId: "net")
+        let keys1 = can.nodes[0]
+        let keys2 = can.nodes[1]
+
+        // Nodes with injected keys
+        let n1 = SwiftNode(config: .init(defaultNetworkId: can.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50621")), keys: keys1)
+        let n2 = SwiftNode(config: .init(defaultNetworkId: can.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50622")), keys: keys2)
         try await n1.addService(PubService())
         try await n1.start()
         try await n2.start()
 
-        // Build peer info and connect
+        // Connect peers
         let p1 = try n1.exportPeerInfoCBOR()
         var lastError: Error?
         for _ in 0..<5 { do { try n2.connectPeer(p1); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 200_000_000) } }
@@ -39,7 +45,8 @@ final class NetworkTests: XCTestCase {
             let s: String? = try? await v?.asType()
             if s == "hi" { exp.fulfill() }
         }
-        _ = try await n1.request("pub/trigger", payload: nil)
+        // Retain for a short period to tolerate race with subscription binding
+        try await n1.publish("pub/evt", data: AnyValue.primitive("hi"), retainFor: 2.0)
         await fulfillment(of: [exp], timeout: 5.0)
 
         await n2.stop()
