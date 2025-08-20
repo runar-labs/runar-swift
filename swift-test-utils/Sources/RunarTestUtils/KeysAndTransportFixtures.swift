@@ -60,52 +60,37 @@ public enum TestFixtures {
         return Data(CBOR.map(map).encode())
     }
 
-    public static func exportState(_ keys: FFIKeys) throws -> Data {
-        try keys.exportState()
-    }
+    // MARK: - CA + Nodes builders (no persistence export/import)
 
-    public static func importState(_ keys: FFIKeys, state: Data) throws {
-        try keys.importState(state)
-    }
-
-    // MARK: - Networked key states (Rust parity)
-
-    public struct NetworkedKeyStates {
-        public let mobileState: Data
-        public let nodeStates: [Data]
+    public struct CANodes {
+        public let ca: FFIKeys
+        public let nodes: [FFIKeys]
+        public let nodeIds: [String]
         public let defaultNetworkId: String
     }
 
-    // Create a single mobile/master key manager and N node key managers, all signed by the same mobile.
-    // Returns serialized states to be imported into fresh FFIKeys instances in tests.
-    // Note: Network ID comes from the test harness; until FFI exposes mobile network id APIs, we use a caller-provided id.
-    public static func createNetworkedKeyStates(total: Int, defaultNetworkId: String = "net") throws -> NetworkedKeyStates {
-        precondition(total >= 0, "total must be non-negative")
-        let mobile = try FFIKeys()
-        _ = try mobile.nodeId() // ensure ok
-        var nodeStates: [Data] = []
-        nodeStates.reserveCapacity(max(0, total))
-        for _ in 0..<total {
+    public static func createCAAndNodes(count: Int, addresses: [String], defaultNetworkId: String = "net") throws -> CANodes {
+        precondition(count == addresses.count, "addresses count must match nodes count")
+        let ca = try FFIKeys()
+        _ = try ca.nodeId()
+        var nodes: [FFIKeys] = []
+        var nodeIds: [String] = []
+        for i in 0..<count {
             let node = try FFIKeys()
             let csr = try node.generateCSR()
-            let ncm = try mobile.processSetupToken(csr)
+            let ncm = try ca.processSetupToken(csr)
             try node.installCertificate(ncm)
-            // Minimal resolver + node info; tests may update addresses post-start
+            // empty resolver mapping
             let emptyMapping = CBOR.map([:])
             try node.setLabelMapping(Data(emptyMapping.encode()))
-            let placeholderInfo = nodeInfo(publicKey: try node.publicKey(), addresses: ["127.0.0.1:0"], networks: [defaultNetworkId], version: 0)
-            try node.setLocalNodeInfo(placeholderInfo)
-            nodeStates.append(try node.exportState())
+            // set NodeInfo with provided bind address
+            let pk = try node.publicKey()
+            let info = nodeInfo(publicKey: pk, addresses: [addresses[i]], networks: [defaultNetworkId], version: 0)
+            try node.setLocalNodeInfo(info)
+            nodes.append(node)
+            nodeIds.append(try node.nodeId())
         }
-        let mobileState = try mobile.mobileExportState()
-        return NetworkedKeyStates(mobileState: mobileState, nodeStates: nodeStates, defaultNetworkId: defaultNetworkId)
-    }
-
-    // Convenience: build FFIKeys from exported node state
-    public static func makeNodeKeys(from state: Data) throws -> FFIKeys {
-        let k = try FFIKeys()
-        try k.importState(state)
-        return k
+        return CANodes(ca: ca, nodes: nodes, nodeIds: nodeIds, defaultNetworkId: defaultNetworkId)
     }
 }
 
