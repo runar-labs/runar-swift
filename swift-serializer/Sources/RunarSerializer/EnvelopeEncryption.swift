@@ -4,8 +4,6 @@ import RunarKeys
 #endif
 import SwiftCBOR
 
-public typealias EnvelopeEncryptedData = RunarKeys.EnvelopeEncryptedData
-
 /// Default label resolver that maps labels directly to profile IDs
 public struct DefaultLabelResolver: LabelResolver {
     private let labelToProfileId: [String: String]

@@ -327,6 +327,13 @@ Answer: Yes `@Runar(name: "profile.User") looks good. .
   - Typed: `listTyped<T: Codable>(_ values: [T])` → wire name `list<ElemWire>`; `mapTyped<T: Codable>(_ values: [String: T])` → wire name `map<string,ElemWire>`. Payload is CBOR encoding of `[T]` / `[String: T]`. With a `SerializationContext` and a registered encryptor for `T`, element values are CBOR byte-strings of the encrypted form per element.
   - Decoding is strict based on the parameterized wire name. Mismatches or unknown wire names are errors.
 
+### Lessons learned (struct lazy decode and macro registration)
+
+- Struct lazy decode must be keyed by wire name, not Swift display names. The header carries the normalized wire name; lazy struct decode should resolve using a registry entry bound to that wire name.
+- `TypeNameRegistry` is the single source of truth, and now stores wireName → decoder closure in addition to JSON converters and `Swift.Type`. Macros must register a decoder closure for each struct wire name.
+- The `@Encrypted` macro registers these via a lazy static initializer on first use; all macro-emitted types and APIs refer to fully qualified names (`RunarSerializer.*`, `RunarKeys.*`).
+- This was an implementation gap, not a design change. The overall design remains to dispatch strictly by wire name and avoid relying on Swift type names or module-load side effects.
+
 
 
 

@@ -9,6 +9,8 @@ public actor TypeNameRegistry {
     private var wireToSwift: [String: Any.Type] = [:]
     // wire name -> JSON converter closure
     private var wireToJSON: [String: @Sendable (AnyValue) async throws -> Any] = [:]
+    // wire name -> decoder closure (CBOR bytes -> Any)
+    private var wireToDecoder: [String: @Sendable (Data) throws -> Any] = [:]
     // wire name -> Swift type name (diagnostics)
     private var wireToSwiftName: [String: String] = [:]
 
@@ -63,10 +65,17 @@ public actor TypeNameRegistry {
         }
     }
 
+    public func registerDecoder(for wireName: String, decode: @escaping @Sendable (Data) throws -> Any) {
+        if wireToDecoder[wireName] == nil {
+            wireToDecoder[wireName] = decode
+        }
+    }
+
     public func lookupWireName(swiftTypeName: String) -> String? { swiftToWire[swiftTypeName] }
     public func lookupSwiftTypeByWireName(_ wire: String) -> Any.Type? { wireToSwift[wire] }
     public func lookupSwiftNameByWireName(_ wire: String) -> String? { wireToSwiftName[wire] }
     public func lookupJsonByWireName(_ wire: String) -> (@Sendable (AnyValue) async throws -> Any)? { wireToJSON[wire] }
+    public func lookupDecoderByWireName(_ wire: String) -> (@Sendable (Data) throws -> Any)? { wireToDecoder[wire] }
 }
 
 // Initialize built-ins at module load

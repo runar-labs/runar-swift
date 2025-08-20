@@ -732,8 +732,8 @@ public class AnyValue {
                 throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor")
             }
 
-            // Try to find a registered decoder for this type
-            if let decoder = await TypeRegistry.shared.getDecoder(for: lazyData.typeName) {
+            // Try to find a registered decoder for this wire name
+            if let decoder = await TypeNameRegistry.shared.lookupDecoderByWireName(lazyData.typeName) {
                 guard let result = try decoder(lazyData.data) as? T else {
                     throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
                 }
@@ -976,26 +976,7 @@ public extension PlainSerializable {
     }
 }
 
-/// Type registry for custom types
-public actor TypeRegistry {
-    private var decoders: [String: @Sendable (Data) throws -> Any] = [:]
-
-    /// Register a decoder for a custom type
-    public func register<T: Codable>(_ type: T.Type, decoder: @escaping @Sendable (Data) throws -> T) {
-        let typeName = String(describing: type)
-        decoders[typeName] = { data in
-            try decoder(data)
-        }
-    }
-
-    /// Get decoder for a type name
-    public func getDecoder(for typeName: String) -> (@Sendable (Data) throws -> Any)? {
-        decoders[typeName]
-    }
-
-    /// Shared instance for global access
-    public static let shared = TypeRegistry()
-}
+// (Removed legacy TypeRegistry; use TypeNameRegistry instead)
 
 // MARK: - Encryption Types
 
@@ -1003,30 +984,10 @@ public actor TypeRegistry {
 /// Matches the MobileKeyManager interface from swift-keys
 // Use EnvelopeCrypto from RunarKeys
 
-/// KeyStore abstraction for tests/apps to supply an implementation
-public typealias KeyStore = RunarKeys.EnvelopeCrypto
-
 // Dummy keystore used only when decrypting element-level payloads without a provided keystore.
 // This will throw if used; present to satisfy function signatures.
 private struct DummyKeystore: RunarKeys.EnvelopeCrypto {
     func encryptWithEnvelope(data _: Data, networkId _: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData { throw SerializerError.encryptionFailed("No keystore") }
     func decryptWithProfile(envelopeData _: EnvelopeEncryptedData, profileId _: String) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
     func decryptWithNetwork(envelopeData _: EnvelopeEncryptedData) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
-}
-
-// Bridge RunarKeys.MobileKeyManager to EnvelopeCrypto expected by serializer
-// MobileKeyManager already conforms to RunarKeys.EnvelopeCrypto in swift-keys
-
-public struct SerializationContext {
-    public let keystore: EnvelopeCrypto
-    public let resolver: LabelResolver
-    public let networkId: String
-    public let profilePublicKey: Data?
-
-    public init(keystore: EnvelopeCrypto, resolver: LabelResolver, networkId: String, profilePublicKey: Data? = nil) {
-        self.keystore = keystore
-        self.resolver = resolver
-        self.networkId = networkId
-        self.profilePublicKey = profilePublicKey
-    }
 }

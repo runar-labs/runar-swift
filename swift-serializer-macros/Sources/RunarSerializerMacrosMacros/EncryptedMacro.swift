@@ -51,7 +51,12 @@ public struct EncryptedMacro: MemberMacro {
             public typealias Encrypted = \(raw: encryptedStructName)
 
             /// Encrypt this struct using the provided keystore
-            public func encryptWithKeystore(_ keystore: RunarSerializer.EnvelopeCrypto, resolver: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
+            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
+                // Ensure decoder is registered for lazy deserialization by wire name
+                await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
+                    let decoder = CodableCBORDecoder()
+                    return try decoder.decode(\(raw: structName).self, from: data)
+                }
                 // Serialize the struct to CBOR for encrypted types
                 let anyValue = RunarSerializer.AnyValue.struct(self)
                 let serialized = try anyValue.serialize(context: nil)
@@ -77,7 +82,12 @@ public struct EncryptedMacro: MemberMacro {
                 }
 
                 /// Decrypt this struct using the provided keystore
-                public func decryptWithKeystore(_ keystore: RunarSerializer.EnvelopeCrypto) async throws -> \(raw: structName) {
+                public func decryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto) async throws -> \(raw: structName) {
+                    // Ensure decoder is registered for lazy deserialization by wire name
+                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
+                        let decoder = CodableCBORDecoder()
+                        return try decoder.decode(\(raw: structName).self, from: data)
+                    }
                     // Use real envelope decryption from swift-keys
                     let decryptedData: Data
 
