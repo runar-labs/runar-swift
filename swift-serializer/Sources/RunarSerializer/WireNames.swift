@@ -28,19 +28,33 @@ enum WireNames {
         if let primitive = primitiveWireName(elem) {
             return "list<\(primitive)>"
         }
-        // Fallback to Swift name for now; will be replaced by registry wire names
+        // Use registry if available; fallback to Swift name
         let swiftName = String(describing: elem)
-        return "list<\(swiftName)>"
+        let wire = (try? awaitTypeNameRegistryLookup(swiftName: swiftName)) ?? swiftName
+        return "list<\(wire)>"
     }
 
     static func mapWireName(_ elem: Any.Type) -> String {
         if let primitive = primitiveWireName(elem) {
             return "map<string,\(primitive)>"
         }
-        // Fallback to Swift name for now; will be replaced by registry wire names
+        // Use registry if available; fallback to Swift name
         let swiftName = String(describing: elem)
-        return "map<string,\(swiftName)>"
+        let wire = (try? awaitTypeNameRegistryLookup(swiftName: swiftName)) ?? swiftName
+        return "map<string,\(wire)>"
     }
+}
+
+// Actor hop helper to look up wire name from registry synchronously (best-effort)
+func awaitTypeNameRegistryLookup(swiftName: String) throws -> String? {
+    var result: String?
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        result = await TypeNameRegistry.shared.lookupWireName(swiftTypeName: swiftName)
+        semaphore.signal()
+    }
+    _ = semaphore.wait(timeout: .now() + 0.05)
+    return result
 }
 
 // Minimal CBOR->Foundation JSON converter for json category

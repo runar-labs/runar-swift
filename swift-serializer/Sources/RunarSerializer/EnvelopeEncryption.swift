@@ -47,8 +47,8 @@ public enum EnvelopeEncryption {
         #if canImport(RunarKeys)
         let km = context.keystore as! MobileKeyManager
         let networkId = context.networkId
-        let profileIds = [context.profileId]
-        return try km.encryptWithEnvelope(data: data, networkId: networkId, profileIds: profileIds)
+        // For now, pass empty profileIds; element-level encryption will handle recipients per element when needed
+        return try km.encryptWithEnvelope(data: data, networkId: networkId, profileIds: [])
         #else
         // Local-only stub path: return plaintext packaged as an "envelope"
         return EnvelopeEncryptedData(

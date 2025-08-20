@@ -274,7 +274,7 @@ public enum EncryptedFieldUtils {
             keystore: context.keystore,
             resolver: context.resolver,
             networkId: context.networkId,
-            profileId: context.profileId
+            profilePublicKey: context.profilePublicKey
         )
 
         // Encrypt using envelope encryption

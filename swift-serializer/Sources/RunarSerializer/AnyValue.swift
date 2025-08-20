@@ -176,8 +176,8 @@ public class AnyValue {
 
     /// Create a struct value
     public static func `struct`<T: Codable>(_ value: T) -> AnyValue {
-        // TODO: replace with registry wire name when available
-        let typeName = String(describing: T.self)
+        let swiftName = String(describing: T.self)
+        let typeName = (try? awaitTypeNameRegistryLookup(swiftName: swiftName)) ?? swiftName
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
             // Use CBOR encoding directly for structs
             let encoder = CodableCBOREncoder()
@@ -965,12 +965,12 @@ public struct SerializationContext {
     public let keystore: EnvelopeCrypto
     public let resolver: LabelResolver
     public let networkId: String
-    public let profileId: String
+    public let profilePublicKey: Data?
 
-    public init(keystore: EnvelopeCrypto, resolver: LabelResolver, networkId: String, profileId: String) {
+    public init(keystore: EnvelopeCrypto, resolver: LabelResolver, networkId: String, profilePublicKey: Data? = nil) {
         self.keystore = keystore
         self.resolver = resolver
         self.networkId = networkId
-        self.profileId = profileId
+        self.profilePublicKey = profilePublicKey
     }
 }
