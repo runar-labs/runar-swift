@@ -60,6 +60,15 @@ final class KeysTests: XCTestCase {
 
 		try FileManager.default.removeItem(atPath: tempDir)
 	}
+
+	func testLocalDataEncryptDecrypt() throws {
+		let keys = try FFIKeys()
+		let plaintext = Data("secret bytes".utf8)
+		let cipher = try keys.encryptLocalData(plaintext)
+		XCTAssertNotEqual(cipher, plaintext)
+		let recovered = try keys.decryptLocalData(cipher)
+		XCTAssertEqual(recovered, plaintext)
+	}
 }
 
 

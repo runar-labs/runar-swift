@@ -257,5 +257,68 @@ public final class FFIKeys {
 		rn_free(b, outLen)
 		return data
 	}
+
+	public func encryptLocalData(_ data: Data) throws -> Data {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		var out: UnsafeMutablePointer<UInt8>?
+		var outLen: Int = 0
+		let (_, err) = withRnError { errPtr in
+			data.withUnsafeBytes { raw in
+				rn_keys_encrypt_local_data(h,
+											raw.bindMemory(to: UInt8.self).baseAddress,
+											data.count,
+											&out,
+											&outLen,
+											errPtr)
+			}
+		}
+		if let e = err { throw e }
+		guard let p = out else { return Data() }
+		let cipher = Data(bytes: p, count: outLen)
+		rn_free(p, outLen)
+		return cipher
+	}
+
+	public func decryptLocalData(_ encrypted: Data) throws -> Data {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		var out: UnsafeMutablePointer<UInt8>?
+		var outLen: Int = 0
+		let (_, err) = withRnError { errPtr in
+			encrypted.withUnsafeBytes { raw in
+				rn_keys_decrypt_local_data(h,
+											raw.bindMemory(to: UInt8.self).baseAddress,
+											encrypted.count,
+											&out,
+											&outLen,
+											errPtr)
+			}
+		}
+		if let e = err { throw e }
+		guard let p = out else { return Data() }
+		let plain = Data(bytes: p, count: outLen)
+		rn_free(p, outLen)
+		return plain
+	}
+
+	public func extractAgreementPk(fromSetupTokenCBOR st: Data) throws -> Data {
+		var out: UnsafeMutablePointer<UInt8>?
+		var outLen: Int = 0
+		let (_, err) = withRnError { errPtr in
+			st.withUnsafeBytes { raw in
+				rn_keys_extract_agreement_pk_from_setup_token(
+					raw.bindMemory(to: UInt8.self).baseAddress,
+					st.count,
+					&out,
+					&outLen,
+					errPtr
+				)
+			}
+		}
+		if let e = err { throw e }
+		guard let p = out else { return Data() }
+		let pk = Data(bytes: p, count: outLen)
+		rn_free(p, outLen)
+		return pk
+	}
 }
 

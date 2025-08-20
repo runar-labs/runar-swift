@@ -16,27 +16,42 @@ public final class FFIKeyStore {
         pkRawBuffers.reserveCapacity(profilePublicKeys.count)
         for pk in profilePublicKeys {
             let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: pk.count)
-            _ = pk.copyBytes(to: buf, count: pk.count)
+            pk.copyBytes(to: buf, count: pk.count)
             pkRawBuffers.append(buf)
         }
         // Build pointers and lengths arrays
-        var pkPtrs: [UnsafePointer<UInt8>?] = pkRawBuffers.map { UnsafePointer($0) }
-        var pkLens: [Int] = profilePublicKeys.map { $0.count }
+        let pkPtrs: [UnsafePointer<UInt8>?] = pkRawBuffers.map { UnsafePointer($0) }
+        let pkLens: [Int] = profilePublicKeys.map { $0.count }
 
         let (_, err) = withRnError { errPtr in
             data.withUnsafeBytes { dataRaw in
                 pkPtrs.withUnsafeBufferPointer { ptrsBuf in
                     pkLens.withUnsafeBufferPointer { lensBuf in
-                        rn_keys_encrypt_with_envelope(keys.handle,
-                                                      dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                                                      data.count,
-                                                      networkId ?? "",
-                                                      ptrsBuf.baseAddress,
-                                                      lensBuf.baseAddress,
-                                                      profilePublicKeys.count,
-                                                      &outCbor,
-                                                      &outLen,
-                                                      errPtr)
+                        if let nid = networkId, !nid.isEmpty {
+                            nid.withCString { cstr in
+                                rn_keys_encrypt_with_envelope(keys.handle,
+                                                              dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                                              data.count,
+                                                              cstr,
+                                                              ptrsBuf.baseAddress,
+                                                              lensBuf.baseAddress,
+                                                              profilePublicKeys.count,
+                                                              &outCbor,
+                                                              &outLen,
+                                                              errPtr)
+                            }
+                        } else {
+                            rn_keys_encrypt_with_envelope(keys.handle,
+                                                          dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                                          data.count,
+                                                          nil,
+                                                          ptrsBuf.baseAddress,
+                                                          lensBuf.baseAddress,
+                                                          profilePublicKeys.count,
+                                                          &outCbor,
+                                                          &outLen,
+                                                          errPtr)
+                        }
                     }
                 }
             }
