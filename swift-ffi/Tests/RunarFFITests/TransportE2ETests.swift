@@ -1,6 +1,7 @@
 import XCTest
 @testable import RunarFFI
 import RunarTestUtils
+import SwiftCBOR
 
 final class TransportE2ETests: XCTestCase {
     func testTwoTransportsConnectAndRequest() throws {
@@ -23,13 +24,65 @@ final class TransportE2ETests: XCTestCase {
         let p2 = TestFixtures.peerInfo(publicKey: try n2.publicKey(), addresses: ["127.0.0.1:50602"]) 
         try t1.connectPeer(p2)
 
-        // Simple publish then poll events for a short period to assert no crash (full request path requires handlers and callbacks)
-        // We exercise pollEvent readiness
-        let start = Date()
-        while Date().timeIntervalSince(start) < 0.2 {
-            _ = try t1.pollEvent()
-            _ = try t2.pollEvent()
+        // Helper: poll until event of type appears (or timeout)
+        func waitForEvent(_ transport: FFITransport, _ type: String, timeout: TimeInterval = 3.0) throws -> CBOR? {
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                if let evData = try transport.pollEvent() {
+                    if let cbor = try? CBOR.decode([UInt8](evData)) {
+                        if case let .map(map) = cbor, let t = map[.utf8String("type")], case let .utf8String(s) = t, s == type {
+                            return cbor
+                        }
+                    }
+                }
+                usleep(20_000)
+            }
+            return nil
         }
+
+        // Expect PeerConnected on t1 or t2
+        _ = try waitForEvent(t1, "PeerConnected")
+
+        // Validate isConnected API
+        let peerNodeId = try n2.nodeId()
+        XCTAssertTrue(try t1.isConnected(peerNodeId))
+
+        // Request path round-trip: t1 -> t2
+        let path = "test:echo/req"
+        let correlation = "corr-1"
+        let payload = Data([1,2,3])
+        try t1.request(path: path, correlationId: correlation, payload: payload, destPeerId: try n2.nodeId(), profilePublicKey: nil)
+
+        // t2 should receive RequestReceived; reply with completeRequest
+        if let reqEv = try waitForEvent(t2, "RequestReceived") {
+            if case let .map(map) = reqEv,
+               let reqIdV = map[.utf8String("request_id")], case let .utf8String(reqId) = reqIdV {
+                // Respond with payload Data([9])
+                try t2.completeRequest(requestId: reqId, responsePayload: Data([9]), profilePublicKey: nil)
+            }
+        }
+
+        // t1 should receive ResponseReceived
+        if let respEv = try waitForEvent(t1, "ResponseReceived") {
+            if case let .map(map) = respEv,
+               let corrV = map[.utf8String("correlation_id")], case let .utf8String(corrBack) = corrV {
+                XCTAssertEqual(corrBack, correlation)
+            }
+        }
+
+        // Publish: t1 -> t2
+        let topic = "test:notify/event"
+        try t1.publish(path: topic, correlationId: "c-pub", payload: Data([7]), destPeerId: nil)
+        _ = try waitForEvent(t2, "EventReceived")
+
+        // Update local node info on t1
+        let updatedInfo = TestFixtures.nodeInfo(publicKey: try n1.publicKey(), addresses: ["127.0.0.1:50601"], networks: [can.defaultNetworkId], version: 1)
+        try t1.updateLocalNodeInfo(updatedInfo)
+
+        // Disconnect
+        try t1.disconnectPeer(try n2.nodeId())
+        _ = try waitForEvent(t1, "PeerDisconnected")
+        XCTAssertFalse(try t1.isConnected(try n2.nodeId()))
 
         // Stop
         try t1.stop()

@@ -186,7 +186,9 @@ public final class FFITransport {
 						rn_transport_complete_request(h, requestId, p, 0, pkp, pk.count, errPtr)
 					}
 				} else {
-					rn_transport_complete_request(h, requestId, p, 0, nil, 0, errPtr)
+					var z: UInt8 = 0
+					let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
+					rn_transport_complete_request(h, requestId, p, 0, pkp, 0, errPtr)
 				}
 			} else {
 				responsePayload.withUnsafeBytes { rawBuf in
@@ -197,7 +199,9 @@ public final class FFITransport {
 							rn_transport_complete_request(h, requestId, p, responsePayload.count, pkp, pk.count, errPtr)
 						}
 					} else {
-						rn_transport_complete_request(h, requestId, p, responsePayload.count, nil, 0, errPtr)
+						var z: UInt8 = 0
+						let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
+						rn_transport_complete_request(h, requestId, p, responsePayload.count, pkp, 0, errPtr)
 					}
 				}
 			}
