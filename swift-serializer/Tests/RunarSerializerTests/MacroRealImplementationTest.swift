@@ -1,5 +1,6 @@
 @testable import RunarSerializer
 import RunarSerializerMacros
+import SwiftCBOR
 import XCTest
 
 final class MacroRealImplementationTest: XCTestCase {

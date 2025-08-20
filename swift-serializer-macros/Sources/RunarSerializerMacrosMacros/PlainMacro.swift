@@ -52,7 +52,7 @@ public struct PlainMacro: MemberMacro {
                 Task {
                     await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
                     await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
-                        let decoder = CodableCBORDecoder()
+                        let decoder = SwiftCBOR.CodableCBORDecoder()
                         return try decoder.decode(\(raw: structName).self, from: data)
                     }
                 }

@@ -65,17 +65,12 @@ final class BasicAnyValueTests: XCTestCase {
         do {
             let serialized = try bytesValue.serialize()
             // Format: [category][encrypted][type_name_len][type_name][data]
-            // For bytes: [5][0][5]["bytes"][actual_data]
+            // For bytes: [5][0][5]["bytes"][actual_raw_data]
             XCTAssertGreaterThan(serialized.count, testData.count)
             let dataStart = 3 + 5 // category + encrypted + type_name_len + "bytes"
             let actualData = serialized[dataStart...]
-            // Payload for bytes is CBOR-encoded byte string
-            let cbor = try CBOR.decode(Array(actualData))
-            guard case let .byteString(b) = cbor else {
-                XCTFail("Expected CBOR byte string for bytes payload")
-                return
-            }
-            XCTAssertEqual(Data(b), testData)
+            // Payload for bytes is raw
+            XCTAssertEqual(Data(actualData), testData)
         } catch {
             XCTFail("Failed to serialize bytes value: \(error)")
         }

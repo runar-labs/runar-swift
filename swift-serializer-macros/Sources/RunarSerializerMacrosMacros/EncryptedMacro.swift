@@ -53,7 +53,7 @@ public struct EncryptedMacro: MemberMacro {
                 Task {
                     await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
                     await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
-                        let decoder = CodableCBORDecoder()
+                        let decoder = SwiftCBOR.CodableCBORDecoder()
                         return try decoder.decode(\(raw: structName).self, from: data)
                     }
                     await RunarSerializer.ElementCryptoRegistry.shared.register(
@@ -81,15 +81,15 @@ public struct EncryptedMacro: MemberMacro {
             public typealias Encrypted = \(raw: encryptedStructName)
 
             /// Encrypt this struct using the provided keystore
-            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver _: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
+            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
                 _ = Self._runarEncryptedBootstrap
                 // Serialize the struct to CBOR for encrypted types
                 let anyValue = RunarSerializer.AnyValue.struct(self)
                 let serialized = try anyValue.serialize(context: nil)
 
-                // Use outer envelope encryption; recipients are carried by context
-                let context = RunarSerializer.SerializationContext(keystore: keystore, resolver: DefaultLabelResolver(labelToProfileId: [:]), networkId: "")
-                let envelopeData = try RunarSerializer.EnvelopeEncryption.encrypt(serialized, context: context)
+                // Use outer envelope encryption with recipients derived from resolver
+                let labelInfo = resolver.resolveLabel("\(raw: structName)".lowercased())
+                let envelopeData = try keystore.encryptWithEnvelope(data: serialized, networkId: labelInfo?.networkId ?? "test-network", profileIds: labelInfo?.profileIds ?? [])
                 return \(raw: encryptedStructName)(encryptedData: envelopeData)
             }
 

@@ -153,8 +153,8 @@ public class AnyValue {
     public static func bytes(_ data: Data) -> AnyValue {
         let typeName = "bytes"
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
-            // Encode bytes as CBOR byte string for parity
-            return Data(CBOR.byteString([UInt8](data)).encode())
+            // Raw payload for bytes category to match Rust
+            return data
         }
 
         let asTypeFn: (Any.Type) -> Any? = { targetType in
@@ -532,197 +532,189 @@ public class AnyValue {
         // Handle by strict wire names for known categories and primitives
         switch lazyData.typeName {
         case "bytes":
-            let cborData = Array(lazyData.data)
-            guard let cbor = try? CBOR.decode(cborData) else {
-                throw SerializerError.deserializationFailed("Invalid CBOR for bytes")
-            }
-            guard case let .byteString(b) = cbor else {
-                throw SerializerError.deserializationFailed("Expected CBOR byte string for bytes")
-            }
-            guard let casted = Data(b) as? T else { throw SerializerError.typeMismatch("Cannot cast bytes to \(T.self)") }
+            // Rust ArcValue encodes raw bytes for the bytes category; accept raw payload
+            guard let casted = Data(lazyData.data) as? T else { throw SerializerError.typeMismatch("Cannot cast bytes to \(T.self)") }
             return casted
         case "string":
-            // Try to decode as CBOR string
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
+            let bytes = Array(lazyData.data)
+            if let cbor = try? CBOR.decode(bytes) {
                 switch cbor {
-                case let .utf8String(string):
-                    guard let casted = string as? T else { throw SerializerError.typeMismatch("Cannot cast string to \(T.self)") }
-                    return casted
-                default:
-                    throw SerializerError.deserializationFailed("Invalid CBOR format for String")
+                case let .utf8String(s):
+                    if let casted = s as? T { return casted }
+                    throw SerializerError.typeMismatch("Cannot cast string to \(T.self)")
+                case let .array(arr) where arr.count == 1:
+                    if case let .utf8String(s) = arr[0] {
+                        if let casted = s as? T { return casted }
+                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)")
+                    }
+                default: break
                 }
             }
-            throw SerializerError.deserializationFailed("Failed to decode String from CBOR")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(String.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast string to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode String from CBOR: \(error)")
+            }
 
         case "char":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                if case let .utf8String(s) = cbor, s.count == 1, let ch = s.first {
-                    guard let casted = ch as? T else { throw SerializerError.typeMismatch("Cannot cast char to \(T.self)") }
-                    return casted
-                }
-                throw SerializerError.deserializationFailed("Invalid CBOR format for char")
+            do {
+                let s = try SwiftCBOR.CodableCBORDecoder().decode(String.self, from: Data(lazyData.data))
+                guard s.count == 1, let ch = s.first else { throw SerializerError.deserializationFailed("Invalid CBOR format for char") }
+                guard let casted = ch as? T else { throw SerializerError.typeMismatch("Cannot cast char to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode char from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode char from CBOR")
 
         case "i8":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                switch cbor {
-                case let .unsignedInt(u):
-                    let v = Int8(truncatingIfNeeded: u)
-                    if let casted = v as? T { return casted }
-                case let .negativeInt(n):
-                    let v = Int8(truncatingIfNeeded: -Int64(n) - 1)
-                    if let casted = v as? T { return casted }
-                default: break
-                }
-                throw SerializerError.deserializationFailed("Invalid CBOR format for i8")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(Int8.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast i8 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode i8 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode i8 from CBOR")
 
         case "i16":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                switch cbor {
-                case let .unsignedInt(u):
-                    let v = Int16(truncatingIfNeeded: u)
-                    if let casted = v as? T { return casted }
-                case let .negativeInt(n):
-                    let v = Int16(truncatingIfNeeded: -Int64(n) - 1)
-                    if let casted = v as? T { return casted }
-                default: break
-                }
-                throw SerializerError.deserializationFailed("Invalid CBOR format for i16")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(Int16.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast i16 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode i16 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode i16 from CBOR")
 
         case "i32":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                switch cbor {
-                case let .unsignedInt(u):
-                    let v = Int32(truncatingIfNeeded: u)
-                    if let casted = v as? T { return casted }
-                case let .negativeInt(n):
-                    let v = Int32(truncatingIfNeeded: -Int64(n) - 1)
-                    if let casted = v as? T { return casted }
-                default: break
-                }
-                throw SerializerError.deserializationFailed("Invalid CBOR format for i32")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(Int32.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast i32 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode i32 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode i32 from CBOR")
 
         case "i64":
-            // Try to decode as CBOR integer
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
+            let bytes = Array(lazyData.data)
+            if let cbor = try? CBOR.decode(bytes) {
                 switch cbor {
-                case let .unsignedInt(int):
-                    if let casted = Int64(int) as? T { return casted }
-                    if let casted = Int(int) as? T { return casted }
+                case let .unsignedInt(u):
+                    let v = Int64(u)
+                    if let casted = v as? T { return casted }
+                    if let casted = Int(exactly: v) as? T { return casted }
                     throw SerializerError.typeMismatch("Cannot cast i64 to \(T.self)")
-                case let .negativeInt(int):
-                    let v64 = -Int64(int) - 1
-                    if let casted = v64 as? T { return casted }
-                    if let casted = Int(v64) as? T { return casted }
+                case let .negativeInt(n):
+                    let v = -Int64(n) - 1
+                    if let casted = v as? T { return casted }
+                    if let casted = Int(exactly: v) as? T { return casted }
                     throw SerializerError.typeMismatch("Cannot cast i64 to \(T.self)")
+                case let .array(arr) where arr.count == 1:
+                    if case let .unsignedInt(u) = arr[0] {
+                        let v = Int64(u)
+                        if let casted = v as? T { return casted }
+                        if let casted = Int(exactly: v) as? T { return casted }
+                    } else if case let .negativeInt(n) = arr[0] {
+                        let v = -Int64(n) - 1
+                        if let casted = v as? T { return casted }
+                        if let casted = Int(exactly: v) as? T { return casted }
+                    }
+                    // fallthrough to fallback
                 default:
-                    throw SerializerError.deserializationFailed("Invalid CBOR format for Int")
+                    break
                 }
             }
-            throw SerializerError.deserializationFailed("Failed to decode Int from CBOR")
+            // Fallback to Codable decoder for canonical integer
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(Int64.self, from: Data(lazyData.data))
+                if let casted = v as? T { return casted }
+                if let casted = Int(exactly: v) as? T { return casted }
+                throw SerializerError.typeMismatch("Cannot cast i64 to \(T.self)")
+            } catch {
+                throw SerializerError.deserializationFailed("Invalid CBOR format for i64")
+            }
 
         case "u8":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                if case let .unsignedInt(u) = cbor {
-                    let v = UInt8(truncatingIfNeeded: u)
-                    guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast u8 to \(T.self)") }
-                    return casted
-                }
-                throw SerializerError.deserializationFailed("Invalid CBOR format for u8")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(UInt8.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast u8 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode u8 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode u8 from CBOR")
 
         case "u16":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                if case let .unsignedInt(u) = cbor {
-                    let v = UInt16(truncatingIfNeeded: u)
-                    guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast u16 to \(T.self)") }
-                    return casted
-                }
-                throw SerializerError.deserializationFailed("Invalid CBOR format for u16")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(UInt16.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast u16 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode u16 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode u16 from CBOR")
 
         case "u32":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                if case let .unsignedInt(u) = cbor {
-                    let v = UInt32(truncatingIfNeeded: u)
-                    guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast u32 to \(T.self)") }
-                    return casted
-                }
-                throw SerializerError.deserializationFailed("Invalid CBOR format for u32")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(UInt32.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast u32 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode u32 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode u32 from CBOR")
 
         case "u64":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
+            let bytesU = Array(lazyData.data)
+            if let cbor = try? CBOR.decode(bytesU) {
                 switch cbor {
-                case let .unsignedInt(int):
-                    if let casted = UInt64(int) as? T { return casted }
-                    if let casted = UInt(int) as? T { return casted }
+                case let .unsignedInt(u):
+                    let v = UInt64(u)
+                    if let casted = v as? T { return casted }
+                    if let casted = UInt(exactly: v) as? T { return casted }
                     throw SerializerError.typeMismatch("Cannot cast u64 to \(T.self)")
+                case let .array(arr) where arr.count == 1:
+                    if case let .unsignedInt(u) = arr[0] {
+                        let v = UInt64(u)
+                        if let casted = v as? T { return casted }
+                        if let casted = UInt(exactly: v) as? T { return casted }
+                    }
                 default:
-                    throw SerializerError.deserializationFailed("Invalid CBOR format for UInt")
+                    break
                 }
             }
-            throw SerializerError.deserializationFailed("Failed to decode UInt from CBOR")
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(UInt64.self, from: Data(lazyData.data))
+                if let casted = v as? T { return casted }
+                if let casted = UInt(exactly: v) as? T { return casted }
+                throw SerializerError.typeMismatch("Cannot cast u64 to \(T.self)")
+            } catch {
+                throw SerializerError.deserializationFailed("Invalid CBOR format for u64")
+            }
 
         case "f32":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                switch cbor {
-                case let .float(f):
-                    guard let casted = f as? T else { throw SerializerError.typeMismatch("Cannot cast f32 to \(T.self)") }
-                    return casted
-                default:
-                    throw SerializerError.deserializationFailed("Invalid CBOR format for Float")
-                }
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(Float.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast f32 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode f32 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode Float from CBOR")
 
         case "f64":
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                switch cbor {
-                case let .double(d):
-                    guard let casted = d as? T else { throw SerializerError.typeMismatch("Cannot cast f64 to \(T.self)") }
-                    return casted
-                default:
-                    throw SerializerError.deserializationFailed("Invalid CBOR format for Double")
-                }
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(Double.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast f64 to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode f64 from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode Double from CBOR")
 
         case "bool":
-            // Try to decode as CBOR boolean
-            let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                switch cbor {
-                case let .boolean(bool):
-                    guard let casted = bool as? T else { throw SerializerError.typeMismatch("Cannot cast bool to \(T.self)") }
-                    return casted
-                default:
-                    throw SerializerError.deserializationFailed("Invalid CBOR format for Bool")
-                }
+            do {
+                let v = try SwiftCBOR.CodableCBORDecoder().decode(Bool.self, from: Data(lazyData.data))
+                guard let casted = v as? T else { throw SerializerError.typeMismatch("Cannot cast bool to \(T.self)") }
+                return casted
+            } catch {
+                throw SerializerError.deserializationFailed("Failed to decode Bool from CBOR: \(error)")
             }
-            throw SerializerError.deserializationFailed("Failed to decode Bool from CBOR")
 
         case "json":
             // Decode CBOR-encoded JSON value and return requested representation
@@ -748,7 +740,7 @@ public class AnyValue {
             return casted
 
         case "list<any>":
-            // CBOR array of element maps
+            // CBOR array of element maps (Rust serde format) or a direct array of maps
             let cborData = Array(lazyData.data)
             guard let cbor = try? CBOR.decode(cborData) else {
                 throw SerializerError.deserializationFailed("Invalid CBOR for list<any>")
@@ -772,7 +764,29 @@ public class AnyValue {
                 let name: String
                 switch nameEntry { case let .utf8String(s): name = s; default: throw SerializerError.deserializationFailed("Bad typename type") }
                 let payload: Data
-                switch valEntry { case let .byteString(b): payload = Data(b); default: throw SerializerError.deserializationFailed("Bad value type") }
+                switch valEntry {
+                case let .byteString(b):
+                    payload = Data(b)
+                case let .array(arr):
+                    var bytes: [UInt8] = []
+                    bytes.reserveCapacity(arr.count)
+                    var ok = true
+                    for e in arr {
+                        if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) {
+                            bytes.append(UInt8(u))
+                        } else {
+                            ok = false; break
+                        }
+                    }
+                    if ok {
+                        payload = Data(bytes)
+                    } else {
+                        payload = Data(valEntry.encode())
+                    }
+                default:
+                    // If the value is itself a CBOR structure, re-encode it to bytes (Rust may store raw CBOR of inner payload)
+                    payload = Data(valEntry.encode())
+                }
                 let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, keystore: lazyData.keystore, encrypted: false))
                 out.append(child)
             }
@@ -780,7 +794,7 @@ public class AnyValue {
             return casted
 
         case "map<string,any>":
-            // CBOR map of key -> element map
+            // CBOR map of key -> element map (Rust serde format)
             let cborData = Array(lazyData.data)
             guard let cbor = try? CBOR.decode(cborData) else {
                 throw SerializerError.deserializationFailed("Invalid CBOR for map<string,any>")
@@ -806,7 +820,26 @@ public class AnyValue {
                 let name: String
                 switch nameEntry { case let .utf8String(s): name = s; default: throw SerializerError.deserializationFailed("Bad typename type") }
                 let payload: Data
-                switch valEntry { case let .byteString(b): payload = Data(b); default: throw SerializerError.deserializationFailed("Bad value type") }
+                switch valEntry {
+                case let .byteString(b): payload = Data(b)
+                case let .array(arr):
+                    var bytes: [UInt8] = []
+                    bytes.reserveCapacity(arr.count)
+                    var ok = true
+                    for e in arr {
+                        if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) {
+                            bytes.append(UInt8(u))
+                        } else {
+                            ok = false; break
+                        }
+                    }
+                    if ok {
+                        payload = Data(bytes)
+                    } else {
+                        payload = Data(valEntry.encode())
+                    }
+                default: payload = Data(valEntry.encode())
+                }
                 let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, keystore: lazyData.keystore, encrypted: false))
                 out[key] = child
             }
@@ -833,7 +866,7 @@ public class AnyValue {
                         if allByteStrings {
                             let rebuiltData = Data(CBOR.array(rebuilt).encode())
                             if let target = T.self as? Decodable.Type,
-                               let decodedAny = try? CodableCBORDecoder().decode(target, from: rebuiltData) as? T {
+                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T {
                                 return decodedAny
                             }
                             throw SerializerError.deserializationFailed("Typed list decode failed to materialize Decodable target from decrypted elements")
@@ -843,7 +876,7 @@ public class AnyValue {
                 // If not element-level encrypted array, attempt to decode as plain typed CBOR array to Decodable target
                 let cborDataPlain = Array(lazyData.data)
                 if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? CodableCBORDecoder().decode(target, from: Data(cborDataPlain)) as? T {
+                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborDataPlain)) as? T {
                     return decodedAny
                 }
                 throw SerializerError.deserializationFailed("Typed list decode needs Decodable target and proper decryptor or plain decoding support")
@@ -867,7 +900,7 @@ public class AnyValue {
                         if allByteStrings {
                             let rebuiltData = Data(CBOR.map(rebuilt).encode())
                             if let target = T.self as? Decodable.Type,
-                               let decodedAny = try? CodableCBORDecoder().decode(target, from: rebuiltData) as? T {
+                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T {
                                 return decodedAny
                             }
                             throw SerializerError.deserializationFailed("Typed map decode failed to materialize Decodable target from decrypted elements")
@@ -876,7 +909,7 @@ public class AnyValue {
                 }
                 // Not element-level encrypted; try plain typed map decode to Decodable
                 if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? CodableCBORDecoder().decode(target, from: Data(cborData)) as? T {
+                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T {
                     return decodedAny
                 }
                 throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor or plain decoding support")
@@ -1158,3 +1191,4 @@ private struct DummyKeystore: RunarKeys.EnvelopeCrypto {
     func decryptWithProfile(envelopeData _: EnvelopeEncryptedData, profileId _: String) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
     func decryptWithNetwork(envelopeData _: EnvelopeEncryptedData) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
 }
+
