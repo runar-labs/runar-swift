@@ -177,7 +177,7 @@ public final class SwiftNode {
 			while let strong = self, !Task.isCancelled {
 				do {
 					if let data = try transport.pollEvent() {
-						strong.handleTransportEvent(data)
+						await strong.handleTransportEvent(data)
 						continue
 					}
 				} catch {
@@ -188,7 +188,7 @@ public final class SwiftNode {
 		}
 	}
 
-	private func handleTransportEvent(_ data: Data) {
+	private func handleTransportEvent(_ data: Data) async {
 		guard let item = try? CBORDecoder(input: [UInt8](data)).decodeItem(), case let CBOR.map(map) = item else {
 			logger.debug("transport event decode failure: invalid CBOR")
 			return
@@ -219,15 +219,13 @@ public final class SwiftNode {
 		case "RequestReceived":
 			guard let path = str("path"), let reqId = str("request_id") else { return }
 			let payload = bytes("payload")
-			Task {
-				do {
-					let any = decodeAnyValue(from: payload)
-					let result = try await self.request(path, payload: any)
-					let respBytes = try result.serialize(context: nil)
-					try self.transport?.completeRequest(requestId: reqId, responsePayload: respBytes, profilePublicKey: nil)
-				} catch {
-					self.logger.error("request handling error: \(error)")
-				}
+			do {
+				let any = decodeAnyValue(from: payload)
+				let result = try await self.request(path, payload: any)
+				let respBytes = try result.serialize(context: nil)
+				try self.transport?.completeRequest(requestId: reqId, responsePayload: respBytes, profilePublicKey: nil)
+			} catch {
+				self.logger.error("request handling error: \(error)")
 			}
 		case "PeerConnected":
 			if let peerId = str("peer_node_id") {
@@ -239,18 +237,15 @@ public final class SwiftNode {
 					let services = arr.compactMap { if case let .utf8String(s) = $0 { return s } else { return nil } }
 					registry.updatePeerServices(peerNodeId: peerId, servicePaths: services)
 				} else {
-					Task { [weak self] in
-						guard let self else { return }
-						do {
-							let full = "\(self.config.defaultNetworkId):$registry/services/list"
-							let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
-							if let metas: [RegistryServiceMetadata] = try? await resp.asType() {
-								let svcPaths = metas.map { $0.service_path }
-								self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
-							}
-						} catch {
-							self.logger.debug("peer registry query failed id=\(peerId): \(error)")
+					do {
+						let full = "\(self.config.defaultNetworkId):$registry/services/list"
+						let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
+						if let metas: [RegistryServiceMetadata] = try? await resp.asType() {
+							let svcPaths = metas.map { $0.service_path }
+							self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
 						}
+					} catch {
+						self.logger.debug("peer registry query failed id=\(peerId): \(error)")
 					}
 				}
 			}
@@ -265,11 +260,8 @@ public final class SwiftNode {
 				let data = decodeAnyValue(from: bytes("payload"))
 				let targets = registry.snapshotSubscribers(topicPath: fullPath)
 				for callback in targets {
-					Task { [weak self] in
-						guard let self else { return }
-						let ctx = EventContext(topic: fullPath, logger: logger, nodeDelegate: self, isLocal: false)
-						do { try await callback(ctx, data) } catch { self.logger.error("Event handler error: \(error)") }
-					}
+					let ctx = EventContext(topic: fullPath, logger: logger, nodeDelegate: self, isLocal: false)
+					do { try await callback(ctx, data) } catch { self.logger.error("Event handler error: \(error)") }
 				}
 			}
 		case "PeerDiscovered":

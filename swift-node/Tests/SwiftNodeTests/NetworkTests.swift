@@ -1,5 +1,6 @@
 import XCTest
 @testable import SwiftNode
+import RunarSerializer
 
 final class NetworkTests: XCTestCase {
     final class PubService: AbstractService {
@@ -10,7 +11,7 @@ final class NetworkTests: XCTestCase {
         var networkId: String? = nil
         func initService(_ ctx: LifecycleContext) async throws {
             try await ctx.registerAction("trigger") { params, ctx in
-                try await ctx.publish("pub/evt", AnyValue.primitive("hi"))
+                try await ctx.nodeDelegate.publish(topic: "pub/evt", data: AnyValue.primitive("hi"))
                 return AnyValue.null()
             }
         }
@@ -39,7 +40,7 @@ final class NetworkTests: XCTestCase {
             if s == "hi" { exp.fulfill() }
         }
         _ = try await n1.request("pub/trigger", payload: nil)
-        wait(for: [exp], timeout: 5.0)
+        await fulfillment(of: [exp], timeout: 5.0)
 
         await n2.stop()
         await n1.stop()

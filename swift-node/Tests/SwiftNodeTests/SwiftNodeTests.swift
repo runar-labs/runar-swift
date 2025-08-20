@@ -47,15 +47,15 @@ final class SwiftNodeTests: XCTestCase {
 	func testPublishSubscribeDirect() async throws {
 		let node = SwiftNode(config: .init(defaultNetworkId: "net"))
 		try await node.start()
-		var received: String? = nil
+		let exp = expectation(description: "recv")
 		_ = try await node.subscribe("echo/data", options: nil) { _, data in
 			if let d = data {
 				let val: String = try await d.asType()
-				received = val
+				if val == "ping" { exp.fulfill() }
 			}
 		}
 		try await node.publish("echo/data", data: AnyValue.primitive("ping"))
-		XCTAssertEqual(received, "ping")
+		await fulfillment(of: [exp], timeout: 2.0)
 	}
 
 	func testActionPublishesEvent() async throws {
@@ -77,14 +77,14 @@ final class SwiftNodeTests: XCTestCase {
 		}
 		try await node.addService(PubService())
 		try await node.start()
-		var got: String? = nil
+		let exp = expectation(description: "evt")
 		_ = try await node.subscribe("pub/evt", options: nil) { _, data in
 			if let d = data {
 				let val: String = try await d.asType()
-				got = val
+				if val == "event" { exp.fulfill() }
 			}
 		}
 		_ = try await node.request("pub/trigger", payload: nil)
-		XCTAssertEqual(got, "event")
+		await fulfillment(of: [exp], timeout: 2.0)
 	}
 }
