@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(RunarKeys)
-import RunarKeys
-#endif
 import SwiftCBOR
 
 // Note: Macro declarations are now in the swift-serializer-macros package
@@ -12,13 +9,13 @@ import SwiftCBOR
 /// Protocol for types that can be encrypted
 public protocol RunarEncryptable {
     associatedtype Encrypted: RunarDecryptable where Encrypted.Decrypted == Self
-    func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver: LabelResolver) throws -> Encrypted
+    func encryptWithKeystore(_ keystore: EnvelopeCrypto, resolver: LabelResolver) throws -> Encrypted
 }
 
 /// Protocol for types that can be decrypted
 public protocol RunarDecryptable {
     associatedtype Decrypted: RunarEncryptable where Decrypted.Encrypted == Self
-    func decryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto) throws -> Decrypted
+    func decryptWithKeystore(_ keystore: EnvelopeCrypto) throws -> Decrypted
 }
 
 /// Error types for serialization operations
@@ -1186,7 +1183,7 @@ public extension PlainSerializable {
 
 // Dummy keystore used only when decrypting element-level payloads without a provided keystore.
 // This will throw if used; present to satisfy function signatures.
-private struct DummyKeystore: RunarKeys.EnvelopeCrypto {
+private struct DummyKeystore: EnvelopeCrypto {
     func encryptWithEnvelope(data _: Data, networkId _: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData { throw SerializerError.encryptionFailed("No keystore") }
     func decryptWithProfile(envelopeData _: EnvelopeEncryptedData, profileId _: String) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
     func decryptWithNetwork(envelopeData _: EnvelopeEncryptedData) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }

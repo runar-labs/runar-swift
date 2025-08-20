@@ -144,9 +144,9 @@ int32_t rn_keys_mobile_install_network_public_key(void *keys,
 - Construct/destroy: `rn_keys_new` / `rn_keys_free`.
 - Identity: `rn_keys_node_get_public_key`, `rn_keys_node_get_node_id`.
 - CSR/cert flow: `rn_keys_node_generate_csr`, `rn_keys_mobile_process_setup_token`, `rn_keys_node_install_certificate`.
-- State: `rn_keys_node_export_state`, `rn_keys_node_import_state`, and mobile variants.
-- Envelope encrypt/decrypt helpers: `rn_keys_encrypt_with_envelope`, `rn_keys_decrypt_envelope` (for Swift serializer integration).
-- Mobile/device: `rn_keys_mobile_initialize_user_root_key`, `rn_keys_mobile_derive_user_profile_key`, etc.
+- Persistence/state (device-keystore-backed): `rn_keys_set_persistence_dir`, `rn_keys_enable_auto_persist`, `rn_keys_wipe_persistence`, `rn_keys_flush_state`, probes `rn_keys_node_get_keystore_state`, `rn_keys_mobile_get_keystore_state`. Legacy import/export APIs are removed.
+- Envelope encrypt/decrypt helpers: `rn_keys_encrypt_with_envelope`, `rn_keys_decrypt_envelope` (for Swift serializer integration). Schema: `{ encrypted_data: bstr, network_id: tstr|null, network_encrypted_key: bstr, profile_encrypted_keys: { tstr => bstr } }`.
+- Mobile/device: `rn_keys_mobile_initialize_user_root_key`, `rn_keys_mobile_derive_user_profile_key`, `rn_keys_mobile_generate_network_data_key`, `rn_keys_mobile_get_network_public_key`, `rn_keys_mobile_create_network_key_message`, `rn_keys_node_install_network_key`, and helper `rn_keys_extract_agreement_pk_from_setup_token`.
 - Persistence and caps: `rn_keys_set_persistence_dir`, `rn_keys_enable_auto_persist`, `rn_keys_wipe_persistence`, `rn_keys_flush_state`, `rn_keys_get_keystore_caps`, `rn_keys_node_get_keystore_state`, `rn_keys_mobile_get_keystore_state`.
 - Device registration: `rn_keys_register_apple_device_keystore`, `rn_keys_register_linux_device_keystore`.
 - Setters: `rn_keys_set_label_mapping`, `rn_keys_set_local_node_info`.
@@ -156,17 +156,35 @@ int32_t rn_keys_mobile_install_network_public_key(void *keys,
 - Lifecycle: `rn_transport_start`, `rn_transport_stop`, `rn_transport_local_addr`.
 - Connectivity: `rn_transport_connect_peer`, `rn_transport_disconnect_peer`, `rn_transport_is_connected`.
 - Messaging: `rn_transport_request`, `rn_transport_publish`, `rn_transport_complete_request`, `rn_transport_update_local_node_info`.
-- Events: `rn_transport_poll_event` returns CBOR-encoded events: `PeerConnected`, `PeerDisconnected`, `RequestReceived`, `ResponseReceived`.
+- Events: `rn_transport_poll_event` returns canonical CBOR maps with `type` and `v`:
+  - `PeerConnected`: `{ "type":"PeerConnected", "v":1, "peer_node_id": tstr, "node_info": bstr(NodeInfo CBOR) }`
+  - `PeerDisconnected`: `{ "type":"PeerDisconnected", "v":1, "peer_node_id": tstr }`
+  - `RequestReceived`: `{ "type":"RequestReceived", "v":1, "request_id": tstr, "path": tstr, "correlation_id": tstr, "payload": bstr, "profile_public_key": bstr }`
+  - `ResponseReceived`: `{ "type":"ResponseReceived", "v":1, "correlation_id": tstr, "payload": bstr }`
+  Optional fields must be present as empty values (non-null pointers with length 0) over FFI.
 
 ### Discovery APIs (all implemented in FFI)
 - Construct/free: `rn_discovery_new_with_multicast` / `rn_discovery_free`.
 - Lifecycle: `rn_discovery_init`, `rn_discovery_bind_events_to_transport`, `rn_discovery_start_announcing`, `rn_discovery_stop_announcing`, `rn_discovery_shutdown`.
-- Updates: `rn_discovery_update_local_peer_info`.
+- Updates: `rn_discovery_update_local_peer_info`. Events bound to transport via `rn_discovery_bind_events_to_transport` emit: `{ "type":"PeerDiscovered"|"PeerUpdated"|"PeerLost", "v":1, "peer_info"|"peer_node_id": ... }`.
 
 ### CBOR message contracts
 - Options (`QuicTransportOptionsFFI`): `{ v, bind_addr, handshake_timeout_ms, open_stream_timeout_ms, max_message_size, log_level, ... }`.
 - Events carry node IDs, correlation IDs, payload bytes, and profile public keys as needed.
-- Keys contracts (`SetupToken`, `NodeCertificateMessage`, `Node/Mobile state`) as CBOR.
+- Keys contracts:
+  - `SetupToken`: `{ node_public_key: bstr, node_agreement_public_key: bstr, csr_der: bstr, node_id: tstr }`
+  - `NodeCertificateMessage`: CBOR-encoded structure containing `node_certificate`, `ca_certificate`, and `metadata`.
+  - `Mobile/Node state`: CBOR snapshots written via device keystore persistence; not exposed over FFI.
+### Error codes and memory
+- Return `0` on success. Non-zero codes:
+  - `1`: null/invalid argument
+  - `2`: decode/operation error
+  - `3`: allocation failure
+  - `1000`: panic guard triggered
+- On error, `rn_last_error` may contain an additional string; Swift frees strings with `rn_string_free`. Returned buffers must be freed via `rn_free` after copying.
+
+### Optional pointer semantics
+- For optional strings/byte arrays passed over FFI, pass a non-null pointer with length `0` to indicate empty when the C API requires a pointer (e.g., `rn_transport_request/complete_request` `profile_pk` argument). Pass `NULL` for optional C strings when explicitly allowed (e.g., `network_id_or_null` in `rn_keys_encrypt_with_envelope`).
 
 ---
 

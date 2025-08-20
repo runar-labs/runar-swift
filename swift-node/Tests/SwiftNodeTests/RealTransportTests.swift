@@ -21,28 +21,26 @@ final class RealTransportTests: XCTestCase {
         func stop(_ context: LifecycleContext) async throws {}
     }
     func testTwoNodesRequestRoundTrip() async throws {
-        // Create two node states signed by the same mobile master (Rust parity)
-        let states = try TestFixtures.createNetworkedKeyStates(total: 2, defaultNetworkId: "net")
-        var keysA = try TestFixtures.makeNodeKeys(from: states.nodeStates[0])
-        var keysB = try TestFixtures.makeNodeKeys(from: states.nodeStates[1])
-        // Ensure resolver mapping exists before transport creation
-        let emptyMapping = CBOR.map([:])
-        try keysA.setLabelMapping(Data(emptyMapping.encode()))
-        try keysB.setLabelMapping(Data(emptyMapping.encode()))
+        // Build two nodes with CA-signed certs using test fixtures
+        let fixture = try TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:0", "127.0.0.1:0"], defaultNetworkId: "net")
+        var keysA = fixture.nodes[0]
+        var keysB = fixture.nodes[1]
         // Node A (inject keys so start() uses them)
-        let nodeA = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysA)
+        let nodeA = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysA)
         try await nodeA.addService(EchoService())
         try await nodeA.start()
         _ = try nodeA.exportPeerInfoCBOR()
         // Node B
-        let nodeB = SwiftNode(config: .init(defaultNetworkId: "net", network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysB)
+        let nodeB = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysB)
         try await nodeB.start()
         _ = try nodeB.exportPeerInfoCBOR()
         // Export peer info from A and connect B
         let peerInfoA = try nodeA.exportPeerInfoCBOR()
         try nodeB.connectPeer(peerInfoA)
+        // Wait a brief moment for connection establishment metadata propagation
+        try? await Task.sleep(nanoseconds: 200_000_000)
         // Simple request to A's local svc from B (over network)
-        let result = try await nodeB.request("svc/echo", payload: .primitive("hello"))
+        let result = try await nodeB.requestToPeer("svc/echo", payload: AnyValue.primitive("hello"), peerNodeId: try fixture.nodeIds[0])
         let s: String = try await result.asType()
         XCTAssertEqual(s, "hello")
         await nodeB.stop()

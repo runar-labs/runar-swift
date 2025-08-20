@@ -12,7 +12,6 @@ let package = Package(
     products: [],
     dependencies: [
         .package(path: "swift-common"),
-        .package(path: "swift-keys"),
         .package(path: "swift-serializer-macros"),
         .package(path: "swift-serializer"),
         .package(path: "swift-transporter"),

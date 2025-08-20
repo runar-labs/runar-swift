@@ -474,6 +474,11 @@ public final class SwiftNode {
 		}
 	}
 
+	public func requestToPeer(_ path: String, payload: AnyValue?, peerNodeId: String, timeoutMs: UInt64? = nil) async throws -> AnyValue {
+		let full = qualify(path)
+		return try await requestAtPeer(full, payload: payload, peerNodeId: peerNodeId, timeoutMs: timeoutMs ?? config.requestTimeoutMs)
+	}
+
 	private func parseNetwork(_ full: String) -> String { full.split(separator: ":").first.map(String.init) ?? config.defaultNetworkId }
 	private func parseService(_ full: String) -> String {
 		guard let rest = full.split(separator: ":").dropFirst().first else { return "default" }
