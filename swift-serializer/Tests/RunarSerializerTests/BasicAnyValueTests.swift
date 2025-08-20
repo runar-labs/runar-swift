@@ -1,4 +1,5 @@
 @testable import RunarSerializer
+import SwiftCBOR
 import XCTest
 
 final class BasicAnyValueTests: XCTestCase {
@@ -68,7 +69,13 @@ final class BasicAnyValueTests: XCTestCase {
             XCTAssertGreaterThan(serialized.count, testData.count)
             let dataStart = 3 + 5 // category + encrypted + type_name_len + "bytes"
             let actualData = serialized[dataStart...]
-            XCTAssertEqual(Data(actualData), testData)
+            // Payload for bytes is CBOR-encoded byte string
+            let cbor = try CBOR.decode(Array(actualData))
+            guard case let .byteString(b) = cbor else {
+                XCTFail("Expected CBOR byte string for bytes payload")
+                return
+            }
+            XCTAssertEqual(Data(b), testData)
         } catch {
             XCTFail("Failed to serialize bytes value: \(error)")
         }

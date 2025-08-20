@@ -20,6 +20,7 @@ public actor TypeNameRegistry {
         registerBuiltin(String.self, wire: "string")
         registerBuiltin(Bool.self, wire: "bool")
         registerBuiltin(Data.self, wire: "bytes")
+        registerBuiltin(Character.self, wire: "char")
         registerBuiltin(Int8.self, wire: "i8")
         registerBuiltin(Int16.self, wire: "i16")
         registerBuiltin(Int32.self, wire: "i32")

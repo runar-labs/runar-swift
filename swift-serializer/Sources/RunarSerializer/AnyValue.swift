@@ -153,7 +153,8 @@ public class AnyValue {
     public static func bytes(_ data: Data) -> AnyValue {
         let typeName = "bytes"
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
-            data
+            // Encode bytes as CBOR byte string for parity
+            return Data(CBOR.byteString([UInt8](data)).encode())
         }
 
         let asTypeFn: (Any.Type) -> Any? = { targetType in
@@ -530,27 +531,16 @@ public class AnyValue {
 
         // Handle by strict wire names for known categories and primitives
         switch lazyData.typeName {
-        case let typeName where typeName.contains("Struct") || typeName.contains("struct"):
-            // Try CBOR deserialization for structs
+        case "bytes":
             let cborData = Array(lazyData.data)
-            if let cbor = try? CBOR.decode(cborData) {
-                switch cbor {
-                case let .map(map):
-                    // Convert CBOR map back to dictionary
-                    var dict: [String: Any] = [:]
-                    for (key, value) in map {
-                        if case let .utf8String(keyStr) = key {
-                            dict[keyStr] = value
-                        }
-                    }
-                    guard let casted = dict as? T else { throw SerializerError.typeMismatch("Cannot cast struct to \(T.self)") }
-                    return casted
-                default:
-                    throw SerializerError.deserializationFailed("Invalid CBOR format for struct")
-                }
+            guard let cbor = try? CBOR.decode(cborData) else {
+                throw SerializerError.deserializationFailed("Invalid CBOR for bytes")
             }
-            throw SerializerError.deserializationFailed("Failed to decode struct from CBOR")
-
+            guard case let .byteString(b) = cbor else {
+                throw SerializerError.deserializationFailed("Expected CBOR byte string for bytes")
+            }
+            guard let casted = Data(b) as? T else { throw SerializerError.typeMismatch("Cannot cast bytes to \(T.self)") }
+            return casted
         case "string":
             // Try to decode as CBOR string
             let cborData = Array(lazyData.data)
@@ -581,6 +571,45 @@ public class AnyValue {
                 }
             }
             throw SerializerError.deserializationFailed("Failed to decode Int from CBOR")
+
+        case "u64":
+            let cborData = Array(lazyData.data)
+            if let cbor = try? CBOR.decode(cborData) {
+                switch cbor {
+                case let .unsignedInt(int):
+                    guard let casted = UInt(int) as? T else { throw SerializerError.typeMismatch("Cannot cast u64 to \(T.self)") }
+                    return casted
+                default:
+                    throw SerializerError.deserializationFailed("Invalid CBOR format for UInt")
+                }
+            }
+            throw SerializerError.deserializationFailed("Failed to decode UInt from CBOR")
+
+        case "f32":
+            let cborData = Array(lazyData.data)
+            if let cbor = try? CBOR.decode(cborData) {
+                switch cbor {
+                case let .float(f):
+                    guard let casted = f as? T else { throw SerializerError.typeMismatch("Cannot cast f32 to \(T.self)") }
+                    return casted
+                default:
+                    throw SerializerError.deserializationFailed("Invalid CBOR format for Float")
+                }
+            }
+            throw SerializerError.deserializationFailed("Failed to decode Float from CBOR")
+
+        case "f64":
+            let cborData = Array(lazyData.data)
+            if let cbor = try? CBOR.decode(cborData) {
+                switch cbor {
+                case let .double(d):
+                    guard let casted = d as? T else { throw SerializerError.typeMismatch("Cannot cast f64 to \(T.self)") }
+                    return casted
+                default:
+                    throw SerializerError.deserializationFailed("Invalid CBOR format for Double")
+                }
+            }
+            throw SerializerError.deserializationFailed("Failed to decode Double from CBOR")
 
         case "bool":
             // Try to decode as CBOR boolean
@@ -709,7 +738,13 @@ public class AnyValue {
                     }
                     }
                 }
-                throw SerializerError.deserializationFailed("Typed list decode needs Decodable target and proper decryptor")
+                // If not element-level encrypted array, attempt to decode as plain typed CBOR array to Decodable target
+                let cborDataPlain = Array(lazyData.data)
+                if let target = T.self as? Decodable.Type,
+                   let decodedAny = try? CodableCBORDecoder().decode(target, from: Data(cborDataPlain)) as? T {
+                    return decodedAny
+                }
+                throw SerializerError.deserializationFailed("Typed list decode needs Decodable target and proper decryptor or plain decoding support")
             }
 
             if let elemWire = WireNameParser.parseMap(lazyData.typeName), lazyData.typeName != "map<string,any>" {
@@ -729,9 +764,15 @@ public class AnyValue {
                     }
                     }
                 }
-                throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor")
+                // Not element-level encrypted; try plain typed map decode to Decodable
+                if let target = T.self as? Decodable.Type,
+                   let decodedAny = try? CodableCBORDecoder().decode(target, from: Data(cborData)) as? T {
+                    return decodedAny
+                }
+                throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor or plain decoding support")
             }
 
+            // Structs and custom types: require known wire name in registry
             // Try to find a registered decoder for this wire name
             if let decoder = await TypeNameRegistry.shared.lookupDecoderByWireName(lazyData.typeName) {
                 guard let result = try decoder(lazyData.data) as? T else {
@@ -740,7 +781,8 @@ public class AnyValue {
                 return result
             }
 
-            throw SerializerError.deserializationFailed("Unsupported type for lazy deserialization: \(lazyData.typeName)")
+            // If we reach here, the wire name is unknown; reject strictly
+            throw SerializerError.deserializationFailed("Unknown wire name: \(lazyData.typeName)")
         }
     }
 
@@ -795,6 +837,28 @@ public class AnyValue {
         let valueData = data[dataStart...]
         let isEncrypted = isEncryptedByte == 0x01
 
+        // Strict wire-name validation for primitives/containers/json
+        switch category {
+        case .primitive:
+            if !WireNames.isValidPrimitiveWireName(typeName) {
+                throw SerializerError.deserializationFailed("Unknown primitive wire name: \(typeName)")
+            }
+        case .list:
+            if typeName != "list<any>", WireNameParser.parseList(typeName) == nil {
+                throw SerializerError.deserializationFailed("Unknown list wire name: \(typeName)")
+            }
+        case .map:
+            if typeName != "map<string,any>", WireNameParser.parseMap(typeName) == nil {
+                throw SerializerError.deserializationFailed("Unknown map wire name: \(typeName)")
+            }
+        case .json:
+            if typeName != "json" { throw SerializerError.deserializationFailed("Unknown json wire name: \(typeName)") }
+        case .bytes:
+            if typeName != "bytes" { throw SerializerError.deserializationFailed("Unknown bytes wire name: \(typeName)") }
+        default:
+            break
+        }
+
         // Create lazy data for deferred deserialization
         let lazyData = LazyData(
             typeName: typeName,
@@ -803,18 +867,8 @@ public class AnyValue {
             encrypted: isEncrypted
         )
 
-        // Handle cases that can be immediately deserialized
-        switch category {
-        case .bytes:
-            // For bytes, the data is already in the correct format
-            return AnyValue.bytes(Data(valueData))
-        case .json:
-            // JSON payload is CBOR-encoded; keep lazy to decode on demand
-            return AnyValue.lazy(category: category, lazyData: lazyData)
-        default:
-            // For other categories, create lazy deserialization
-            return AnyValue.lazy(category: category, lazyData: lazyData)
-        }
+        // Keep everything lazy, including bytes and json
+        return AnyValue.lazy(category: category, lazyData: lazyData)
     }
 }
 
@@ -982,7 +1036,7 @@ public extension PlainSerializable {
 
 /// Protocol for envelope encryption operations
 /// Matches the MobileKeyManager interface from swift-keys
-// Use EnvelopeCrypto from RunarKeys
+/// Use EnvelopeCrypto from RunarKeys
 
 // Dummy keystore used only when decrypting element-level payloads without a provided keystore.
 // This will throw if used; present to satisfy function signatures.

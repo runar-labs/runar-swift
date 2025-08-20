@@ -2,11 +2,23 @@ import Foundation
 import SwiftCBOR
 
 enum WireNames {
+    static let primitiveWireSet: Set<String> = [
+        "string", "bool", "bytes", "char",
+        "i8", "i16", "i32", "i64",
+        "u8", "u16", "u32", "u64",
+        "f32", "f64"
+    ]
+
+    static func isValidPrimitiveWireName(_ name: String) -> Bool {
+        primitiveWireSet.contains(name)
+    }
+
     static func primitiveWireName(_ type: Any.Type) -> String? {
         switch type {
         case is String.Type: return "string"
         case is Bool.Type: return "bool"
         case is Data.Type: return "bytes"
+        case is Character.Type: return "char"
         case is Int8.Type: return "i8"
         case is Int16.Type: return "i16"
         case is Int32.Type: return "i32"
@@ -84,6 +96,19 @@ func awaitLookupEncryptor(forWireName containerWireName: String) -> ElementCrypt
         semaphore.signal()
     }
     _ = semaphore.wait(timeout: .now() + 0.1)
+    return result
+}
+
+func awaitTypeNameRegistryHasWireName(_ wire: String) -> Bool {
+    var result = false
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        let t = await TypeNameRegistry.shared.lookupSwiftTypeByWireName(wire)
+        let d = await TypeNameRegistry.shared.lookupDecoderByWireName(wire)
+        result = (t != nil) || (d != nil)
+        semaphore.signal()
+    }
+    _ = semaphore.wait(timeout: .now() + 0.05)
     return result
 }
 
