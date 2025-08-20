@@ -1,101 +1,75 @@
 import Foundation
-import RunarKeys
 import CRunarFFI
 import SwiftCBOR
 
-public final class FFIKeyStore: EnvelopeCrypto {
+public final class FFIKeyStore {
     private let keys: FFIKeys
 
-    public init(keys: FFIKeys) {
-        self.keys = keys
-    }
+    public init(keys: FFIKeys) { self.keys = keys }
 
-    public func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData {
-        var profilePks = [Data]()
-        for id in profileIds {
-            let pk = try keys.mobileDeriveUserProfileKey(label: id)
-            profilePks.append(pk)
-        }
-
-        var pkPointers = profilePks.map { $0.withUnsafeBytes { $0.baseAddress?.assumingMemoryBound(to: UInt8.self) } }
-        var pkLens = profilePks.map { $0.count }
-
+    // Returns canonical CBOR (as produced by Rust) of the envelope encrypted data
+    public func encryptWithEnvelope(data: Data, networkId: String?, profilePublicKeys: [Data]) throws -> Data {
         var outCbor: UnsafeMutablePointer<UInt8>?
         var outLen: Int = 0
+        // Allocate C buffers to keep pointers valid during the call
+        var pkRawBuffers: [UnsafeMutablePointer<UInt8>] = []
+        pkRawBuffers.reserveCapacity(profilePublicKeys.count)
+        for pk in profilePublicKeys {
+            let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: pk.count)
+            _ = pk.copyBytes(to: buf, count: pk.count)
+            pkRawBuffers.append(buf)
+        }
+        // Build pointers and lengths arrays
+        var pkPtrs: [UnsafePointer<UInt8>?] = pkRawBuffers.map { UnsafePointer($0) }
+        var pkLens: [Int] = profilePublicKeys.map { $0.count }
+
         let (_, err) = withRnError { errPtr in
-            data.withUnsafeBytes { dataPtr in
-                withUnsafeMutablePointer(to: &pkPointers) { pkPtr in
-                    withUnsafeMutablePointer(to: &pkLens) { lenPtr in
-                        rn_keys_encrypt_with_envelope(
-                            keys.handle,
-                            dataPtr.baseAddress,
-                            data.count,
-                            networkId,
-                            pkPtr,
-                            lenPtr,
-                            profileIds.count,
-                            &outCbor,
-                            &outLen,
-                            errPtr
-                        )
+            data.withUnsafeBytes { dataRaw in
+                pkPtrs.withUnsafeBufferPointer { ptrsBuf in
+                    pkLens.withUnsafeBufferPointer { lensBuf in
+                        rn_keys_encrypt_with_envelope(keys.handle,
+                                                      dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                                      data.count,
+                                                      networkId ?? "",
+                                                      ptrsBuf.baseAddress,
+                                                      lensBuf.baseAddress,
+                                                      profilePublicKeys.count,
+                                                      &outCbor,
+                                                      &outLen,
+                                                      errPtr)
                     }
                 }
             }
         }
+        // Free allocated buffers
+        for p in pkRawBuffers { p.deallocate() }
         if let e = err { throw e }
-        guard let cborPtr = outCbor else { throw FFIError(code: -1, message: "Encryption failed") }
-        let eedCbor = Data(bytesNoCopy: cborPtr, count: outLen, deallocator: .custom { ptr, len in rn_free(ptr.assumingMemoryBound(to: UInt8.self), len) })
-
-        // Parse CBOR to EnvelopeEncryptedData
-        guard let cbor = try? CBOR.decode(eedCbor),
-              case let .map(dict) = cbor else {
-            throw FFIError(code: -1, message: "Invalid EED CBOR")
-        }
-        let encryptedData = (dict[.utf8String("encryptedData")] as? CBOR.byteString).map(Data.init) ?? Data()
-        let parsedNetworkId = (dict[.utf8String("networkId")] as? CBOR.utf8String)
-        let networkKey = (dict[.utf8String("networkEncryptedKey")] as? CBOR.byteString).map(Data.init) ?? Data()
-        var profileKeys = [String: Data]()
-        if case let .map(profDict) = dict[.utf8String("profileEncryptedKeys")] {
-            for (k, v) in profDict {
-                if case let .utf8String(key) = k, case let .byteString(val) = v {
-                    profileKeys[key] = Data(val)
-                }
-            }
-        }
-
-        return EnvelopeEncryptedData(encryptedData: encryptedData, networkId: parsedNetworkId, networkEncryptedKey: networkKey, profileEncryptedKeys: profileKeys)
+        guard let ptr = outCbor else { throw FFIError(code: -1, message: "encrypt_with_envelope returned null") }
+        let eedCbor = Data(bytes: ptr, count: outLen)
+        rn_free(ptr, outLen)
+        return eedCbor
     }
 
-    public func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId: String) throws -> Data {
-        let eedCbor = try encodeEnvelopeToCBOR(envelopeData)  // Implement helper to encode
-
-        var outPlain: UnsafeMutablePointer<UInt8>?
+    // Accepts canonical EED CBOR (e.g., produced by encryptWithEnvelope) and returns plaintext
+    public func decryptEnvelopeCBOR(_ cbor: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen: Int = 0
         let (_, err) = withRnError { errPtr in
-            eedCbor.withUnsafeBytes { ptr in
-                rn_keys_decrypt_envelope(keys.handle, ptr.baseAddress, eedCbor.count, &outPlain, &outLen, errPtr)
+            cbor.withUnsafeBytes { raw in
+                rn_keys_decrypt_envelope(keys.handle,
+                                         raw.bindMemory(to: UInt8.self).baseAddress,
+                                         cbor.count,
+                                         &outPtr,
+                                         &outLen,
+                                         errPtr)
             }
         }
         if let e = err { throw e }
-        guard let plainPtr = outPlain else { throw FFIError(code: -1, message: "Decryption failed") }
-        let plainData = Data(bytesNoCopy: plainPtr, count: outLen, deallocator: .custom { ptr, len in rn_free(ptr.assumingMemoryBound(to: UInt8.self), len) })
-        return plainData
-    }
-
-    public func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data {
-        return try decryptWithProfile(envelopeData: envelopeData, profileId: profileId)  // Use same for now
-    }
-
-    private func encodeEnvelopeToCBOR(_ eed: EnvelopeEncryptedData) throws -> Data {
-        var map = [CBOR: CBOR]()
-        map[.utf8String("encryptedData")] = .byteString(Array(eed.encryptedData))
-        if let nid = eed.networkId { map[.utf8String("networkId")] = .utf8String(nid) }
-        map[.utf8String("networkEncryptedKey")] = .byteString(Array(eed.networkEncryptedKey))
-        var profMap = [CBOR: CBOR]()
-        for (k, v) in eed.profileEncryptedKeys {
-            profMap[.utf8String(k)] = .byteString(Array(v))
-        }
-        map[.utf8String("profileEncryptedKeys")] = .map(profMap)
-        return CBOR.encodeMap(map)
+        guard let p = outPtr else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
     }
 }
+
+

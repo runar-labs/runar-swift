@@ -6,6 +6,9 @@ let package = Package(
 	products: [
 		.library(name: "RunarFFI", targets: ["RunarFFI"]),
 	],
+	dependencies: [
+		.package(url: "https://github.com/myfreeweb/SwiftCBOR.git", from: "0.4.5")
+	],
 	targets: [
 		.target(
 			name: "CRunarFFI",
@@ -16,7 +19,7 @@ let package = Package(
 		),
 		.target(
 			name: "RunarFFI",
-			dependencies: ["CRunarFFI"],
+			dependencies: ["CRunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR")],
 			swiftSettings: [],
 			linkerSettings: [
 				.linkedLibrary("runar_ffi"),
@@ -25,7 +28,7 @@ let package = Package(
 		),
 		.testTarget(
 			name: "RunarFFITests",
-			dependencies: ["RunarFFI", "SwiftCBOR"]
+			dependencies: ["RunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR")]
 		)
 	]
 )

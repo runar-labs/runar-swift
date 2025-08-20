@@ -241,5 +241,21 @@ public final class FFIKeys {
 		}
 		if let e = err { throw e }
 	}
+
+	public func mobileDeriveUserProfileKey(label: String) throws -> Data {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		var outPk: UnsafeMutablePointer<UInt8>?
+		var outLen: Int = 0
+		let (_, err) = withRnError { errPtr in
+			label.withCString { cLabel in
+				rn_keys_mobile_derive_user_profile_key(h, cLabel, &outPk, &outLen, errPtr)
+			}
+		}
+		if let e = err { throw e }
+		guard let b = outPk else { return Data() }
+		let data = Data(bytes: b, count: outLen)
+		rn_free(b, outLen)
+		return data
+	}
 }
 
