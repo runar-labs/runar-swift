@@ -5,7 +5,7 @@ import SwiftCommon
 public typealias ActionHandler = (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
 public typealias EventHandler = @Sendable (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
 
-public struct EventRegistrationOptions {
+public struct EventRegistrationOptions: Sendable {
 	public var includePast: TimeInterval?
 	public init(includePast: TimeInterval? = nil) { self.includePast = includePast }
 }

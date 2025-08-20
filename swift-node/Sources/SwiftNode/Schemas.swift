@@ -1,7 +1,7 @@
 import Foundation
 import RunarSerializer
 
-public struct RegistryServiceMetadata: Codable, Equatable {
+public struct RegistryServiceMetadata: Codable, Equatable, Sendable {
 	public let network_id: String
 	public let service_path: String
 	public let name: String

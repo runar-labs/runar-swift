@@ -101,6 +101,7 @@ protocol NodeTransport {
 
 extension FFITransport: NodeTransport {}
 
+@MainActor
 public final class SwiftNode {
 	private let config: SwiftNodeConfig
 	private let logger: RunarLogger
@@ -111,21 +112,18 @@ public final class SwiftNode {
 	// Discovery integration is available via FFIDiscovery; not auto-started by default
 	private var discovery: FFIDiscovery?
 	private var eventLoopTask: Task<Void, Never>?
-	private let pendingQueue = DispatchQueue(label: "com.runar.swiftnode.pending")
-	private final class ContinuationBox: @unchecked Sendable { let cont: CheckedContinuation<AnyValue, Error>; init(_ c: CheckedContinuation<AnyValue, Error>) { cont = c } }
+	private final class ContinuationBox { let cont: CheckedContinuation<Data, Error>; init(_ c: CheckedContinuation<Data, Error>) { cont = c } }
 	// Removed OnceFlag; use actor OneShotBox for single-result synchronization
 	private var pendingByCorrelationId: [String: (box: ContinuationBox, timeoutAt: Date)] = [:]
 	// Retained events storage (serial queue for async-safety)
 	private let retainedQueue = DispatchQueue(label: "com.runar.swiftnode.retained")
-	private var retainedByTopic: [String: [(ts: Date, data: Data)]] = [:]
+	private var retainedByTopic: [String: [(ts: Date, data: AnyValue)]] = [:]
 	private let maxRetainedPerTopic = 16
 	private func setPending(_ id: String, box: ContinuationBox, timeoutAt: Date) {
-		pendingQueue.sync { pendingByCorrelationId[id] = (box, timeoutAt) }
+		pendingByCorrelationId[id] = (box, timeoutAt)
 	}
 	private func takePending(_ id: String) -> ContinuationBox? {
-		var r: ContinuationBox?
-		pendingQueue.sync { r = pendingByCorrelationId.removeValue(forKey: id)?.box }
-		return r
+		pendingByCorrelationId.removeValue(forKey: id)?.box
 	}
 
 	public init(config: SwiftNodeConfig, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
@@ -329,8 +327,7 @@ public final class SwiftNode {
 
 	private func completePending(correlationId: String, payload: Data?) {
 		if let box = takePending(correlationId) {
-			let any = decodeAnyValue(from: payload)
-			box.cont.resume(returning: any)
+			box.cont.resume(returning: payload ?? Data())
 		}
 	}
 
@@ -457,7 +454,7 @@ public final class SwiftNode {
 			let correlationId = UUID().uuidString
 			let bytes = try payload?.serialize(context: nil) ?? Data()
 			let timeout = TimeInterval(config.requestTimeoutMs) / 1000.0
-			return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AnyValue, Error>) in
+			let responseBytes = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
 				// Register pending continuation
 				let box = ContinuationBox(continuation)
 				setPending(correlationId, box: box, timeoutAt: Date().addingTimeInterval(timeout))
@@ -479,6 +476,7 @@ public final class SwiftNode {
 					if let box = self.takePending(correlationId) { box.cont.resume(throwing: error) }
 				}
 			}
+			return decodeAnyValue(from: responseBytes)
 		}
 		// Try registered remote handlers (round-robin naive) as fallback for tests/dev
 		let remotes = registry.getRemoteActionHandlers(topicPath: full)
@@ -521,8 +519,7 @@ public final class SwiftNode {
 				var deque = retainedByTopic[qualified] ?? []
 				deque.removeAll { $0.ts < cutoff }
 				while deque.count >= maxRetainedPerTopic { _ = deque.removeFirst() }
-				let bytes = (try? data?.serialize(context: nil)) ?? Data()
-				deque.append((now, bytes))
+				deque.append((now, data ?? AnyValue.null()))
 				retainedByTopic[qualified] = deque
 			}
 		}
@@ -534,16 +531,15 @@ public final class SwiftNode {
 		// Deliver past retained event if requested (exact-topic only)
 		if let lookback = options?.includePast, lookback > 0 {
 			let cutoff = Date().addingTimeInterval(-lookback)
-			var latest: (Date, Data)?
+			var latest: (Date, AnyValue)?
 			retainedQueue.sync {
 				if let deque = retainedByTopic[full] {
 					latest = deque.last(where: { $0.ts >= cutoff })
 				}
 			}
-			if let (_, bytes) = latest {
+			if let (_, av) = latest {
 				let ctx = EventContext(topic: full, logger: logger, nodeDelegate: self, isLocal: true)
-				let av = decodeAnyValue(from: bytes)
-				Task { try? await callback(ctx, av) }
+				try? await callback(ctx, av)
 			}
 		}
 		return id
@@ -565,11 +561,13 @@ public final class SwiftNode {
 			// includePast immediate delivery
 			if let lookback = includePast {
 				let cutoff = Date().addingTimeInterval(-lookback)
-				var latest: (Date, Data)?
+				var latest: (Date, AnyValue)?
 				self.retainedQueue.sync {
 					if let deque = self.retainedByTopic[full] { latest = deque.last(where: { $0.ts >= cutoff }) }
 				}
-				if let (_, bytes) = latest { _ = await box.setIfEmpty(.success(bytes)) }
+				if let (_, av) = latest {
+					_ = await box.setIfEmpty(.success((try? av.serialize(context: nil)) ?? Data()))
+				}
 			}
 			// wait for timeout
 			try? await Task.sleep(nanoseconds: timeoutNs)
@@ -606,7 +604,7 @@ public final class SwiftNode {
 		let correlationId = UUID().uuidString
 		let bytes = try payload?.serialize(context: nil) ?? Data()
 		let timeout = TimeInterval(timeoutMs) / 1000.0
-		return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AnyValue, Error>) in
+		let responseBytes = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
 			let box = ContinuationBox(continuation)
 			setPending(correlationId, box: box, timeoutAt: Date().addingTimeInterval(timeout))
 			Task { [weak self] in
@@ -622,6 +620,7 @@ public final class SwiftNode {
 				if let box = self.takePending(correlationId) { box.cont.resume(throwing: error) }
 			}
 		}
+		return decodeAnyValue(from: responseBytes)
 	}
 
 	public func requestToPeer(_ path: String, payload: AnyValue?, peerNodeId: String, timeoutMs: UInt64? = nil) async throws -> AnyValue {
@@ -639,10 +638,7 @@ public final class SwiftNode {
 }
 
 // Concurrency sendability allowances for background event handling
-extension SwiftNode: @unchecked Sendable {}
-// TODO: Replace these with native Sendable in upstream modules
-extension FFITransport: @retroactive @unchecked Sendable {}
-extension RunarLogger: @retroactive @unchecked Sendable {}
+// Note: No global Sendable shims here; all state crossing tasks is guarded (actors/queues)
 // Removed retroactive Sendable for AnyValue by keeping Data across tasks
 
 extension SwiftNode: NodeDelegate {
