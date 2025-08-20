@@ -2,7 +2,7 @@ import Foundation
 import RunarSerializer
 import SwiftCommon
 
-public typealias ActionHandler = (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
+public typealias ActionHandler = @Sendable (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
 public typealias EventHandler = @Sendable (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
 
 public struct EventRegistrationOptions: Sendable {
@@ -10,7 +10,7 @@ public struct EventRegistrationOptions: Sendable {
 	public init(includePast: TimeInterval? = nil) { self.includePast = includePast }
 }
 
-public enum LocalServiceState: String {
+public enum LocalServiceState: String, Sendable {
 	case initialized
 	case running
 	case paused
@@ -18,7 +18,7 @@ public enum LocalServiceState: String {
 	case error
 }
 
-public struct LocalServiceEntry {
+public struct LocalServiceEntry: Sendable {
 	public let servicePath: String
 	public let name: String
 	public let version: String
@@ -27,6 +27,7 @@ public struct LocalServiceEntry {
 	public var state: LocalServiceState
 }
 
+@MainActor
 final class ServiceRegistry {
 	private var localActions: PathTrie<ActionHandler> = PathTrie()
 	private var localSubscriptions: PathTrie<(id: String, handler: EventHandler)> = PathTrie()
@@ -154,11 +155,8 @@ final class ServiceRegistry {
 	func subscribe(topicPath: String, handler: @escaping EventHandler) -> String {
 		lock.lock(); defer { lock.unlock() }
 		let id = UUID().uuidString
-		let wrapped: EventHandler = { [logger] ctx, data in
-			logger.debug("Delivering event to subscription id=\(id) topic=\(ctx.topic)")
-			try await handler(ctx, data)
-		}
-		localSubscriptions.appendValue(topic: TopicPath.parse(topicPath), content: (id, wrapped))
+		// Keep the original handler; avoid capturing RunarLogger inside a @Sendable closure
+		localSubscriptions.appendValue(topic: TopicPath.parse(topicPath), content: (id, handler))
 		logger.debug("Subscribed to \(topicPath) id=\(id)")
 		return id
 	}
@@ -175,8 +173,8 @@ final class ServiceRegistry {
 }
 
 private struct DummyNodeDelegate: NodeDelegate {
-	func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws {}
-	func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String { return "" }
-	func unsubscribe(_ id: String) async throws {}
-	func publish(topic: String, data: AnyValue?) async throws {}
+	@MainActor func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws {}
+	@MainActor func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String { return "" }
+	@MainActor func unsubscribe(_ id: String) async throws {}
+	@MainActor func publish(topic: String, data: AnyValue?) async throws {}
 }

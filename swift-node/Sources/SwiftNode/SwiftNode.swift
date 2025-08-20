@@ -19,7 +19,7 @@ public struct SwiftNetworkConfig {
 	}
 }
 
-public struct SwiftNodeConfig {
+public struct SwiftNodeConfig: Sendable {
 	public var defaultNetworkId: String
 	public var networkIds: [String]
 	public var requestTimeoutMs: UInt64
@@ -77,6 +77,7 @@ actor OneShotBox {
 	func get() -> Result<Data?, Error>? { v }
 }
 
+@MainActor
 public protocol NodeDelegate {
 	func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws
 	func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String
@@ -344,11 +345,11 @@ public final class SwiftNode {
 		// $registry: list services, service info, state
 		let lifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$registry", config: nil, logger: logger, nodeDelegate: self)
 		try await lifecycle.registerAction("services/list") { _, _ in
-			let services = self.registry.getLocalServices()
+			let services = await self.registry.getLocalServices()
 			let now = UInt64(Date().timeIntervalSince1970)
 			let typed: [RegistryServiceMetadata] = services.map { svc in
 				RegistryServiceMetadata(
-					network_id: self.config.defaultNetworkId,
+					network_id: await self.config.defaultNetworkId,
 					service_path: svc.servicePath,
 					name: svc.name,
 					version: svc.version,
@@ -361,10 +362,10 @@ public final class SwiftNode {
 		}
 		try await lifecycle.registerAction("services/{service_path}") { _, ctx in
 			let path = ctx.servicePath
-			if let info = self.registry.getLocalService(servicePath: path) {
+			if let info = await self.registry.getLocalService(servicePath: path) {
 				let now = UInt64(Date().timeIntervalSince1970)
 				let meta = RegistryServiceMetadata(
-					network_id: self.config.defaultNetworkId,
+					network_id: await self.config.defaultNetworkId,
 					service_path: info.servicePath,
 					name: info.name,
 					version: info.version,
@@ -394,17 +395,17 @@ public final class SwiftNode {
 		// $registry: service state, pause/resume (local only)
 		try await lifecycle.registerAction("services/{service_path}/state") { _, ctx in
 			let path = ctx.servicePath
-			if let entry = self.registry.getLocalService(servicePath: path) {
+			if let entry = await self.registry.getLocalService(servicePath: path) {
 				return AnyValue.primitive(entry.state.rawValue)
 			}
 			return AnyValue.null()
 		}
 		try await lifecycle.registerAction("services/{service_path}/pause") { _, ctx in
-			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused)
+			await self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused)
 			return AnyValue.primitive(true)
 		}
 		try await lifecycle.registerAction("services/{service_path}/resume") { _, ctx in
-			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running)
+			await self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running)
 			return AnyValue.primitive(true)
 		}
 	}
