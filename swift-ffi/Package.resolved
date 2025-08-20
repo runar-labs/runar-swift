@@ -1,10 +1,19 @@
 {
-  "originHash" : "05f83dd8262cf569da8781e724a33dff8613e7c127e9e72c3237587f2d7e0c1e",
+  "originHash" : "09ea5cfb4f0d8d50206a89d9069b33f8aececd2e0d6bae84f2ab74bb1a0a8344",
   "pins" : [
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "64889f0c732f210a935a0ad7cda38f77f876262d",
+        "version" : "509.1.1"
+      }
+    },
     {
       "identity" : "swiftcbor",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/myfreeweb/SwiftCBOR.git",
+      "location" : "https://github.com/valpackett/SwiftCBOR.git",
       "state" : {
         "revision" : "04ccff117f6549121d5721ec84fdf0162122b90e",
         "version" : "0.5.0"

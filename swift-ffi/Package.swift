@@ -7,8 +7,9 @@ let package = Package(
 		.library(name: "RunarFFI", targets: ["RunarFFI"]),
 	],
 	dependencies: [
-		.package(url: "https://github.com/myfreeweb/SwiftCBOR.git", from: "0.4.5"),
-		.package(path: "../swift-test-utils")
+		.package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
+		.package(path: "../swift-test-utils"),
+		.package(path: "../swift-serializer")
 	],
 	targets: [
 		.target(
@@ -29,7 +30,7 @@ let package = Package(
 		),
 		.testTarget(
 			name: "RunarFFITests",
-			dependencies: ["RunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR"), .product(name: "RunarTestUtils", package: "swift-test-utils")] 
+			dependencies: ["RunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR"), .product(name: "RunarTestUtils", package: "swift-test-utils"), .product(name: "RunarSerializer", package: "swift-serializer")] 
 		)
 	]
 )

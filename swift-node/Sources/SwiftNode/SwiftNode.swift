@@ -63,6 +63,7 @@ public final class SwiftNode {
 	private var nodeId: String
 	private var ffiKeys: FFIKeys?
 	private var transport: (any NodeTransport)?
+	private var discovery: FFIDiscovery?
 	private var eventLoopTask: Task<Void, Never>?
 	private let pendingQueue = DispatchQueue(label: "com.runar.swiftnode.pending")
 	private final class ContinuationBox: @unchecked Sendable { let cont: CheckedContinuation<AnyValue, Error>; init(_ c: CheckedContinuation<AnyValue, Error>) { cont = c } }
@@ -140,12 +141,21 @@ public final class SwiftNode {
 		let initialNodeInfo = try buildLocalNodeInfoCBOR(addresses: initialAddrs)
 		try keys.setLocalNodeInfo(initialNodeInfo)
 		let options = buildTransportOptionsCBOR()
-		self.transport = try FFITransport(keys: keys, optionsCBOR: options)
-		try self.transport?.start()
+		let ffiTransport = try FFITransport(keys: keys, optionsCBOR: options)
+		self.transport = ffiTransport
+		try ffiTransport.start()
 		// Now update NodeInfo with the actual bound address
 		if let addr = try? self.transport?.localAddr() {
 			let updated = try buildLocalNodeInfoCBOR(addresses: [addr])
 			try self.transport?.updateLocalNodeInfo(updated)
+			// Initialize discovery and start announcing
+			let disc = try FFIDiscovery(keys: keys, optionsCBOR: Data())
+			try disc.initWithOptions(Data())
+			try disc.bindEvents(to: ffiTransport)
+			// Provide peer info mirroring NodeInfo minimal fields expected by discovery
+			try disc.updateLocalPeerInfo(try buildPeerInfoCBOR(addresses: [addr]))
+			try disc.startAnnouncing()
+			self.discovery = disc
 		}
 		startEventLoop()
 	}
@@ -155,7 +165,9 @@ public final class SwiftNode {
 		eventLoopTask?.cancel()
 		eventLoopTask = nil
 		do { try transport?.stop() } catch { logger.error("transport stop error: \(error)") }
+		do { try discovery?.shutdown() } catch { logger.error("discovery shutdown error: \(error)") }
 		transport = nil
+		discovery = nil
 		ffiKeys = nil
 	}
 
@@ -370,6 +382,14 @@ public final class SwiftNode {
 			.utf8String("subscriptions"): .array([])
 		])
 		map[.utf8String("version")] = .unsignedInt(0)
+		return Data(CBOR.map(map).encode())
+	}
+
+	private func buildPeerInfoCBOR(addresses: [String]) throws -> Data {
+		var map: [CBOR: CBOR] = [:]
+		let pk = try ffiKeys?.publicKey() ?? Data()
+		map[.utf8String("public_key")] = .array([UInt8](pk).map { .unsignedInt(UInt64($0)) })
+		map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
 		return Data(CBOR.map(map).encode())
 	}
 

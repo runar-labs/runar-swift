@@ -14,7 +14,6 @@ let package = Package(
         .package(path: "swift-common"),
         .package(path: "swift-serializer-macros"),
         .package(path: "swift-serializer"),
-        .package(path: "swift-transporter"),
     ],
     targets: []
 )

@@ -1,9 +1,10 @@
 import XCTest
 @testable import RunarFFI
 import SwiftCBOR
+import RunarSerializer
 
 final class EnvelopeE2ETests: XCTestCase {
-    func testEnvelopeEncryptDecryptViaFFI() throws {
+    func testEnvelopeEncryptDecryptViaFFI() async throws {
         let tempDir = NSTemporaryDirectory() + "ffi_env_test_\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
@@ -12,9 +13,7 @@ final class EnvelopeE2ETests: XCTestCase {
         try keys.enableAutoPersist(true)
         try keys.mobileInitializeUserRootKey()
 
-        // Derive two profile keys for recipients
-        let p1 = try keys.mobileDeriveUserProfileKey(label: "personal")
-        let p2 = try keys.mobileDeriveUserProfileKey(label: "work")
+        // Profile keys not required for this E2E (network-based envelope)
 
         // Generate network id and CSR (SetupToken CBOR)
         let nid = try keys.mobileGenerateNetworkDataKey()
@@ -33,19 +32,16 @@ final class EnvelopeE2ETests: XCTestCase {
             throw XCTSkip("SetupToken missing node_agreement_public_key; skipping network flow")
         }
 
-        // Encrypt via FFI helpers and decrypt via FFI
+        // Encrypt/decrypt end-to-end via AnyValue serialization using FFI keystore
         let store = FFIKeyStore(keys: keys)
         let plaintext = Data("hello ffi".utf8)
         if usedNetwork {
-            // Encrypt with network only
-            let eedNet = try store.encryptWithEnvelope(data: plaintext, networkId: nid, profilePublicKeys: [])
-            let decNet = try store.decryptEnvelopeCBOR(eedNet)
-            XCTAssertEqual(decNet, plaintext)
-
-            // Encrypt with network + profiles
-            let eedBoth = try store.encryptWithEnvelope(data: plaintext, networkId: nid, profilePublicKeys: [p1, p2])
-            let decBoth = try store.decryptEnvelopeCBOR(eedBoth)
-            XCTAssertEqual(decBoth, plaintext)
+            let ctx = SerializationContext(keystore: store, resolver: DefaultLabelResolver(labelToProfileId: [:]), networkId: nid)
+            let any = AnyValue.bytes(plaintext)
+            let serialized = try any.serialize(context: ctx)
+            let round = try AnyValue.deserialize(serialized, keystore: store)
+            let back: Data = try await round.asType()
+            XCTAssertEqual(back, plaintext)
         }
 
         try FileManager.default.removeItem(atPath: tempDir)

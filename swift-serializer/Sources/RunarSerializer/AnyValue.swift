@@ -1,4 +1,5 @@
 import Foundation
+import RunarFFI
 import SwiftCBOR
 
 // Note: Macro declarations are now in the swift-serializer-macros package

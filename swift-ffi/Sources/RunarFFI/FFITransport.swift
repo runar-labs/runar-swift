@@ -13,7 +13,7 @@ public struct TransportOptions: Codable {
 }
 
 public final class FFITransport {
-	private var handle: UnsafeMutableRawPointer?
+	internal var handle: UnsafeMutableRawPointer?
 
 	public init(keys: FFIKeys, optionsCBOR: Data) throws {
 		var out: UnsafeMutableRawPointer?

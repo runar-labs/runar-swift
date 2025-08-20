@@ -1,4 +1,5 @@
 import Foundation
+import RunarFFI
 import SwiftCBOR
 
 /// Default label resolver that maps labels directly to profile IDs

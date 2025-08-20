@@ -1,28 +1,11 @@
 import Foundation
+import RunarFFI
 
 // Shared encryption-related types used across the serializer
 
-public struct EnvelopeEncryptedData: Sendable, Equatable, Codable {
-    public let encryptedData: Data
-    public let networkId: String?
-    public let networkEncryptedKey: Data
-    public let profileEncryptedKeys: [String: Data]
-
-    public init(encryptedData: Data, networkId: String?, networkEncryptedKey: Data, profileEncryptedKeys: [String: Data]) {
-        self.encryptedData = encryptedData
-        self.networkId = networkId
-        self.networkEncryptedKey = networkEncryptedKey
-        self.profileEncryptedKeys = profileEncryptedKeys
-    }
-}
-
-public protocol EnvelopeCrypto: Sendable {
-    func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData
-    func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId: String) throws -> Data
-    func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data
-}
-
-public typealias KeyStore = EnvelopeCrypto
+public typealias EnvelopeEncryptedData = RunarFFI.EnvelopeEncryptedData
+public typealias EnvelopeCrypto = RunarFFI.EnvelopeCrypto
+public typealias KeyStore = RunarFFI.EnvelopeCrypto
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto
