@@ -63,6 +63,7 @@ public final class SwiftNode {
 	private var nodeId: String
 	private var ffiKeys: FFIKeys?
 	private var transport: (any NodeTransport)?
+	// Discovery integration is available via FFIDiscovery; not auto-started by default
 	private var discovery: FFIDiscovery?
 	private var eventLoopTask: Task<Void, Never>?
 	private let pendingQueue = DispatchQueue(label: "com.runar.swiftnode.pending")
@@ -148,13 +149,10 @@ public final class SwiftNode {
 		if let addr = try? self.transport?.localAddr() {
 			let updated = try buildLocalNodeInfoCBOR(addresses: [addr])
 			try self.transport?.updateLocalNodeInfo(updated)
-			// Initialize discovery and start announcing
+			// Discovery can be started by host explicitly; not enabled by default. Bind events so we can receive PeerDiscovered.
 			let disc = try FFIDiscovery(keys: keys, optionsCBOR: Data())
 			try disc.initWithOptions(Data())
 			try disc.bindEvents(to: ffiTransport)
-			// Provide peer info mirroring NodeInfo minimal fields expected by discovery
-			try disc.updateLocalPeerInfo(try buildPeerInfoCBOR(addresses: [addr]))
-			try disc.startAnnouncing()
 			self.discovery = disc
 		}
 		startEventLoop()
@@ -260,6 +258,24 @@ public final class SwiftNode {
 			if let peerId = str("peer_node_id") {
 				registry.removePeer(peerId)
 				logger.info("peer disconnected id=\(peerId)")
+			}
+		case "EventReceived":
+			// Deliver incoming published events to local subscribers
+			if let fullPath = str("path") ?? str("topic") {
+				let data = decodeAnyValue(from: bytes("payload"))
+				let targets = registry.snapshotSubscribers(topicPath: fullPath)
+				for callback in targets {
+					Task { [weak self] in
+						guard let self else { return }
+						let ctx = EventContext(topic: fullPath, logger: logger, nodeDelegate: self, isLocal: false)
+						do { try await callback(ctx, data) } catch { self.logger.error("Event handler error: \(error)") }
+					}
+				}
+			}
+		case "PeerDiscovered":
+			// Auto-connect to discovered peer if peer_info is present
+			if let info = bytes("peer_info"), let transport = self.transport as? FFITransport {
+				do { try transport.connectPeer(info) } catch { logger.debug("auto-connect on discovery failed: \(error)") }
 			}
 		default:
 			logger.debug("unknown transport event type=\(type)")

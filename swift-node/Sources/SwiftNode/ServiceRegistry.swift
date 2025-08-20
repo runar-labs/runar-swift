@@ -3,7 +3,7 @@ import RunarSerializer
 import SwiftCommon
 
 public typealias ActionHandler = (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
-public typealias EventHandler = (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
+public typealias EventHandler = @Sendable (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
 
 public struct EventRegistrationOptions {
 	public var includePast: TimeInterval?

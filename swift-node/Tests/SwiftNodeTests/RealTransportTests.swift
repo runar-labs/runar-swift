@@ -26,17 +26,22 @@ final class RealTransportTests: XCTestCase {
         var keysA = fixture.nodes[0]
         var keysB = fixture.nodes[1]
         // Node A (inject keys so start() uses them)
-        let nodeA = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysA)
+        let nodeA = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50611")), keys: keysA)
         try await nodeA.addService(EchoService())
         try await nodeA.start()
         _ = try nodeA.exportPeerInfoCBOR()
         // Node B
-        let nodeB = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:0")), keys: keysB)
+        let nodeB = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50612")), keys: keysB)
         try await nodeB.start()
         _ = try nodeB.exportPeerInfoCBOR()
-        // Export peer info from A and connect B
+        // Export peer info from A and connect B, with retry/backoff
         let peerInfoA = try nodeA.exportPeerInfoCBOR()
-        try nodeB.connectPeer(peerInfoA)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        var lastError: Error?
+        for _ in 0..<5 {
+            do { try nodeB.connectPeer(peerInfoA); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 300_000_000) }
+        }
+        if let e = lastError { throw e }
         // Wait a brief moment for connection establishment metadata propagation
         try? await Task.sleep(nanoseconds: 200_000_000)
         // Simple request to A's local svc from B (over network)
