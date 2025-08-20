@@ -37,7 +37,7 @@ public final class FFIKeys {
 		if rc != 0 {
 			var buf = [CChar](repeating: 0, count: 1024)
 			_ = buf.withUnsafeMutableBufferPointer { bp in rn_last_error(bp.baseAddress, bp.count) }
-			let msg = String(cString: buf)
+			let msg = String(cString: buf, encoding: .utf8) ?? "Unknown error"
 			throw FFIError(code: rc, message: msg.isEmpty ? "rn_keys_set_label_mapping failed: rc=\(rc)" : msg)
 		}
 	}
@@ -53,7 +53,7 @@ public final class FFIKeys {
 		if rc != 0 {
 			var buf = [CChar](repeating: 0, count: 1024)
 			_ = buf.withUnsafeMutableBufferPointer { bp in rn_last_error(bp.baseAddress, bp.count) }
-			let msg = String(cString: buf)
+			let msg = String(cString: buf, encoding: .utf8) ?? "Unknown error"
 			throw FFIError(code: rc, message: msg.isEmpty ? "rn_keys_set_local_node_info failed: rc=\(rc)" : msg)
 		}
 	}
@@ -128,51 +128,115 @@ public final class FFIKeys {
 		if let e = err { throw e }
 	}
 
-	public func exportState() throws -> Data {
+	public func mobileInitializeUserRootKey() throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
-		var buf: UnsafeMutablePointer<UInt8>?
-		var len: Int = 0
 		let (_, err) = withRnError { errPtr in
-			rn_keys_node_export_state(h, &buf, &len, errPtr)
+			rn_keys_mobile_initialize_user_root_key(h, errPtr)
 		}
 		if let e = err { throw e }
-		guard let b = buf else { return Data() }
-		let data = Data(bytes: b, count: len)
-		rn_free(b, len)
-		return data
 	}
 
-	public func importState(_ stateCBOR: Data) throws {
+	public func registerAppleDeviceKeystore(label: String) throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
 		let (_, err) = withRnError { errPtr in
-			stateCBOR.withUnsafeBytes { rawBuf in
-				let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-				rn_keys_node_import_state(h, p, stateCBOR.count, errPtr)
+			label.withCString { cLabel in
+				rn_keys_register_apple_device_keystore(h, cLabel, errPtr)
 			}
 		}
 		if let e = err { throw e }
 	}
 
-	public func mobileExportState() throws -> Data {
+	public func setPersistenceDir(_ dir: String) throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
-		var buf: UnsafeMutablePointer<UInt8>?
-		var len: Int = 0
 		let (_, err) = withRnError { errPtr in
-			rn_keys_mobile_export_state(h, &buf, &len, errPtr)
+			dir.withCString { cDir in
+				rn_keys_set_persistence_dir(h, cDir, errPtr)
+			}
 		}
 		if let e = err { throw e }
-		guard let b = buf else { return Data() }
-		let data = Data(bytes: b, count: len)
-		rn_free(b, len)
+	}
+
+	public func enableAutoPersist(_ enabled: Bool) throws {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		let (_, err) = withRnError { errPtr in
+			rn_keys_enable_auto_persist(h, enabled, errPtr)
+		}
+		if let e = err { throw e }
+	}
+
+	public func wipePersistence() throws {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		let (_, err) = withRnError { errPtr in
+			rn_keys_wipe_persistence(h, errPtr)
+		}
+		if let e = err { throw e }
+	}
+
+	public func flushState() throws {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		let (_, err) = withRnError { errPtr in
+			rn_keys_flush_state(h, errPtr)
+		}
+		if let e = err { throw e }
+	}
+
+	public func nodeGetKeystoreState() throws -> Int32 {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		var state: Int32 = 0
+		let (_, err) = withRnError { errPtr in
+			rn_keys_node_get_keystore_state(h, &state, errPtr)
+		}
+		if let e = err { throw e }
+		return state
+	}
+
+	public func mobileGetKeystoreState() throws -> Int32 {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		var state: Int32 = 0
+		let (_, err) = withRnError { errPtr in
+			rn_keys_mobile_get_keystore_state(h, &state, errPtr)
+		}
+		if let e = err { throw e }
+		return state
+	}
+
+	public func mobileGenerateNetworkDataKey() throws -> String {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		var nidCStr: UnsafeMutablePointer<CChar>?
+		var nidLen: Int = 0
+		let (_, err) = withRnError { errPtr in
+			rn_keys_mobile_generate_network_data_key(h, &nidCStr, &nidLen, errPtr)
+		}
+		if let e = err { throw e }
+		defer { if let c = nidCStr { rn_string_free(c) } }
+		return nidCStr.map { String(cString: $0) } ?? ""
+	}
+
+	public func mobileCreateNetworkKeyMessage(networkId: String, nodeAgreementPk: Data) throws -> Data {
+		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+		var outCbor: UnsafeMutablePointer<UInt8>?
+		var outLen: Int = 0
+		let (_, err) = withRnError { errPtr in
+			networkId.withCString { nidC in
+				nodeAgreementPk.withUnsafeBytes { pkRaw in
+					let pkPtr = pkRaw.bindMemory(to: UInt8.self).baseAddress
+					rn_keys_mobile_create_network_key_message(h, nidC, pkPtr, nodeAgreementPk.count, &outCbor, &outLen, errPtr)
+				}
+			}
+		}
+		if let e = err { throw e }
+		guard let b = outCbor else { return Data() }
+		let data = Data(bytes: b, count: outLen)
+		rn_free(b, outLen)
 		return data
 	}
 
-	public func mobileImportState(_ stateCBOR: Data) throws {
+	public func nodeInstallNetworkKey(_ nkmCbor: Data) throws {
 		guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
 		let (_, err) = withRnError { errPtr in
-			stateCBOR.withUnsafeBytes { rawBuf in
-				let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-				rn_keys_mobile_import_state(h, p, stateCBOR.count, errPtr)
+			nkmCbor.withUnsafeBytes { raw in
+				let p = raw.bindMemory(to: UInt8.self).baseAddress
+				rn_keys_node_install_network_key(h, p, nkmCbor.count, errPtr)
 			}
 		}
 		if let e = err { throw e }

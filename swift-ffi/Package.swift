@@ -25,7 +25,7 @@ let package = Package(
 		),
 		.testTarget(
 			name: "RunarFFITests",
-			dependencies: ["RunarFFI"]
+			dependencies: ["RunarFFI", "SwiftCBOR"]
 		)
 	]
 )

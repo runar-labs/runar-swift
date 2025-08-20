@@ -22,15 +22,20 @@
 
 ### Rust unified FFI (runar-rust/runar-ffi)
 - Crate exposes a single library `runar_ffi` with type `cdylib, staticlib` and depends on `runar-keys`, `runar-transporter`, `runar-common`, `runar-schemas`.
-- Implemented exports (subset):
-  - Memory/error: `rn_free`, `rn_string_free`, `RnError`.
-  - Keys lifecycle + state: `rn_keys_new/free`, `rn_keys_node_get_public_key`, `rn_keys_node_get_node_id`, CSR/CA flow (`rn_keys_node_generate_csr`, `rn_keys_mobile_process_setup_token`, `rn_keys_node_install_certificate`), state import/export (`rn_keys_node_export_state`, `rn_keys_node_import_state`, `rn_keys_mobile_export_state`, `rn_keys_mobile_import_state`).
+- Implemented exports (verified from runar_ffi.h):
+  - Memory/error: `rn_free`, `rn_string_free`, `rn_last_error`, `rn_set_log_level`.
+  - Keys lifecycle + state: `rn_keys_new/free`, `rn_keys_node_get_public_key`, `rn_keys_node_get_node_id`, CSR/CA flow (`rn_keys_node_generate_csr`, `rn_keys_mobile_process_setup_token`, `rn_keys_node_install_certificate`), state import/export (`rn_keys_node_export_state`, `rn_keys_node_import_state`, `rn_keys_mobile_export_state`, `rn_keys_mobile_import_state`), persistence (`rn_keys_set_persistence_dir`, `rn_keys_enable_auto_persist`, `rn_keys_wipe_persistence`, `rn_keys_flush_state`).
+  - Envelope helpers: `rn_keys_encrypt_with_envelope`, `rn_keys_decrypt_envelope`, `rn_keys_encrypt_local_data`, `rn_keys_decrypt_local_data`, `rn_keys_encrypt_message_for_mobile`, `rn_keys_decrypt_message_from_mobile`, `rn_keys_encrypt_for_public_key`, `rn_keys_encrypt_for_network`, `rn_keys_decrypt_network_data`.
+  - Mobile-specific: `rn_keys_mobile_initialize_user_root_key`, `rn_keys_mobile_derive_user_profile_key`, `rn_keys_mobile_install_network_public_key`, `rn_keys_mobile_generate_network_data_key`, `rn_keys_mobile_get_network_public_key`, `rn_keys_mobile_create_network_key_message`, `rn_keys_node_install_network_key`.
+  - Keystore caps/state: `rn_keys_get_keystore_caps`, `rn_keys_node_get_keystore_state`, `rn_keys_mobile_get_keystore_state`.
+  - Device keystore registration: `rn_keys_register_apple_device_keystore`, `rn_keys_register_linux_device_keystore`.
+  - Mapping/info setters: `rn_keys_set_label_mapping`, `rn_keys_set_local_node_info`.
   - Transport construct/free: `rn_transport_new_with_keys`, `rn_transport_free`.
-- Specified but not yet implemented (per DESIGN.md):
   - Transport lifecycle: `rn_transport_start/stop/local_addr`.
   - Connectivity/messaging: `rn_transport_connect_peer/disconnect_peer/is_connected/request/publish/complete_request/update_local_node_info`.
-  - Events: `rn_transport_poll_event` (and optional callback registration).
-  - Optional envelope helpers: `rn_keys_encrypt_with_envelope`, `rn_keys_decrypt_envelope`.
+  - Events: `rn_transport_poll_event`.
+- Discovery: `rn_discovery_new_with_multicast`, `rn_discovery_free`, `rn_discovery_init`, `rn_discovery_bind_events_to_transport`, `rn_discovery_start_announcing`, `rn_discovery_stop_announcing`, `rn_discovery_shutdown`, `rn_discovery_update_local_peer_info`.
+- All functions from the original design are implemented, plus additional mobile/device keystore APIs and discovery subsystem.
 
 ### Rust Node (runar-rust/runar-node)
 - `NodeConfig` carries config including serialized `NodeKeyManagerState` (bytes). `Node::new` deserializes keys, constructs `ServiceRegistry`, label resolver, and registers `$registry` and `$keys` internal services.
@@ -62,7 +67,62 @@ CLARIFICATION.. `swift-serializer`: `AnyValue`, `EnvelopeEncryption`, protocols 
 
 ### Data flow overview
 - App creates `SwiftNodeConfig` (Swift analog of `NodeConfig`).
-- App restores Node keys by decrypting persisted CBOR state with iOS Keychain AES-GCM, then passes plaintext CBOR into `swift-ffi` → `rn_keys_node_import_state`.
+
+We have updated the key managner data flow.. here is the latest version:
+### Objectives
+
+- Ensure upper layers never receive raw key manager state bytes.
+- Move state persistence, encryption, and loading into the Rust layer.
+- Provide a minimal lifecycle probe so upper layers know whether to run first-time setup.
+
+### Lifecycle redesign (encrypted on-device persistence)
+
+- On startup, upper layer (eç.g. swift) calls a new keystore state probe:
+  - `rn_keys_mobile_get_keystore_state(keys, int32_t* out_state, err)`
+  - `rn_keys_node_get_keystore_state(keys, int32_t* out_state, err)`
+  - `out_state` values:
+    - `0` = empty / not initialized
+    - `1` = initialized / ready
+
+- Semantics:
+  - When called, Rust checks for a persisted state on disk. If present, it decrypts it using a device-keystore-bound key and loads it in-memory, then returns `1`.
+  - If not present, returns `0` and does not create any state yet.
+
+- Persistence directory:
+  - New setter: `rn_keys_set_persistence_dir(keys, const char* dir, err)`
+  - If not set, default per platform:
+    - iOS/Android: app-private data dir
+    - Linux/macOS: XDG data dir or `$HOME/.local/share/runar`/`$HOME/Library/Application Support/runar`
+
+- Explicit wipe (for dev/testing):
+  - `rn_keys_wipe_persistence(keys, err)`
+
+### Immediate removals (no backwards compatibility)
+
+- Remove from header and implementation (not used by any upper layer):
+  - `rn_keys_node_export_state`, `rn_keys_node_import_state`
+  - `rn_keys_mobile_export_state`, `rn_keys_mobile_import_state`
+  - Tests/examples must switch to lifecycle probes and device-keystore-backed persistence.
+
+### New API surface (additions)
+
+Mobile (user) operations:
+
+```c
+int32_t rn_keys_mobile_initialize_user_root_key(void *keys, struct RNAPIRnError *err);
+int32_t rn_keys_mobile_derive_user_profile_key(void *keys,
+                                               const char *label,
+                                               uint8_t **out_pk,
+                                               size_t *out_len,
+                                               struct RNAPIRnError *err);
+int32_t rn_keys_mobile_install_network_public_key(void *keys,
+                                                  const uint8_t *network_pub,
+                                                  size_t len,
+                                                  struct RNAPIRnError *err);
+```
+
+
+
 - `swift-ffi` constructs transport via `rn_transport_new_with_keys(options_cbor)` when networking is enabled.
 - `swift-node` runs a background event loop that polls `rn_transport_poll_event` and dispatches to the registry.
 - Requests/publishes from Swift services are serialized using `swift-serializer` and sent via `rn_transport_request/publish`; responses/events are deserialized and delivered to handlers.
@@ -80,19 +140,28 @@ CLARIFICATION.. `swift-serializer`: `AnyValue`, `EnvelopeEncryption`, protocols 
 - All FFI functions return `Int32`. Non-zero populates `RnError { code, message }`. Swift converts to `Error` and frees `message` with `rn_string_free`.
 - For returned buffers (`uint8_t* + len`, or `char* + len`), Swift copies into `Data`/`String` then calls `rn_free`/`rn_string_free`.
 
-### Keys APIs (existing)
+### Keys APIs (all implemented in FFI)
 - Construct/destroy: `rn_keys_new` / `rn_keys_free`.
 - Identity: `rn_keys_node_get_public_key`, `rn_keys_node_get_node_id`.
 - CSR/cert flow: `rn_keys_node_generate_csr`, `rn_keys_mobile_process_setup_token`, `rn_keys_node_install_certificate`.
 - State: `rn_keys_node_export_state`, `rn_keys_node_import_state`, and mobile variants.
-- Optional: envelope encrypt/decrypt helpers (recommended to implement in FFI for Swift serializer integration).
+- Envelope encrypt/decrypt helpers: `rn_keys_encrypt_with_envelope`, `rn_keys_decrypt_envelope` (for Swift serializer integration).
+- Mobile/device: `rn_keys_mobile_initialize_user_root_key`, `rn_keys_mobile_derive_user_profile_key`, etc.
+- Persistence and caps: `rn_keys_set_persistence_dir`, `rn_keys_enable_auto_persist`, `rn_keys_wipe_persistence`, `rn_keys_flush_state`, `rn_keys_get_keystore_caps`, `rn_keys_node_get_keystore_state`, `rn_keys_mobile_get_keystore_state`.
+- Device registration: `rn_keys_register_apple_device_keystore`, `rn_keys_register_linux_device_keystore`.
+- Setters: `rn_keys_set_label_mapping`, `rn_keys_set_local_node_info`.
 
-### Transport APIs (to implement in FFI)
+### Transport APIs (all implemented in FFI)
 - Construct/destroy: `rn_transport_new_with_keys` / `rn_transport_free`.
 - Lifecycle: `rn_transport_start`, `rn_transport_stop`, `rn_transport_local_addr`.
 - Connectivity: `rn_transport_connect_peer`, `rn_transport_disconnect_peer`, `rn_transport_is_connected`.
 - Messaging: `rn_transport_request`, `rn_transport_publish`, `rn_transport_complete_request`, `rn_transport_update_local_node_info`.
 - Events: `rn_transport_poll_event` returns CBOR-encoded events: `PeerConnected`, `PeerDisconnected`, `RequestReceived`, `ResponseReceived`.
+
+### Discovery APIs (all implemented in FFI)
+- Construct/free: `rn_discovery_new_with_multicast` / `rn_discovery_free`.
+- Lifecycle: `rn_discovery_init`, `rn_discovery_bind_events_to_transport`, `rn_discovery_start_announcing`, `rn_discovery_stop_announcing`, `rn_discovery_shutdown`.
+- Updates: `rn_discovery_update_local_peer_info`.
 
 ### CBOR message contracts
 - Options (`QuicTransportOptionsFFI`): `{ v, bind_addr, handshake_timeout_ms, open_stream_timeout_ms, max_message_size, log_level, ... }`.
@@ -139,14 +208,6 @@ CLARIFICATION.. `swift-serializer`: `AnyValue`, `EnvelopeEncryption`, protocols 
 
 ---
 
-## iOS/macOS secure persistence for keys
-
-- Host encrypts/decrypts plaintext CBOR state with a device-bound symmetric key (Keychain AES-GCM). Store only ciphertext.
-- First run: `rn_keys_new` → CSR → CA flow → `rn_keys_node_export_state` → encrypt → persist.
-- Subsequent runs: decrypt → `rn_keys_node_import_state`.
-
----
-
 ## Build, packaging, and linking
 
 - Rust: build `runar_ffi` for Apple targets; produce a single `.xcframework` and a C header via `cbindgen`.
@@ -160,23 +221,24 @@ CLARIFICATION.. `swift-serializer`: `AnyValue`, `EnvelopeEncryption`, protocols 
 ## Tasks and milestones
 
 ### A. Complete Rust FFI (runar-rust/runar-ffi)
-- [ ] Implement transport lifecycle APIs: `rn_transport_start`, `rn_transport_stop`, `rn_transport_local_addr`.
-- [ ] Implement connectivity/messaging: `rn_transport_connect_peer`, `rn_transport_disconnect_peer`, `rn_transport_is_connected`, `rn_transport_request`, `rn_transport_publish`, `rn_transport_complete_request`, `rn_transport_update_local_node_info`.
-- [ ] Implement event system and `rn_transport_poll_event` returning canonical CBOR per DESIGN.
-- [ ] Add optional envelope helpers: `rn_keys_encrypt_with_envelope`, `rn_keys_decrypt_envelope`.
-- [ ] Add panic guards and unify error codes; ensure no unwinding across FFI.
-- [ ] Ensure `cbindgen.toml` covers all types/functions; document ABI stability.
+- [x] Implement transport lifecycle APIs: `rn_transport_start`, `rn_transport_stop`, `rn_transport_local_addr`.
+- [x] Implement connectivity/messaging: `rn_transport_connect_peer`, `rn_transport_disconnect_peer`, `rn_transport_is_connected`, `rn_transport_request`, `rn_transport_publish`, `rn_transport_complete_request`, `rn_transport_update_local_node_info`.
+- [x] Implement event system and `rn_transport_poll_event` returning canonical CBOR per DESIGN.
+- [x] Add optional envelope helpers: `rn_keys_encrypt_with_envelope`, `rn_keys_decrypt_envelope`.
+- [x] Add panic guards and unify error codes; ensure no unwinding across FFI.
+- [x] Ensure `cbindgen.toml` covers all types/functions; document ABI stability.
 - [ ] CI: build Apple slices; produce `.xcframework` + header.
+- [x] Implement additional APIs: discovery subsystem, mobile/device keystore registration, persistence, keystore caps/state.
 
 ### B. Create Swift FFI package (runar-swift/swift-ffi)
 - [x] Add Swift Package `swift-ffi` with C module importing `runar_ffi.h` and Swift target `RunarFFI`.
 - [x] Keys wrapper:
-  - Implemented `FFIKeys` with `init()/deinit`, `nodeId()`, `publicKey()`, `generateCSR()`, `processSetupToken(_:)`, `installCertificate(_:)`, `exportState()`, `importState(_:)`.
+  - Implemented `FFIKeys` with `init()/deinit`, `nodeId()`, `publicKey()`, `generateCSR()`, `processSetupToken(_:)`, `installCertificate(_:)`, `exportState()`, `importState(_:)`, plus setters like `setLabelMapping` and `setLocalNodeInfo`.
 - [x] Transport wrapper skeleton:
   - Implemented `FFITransport` with `init(keys:optionsCBOR:)`, `start/stop`, `localAddr`, `connectPeer`, `disconnectPeer`, `isConnected`, `request`, `publish`, `completeRequest`, `pollEvent`, `updateLocalNodeInfo`.
   - Options passed as CBOR `Data` to match FFI contract.
-- [ ] Implement `FFIKeyStore: EnvelopeCrypto` calling the new FFI encrypt/decrypt helpers (pending FFI functions).
-- [ ] Error mapping tests and memory ownership tests.
+- [ ] Implement `FFIKeyStore: EnvelopeCrypto` calling the new FFI encrypt/decrypt helpers (pending: CBOR encoding/decoding for EnvelopeEncryptedData).
+- [x] Error mapping tests and memory ownership tests (basic in KeysTests; expand for transport/envelope).
 
 Progress/decisions:
 - We import the Rust header via a C target `CRunarFFI` and link locally to the Rust debug library for dev. For CI, we will switch to an `.xcframework` binary target.
@@ -350,3 +412,4 @@ let result = try await node.request("math/add", payload: AnyValue.map([
 - [ ] Implement `@Subscribe` to generate event subscriptions and payload decoding.
 - [ ] Add tests mirroring Rust macro tests (echo/add/multiply/divide, complex structs, publish/subscribe).
 - [ ] Docs with examples and migration guide.
+
