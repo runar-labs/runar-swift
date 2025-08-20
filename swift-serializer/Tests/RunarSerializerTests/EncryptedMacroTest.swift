@@ -185,6 +185,9 @@ struct MockLabelResolver: LabelResolver {
             "secureprofile": LabelKeyInfo(profileIds: ["profile-profile"], networkId: networkId),
             "securedata": LabelKeyInfo(profileIds: ["data-profile"], networkId: networkId),
         ]
-        return mappings[label.lowercased()]
+        if let hit = mappings[label.lowercased()] { return hit }
+        // Default: provide a network-only mapping so envelope has a decryptable network wrap
+        if let networkId { return LabelKeyInfo(profileIds: [], networkId: networkId) }
+        return nil
     }
 }
