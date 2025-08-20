@@ -16,6 +16,14 @@ public actor ElementCryptoRegistry {
 
     public func lookupEncryptor(wireName: String) -> EncryptFn? { encryptorsByWire[wireName] }
     public func lookupDecryptor(wireName: String) -> DecryptFn? { decryptorsByWire[wireName] }
+
+    nonisolated public func getEncryptor(wireName: String) async -> EncryptFn? {
+        await Self.shared.lookupEncryptor(wireName: wireName)
+    }
+
+    nonisolated public func getDecryptor(wireName: String) async -> DecryptFn? {
+        await Self.shared.lookupDecryptor(wireName: wireName)
+    }
 }
 
 

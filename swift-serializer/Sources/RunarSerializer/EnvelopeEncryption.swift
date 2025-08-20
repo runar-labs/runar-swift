@@ -4,23 +4,7 @@ import RunarKeys
 #endif
 import SwiftCBOR
 
-#if canImport(RunarKeys)
 public typealias EnvelopeEncryptedData = RunarKeys.EnvelopeEncryptedData
-#else
-public struct EnvelopeEncryptedData: Codable, Equatable {
-    public let encryptedData: Data
-    public let networkId: String?
-    public let networkEncryptedKey: Data
-    public let profileEncryptedKeys: [String: Data]
-    public init(encryptedData: Data, networkId: String?, networkEncryptedKey: Data, profileEncryptedKeys: [String: Data]) {
-        self.encryptedData = encryptedData
-        self.networkId = networkId
-        self.networkEncryptedKey = networkEncryptedKey
-        self.profileEncryptedKeys = profileEncryptedKeys
-    }
-}
-#endif
-// EnvelopeEncryptedData is now provided by RunarKeys or stubbed when unavailable
 
 /// Default label resolver that maps labels directly to profile IDs
 public struct DefaultLabelResolver: LabelResolver {
@@ -44,20 +28,9 @@ public enum EnvelopeEncryption {
         _ data: Data,
         context: SerializationContext
     ) throws -> EnvelopeEncryptedData {
-        #if canImport(RunarKeys)
-        let km = context.keystore as! MobileKeyManager
         let networkId = context.networkId
         // For now, pass empty profileIds; element-level encryption will handle recipients per element when needed
-        return try km.encryptWithEnvelope(data: data, networkId: networkId, profileIds: [])
-        #else
-        // Local-only stub path: return plaintext packaged as an "envelope"
-        return EnvelopeEncryptedData(
-            encryptedData: data,
-            networkId: context.networkId,
-            networkEncryptedKey: Data(),
-            profileEncryptedKeys: [:]
-        )
-        #endif
+        return try context.keystore.encryptWithEnvelope(data: data, networkId: networkId, profileIds: [])
     }
 
     public static func decrypt(
@@ -65,17 +38,11 @@ public enum EnvelopeEncryption {
         context: SerializationContext,
         profileId: String? = nil
     ) throws -> Data {
-        #if canImport(RunarKeys)
-        let km = context.keystore as! MobileKeyManager
         if let pid = profileId {
-            return try km.decryptWithProfile(envelopeData: envelopeData, profileId: pid)
+            return try context.keystore.decryptWithProfile(envelopeData: envelopeData, profileId: pid)
         } else {
-            return try km.decryptWithNetwork(envelopeData: envelopeData)
+            return try context.keystore.decryptWithNetwork(envelopeData: envelopeData)
         }
-        #else
-        // Local-only stub path: return plaintext
-        return envelopeData.encryptedData
-        #endif
     }
 
     public static func serializeToCBOR(_ envelopeData: EnvelopeEncryptedData) throws -> Data {

@@ -12,13 +12,13 @@ import SwiftCBOR
 /// Protocol for types that can be encrypted
 public protocol RunarEncryptable {
     associatedtype Encrypted: RunarDecryptable where Encrypted.Decrypted == Self
-    func encryptWithKeystore(_ keystore: EnvelopeCrypto, resolver: LabelResolver) throws -> Encrypted
+    func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver: LabelResolver) throws -> Encrypted
 }
 
 /// Protocol for types that can be decrypted
 public protocol RunarDecryptable {
     associatedtype Decrypted: RunarEncryptable where Decrypted.Encrypted == Self
-    func decryptWithKeystore(_ keystore: EnvelopeCrypto) throws -> Decrypted
+    func decryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto) throws -> Decrypted
 }
 
 /// Error types for serialization operations
@@ -691,7 +691,9 @@ public class AnyValue {
                 // Try element-level decryption: if elements are CBOR bstr, decrypt each then decode to target
                 let cborData = Array(lazyData.data)
                 guard let cbor = try? CBOR.decode(cborData) else { throw SerializerError.deserializationFailed("Invalid CBOR for typed list") }
-                if case let .array(arr) = cbor, let decryptor = await ElementCryptoRegistry.shared.lookupDecryptor(wireName: elemWire) {
+                if case let .array(arr) = cbor {
+                    let decryptor = await ElementCryptoRegistry.shared.getDecryptor(wireName: elemWire)
+                    if let decryptor {
                     var plainArray: [Data] = []
                     for el in arr {
                         guard case let .byteString(b) = el else { plainArray = []; break }
@@ -705,6 +707,7 @@ public class AnyValue {
                             return decodedAny
                         }
                     }
+                    }
                 }
                 throw SerializerError.deserializationFailed("Typed list decode needs Decodable target and proper decryptor")
             }
@@ -712,7 +715,9 @@ public class AnyValue {
             if let elemWire = WireNameParser.parseMap(lazyData.typeName), lazyData.typeName != "map<string,any>" {
                 let cborData = Array(lazyData.data)
                 guard let cbor = try? CBOR.decode(cborData) else { throw SerializerError.deserializationFailed("Invalid CBOR for typed map") }
-                if case let .map(m) = cbor, let decryptor = await ElementCryptoRegistry.shared.lookupDecryptor(wireName: elemWire) {
+                if case let .map(m) = cbor {
+                    let decryptor = await ElementCryptoRegistry.shared.getDecryptor(wireName: elemWire)
+                    if let decryptor {
                     var ok = true
                     for (_, v) in m {
                         guard case let .byteString(b) = v else { ok = false; break }
@@ -721,6 +726,7 @@ public class AnyValue {
                     if ok, let target = T.self as? Decodable.Type,
                        let decodedAny = try? CodableCBORDecoder().decode(target, from: Data(cborData)) as? T {
                         return decodedAny
+                    }
                     }
                 }
                 throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor")
@@ -995,32 +1001,21 @@ public actor TypeRegistry {
 
 /// Protocol for envelope encryption operations
 /// Matches the MobileKeyManager interface from swift-keys
-public protocol EnvelopeCrypto {
-    /// Encrypt data with envelope encryption
-    func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData
-
-    /// Decrypt envelope-encrypted data using profile key
-    func decryptWithProfile(envelopeData: EnvelopeEncryptedData, profileId: String) throws -> Data
-
-    /// Decrypt envelope-encrypted data using network key
-    func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data
-}
+// Use EnvelopeCrypto from RunarKeys
 
 /// KeyStore abstraction for tests/apps to supply an implementation
-public typealias KeyStore = EnvelopeCrypto
+public typealias KeyStore = RunarKeys.EnvelopeCrypto
 
 // Dummy keystore used only when decrypting element-level payloads without a provided keystore.
 // This will throw if used; present to satisfy function signatures.
-private struct DummyKeystore: EnvelopeCrypto {
+private struct DummyKeystore: RunarKeys.EnvelopeCrypto {
     func encryptWithEnvelope(data _: Data, networkId _: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData { throw SerializerError.encryptionFailed("No keystore") }
     func decryptWithProfile(envelopeData _: EnvelopeEncryptedData, profileId _: String) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
     func decryptWithNetwork(envelopeData _: EnvelopeEncryptedData) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
 }
 
 // Bridge RunarKeys.MobileKeyManager to EnvelopeCrypto expected by serializer
-#if canImport(RunarKeys)
-extension MobileKeyManager: EnvelopeCrypto {}
-#endif
+// MobileKeyManager already conforms to RunarKeys.EnvelopeCrypto in swift-keys
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto

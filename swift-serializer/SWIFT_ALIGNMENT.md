@@ -344,3 +344,6 @@ Answer: Yes `@Runar(name: "profile.User") looks good. .
 These changes are required to achieve 1:1 behavior with Rust and cross‑SDK compatibility.
 
 
+Integration tets with RUST.
+
+Once it all implemented.. we need a integration tets with rust.. where we serialize objects in rust.. many cases.. structs, maps list.. maps and list of structs.. with encryption and and without encrtyption.. and we can then load those in swift and vide versa.. making sure both can serialize and deserialisze ´payloads from the other. to guaranteee 100% compatibilitu.. before we start with network testing.

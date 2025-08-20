@@ -28,6 +28,7 @@ let package = Package(
                 "SwiftCBOR",
                 .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
                 .product(name: "SwiftCommon", package: "swift-common"),
+                .product(name: "RunarKeys", package: "swift-keys"),
             ],
             path: "Sources/RunarSerializer"
         ),

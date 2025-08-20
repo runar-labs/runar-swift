@@ -51,12 +51,9 @@ public struct EncryptedMacro: MemberMacro {
             public typealias Encrypted = \(raw: encryptedStructName)
 
             /// Encrypt this struct using the provided keystore
-            public func encryptWithKeystore(_ keystore: EnvelopeCrypto, resolver: LabelResolver) async throws -> \(raw: encryptedStructName) {
-                // Ensure the type is registered for deserialization
-                await Self.ensureRegistered()
-
+            public func encryptWithKeystore(_ keystore: RunarSerializer.EnvelopeCrypto, resolver: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
                 // Serialize the struct to CBOR for encrypted types
-                let anyValue = AnyValue.struct(self)
+                let anyValue = RunarSerializer.AnyValue.struct(self)
                 let serialized = try anyValue.serialize(context: nil)
 
                 // Use real envelope encryption from swift-keys
@@ -73,14 +70,14 @@ public struct EncryptedMacro: MemberMacro {
             /// Encrypted version of \(raw: structName)
             public struct \(raw: encryptedStructName): Codable {
                 /// The encrypted data
-                public let encryptedData: EnvelopeEncryptedData
+                public let encryptedData: RunarSerializer.EnvelopeEncryptedData
 
-                public init(encryptedData: EnvelopeEncryptedData) {
+                public init(encryptedData: RunarSerializer.EnvelopeEncryptedData) {
                     self.encryptedData = encryptedData
                 }
 
                 /// Decrypt this struct using the provided keystore
-                public func decryptWithKeystore(_ keystore: EnvelopeCrypto) async throws -> \(raw: structName) {
+                public func decryptWithKeystore(_ keystore: RunarSerializer.EnvelopeCrypto) async throws -> \(raw: structName) {
                     // Use real envelope decryption from swift-keys
                     let decryptedData: Data
 
@@ -95,17 +92,8 @@ public struct EncryptedMacro: MemberMacro {
                     }
 
                     // Deserialize CBOR data back to AnyValue and convert to struct
-                    let anyValue = try AnyValue.deserialize(decryptedData, keystore: nil)
+                    let anyValue = try RunarSerializer.AnyValue.deserialize(decryptedData, keystore: nil)
                     return try await anyValue.asType() as \(raw: structName)
-                }
-            }
-
-            /// Register this type in the global TypeRegistry for deserialization
-            private static func ensureRegistered() async {
-                await TypeRegistry.shared.register(\(raw: structName).self) { data in
-                    // Use CodableCBORDecoder to decode CBOR data back to the struct
-                    let decoder = CodableCBORDecoder()
-                    return try decoder.decode(\(raw: structName).self, from: data)
                 }
             }
             """,
