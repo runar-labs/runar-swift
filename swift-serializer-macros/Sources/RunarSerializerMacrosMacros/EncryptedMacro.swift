@@ -11,6 +11,7 @@ import SwiftSyntaxMacros
 /// - Encrypted struct definition with encryption/decryption methods
 /// - Real encryption/decryption implementation
 /// - Registration in the global TypeNameRegistry (wire name + decoder)
+/// - Registration of element-level encryptor/decryptor for typed containers
 ///
 /// Note: The struct must explicitly conform to `Codable` for this macro to work.
 ///
@@ -47,19 +48,41 @@ public struct EncryptedMacro: MemberMacro {
 
         return [
             """
-            /// Type alias for the encrypted version of this struct
-            public typealias Encrypted = \(raw: encryptedStructName)
-
-            /// Encrypt this struct using the provided keystore
-            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver _: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
-                // Ensure decoder and wire registration for lazy deserialization by wire name
+            /// Bootstrap to register wire name, decoder, and element-level encrypt/decrypt for typed containers
+            private static let _runarEncryptedBootstrap: Void = {
                 Task {
                     await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
                     await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
                         let decoder = CodableCBORDecoder()
                         return try decoder.decode(\(raw: structName).self, from: data)
                     }
+                    await RunarSerializer.ElementCryptoRegistry.shared.register(
+                        wireName: "\(raw: structName)",
+                        encrypt: { plainCBOR, context in
+                            let env = try RunarSerializer.EnvelopeEncryption.encrypt(plainCBOR, context: context)
+                            return try RunarSerializer.EnvelopeEncryption.serializeToCBOR(env)
+                        },
+                        decrypt: { encryptedElementCBOR, keystore in
+                            let env = try RunarSerializer.EnvelopeEncryption.deserializeFromCBOR(encryptedElementCBOR)
+                            // Prefer network decryption if possible; fallback to first profile key
+                            if env.networkId != nil && !env.networkEncryptedKey.isEmpty {
+                                return try keystore.decryptWithNetwork(envelopeData: env)
+                            }
+                            if let firstProfileId = env.profileEncryptedKeys.keys.first {
+                                return try keystore.decryptWithProfile(envelopeData: env, profileId: firstProfileId)
+                            }
+                            throw RunarSerializer.SerializerError.deserializationFailed("No valid decryption method for element")
+                        }
+                    )
                 }
+            }()
+
+            /// Type alias for the encrypted version of this struct
+            public typealias Encrypted = \(raw: encryptedStructName)
+
+            /// Encrypt this struct using the provided keystore
+            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver _: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
+                _ = Self._runarEncryptedBootstrap
                 // Serialize the struct to CBOR for encrypted types
                 let anyValue = RunarSerializer.AnyValue.struct(self)
                 let serialized = try anyValue.serialize(context: nil)
@@ -81,14 +104,7 @@ public struct EncryptedMacro: MemberMacro {
 
                 /// Decrypt this struct using the provided keystore
                 public func decryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto) async throws -> \(raw: structName) {
-                    // Ensure decoder is registered for lazy deserialization by wire name
-                    Task {
-                        await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
-                        await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
-                            let decoder = CodableCBORDecoder()
-                            return try decoder.decode(\(raw: structName).self, from: data)
-                        }
-                    }
+                    _ = \(raw: structName)._runarEncryptedBootstrap
 
                     // Prefer network decryption if available; otherwise use first profile key
                     let decryptedData: Data
