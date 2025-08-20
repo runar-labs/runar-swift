@@ -10,7 +10,7 @@ import SwiftSyntaxMacros
 /// - Type alias for the encrypted version
 /// - Encrypted struct definition with encryption/decryption methods
 /// - Real encryption/decryption implementation
-/// - Type registration in the global TypeRegistry
+/// - Registration in the global TypeNameRegistry (wire name + decoder)
 ///
 /// Note: The struct must explicitly conform to `Codable` for this macro to work.
 ///
@@ -51,24 +51,22 @@ public struct EncryptedMacro: MemberMacro {
             public typealias Encrypted = \(raw: encryptedStructName)
 
             /// Encrypt this struct using the provided keystore
-            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
-                // Ensure decoder is registered for lazy deserialization by wire name
-                await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
-                    let decoder = CodableCBORDecoder()
-                    return try decoder.decode(\(raw: structName).self, from: data)
+            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver _: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
+                // Ensure decoder and wire registration for lazy deserialization by wire name
+                Task {
+                    await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
+                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
+                        let decoder = CodableCBORDecoder()
+                        return try decoder.decode(\(raw: structName).self, from: data)
+                    }
                 }
                 // Serialize the struct to CBOR for encrypted types
                 let anyValue = RunarSerializer.AnyValue.struct(self)
                 let serialized = try anyValue.serialize(context: nil)
 
-                // Use real envelope encryption from swift-keys
-                let labelInfo = resolver.resolveLabel("\(raw: structName.lowercased())")
-                let envelopeData = try keystore.encryptWithEnvelope(
-                    data: serialized,
-                    networkId: labelInfo?.networkId,
-                    profileIds: labelInfo?.profileIds ?? []
-                )
-
+                // Use outer envelope encryption; recipients are carried by context
+                let context = RunarSerializer.SerializationContext(keystore: keystore, resolver: DefaultLabelResolver(labelToProfileId: [:]), networkId: "")
+                let envelopeData = try RunarSerializer.EnvelopeEncryption.encrypt(serialized, context: context)
                 return \(raw: encryptedStructName)(encryptedData: envelopeData)
             }
 
@@ -84,18 +82,19 @@ public struct EncryptedMacro: MemberMacro {
                 /// Decrypt this struct using the provided keystore
                 public func decryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto) async throws -> \(raw: structName) {
                     // Ensure decoder is registered for lazy deserialization by wire name
-                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
-                        let decoder = CodableCBORDecoder()
-                        return try decoder.decode(\(raw: structName).self, from: data)
+                    Task {
+                        await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
+                        await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
+                            let decoder = CodableCBORDecoder()
+                            return try decoder.decode(\(raw: structName).self, from: data)
+                        }
                     }
-                    // Use real envelope decryption from swift-keys
-                    let decryptedData: Data
 
-                    // Try network-based decryption first (most reliable)
+                    // Prefer network decryption if available; otherwise use first profile key
+                    let decryptedData: Data
                     if encryptedData.networkId != nil && !encryptedData.networkEncryptedKey.isEmpty {
                         decryptedData = try keystore.decryptWithNetwork(envelopeData: encryptedData)
                     } else if let firstProfileId = encryptedData.profileEncryptedKeys.keys.first {
-                        // Fall back to profile-based decryption
                         decryptedData = try keystore.decryptWithProfile(envelopeData: encryptedData, profileId: firstProfileId)
                     } else {
                         throw SerializerError.deserializationFailed("No valid decryption method available")

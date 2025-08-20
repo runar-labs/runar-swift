@@ -8,6 +8,7 @@ import SwiftSyntaxMacros
 /// This macro automatically adds:
 /// - `toAnyValue()` method for zero-copy serialization
 /// - `fromAnyValue()` static method for deserialization
+/// - Registration of wire name and decoder in the runtime registry
 ///
 /// Note: The struct must explicitly conform to `Codable` for this macro to work.
 ///
@@ -42,11 +43,19 @@ public struct PlainMacro: MemberMacro {
             throw MacroError("Plain macro requires the struct to explicitly conform to Codable")
         }
 
-        // Add the serialization methods
+        // Add the serialization methods and registry bootstrap
         return [
             """
             /// Convert this struct to an AnyValue for zero-copy serialization
             public func toAnyValue() -> AnyValue {
+                // Best-effort registration (wire name defaults to Swift name)
+                Task {
+                    await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
+                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: structName)") { data in
+                        let decoder = CodableCBORDecoder()
+                        return try decoder.decode(\(raw: structName).self, from: data)
+                    }
+                }
                 return AnyValue.struct(self)
             }
 

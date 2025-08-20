@@ -54,7 +54,7 @@ public extension AnyValue {
 
     func toJSONData(prettyPrinted: Bool = false) async throws -> Data {
         let obj = try await toJSONObject()
-        let options: JSONSerialization.WritingOptions = prettyPrinted ? [.prettyPrinted, .sortedKeys] : []
+        let options: JSONSerialization.WritingOptions = prettyPrinted ? [.prettyPrinted] : []
         return try JSONSerialization.data(withJSONObject: obj, options: options)
     }
 
