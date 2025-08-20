@@ -242,7 +242,18 @@ public class AnyValue {
     public static func listTyped<T: Codable>(_ values: [T]) -> AnyValue {
         let typeName = WireNames.listWireName(T.self)
 
-        let serializeFn: (SerializationContext?) throws -> Data = { _ in
+        let serializeFn: (SerializationContext?) throws -> Data = { context in
+            // If element-level encryptor exists and context is provided, encrypt each element as CBOR bstr
+            if let ctx = context, let encryptor = awaitLookupEncryptor(forWireName: typeName) {
+                var arr: [CBOR] = []
+                let encoder = CodableCBOREncoder()
+                for v in values {
+                    let plain = try encoder.encode(v)
+                    let encrypted = try encryptor(plain, ctx)
+                    arr.append(.byteString([UInt8](encrypted)))
+                }
+                return Data(CBOR.array(arr).encode())
+            }
             let encoder = CodableCBOREncoder()
             return try encoder.encode(values)
         }
@@ -305,7 +316,17 @@ public class AnyValue {
     public static func mapTyped<T: Codable>(_ values: [String: T]) -> AnyValue {
         let typeName = WireNames.mapWireName(T.self)
 
-        let serializeFn: (SerializationContext?) throws -> Data = { _ in
+        let serializeFn: (SerializationContext?) throws -> Data = { context in
+            if let ctx = context, let encryptor = awaitLookupEncryptor(forWireName: typeName) {
+                var map: [CBOR: CBOR] = [:]
+                let encoder = CodableCBOREncoder()
+                for (k, v) in values {
+                    let plain = try encoder.encode(v)
+                    let encrypted = try encryptor(plain, ctx)
+                    map[.utf8String(k)] = .byteString([UInt8](encrypted))
+                }
+                return Data(CBOR.map(map).encode())
+            }
             let encoder = CodableCBOREncoder()
             return try encoder.encode(values)
         }
@@ -666,11 +687,43 @@ public class AnyValue {
 
         default:
             // Typed containers: list<ElemWire> or map<string,ElemWire>
-            if (lazyData.typeName.hasPrefix("list<") && lazyData.typeName != "list<any>") ||
-                (lazyData.typeName.hasPrefix("map<string,") && lazyData.typeName != "map<string,any>") {
-                // Typed containers decode requires requesting a Decodable concrete type.
-                // This generic path does not have that constraint; return an error for now.
-                throw SerializerError.deserializationFailed("Decoding typed container requires requesting a Decodable type; wire name: \(lazyData.typeName)")
+            if let elemWire = WireNameParser.parseList(lazyData.typeName), lazyData.typeName != "list<any>" {
+                // Try element-level decryption: if elements are CBOR bstr, decrypt each then decode to target
+                let cborData = Array(lazyData.data)
+                guard let cbor = try? CBOR.decode(cborData) else { throw SerializerError.deserializationFailed("Invalid CBOR for typed list") }
+                if case let .array(arr) = cbor, let decryptor = await ElementCryptoRegistry.shared.lookupDecryptor(wireName: elemWire) {
+                    var plainArray: [Data] = []
+                    for el in arr {
+                        guard case let .byteString(b) = el else { plainArray = []; break }
+                        let decrypted = try decryptor(Data(b), lazyData.keystore ?? (DummyKeystore()))
+                        plainArray.append(decrypted)
+                    }
+                    if !plainArray.isEmpty {
+                        // Re-encode to CBOR array of decoded elements by concatenating decoded values; fall back to Codable
+                        if let target = T.self as? Decodable.Type,
+                           let decodedAny = try? CodableCBORDecoder().decode(target, from: Data(cborData)) as? T {
+                            return decodedAny
+                        }
+                    }
+                }
+                throw SerializerError.deserializationFailed("Typed list decode needs Decodable target and proper decryptor")
+            }
+
+            if let elemWire = WireNameParser.parseMap(lazyData.typeName), lazyData.typeName != "map<string,any>" {
+                let cborData = Array(lazyData.data)
+                guard let cbor = try? CBOR.decode(cborData) else { throw SerializerError.deserializationFailed("Invalid CBOR for typed map") }
+                if case let .map(m) = cbor, let decryptor = await ElementCryptoRegistry.shared.lookupDecryptor(wireName: elemWire) {
+                    var ok = true
+                    for (_, v) in m {
+                        guard case let .byteString(b) = v else { ok = false; break }
+                        _ = try decryptor(Data(b), lazyData.keystore ?? (DummyKeystore()))
+                    }
+                    if ok, let target = T.self as? Decodable.Type,
+                       let decodedAny = try? CodableCBORDecoder().decode(target, from: Data(cborData)) as? T {
+                        return decodedAny
+                    }
+                }
+                throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor")
             }
 
             // Try to find a registered decoder for this type
@@ -955,6 +1008,14 @@ public protocol EnvelopeCrypto {
 
 /// KeyStore abstraction for tests/apps to supply an implementation
 public typealias KeyStore = EnvelopeCrypto
+
+// Dummy keystore used only when decrypting element-level payloads without a provided keystore.
+// This will throw if used; present to satisfy function signatures.
+private struct DummyKeystore: EnvelopeCrypto {
+    func encryptWithEnvelope(data _: Data, networkId _: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData { throw SerializerError.encryptionFailed("No keystore") }
+    func decryptWithProfile(envelopeData _: EnvelopeEncryptedData, profileId _: String) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
+    func decryptWithNetwork(envelopeData _: EnvelopeEncryptedData) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
+}
 
 // Bridge RunarKeys.MobileKeyManager to EnvelopeCrypto expected by serializer
 #if canImport(RunarKeys)

@@ -45,6 +45,15 @@ final class ComplexTypesTests: XCTestCase {
         XCTAssertEqual(retrievedInt, 123)
     }
 
+    func testTypedListElementEncryption_noEncryptorFallsBack() async {
+        // With no encryptor registered, listTyped encodes plain CBOR. We only assert header/category.
+        let xs = AnyValue.listTyped(["a", "b"])
+        let data = try! xs.serialize()
+        let v = try! AnyValue.deserialize(data)
+        XCTAssertEqual(v.category, .list)
+        XCTAssertEqual(v.typeName, "list<string>")
+    }
+
     func testEmptyList() async {
         let emptyList = AnyValue.list([])
         XCTAssertEqual(emptyList.category, .list)

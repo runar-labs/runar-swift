@@ -45,12 +45,41 @@ enum WireNames {
     }
 }
 
+enum WireNameParser {
+    static func parseList(_ wire: String) -> String? {
+        guard wire.hasPrefix("list<"), wire.hasSuffix(">") else { return nil }
+        let inner = String(wire.dropFirst(5).dropLast(1))
+        return inner
+    }
+
+    static func parseMap(_ wire: String) -> String? {
+        guard wire.hasPrefix("map<string,"), wire.hasSuffix(">") else { return nil }
+        let inner = String(wire.dropFirst("map<string,".count).dropLast(1))
+        return inner
+    }
+}
+
 // Actor hop helper to look up wire name from registry synchronously (best-effort)
 func awaitTypeNameRegistryLookup(swiftName: String) throws -> String? {
     var result: String?
     let semaphore = DispatchSemaphore(value: 0)
     Task {
         result = await TypeNameRegistry.shared.lookupWireName(swiftTypeName: swiftName)
+        semaphore.signal()
+    }
+    _ = semaphore.wait(timeout: .now() + 0.05)
+    return result
+}
+
+func awaitLookupEncryptor(forWireName containerWireName: String) -> ElementCryptoRegistry.EncryptFn? {
+    // Extract element wire name from list<Elem> or map<string,Elem>
+    let elemWire: String?
+    if let e = WireNameParser.parseList(containerWireName) { elemWire = e } else if let e = WireNameParser.parseMap(containerWireName) { elemWire = e } else { elemWire = nil }
+    guard let elemWire else { return nil }
+    var result: ElementCryptoRegistry.EncryptFn?
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        result = await ElementCryptoRegistry.shared.lookupEncryptor(wireName: elemWire)
         semaphore.signal()
     }
     _ = semaphore.wait(timeout: .now() + 0.05)
