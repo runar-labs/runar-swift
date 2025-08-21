@@ -45,7 +45,7 @@ public final class RemoteService: ServiceBase {
 
     private func registerRemoteDiscoveryActions(context: LifecycleContext) async throws {
         // Discover remote services
-        try await context.registerAction("discover") { [weak self] payload, ctx in
+        try await context.registerAction("discover") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             guard let discoverRequest = payload?.deserialize(to: RemoteDiscoveryRequest.self) else {
@@ -57,7 +57,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Get remote service info
-        try await context.registerAction("service/{service_path}") { [weak self] payload, ctx in
+        try await context.registerAction("service/{service_path}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -66,7 +66,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // List available remote nodes
-        try await context.registerAction("nodes") { [weak self] payload, ctx in
+        try await context.registerAction("nodes") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let nodes = try await self.listRemoteNodes()
@@ -74,7 +74,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Get remote node info
-        try await context.registerAction("node/{node_id}") { [weak self] payload, ctx in
+        try await context.registerAction("node/{node_id}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let nodeId = ctx.pathParams["node_id"] ?? "unknown"
@@ -87,7 +87,7 @@ public final class RemoteService: ServiceBase {
 
     private func registerRemoteProxyActions(context: LifecycleContext) async throws {
         // Proxy request to remote service
-        try await context.registerAction("proxy/{service_path}/{action}") { [weak self] payload, ctx in
+        try await context.registerAction("proxy/{service_path}/{action}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -106,7 +106,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Broadcast to multiple remote services
-        try await context.registerAction("broadcast/{service_path}/{action}") { [weak self] payload, ctx in
+        try await context.registerAction("broadcast/{service_path}/{action}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -129,7 +129,7 @@ public final class RemoteService: ServiceBase {
 
     private func registerLoadBalancingActions(context: LifecycleContext) async throws {
         // Get load balancing stats
-        try await context.registerAction("stats") { [weak self] payload, ctx in
+        try await context.registerAction("stats") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let stats = try await self.getLoadBalancingStats()
@@ -137,7 +137,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Set load balancing strategy
-        try await context.registerAction("strategy") { [weak self] payload, ctx in
+        try await context.registerAction("strategy") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             guard let strategyRequest = payload?.deserialize(to: LoadBalancingStrategyRequest.self) else {
@@ -149,7 +149,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Get service availability
-        try await context.registerAction("availability/{service_path}") { [weak self] payload, ctx in
+        try await context.registerAction("availability/{service_path}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -433,38 +433,54 @@ public struct LoadBalancerStats: Sendable {
 
 public final class RoundRobinLoadBalancer: LoadBalancingStrategy {
     private let queue = DispatchQueue(label: "com.runar.roundrobin")
-    private var stats = LoadBalancerStats()
+    private let stats = ActorIsolated<LoadBalancerStats>(LoadBalancerStats())
 
     public func selectPeer(for servicePath: String, registry: ServiceRegistry) -> String? {
-        queue.sync {
-            stats = LoadBalancerStats(
-                totalRequests: stats.totalRequests + 1,
-                activeConnections: stats.activeConnections,
-                failedRequests: stats.failedRequests,
-                averageResponseTime: stats.averageResponseTime
-            )
+        Task {
+            await stats.update { current in
+                LoadBalancerStats(
+                    totalRequests: current.totalRequests + 1,
+                    activeConnections: current.activeConnections,
+                    failedRequests: current.failedRequests,
+                    averageResponseTime: current.averageResponseTime
+                )
+            }
         }
         return registry.nextPeerForService(servicePath)
     }
 
     public func getStats() -> LoadBalancerStats {
-        queue.sync { stats }
+        queue.sync { stats.value }
+    }
+}
+
+private actor ActorIsolated<T> {
+    var value: T
+
+    init(_ value: T) {
+        self.value = value
+    }
+
+    func update(_ operation: (T) -> T) {
+        value = operation(value)
     }
 }
 
 public final class LeastConnectionsLoadBalancer: LoadBalancingStrategy {
     private let queue = DispatchQueue(label: "com.runar.leastconnections")
-    private var connectionCounts: [String: Int] = [:]
-    private var stats = LoadBalancerStats()
+    private let connectionCounts = ActorIsolated<[String: Int]>([:])
+    private let stats = ActorIsolated<LoadBalancerStats>(LoadBalancerStats())
 
     public func selectPeer(for servicePath: String, registry: ServiceRegistry) -> String? {
-        queue.sync {
-            stats = LoadBalancerStats(
-                totalRequests: stats.totalRequests + 1,
-                activeConnections: stats.activeConnections,
-                failedRequests: stats.failedRequests,
-                averageResponseTime: stats.averageResponseTime
-            )
+        Task {
+            await stats.update { current in
+                LoadBalancerStats(
+                    totalRequests: current.totalRequests + 1,
+                    activeConnections: current.activeConnections,
+                    failedRequests: current.failedRequests,
+                    averageResponseTime: current.averageResponseTime
+                )
+            }
         }
 
         // This is a simplified implementation
@@ -473,22 +489,24 @@ public final class LeastConnectionsLoadBalancer: LoadBalancingStrategy {
     }
 
     public func getStats() -> LoadBalancerStats {
-        queue.sync { stats }
+        queue.sync { stats.value }
     }
 }
 
 public final class RandomLoadBalancer: LoadBalancingStrategy {
     private let queue = DispatchQueue(label: "com.runar.random")
-    private var stats = LoadBalancerStats()
+    private let stats = ActorIsolated<LoadBalancerStats>(LoadBalancerStats())
 
     public func selectPeer(for servicePath: String, registry: ServiceRegistry) -> String? {
-        queue.sync {
-            stats = LoadBalancerStats(
-                totalRequests: stats.totalRequests + 1,
-                activeConnections: stats.activeConnections,
-                failedRequests: stats.failedRequests,
-                averageResponseTime: stats.averageResponseTime
-            )
+        Task {
+            await stats.update { current in
+                LoadBalancerStats(
+                    totalRequests: current.totalRequests + 1,
+                    activeConnections: current.activeConnections,
+                    failedRequests: current.failedRequests,
+                    averageResponseTime: current.averageResponseTime
+                )
+            }
         }
 
         // Get all peers for this service and select randomly
@@ -506,7 +524,7 @@ public final class RandomLoadBalancer: LoadBalancingStrategy {
     }
 
     public func getStats() -> LoadBalancerStats {
-        queue.sync { stats }
+        queue.sync { stats.value }
     }
 }
 
@@ -532,7 +550,7 @@ public struct RemoteDiscoveryRequest: Codable, Sendable {
     }
 }
 
-public struct RemoteProxyRequest: Codable, Sendable {
+public struct RemoteProxyRequest: Sendable {
     public let payload: AnyValue?
     public let targetNodeId: String?
     public let timeoutMs: UInt64?
@@ -544,7 +562,7 @@ public struct RemoteProxyRequest: Codable, Sendable {
     }
 }
 
-public struct RemoteBroadcastRequest: Codable, Sendable {
+public struct RemoteBroadcastRequest: Sendable {
     public let payload: AnyValue?
     public let maxPeers: Int?
     public let timeoutMs: UInt64?
@@ -594,7 +612,7 @@ public struct RemoteNodeInfo: Codable, Sendable {
     }
 }
 
-public struct RemotePeerResponse: Codable, Sendable {
+public struct RemotePeerResponse: Sendable {
     public let nodeId: String
     public let response: AnyValue?
     public let success: Bool
@@ -648,7 +666,7 @@ public struct RemoteNodeInfoResponse: Codable, Sendable {
     }
 }
 
-public struct RemoteProxyResponse: Codable, Sendable {
+public struct RemoteProxyResponse: Sendable {
     public let result: AnyValue?
     public let targetNodeId: String
     public let responseTime: TimeInterval

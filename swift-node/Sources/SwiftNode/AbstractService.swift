@@ -222,31 +222,4 @@ open class ServiceBase: AbstractService {
 	}
 }
 
-// MARK: - Lifecycle Context
 
-public struct LifecycleContext {
-	public let networkId: String
-	public let servicePath: String
-	public let config: AnyValue?
-	public let logger: RunarLogger
-	public let nodeDelegate: NodeDelegate
-	public let nodeId: String?
-
-	public init(networkId: String, servicePath: String, config: AnyValue?, logger: RunarLogger, nodeDelegate: NodeDelegate, nodeId: String? = nil) {
-		self.networkId = networkId
-		self.servicePath = servicePath
-		self.config = config
-		self.logger = logger
-		self.nodeDelegate = nodeDelegate
-		self.nodeId = nodeId
-	}
-
-	public func registerAction(_ action: String, handler: @escaping ActionHandler) async throws {
-		try await nodeDelegate.registerAction(
-			networkId: networkId,
-			servicePath: servicePath,
-			action: action,
-			handler: handler
-		)
-	}
-}

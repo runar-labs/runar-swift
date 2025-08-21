@@ -94,6 +94,22 @@ public extension BaseRunarError {
         BaseRunarError(code: "SERVICE_ERROR", message: message, component: component, context: context)
     }
 
+    /// Service not found errors
+    static func serviceNotFound(servicePath: String, component: Component = .registry, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+        BaseRunarError.serviceError("Service not found", component: component, context: ErrorContext(
+            servicePath: servicePath,
+            additionalInfo: context.additionalInfo
+        ))
+    }
+
+    /// Peer unavailable errors
+    static func peerUnavailable(peerId: String, component: Component = .transporter, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+        BaseRunarError.networkError("Peer unavailable", component: component, context: ErrorContext(
+            peerId: peerId,
+            additionalInfo: context.additionalInfo
+        ))
+    }
+
     /// Registry-related errors
     static func registryError(_ message: String, component: Component, context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError(code: "REGISTRY_ERROR", message: message, component: component, context: context)

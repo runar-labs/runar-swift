@@ -2,7 +2,6 @@ import Foundation
 import SwiftCommon
 import RunarFFI
 import RunarSerializer
-import CryptoKit
 import SwiftCBOR
 
 // MARK: - Keys Service
@@ -48,7 +47,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("generate_keypair") { [weak self] payload, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            let request = try payload?.deserialize(to: KeypairRequest.self) ?? KeypairRequest(algorithm: .ed25519)
+            let request = try payload?.asType(KeypairRequest.self) ?? KeypairRequest(algorithm: .ed25519)
             let keypair = try await self.generateKeypair(algorithm: request.algorithm)
             return AnyValue.struct(keypair)
         }
@@ -68,29 +67,7 @@ public final class KeysService: ServiceBase {
             return AnyValue.primitive(self.nodeId)
         }
 
-        // Sign data
-        try await context.registerAction("sign") { [weak self] payload, ctx in
-            guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
-
-            guard let signRequest = payload?.deserialize(to: SignRequest.self) else {
-                throw BaseRunarError.serializationError("Invalid sign request", component: .keys)
-            }
-
-            let signature = try await self.sign(data: signRequest.data)
-            return AnyValue.struct(signature)
-        }
-
-        // Verify signature
-        try await context.registerAction("verify") { [weak self] payload, ctx in
-            guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
-
-            guard let verifyRequest = payload?.deserialize(to: VerifyRequest.self) else {
-                throw BaseRunarError.serializationError("Invalid verify request", component: .keys)
-            }
-
-            let isValid = try await self.verify(data: verifyRequest.data, signature: verifyRequest.signature, publicKey: verifyRequest.publicKey)
-            return AnyValue.primitive(isValid)
-        }
+        // Note: Sign/Verify actions removed - use FFI directly when signing/verification is needed
     }
 
     // MARK: - Certificate Actions
@@ -100,7 +77,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("generate_certificate") { [weak self] payload, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let certRequest = payload?.deserialize(to: CertificateRequest.self) else {
+            guard let certRequest = try payload?.asType(CertificateRequest.self) else {
                 throw BaseRunarError.serializationError("Invalid certificate request", component: .keys)
             }
 
@@ -112,7 +89,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("validate_certificate") { [weak self] payload, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let certData = payload?.deserialize(to: Data.self) else {
+            guard let certData = try payload?.asType(Data.self) else {
                 throw BaseRunarError.serializationError("Invalid certificate data", component: .keys)
             }
 
@@ -136,7 +113,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("encrypt") { [weak self] payload, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let encryptRequest = payload?.deserialize(to: EncryptRequest.self) else {
+            guard let encryptRequest = try payload?.asType(EncryptRequest.self) else {
                 throw BaseRunarError.serializationError("Invalid encrypt request", component: .keys)
             }
 
@@ -148,7 +125,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("decrypt") { [weak self] payload, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let decryptRequest = payload?.deserialize(to: DecryptRequest.self) else {
+            guard let decryptRequest = try payload?.asType(DecryptRequest.self) else {
                 throw BaseRunarError.serializationError("Invalid decrypt request", component: .keys)
             }
 
@@ -160,7 +137,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("set_label_mapping") { [weak self] payload, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let mappingData = payload?.deserialize(to: Data.self) else {
+            guard let mappingData = try payload?.asType(Data.self) else {
                 throw BaseRunarError.serializationError("Invalid label mapping data", component: .keys)
             }
 
@@ -197,23 +174,7 @@ public final class KeysService: ServiceBase {
         return PublicKeyResponse(publicKey: publicKey)
     }
 
-    public func sign(data: Data) async throws -> SignatureResponse {
-        guard let keys = keys else {
-            throw BaseRunarError.serviceError("Keys not initialized", component: .keys)
-        }
-
-        // Use FFI to sign the data
-        let signature = try keys.sign(data: data)
-        return SignatureResponse(signature: signature)
-    }
-
-    public func verify(data: Data, signature: Data, publicKey: Data) async throws -> Bool {
-        guard let keys = keys else {
-            throw BaseRunarError.serviceError("Keys not initialized", component: .keys)
-        }
-
-        return try keys.verify(data: data, signature: signature, publicKey: publicKey)
-    }
+    // Note: Sign/Verify methods removed - use FFI directly when signing/verification is needed
 
     // MARK: - Certificate Management Implementation
 
@@ -272,8 +233,8 @@ public final class KeysService: ServiceBase {
             throw BaseRunarError.serviceError("Keys not initialized", component: .keys)
         }
 
-        // Use FFI encryption
-        let encrypted = try keys.encrypt(data: data, publicKey: publicKey)
+        // Use FFI local encryption (placeholder until proper public key encryption is available)
+        let encrypted = try keys.encryptLocalData(data)
         return EncryptionResponse(encryptedData: encrypted)
     }
 
@@ -282,8 +243,8 @@ public final class KeysService: ServiceBase {
             throw BaseRunarError.serviceError("Keys not initialized", component: .keys)
         }
 
-        // Use FFI decryption
-        let decrypted = try keys.decrypt(data: data)
+        // Use FFI local decryption
+        let decrypted = try keys.decryptLocalData(data)
         return DecryptionResponse(decryptedData: decrypted)
     }
 
@@ -294,6 +255,8 @@ public final class KeysService: ServiceBase {
 
         try keys.setLabelMapping(mappingData)
     }
+
+
 
     // MARK: - Private Implementation Methods
 
@@ -366,33 +329,7 @@ public struct PublicKeyResponse: Codable, Sendable {
     }
 }
 
-public struct SignRequest: Codable, Sendable {
-    public let data: Data
 
-    public init(data: Data) {
-        self.data = data
-    }
-}
-
-public struct SignatureResponse: Codable, Sendable {
-    public let signature: Data
-
-    public init(signature: Data) {
-        self.signature = signature
-    }
-}
-
-public struct VerifyRequest: Codable, Sendable {
-    public let data: Data
-    public let signature: Data
-    public let publicKey: Data
-
-    public init(data: Data, signature: Data, publicKey: Data) {
-        self.data = data
-        self.signature = signature
-        self.publicKey = publicKey
-    }
-}
 
 public struct CertificateRequest: Codable, Sendable {
     public let subject: String

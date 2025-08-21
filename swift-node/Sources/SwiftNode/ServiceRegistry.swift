@@ -141,7 +141,7 @@ public struct ServiceEntry: Sendable {
 }
 
 @MainActor
-final class ServiceRegistry {
+public final class ServiceRegistry {
 	// MARK: - Unified Event Subscription System (Phase 1)
 	/// Single subscription trie containing both local and remote subscribers
 	private var eventSubscriptions: PathTrie<SubscriptionVec> = PathTrie()
@@ -157,13 +157,13 @@ final class ServiceRegistry {
 	private var localServices: [TopicPath: ServiceEntry] = [:]
 	private var localServicesList: [TopicPath: ServiceEntry] = [:] // Matches Rust's local_services_list
 
-	// MARK: - Remote Service Tracking (Legacy - will be enhanced in Phase 4)
-	private var remoteServicesByPeer: [String: Set<String>] = [:] // peerNodeId -> set(servicePath)
+	  // MARK: - Remote Service Tracking (Legacy - will be enhanced in Phase 4)
+  internal var remoteServicesByPeer: [String: Set<String>] = [:] // peerNodeId -> set(servicePath)
 	private var peersByService: [String: [String]] = [:] // servicePath -> ordered peer list for round-robin
 	private var rrIndexByService: [String: Int] = [:]
 
 	// MARK: - Peer Subscription Tracking (Phase 4)
-	private var remotePeerSubscriptions: [String: [String: String]] = [:] // peerId -> subscriptionId -> topicPath
+	internal var remotePeerSubscriptions: [String: [String: String]] = [:] // peerId -> subscriptionId -> topicPath
 
 	// MARK: - Peer Subscription Management Methods (Phase 4)
 
