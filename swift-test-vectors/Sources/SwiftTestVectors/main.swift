@@ -101,7 +101,7 @@ enum SerializerTestVectors {
     private static func writeJSON() throws {
         let jsonObject: [String: AnyValue] = [
             "a": .primitive(1),
-            "b": .list([.primitive(true), .primitive("x")])
+            "b": .list([.primitive(true), .primitive("x")]),
         ]
         let value = AnyValue.map(jsonObject)
         let data = try value.serialize(context: nil)
@@ -113,7 +113,7 @@ enum SerializerTestVectors {
     private static func writeListAny() throws {
         let list = [
             AnyValue.primitive(Int64(1)),
-            AnyValue.primitive("two")
+            AnyValue.primitive("two"),
         ]
         let value = AnyValue.list(list)
         let data = try value.serialize(context: nil)
@@ -123,7 +123,7 @@ enum SerializerTestVectors {
     private static func writeMapAny() throws {
         let map: [String: AnyValue] = [
             "x": .primitive(Int64(10)),
-            "y": .primitive("ten")
+            "y": .primitive("ten"),
         ]
         let value = AnyValue.map(map)
         let data = try value.serialize(context: nil)
@@ -142,7 +142,7 @@ enum SerializerTestVectors {
     private static func writeMapStringI64() throws {
         let map: [String: AnyValue] = [
             "a": .primitive(Int64(1)),
-            "b": .primitive(Int64(2))
+            "b": .primitive(Int64(2)),
         ]
         let value = AnyValue.map(map)
         let data = try value.serialize(context: nil)

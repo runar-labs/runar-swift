@@ -1,7 +1,7 @@
-import XCTest
-@testable import SwiftNode
 import RunarSerializer
 import RunarTestUtils
+@testable import SwiftNode
+import XCTest
 
 @MainActor
 final class NetworkTests: XCTestCase {
@@ -10,15 +10,16 @@ final class NetworkTests: XCTestCase {
         var version: String { "0.0.1" }
         var path: String { "pub" }
         var description: String { "test" }
-        var networkId: String? = nil
+        var networkId: String?
         func initService(_ ctx: LifecycleContext) async throws {
-            try await ctx.registerAction("trigger") { params, ctx in
+            try await ctx.registerAction("trigger") { _, ctx in
                 try await ctx.nodeDelegate.publish(topic: "pub/evt", data: AnyValue.primitive("hi"))
                 return AnyValue.null()
             }
         }
-        func start(_ context: LifecycleContext) async throws {}
-        func stop(_ context: LifecycleContext) async throws {}
+
+        func start(_: LifecycleContext) async throws {}
+        func stop(_: LifecycleContext) async throws {}
     }
 
     func testPublishSubscribeOverNetwork() async throws {
@@ -37,7 +38,9 @@ final class NetworkTests: XCTestCase {
         // Connect peers
         let p1 = try await n1.exportPeerInfoCBOR()
         var lastError: Error?
-        for _ in 0..<5 { do { try await n2.connectPeer(p1); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 200_000_000) } }
+        for _ in 0 ..< 5 {
+            do { try await n2.connectPeer(p1); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 200_000_000) }
+        }
         if let e = lastError { throw e }
 
         // Wait for discovered event via on(...)
@@ -52,12 +55,12 @@ final class NetworkTests: XCTestCase {
             XCTFail("did not receive discovered event: \(err)")
         }
 
-                // Subscribe on node2, trigger publish on node1
+        // Subscribe on node2, trigger publish on node1
         let exp = expectation(description: "recv")
         _ = try await n2.subscribe("pub/evt", options: EventRegistrationOptions(includePast: 10.0)) { _, v in
-             let s: String? = try? await v?.asType()
-             if s == "hi" { exp.fulfill() }
-         }
+            let s: String? = try? await v?.asType()
+            if s == "hi" { exp.fulfill() }
+        }
         // Small delay to ensure subscription is fully established
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
         try await n1.publish("pub/evt", data: AnyValue.primitive("hi"), retainFor: 10.0)
@@ -69,5 +72,3 @@ final class NetworkTests: XCTestCase {
 }
 
 // Removed stub-based tests; real transport tests live in RealTransportTests.swift
-
-

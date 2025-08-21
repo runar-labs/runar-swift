@@ -1,7 +1,7 @@
 import Foundation
-import SwiftCommon
-import RunarSerializer
 import RunarFFI
+import RunarSerializer
+import SwiftCommon
 
 // MARK: - Remote Service
 
@@ -22,14 +22,14 @@ public final class RemoteService: ServiceBase {
 
     // MARK: - Service Lifecycle
 
-    public override func performInit(_ context: LifecycleContext) async throws {
-        self.networkId = context.networkId
-        self.nodeDelegate = context.nodeDelegate
+    override public func performInit(_ context: LifecycleContext) async throws {
+        networkId = context.networkId
+        nodeDelegate = context.nodeDelegate
     }
 
-    public override func performStart(_ context: LifecycleContext) async throws {
+    override public func performStart(_ context: LifecycleContext) async throws {
         // Initialize load balancer
-        self.loadBalancer = RoundRobinLoadBalancer()
+        loadBalancer = RoundRobinLoadBalancer()
 
         // Register all remote service actions
         try await registerRemoteDiscoveryActions(context: context)
@@ -37,7 +37,7 @@ public final class RemoteService: ServiceBase {
         try await registerLoadBalancingActions(context: context)
     }
 
-    public override func performStop(_ context: LifecycleContext) async throws {
+    override public func performStop(_: LifecycleContext) async throws {
         loadBalancer = nil
     }
 
@@ -45,7 +45,7 @@ public final class RemoteService: ServiceBase {
 
     private func registerRemoteDiscoveryActions(context: LifecycleContext) async throws {
         // Discover remote services
-        try await context.registerAction("discover") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("discover") { [weak self] (payload: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             guard let discoverRequest = payload?.deserialize(to: RemoteDiscoveryRequest.self) else {
@@ -57,7 +57,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Get remote service info
-        try await context.registerAction("service/{service_path}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("service/{service_path}") { [weak self] (_: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -66,7 +66,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // List available remote nodes
-        try await context.registerAction("nodes") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("nodes") { [weak self] (_: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let nodes = try await self.listRemoteNodes()
@@ -74,7 +74,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Get remote node info
-        try await context.registerAction("node/{node_id}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("node/{node_id}") { [weak self] (_: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let nodeId = ctx.pathParams["node_id"] ?? "unknown"
@@ -129,7 +129,7 @@ public final class RemoteService: ServiceBase {
 
     private func registerLoadBalancingActions(context: LifecycleContext) async throws {
         // Get load balancing stats
-        try await context.registerAction("stats") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("stats") { [weak self] (_: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let stats = try await self.getLoadBalancingStats()
@@ -137,7 +137,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Set load balancing strategy
-        try await context.registerAction("strategy") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("strategy") { [weak self] (payload: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             guard let strategyRequest = payload?.deserialize(to: LoadBalancingStrategyRequest.self) else {
@@ -149,7 +149,7 @@ public final class RemoteService: ServiceBase {
         }
 
         // Get service availability
-        try await context.registerAction("availability/{service_path}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("availability/{service_path}") { [weak self] (_: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -531,7 +531,7 @@ public final class RandomLoadBalancer: LoadBalancingStrategy {
 // MARK: - NodeDelegate Extension
 
 extension NodeDelegate {
-    func requestToPeer(path: String, payload: AnyValue?, peerNodeId: String, timeoutMs: UInt64?) async throws -> AnyValue {
+    func requestToPeer(path _: String, payload _: AnyValue?, peerNodeId _: String, timeoutMs _: UInt64?) async throws -> AnyValue {
         // This would need to be implemented in SwiftNode
         // For now, return a placeholder
         return AnyValue.null()

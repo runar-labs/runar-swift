@@ -1,6 +1,6 @@
 import Foundation
-import os.log
 import os
+import os.log
 
 // MARK: - Error Handling (Matching Rust Implementation)
 
@@ -239,7 +239,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
     public init(networkId: String, segments: [String]) {
         self.networkId = networkId
         self.segments = segments
-        self.isPattern = segments.contains("*") || segments.contains(">") || segments.contains(where: { $0.hasPrefix("{") && $0.hasSuffix("}") })
+        isPattern = segments.contains("*") || segments.contains(">") || segments.contains(where: { $0.hasPrefix("{") && $0.hasSuffix("}") })
     }
 
     public static func parse(_ full: String) -> TopicPath {
@@ -302,6 +302,7 @@ public final class PathTrie<T> {
     }
 
     // MARK: internal
+
     private func setValuesInternal(segments: [String], index: Int, contents values: [T]) {
         guard index < segments.count else {
             content = values
@@ -315,7 +316,7 @@ public final class PathTrie<T> {
             if wildcardChild == nil { wildcardChild = PathTrie<T>() }
             wildcardChild?.setValuesInternal(segments: segments, index: index + 1, contents: values)
             return
-        } else if seg.hasPrefix("{") && seg.hasSuffix("}") {
+        } else if seg.hasPrefix("{"), seg.hasSuffix("}") {
             if templateChild == nil { templateChild = PathTrie<T>(); templateParamName = String(seg.dropFirst().dropLast()) }
             templateChild?.setValuesInternal(segments: segments, index: index + 1, contents: values)
             return
@@ -339,7 +340,7 @@ public final class PathTrie<T> {
             if wildcardChild == nil { wildcardChild = PathTrie<T>() }
             wildcardChild?.appendValueInternal(segments: segments, index: index + 1, content: value)
             return
-        } else if seg.hasPrefix("{") && seg.hasSuffix("}") {
+        } else if seg.hasPrefix("{"), seg.hasSuffix("}") {
             if templateChild == nil { templateChild = PathTrie<T>(); templateParamName = String(seg.dropFirst().dropLast()) }
             templateChild?.appendValueInternal(segments: segments, index: index + 1, content: value)
             return
@@ -372,8 +373,12 @@ public final class PathTrie<T> {
 
     private func findMatchesInternal(segments: [String], index: Int, results: inout [PathTrieMatch<T>], params: [String: String]) {
         if index >= segments.count {
-            for v in content { results.append(PathTrieMatch(content: v, params: params)) }
-            for v in multiWildcard { results.append(PathTrieMatch(content: v, params: params)) }
+            for v in content {
+                results.append(PathTrieMatch(content: v, params: params))
+            }
+            for v in multiWildcard {
+                results.append(PathTrieMatch(content: v, params: params))
+            }
             return
         }
         let seg = segments[index]
@@ -391,13 +396,19 @@ public final class PathTrie<T> {
             child.findMatchesInternal(segments: segments, index: index + 1, results: &results, params: params)
         }
         // multi wildcard at this level also applies
-        for v in multiWildcard { results.append(PathTrieMatch(content: v, params: params)) }
+        for v in multiWildcard {
+            results.append(PathTrieMatch(content: v, params: params))
+        }
     }
 
     private func collectWildcardMatches(patternSegments: [String], index: Int, results: inout [PathTrieMatch<T>]) {
         if index >= patternSegments.count {
-            for v in content { results.append(PathTrieMatch(content: v, params: [:])) }
-            for v in multiWildcard { results.append(PathTrieMatch(content: v, params: [:])) }
+            for v in content {
+                results.append(PathTrieMatch(content: v, params: [:]))
+            }
+            for v in multiWildcard {
+                results.append(PathTrieMatch(content: v, params: [:]))
+            }
             collectAllHandlers(results: &results)
             return
         }
@@ -418,9 +429,15 @@ public final class PathTrie<T> {
     }
 
     private func collectAllHandlers(results: inout [PathTrieMatch<T>]) {
-        for v in content { results.append(PathTrieMatch(content: v, params: [:])) }
-        for v in multiWildcard { results.append(PathTrieMatch(content: v, params: [:])) }
-        for (_, c) in children { c.collectAllHandlers(results: &results) }
+        for v in content {
+            results.append(PathTrieMatch(content: v, params: [:]))
+        }
+        for v in multiWildcard {
+            results.append(PathTrieMatch(content: v, params: [:]))
+        }
+        for (_, c) in children {
+            c.collectAllHandlers(results: &results)
+        }
         wildcardChild?.collectAllHandlers(results: &results)
         templateChild?.collectAllHandlers(results: &results)
     }
@@ -439,8 +456,8 @@ public final class CompactIdGenerator: Sendable {
     /// - Returns: DNS-safe alphanumeric string
     public static func generate(length: Int = 20) -> String {
         var result = ""
-        for _ in 0..<length {
-            let randomIndex = UInt8.random(in: 0..<charsetCount)
+        for _ in 0 ..< length {
+            let randomIndex = UInt8.random(in: 0 ..< charsetCount)
             let character = charset[charset.index(charset.startIndex, offsetBy: Int(randomIndex))]
             result.append(character)
         }
@@ -557,29 +574,29 @@ public final class RunarLogger: Sendable {
     /// Create a new root logger for a specific component
     public init(component: Component, config: LoggingConfig = LoggingConfig()) {
         self.component = component
-        self.nodeId = nil
-        self.parentComponent = nil
-        self.actionPath = nil
-        self.eventPath = nil
+        nodeId = nil
+        parentComponent = nil
+        actionPath = nil
+        eventPath = nil
         self.config = config
 
         let subsystem = "com.runar"
         let category = component.displayName
-        self.osLogger = OSLog(subsystem: subsystem, category: category)
+        osLogger = OSLog(subsystem: subsystem, category: category)
     }
 
     /// Create a root logger with node ID
     public init(component: Component, nodeId: String, config: LoggingConfig = LoggingConfig()) {
         self.component = component
         self.nodeId = nodeId
-        self.parentComponent = nil
-        self.actionPath = nil
-        self.eventPath = nil
+        parentComponent = nil
+        actionPath = nil
+        eventPath = nil
         self.config = config
 
         let subsystem = "com.runar"
         let category = component.displayName
-        self.osLogger = OSLog(subsystem: subsystem, category: category)
+        osLogger = OSLog(subsystem: subsystem, category: category)
     }
 
     /// Create a child logger with the same node ID but different component
@@ -658,7 +675,8 @@ public final class RunarLogger: Sendable {
     private func shouldLog(_ level: LogLevel) -> Bool {
         let levels: [LogLevel] = [.debug, .info, .warning, .error, .critical]
         guard let currentIndex = levels.firstIndex(of: config.level),
-              let messageIndex = levels.firstIndex(of: level) else {
+              let messageIndex = levels.firstIndex(of: level)
+        else {
             return false
         }
         return messageIndex >= currentIndex
@@ -739,9 +757,9 @@ public final class RunarLogger: Sendable {
 public class SimpleRunarLogger {
     private let logger: RunarLogger
 
-    public init(subsystem: String = "com.runar", category: String = "default") {
+    public init(subsystem _: String = "com.runar", category: String = "default") {
         let component: Component = category == "default" ? .system : .custom
-        self.logger = RunarLogger(component: component)
+        logger = RunarLogger(component: component)
     }
 
     public func debug(_ message: String) { logger.debug(message) }

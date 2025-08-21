@@ -1,10 +1,9 @@
-import XCTest
-@testable import SwiftNode
 import RunarSerializer
+@testable import SwiftNode
+import XCTest
 
 @MainActor
 final class ServiceTests: XCTestCase {
-
     func testKeysServiceLifecycle() async throws {
         // Test KeysService initialization and basic operations
         let logger = RunarLogger(component: .keys)
@@ -153,23 +152,23 @@ final class ServiceTests: XCTestCase {
 // MARK: - Mock NodeDelegate
 
 private class MockNodeDelegate: NodeDelegate {
-    func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws {
+    func registerAction(networkId _: String, servicePath _: String, action _: String, handler _: @escaping ActionHandler) async throws {
         // Mock implementation - do nothing
     }
 
-    func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
+    func subscribe(topic _: String, options _: EventRegistrationOptions?, callback _: @escaping EventHandler) async throws -> String {
         return UUID().uuidString
     }
 
-    func unsubscribe(_ id: String) async throws {
+    func unsubscribe(_: String) async throws {
         // Mock implementation - do nothing
     }
 
-    func publish(topic: String, data: AnyValue?) async throws {
+    func publish(topic _: String, data _: AnyValue?) async throws {
         // Mock implementation - do nothing
     }
 
-    func requestToPeer(path: String, payload: AnyValue?, peerNodeId: String, timeoutMs: UInt64?) async throws -> AnyValue {
+    func requestToPeer(path _: String, payload _: AnyValue?, peerNodeId _: String, timeoutMs _: UInt64?) async throws -> AnyValue {
         // Mock implementation - return null
         return AnyValue.null()
     }

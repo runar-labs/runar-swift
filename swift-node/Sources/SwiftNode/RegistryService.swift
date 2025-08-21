@@ -1,6 +1,6 @@
 import Foundation
-import SwiftCommon
 import RunarSerializer
+import SwiftCommon
 
 // MARK: - Registry Service
 
@@ -19,18 +19,18 @@ public final class RegistryService: ServiceBase {
 
     // MARK: - Service Lifecycle
 
-    public override func performInit(_ context: LifecycleContext) async throws {
-        self.networkId = context.networkId
+    override public func performInit(_ context: LifecycleContext) async throws {
+        networkId = context.networkId
     }
 
-    public override func performStart(_ context: LifecycleContext) async throws {
+    override public func performStart(_ context: LifecycleContext) async throws {
         // Register all registry management actions
         try await registerServiceDiscoveryActions(context: context)
         try await registerServiceManagementActions(context: context)
         try await registerMetadataActions(context: context)
     }
 
-    public override func performStop(_ context: LifecycleContext) async throws {
+    override public func performStop(_: LifecycleContext) async throws {
         // Cleanup resources
     }
 
@@ -38,7 +38,7 @@ public final class RegistryService: ServiceBase {
 
     private func registerServiceDiscoveryActions(context: LifecycleContext) async throws {
         // List all services
-        try await context.registerAction("services/list") { [weak self] payload, ctx in
+        try await context.registerAction("services/list") { [weak self] _, _ in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let services = try await self.listServices()
@@ -46,7 +46,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Get specific service info
-        try await context.registerAction("services/{service_path}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("services/{service_path}") { [weak self] (_: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -55,7 +55,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Discover services by peer
-        try await context.registerAction("services/discover") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("services/discover") { [weak self] (payload: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             guard let discoverRequest = try payload?.asType(ServiceDiscoveryRequest.self) else {
@@ -67,7 +67,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Query service state
-        try await context.registerAction("services/{service_path}/state") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("services/{service_path}/state") { [weak self] (_: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -80,7 +80,7 @@ public final class RegistryService: ServiceBase {
 
     private func registerServiceManagementActions(context: LifecycleContext) async throws {
         // Register a new service
-        try await context.registerAction("services/register") { [weak self] payload, ctx in
+        try await context.registerAction("services/register") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             guard let registerRequest = try payload?.asType(ServiceRegistrationRequest.self) else {
@@ -92,7 +92,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Unregister a service
-        try await context.registerAction("services/unregister") { [weak self] payload, ctx in
+        try await context.registerAction("services/unregister") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             guard let unregisterRequest = try payload?.asType(ServiceUnregistrationRequest.self) else {
@@ -104,7 +104,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Pause service
-        try await context.registerAction("services/{service_path}/pause") { [weak self] payload, ctx in
+        try await context.registerAction("services/{service_path}/pause") { [weak self] _, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -113,7 +113,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Resume service
-        try await context.registerAction("services/{service_path}/resume") { [weak self] payload, ctx in
+        try await context.registerAction("services/{service_path}/resume") { [weak self] _, ctx in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -126,7 +126,7 @@ public final class RegistryService: ServiceBase {
 
     private func registerMetadataActions(context: LifecycleContext) async throws {
         // Get service metadata
-        try await context.registerAction("metadata/{service_path}") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("metadata/{service_path}") { [weak self] (_: AnyValue?, ctx: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
@@ -148,7 +148,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Get node info
-        try await context.registerAction("node/info") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("node/info") { [weak self] (_: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let nodeInfo = try await self.getNodeInfo()
@@ -156,7 +156,7 @@ public final class RegistryService: ServiceBase {
         }
 
         // Get network topology
-        try await context.registerAction("network/topology") { [weak self] (payload: AnyValue?, ctx: RequestContext) in
+        try await context.registerAction("network/topology") { [weak self] (_: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let topology = try await self.getNetworkTopology()

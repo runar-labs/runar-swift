@@ -41,7 +41,9 @@ public extension AnyValue {
             if typeName == "map<string,any>" {
                 let dict: [String: AnyValue] = try await asType()
                 var out: [String: Any] = [:]
-                for (k, v) in dict { out[k] = try await v.toJSONObject() }
+                for (k, v) in dict {
+                    out[k] = try await v.toJSONObject()
+                }
                 return out
             }
             throw SerializerError.serializationFailed("No JSON converter for typed map \(typeName)")
@@ -72,9 +74,9 @@ private extension Array where Element == AnyValue {
     func asyncMap<T>(_ transform: @escaping @MainActor (AnyValue) async throws -> T) async throws -> [T] {
         var results: [T] = []
         results.reserveCapacity(count)
-        for el in self { results.append(try await transform(el)) }
+        for el in self {
+            try results.append(await transform(el))
+        }
         return results
     }
 }
-
-

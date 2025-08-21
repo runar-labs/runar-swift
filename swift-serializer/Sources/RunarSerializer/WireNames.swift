@@ -6,7 +6,7 @@ enum WireNames {
         "string", "bool", "bytes", "char",
         "i8", "i16", "i32", "i64",
         "u8", "u16", "u32", "u64",
-        "f32", "f64"
+        "f32", "f64",
     ]
 
     static func isValidPrimitiveWireName(_ name: String) -> Bool {
@@ -138,5 +138,3 @@ func cborToFoundationJSON(_ cbor: CBOR) throws -> Any {
         throw SerializerError.deserializationFailed("Unsupported CBOR token in JSON conversion: \(cbor)")
     }
 }
-
-

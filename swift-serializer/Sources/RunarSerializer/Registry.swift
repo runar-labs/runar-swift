@@ -2,6 +2,7 @@ import Foundation
 import RunarFFI
 
 // MARK: - Type Registration and Resolution System
+
 // Equivalent to Rust's registry.rs
 
 /// Global type registry for serialization/deserialization
@@ -186,9 +187,9 @@ private func AnyValueFromAny(_ value: Any) throws -> AnyValue {
 
 // MARK: - Enhanced AnyValue with Registry Support
 
-extension AnyValue {
+public extension AnyValue {
     /// Create AnyValue with registry-based type resolution
-    public static func fromRegistry(wireName: String, data: Data, crypto: EnvelopeCrypto? = nil) throws -> AnyValue {
+    static func fromRegistry(wireName: String, data: Data, crypto: EnvelopeCrypto? = nil) throws -> AnyValue {
         guard let decryptor = SerializerRegistry.shared.decryptor(for: wireName) else {
             throw SerializerError.deserializationFailed("No decryptor registered for wire name: \(wireName)")
         }
@@ -208,7 +209,7 @@ extension AnyValue {
     }
 
     /// Serialize with registry-based type resolution
-    public func serializeWithRegistry(wireName: String? = nil, crypto: EnvelopeCrypto? = nil, resolver: LabelResolver? = nil) throws -> Data {
+    func serializeWithRegistry(wireName: String? = nil, crypto: EnvelopeCrypto? = nil, resolver: LabelResolver? = nil) throws -> Data {
         let registryWireName = wireName ?? typeName
 
         if crypto != nil && resolver != nil {

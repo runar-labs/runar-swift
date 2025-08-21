@@ -67,10 +67,10 @@ public enum EnvelopeEncryption {
             case "networkId": if case let .utf8String(s) = v { networkId = s }
             case "networkEncryptedKey": if case let .byteString(b) = v { networkEncryptedKey = Data(b) }
             case "profileEncryptedKeys": if case let .map(pm) = v {
-                for (pk, pv) in pm {
-                    if case let .utf8String(pid) = pk, case let .byteString(b) = pv { profileEncryptedKeys[pid] = Data(b) }
+                    for (pk, pv) in pm {
+                        if case let .utf8String(pid) = pk, case let .byteString(b) = pv { profileEncryptedKeys[pid] = Data(b) }
+                    }
                 }
-            }
             default: break
             }
         }
@@ -114,7 +114,9 @@ private func encodeToCBORValue(_ value: Any) throws -> CBOR {
         return CBOR.byteString(array)
     case let dict as [String: [UInt8]]:
         var map: [CBOR: CBOR] = [:]
-        for (key, val) in dict { map[CBOR.utf8String(key)] = CBOR.byteString(val) }
+        for (key, val) in dict {
+            map[CBOR.utf8String(key)] = CBOR.byteString(val)
+        }
         return CBOR.map(map)
     case is NSNull:
         return CBOR.null

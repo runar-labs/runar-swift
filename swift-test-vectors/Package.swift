@@ -8,13 +8,13 @@ let package = Package(
         .iOS(.v15),
     ],
     dependencies: [
-        .package(name: "swift-serializer", path: "../swift-serializer")
+        .package(name: "swift-serializer", path: "../swift-serializer"),
     ],
     targets: [
         .executableTarget(
             name: "SwiftTestVectors",
             dependencies: [
-                .product(name: "RunarSerializer", package: "swift-serializer")
+                .product(name: "RunarSerializer", package: "swift-serializer"),
             ]
         ),
     ]

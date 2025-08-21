@@ -1,5 +1,5 @@
-import Foundation
 import CRunarFFI
+import Foundation
 
 public final class FFIDiscovery {
     private var handle: UnsafeMutableRawPointer?
@@ -13,7 +13,7 @@ public final class FFIDiscovery {
             }
         }
         if let e = err { throw e }
-        self.handle = out
+        handle = out
     }
 
     deinit { if let h = handle { rn_discovery_free(h) } }
@@ -64,5 +64,3 @@ public final class FFIDiscovery {
         if let e = err { throw e }
     }
 }
-
-

@@ -1,9 +1,9 @@
-import XCTest
-@testable import SwiftNode
 import RunarFFI
 import RunarSerializer
 import RunarTestUtils
 import SwiftCBOR
+@testable import SwiftNode
+import XCTest
 
 @MainActor
 final class RealTransportTests: XCTestCase {
@@ -12,15 +12,17 @@ final class RealTransportTests: XCTestCase {
         var version: String { "0.0.1" }
         var path: String { "svc" }
         var description: String { "test" }
-        var networkId: String? = nil
+        var networkId: String?
         func initService(_ ctx: LifecycleContext) async throws {
             try await ctx.registerAction("echo") { params, _ in
-                return params ?? AnyValue.null()
+                params ?? AnyValue.null()
             }
         }
-        func start(_ context: LifecycleContext) async throws {}
-        func stop(_ context: LifecycleContext) async throws {}
+
+        func start(_: LifecycleContext) async throws {}
+        func stop(_: LifecycleContext) async throws {}
     }
+
     func testTwoNodesRequestRoundTrip() async throws {
         // Build two nodes with CA-signed certs using test fixtures
         let fixture = try RunarTestUtils.TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:0", "127.0.0.1:0"], defaultNetworkId: "net")
@@ -39,19 +41,17 @@ final class RealTransportTests: XCTestCase {
         let peerInfoA = try await nodeA.exportPeerInfoCBOR()
         try? await Task.sleep(nanoseconds: 200_000_000)
         var lastError: Error?
-        for _ in 0..<5 {
+        for _ in 0 ..< 5 {
             do { try await nodeB.connectPeer(peerInfoA); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 300_000_000) }
         }
         if let e = lastError { throw e }
         // Wait a brief moment for connection establishment metadata propagation
         try? await Task.sleep(nanoseconds: 200_000_000)
         // Simple request to A's local svc from B (over network)
-        let result = try await nodeB.requestToPeer("svc/echo", payload: AnyValue.primitive("hello"), peerNodeId: try fixture.nodeIds[0])
+        let result = try await nodeB.requestToPeer("svc/echo", payload: AnyValue.primitive("hello"), peerNodeId: fixture.nodeIds[0])
         let s: String = try await result.asType()
         XCTAssertEqual(s, "hello")
         await nodeB.stop()
         await nodeA.stop()
     }
 }
-
-

@@ -152,7 +152,7 @@ public class AnyValue {
         let typeName = "bytes"
         let serializeFn: (SerializationContext?) throws -> Data = { _ in
             // Raw payload for bytes category to match Rust
-            return data
+            data
         }
 
         let asTypeFn: (Any.Type) -> Any? = { targetType in
@@ -535,6 +535,7 @@ public class AnyValue {
             // Rust ArcValue encodes raw bytes for the bytes category; accept raw payload
             guard let casted = Data(lazyData.data) as? T else { throw SerializerError.typeMismatch("Cannot cast bytes to \(T.self)") }
             return casted
+
         case "string":
             let bytes = Array(lazyData.data)
             if let cbor = try? CBOR.decode(bytes) {
@@ -619,7 +620,7 @@ public class AnyValue {
                         if let casted = v as? T { return casted }
                         if let casted = Int(exactly: v) as? T { return casted }
                     }
-                    // fallthrough to fallback
+                // fallthrough to fallback
                 default:
                     break
                 }
@@ -858,7 +859,7 @@ public class AnyValue {
                         var allByteStrings = true
                         for el in arr {
                             guard case let .byteString(b) = el else { allByteStrings = false; break }
-                            let decrypted = try decryptor(Data(b), lazyData.keystore ?? (DummyKeystore()))
+                            let decrypted = try decryptor(Data(b), lazyData.keystore ?? DummyKeystore())
                             let inner = Array(decrypted)
                             guard let innerCBOR = try? CBOR.decode(inner) else { throw SerializerError.deserializationFailed("Decrypted element not valid CBOR") }
                             rebuilt.append(innerCBOR)
@@ -866,7 +867,8 @@ public class AnyValue {
                         if allByteStrings {
                             let rebuiltData = Data(CBOR.array(rebuilt).encode())
                             if let target = T.self as? Decodable.Type,
-                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T {
+                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T
+                            {
                                 return decodedAny
                             }
                             throw SerializerError.deserializationFailed("Typed list decode failed to materialize Decodable target from decrypted elements")
@@ -876,7 +878,8 @@ public class AnyValue {
                 // If not element-level encrypted array, attempt to decode as plain typed CBOR array to Decodable target
                 let cborDataPlain = Array(lazyData.data)
                 if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborDataPlain)) as? T {
+                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborDataPlain)) as? T
+                {
                     return decodedAny
                 }
                 throw SerializerError.deserializationFailed("Typed list decode needs Decodable target and proper decryptor or plain decoding support")
@@ -892,7 +895,7 @@ public class AnyValue {
                         for (k, v) in m {
                             guard case let .utf8String(key) = k else { throw SerializerError.deserializationFailed("Typed map key must be string") }
                             guard case let .byteString(b) = v else { allByteStrings = false; break }
-                            let decrypted = try decryptor(Data(b), lazyData.keystore ?? (DummyKeystore()))
+                            let decrypted = try decryptor(Data(b), lazyData.keystore ?? DummyKeystore())
                             let inner = Array(decrypted)
                             guard let innerCBOR = try? CBOR.decode(inner) else { throw SerializerError.deserializationFailed("Decrypted map element not valid CBOR") }
                             rebuilt[.utf8String(key)] = innerCBOR
@@ -900,7 +903,8 @@ public class AnyValue {
                         if allByteStrings {
                             let rebuiltData = Data(CBOR.map(rebuilt).encode())
                             if let target = T.self as? Decodable.Type,
-                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T {
+                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T
+                            {
                                 return decodedAny
                             }
                             throw SerializerError.deserializationFailed("Typed map decode failed to materialize Decodable target from decrypted elements")
@@ -909,7 +913,8 @@ public class AnyValue {
                 }
                 // Not element-level encrypted; try plain typed map decode to Decodable
                 if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T {
+                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T
+                {
                     return decodedAny
                 }
                 throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor or plain decoding support")
@@ -938,7 +943,7 @@ public class AnyValue {
         let isEncrypted = data[1] == 0x01
         let nameLen = Int(data[2])
         guard data.count >= 3 + nameLen else { throw SerializerError.deserializationFailed("Data too short for type name") }
-        let nameData = data[3..<(3 + nameLen)]
+        let nameData = data[3 ..< (3 + nameLen)]
         guard let name = String(data: Data(nameData), encoding: .utf8) else { throw SerializerError.deserializationFailed("Invalid type name encoding") }
         let payload = data[(3 + nameLen)...]
         return (category, isEncrypted, name, Data(payload))
@@ -1015,7 +1020,6 @@ public class AnyValue {
     }
 
     // MARK: - JSON Output
-
 }
 
 /// CBOR encoding helper using SwiftCBOR
@@ -1191,4 +1195,3 @@ private struct DummyKeystore: EnvelopeCrypto {
     func decryptWithProfile(envelopeData _: EnvelopeEncryptedData, profileId _: String) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
     func decryptWithNetwork(envelopeData _: EnvelopeEncryptedData) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
 }
-

@@ -1,7 +1,7 @@
-import XCTest
-@testable import RunarTestUtils
 import RunarFFI
+@testable import RunarTestUtils
 import SwiftCBOR
+import XCTest
 
 final class FixturesTests: XCTestCase {
     func testCreateKeyManagerWithCertAndStateRoundTrip() throws {
@@ -37,5 +37,3 @@ final class FixturesTests: XCTestCase {
         XCTAssertNotNil(dni.node_metadata.services)
     }
 }
-
-

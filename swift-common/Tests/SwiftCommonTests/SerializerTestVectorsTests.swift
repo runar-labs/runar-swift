@@ -1,6 +1,6 @@
 import Foundation
-import XCTest
 import SwiftCommon
+import XCTest
 
 final class SerializerTestVectorsTests: XCTestCase {
     func testCompactIdGeneration() {

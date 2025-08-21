@@ -20,5 +20,3 @@ public struct SerializationContext {
         self.profilePublicKey = profilePublicKey
     }
 }
-
-

@@ -1,7 +1,7 @@
-import XCTest
 @testable import RunarFFI
-import SwiftCBOR
 import RunarSerializer
+import SwiftCBOR
+import XCTest
 
 final class EnvelopeE2ETests: XCTestCase {
     func testEnvelopeEncryptDecryptViaFFI() async throws {
@@ -47,5 +47,3 @@ final class EnvelopeE2ETests: XCTestCase {
         try FileManager.default.removeItem(atPath: tempDir)
     }
 }
-
-

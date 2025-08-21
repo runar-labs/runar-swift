@@ -1,8 +1,8 @@
 import Foundation
-import SwiftCommon
 import RunarFFI
 import RunarSerializer
 import SwiftCBOR
+import SwiftCommon
 
 // MARK: - Keys Service
 
@@ -20,8 +20,8 @@ public final class KeysService: ServiceBase {
 
     // MARK: - Service Lifecycle
 
-    public override func performInit(_ context: LifecycleContext) async throws {
-        self.networkId = context.networkId
+    override public func performInit(_ context: LifecycleContext) async throws {
+        networkId = context.networkId
 
         // Initialize FFI keys if not already provided
         if keys == nil {
@@ -29,14 +29,14 @@ public final class KeysService: ServiceBase {
         }
     }
 
-    public override func performStart(_ context: LifecycleContext) async throws {
+    override public func performStart(_ context: LifecycleContext) async throws {
         // Register all key management actions
         try await registerKeyActions(context: context)
         try await registerCertificateActions(context: context)
         try await registerEncryptionActions(context: context)
     }
 
-    public override func performStop(_ context: LifecycleContext) async throws {
+    override public func performStop(_: LifecycleContext) async throws {
         keys = nil
     }
 
@@ -44,7 +44,7 @@ public final class KeysService: ServiceBase {
 
     private func registerKeyActions(context: LifecycleContext) async throws {
         // Generate new key pair
-        try await context.registerAction("generate_keypair") { [weak self] payload, ctx in
+        try await context.registerAction("generate_keypair") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             let request = try payload?.asType(KeypairRequest.self) ?? KeypairRequest(algorithm: .ed25519)
@@ -53,7 +53,7 @@ public final class KeysService: ServiceBase {
         }
 
         // Get public key
-        try await context.registerAction("get_public_key") { [weak self] payload, ctx in
+        try await context.registerAction("get_public_key") { [weak self] _, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             let publicKey = try await self.getPublicKey()
@@ -61,7 +61,7 @@ public final class KeysService: ServiceBase {
         }
 
         // Get node ID
-        try await context.registerAction("get_node_id") { [weak self] payload, ctx in
+        try await context.registerAction("get_node_id") { [weak self] _, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             return AnyValue.primitive(self.nodeId)
@@ -74,7 +74,7 @@ public final class KeysService: ServiceBase {
 
     private func registerCertificateActions(context: LifecycleContext) async throws {
         // Generate certificate
-        try await context.registerAction("generate_certificate") { [weak self] payload, ctx in
+        try await context.registerAction("generate_certificate") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             guard let certRequest = try payload?.asType(CertificateRequest.self) else {
@@ -86,7 +86,7 @@ public final class KeysService: ServiceBase {
         }
 
         // Validate certificate
-        try await context.registerAction("validate_certificate") { [weak self] payload, ctx in
+        try await context.registerAction("validate_certificate") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             guard let certData = try payload?.asType(Data.self) else {
@@ -98,7 +98,7 @@ public final class KeysService: ServiceBase {
         }
 
         // Get certificate chain
-        try await context.registerAction("get_certificate_chain") { [weak self] payload, ctx in
+        try await context.registerAction("get_certificate_chain") { [weak self] _, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             let chain = try await self.getCertificateChain()
@@ -110,7 +110,7 @@ public final class KeysService: ServiceBase {
 
     private func registerEncryptionActions(context: LifecycleContext) async throws {
         // Encrypt data
-        try await context.registerAction("encrypt") { [weak self] payload, ctx in
+        try await context.registerAction("encrypt") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             guard let encryptRequest = try payload?.asType(EncryptRequest.self) else {
@@ -122,7 +122,7 @@ public final class KeysService: ServiceBase {
         }
 
         // Decrypt data
-        try await context.registerAction("decrypt") { [weak self] payload, ctx in
+        try await context.registerAction("decrypt") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             guard let decryptRequest = try payload?.asType(DecryptRequest.self) else {
@@ -134,7 +134,7 @@ public final class KeysService: ServiceBase {
         }
 
         // Set label mapping for encryption
-        try await context.registerAction("set_label_mapping") { [weak self] payload, ctx in
+        try await context.registerAction("set_label_mapping") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             guard let mappingData = try payload?.asType(Data.self) else {
@@ -228,7 +228,7 @@ public final class KeysService: ServiceBase {
 
     // MARK: - Encryption Implementation
 
-    public func encrypt(data: Data, publicKey: Data) async throws -> EncryptionResponse {
+    public func encrypt(data: Data, publicKey _: Data) async throws -> EncryptionResponse {
         guard let keys = keys else {
             throw BaseRunarError.serviceError("Keys not initialized", component: .keys)
         }
@@ -256,8 +256,6 @@ public final class KeysService: ServiceBase {
         try keys.setLabelMapping(mappingData)
     }
 
-
-
     // MARK: - Private Implementation Methods
 
     private func generateSelfSignedCertificate(request: CertificateRequest) async throws -> Data {
@@ -265,14 +263,14 @@ public final class KeysService: ServiceBase {
         // to generate proper X.509 certificates
 
         // For now, we'll create a simple CBOR-encoded certificate structure
-        let certMap: [CBOR: CBOR] = [
+        let certMap: [CBOR: CBOR] = try [
             .utf8String("version"): .unsignedInt(3),
             .utf8String("serialNumber"): .utf8String(generateSerialNumber()),
             .utf8String("subject"): .utf8String(request.subject),
             .utf8String("issuer"): .utf8String(request.issuer),
             .utf8String("validFrom"): .utf8String(ISO8601DateFormatter().string(from: Date())),
             .utf8String("validUntil"): .utf8String(ISO8601DateFormatter().string(from: Date().addingTimeInterval(request.validityDays * 24 * 60 * 60))),
-            .utf8String("publicKey"): .byteString([UInt8](try keys?.publicKey() ?? Data()))
+            .utf8String("publicKey"): .byteString([UInt8](keys?.publicKey() ?? Data())),
         ]
 
         return Data(CBOR.map(certMap).encode())
@@ -328,8 +326,6 @@ public struct PublicKeyResponse: Codable, Sendable {
         self.publicKey = publicKey
     }
 }
-
-
 
 public struct CertificateRequest: Codable, Sendable {
     public let subject: String

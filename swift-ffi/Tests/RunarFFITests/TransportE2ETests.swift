@@ -1,7 +1,7 @@
-import XCTest
 @testable import RunarFFI
 import RunarTestUtils
 import SwiftCBOR
+import XCTest
 
 final class TransportE2ETests: XCTestCase {
     func testTwoTransportsConnectAndRequest() throws {
@@ -21,7 +21,7 @@ final class TransportE2ETests: XCTestCase {
         try t2.start()
 
         // Build peer info for t2 and connect from t1
-        let p2 = TestFixtures.peerInfo(publicKey: try n2.publicKey(), addresses: ["127.0.0.1:50602"]) 
+        let p2 = try TestFixtures.peerInfo(publicKey: n2.publicKey(), addresses: ["127.0.0.1:50602"])
         try t1.connectPeer(p2)
 
         // Helper: poll until event of type appears (or timeout)
@@ -35,7 +35,7 @@ final class TransportE2ETests: XCTestCase {
                         }
                     }
                 }
-                usleep(20_000)
+                usleep(20000)
             }
             return nil
         }
@@ -50,13 +50,14 @@ final class TransportE2ETests: XCTestCase {
         // Request path round-trip: t1 -> t2
         let path = "test:echo/req"
         let correlation = "corr-1"
-        let payload = Data([1,2,3])
-        try t1.request(path: path, correlationId: correlation, payload: payload, destPeerId: try n2.nodeId(), profilePublicKey: nil)
+        let payload = Data([1, 2, 3])
+        try t1.request(path: path, correlationId: correlation, payload: payload, destPeerId: n2.nodeId(), profilePublicKey: nil)
 
         // t2 should receive RequestReceived; reply with completeRequest
         if let reqEv = try waitForEvent(t2, "RequestReceived") {
             if case let .map(map) = reqEv,
-               let reqIdV = map[.utf8String("request_id")], case let .utf8String(reqId) = reqIdV {
+               let reqIdV = map[.utf8String("request_id")], case let .utf8String(reqId) = reqIdV
+            {
                 // Respond with payload Data([9])
                 try t2.completeRequest(requestId: reqId, responsePayload: Data([9]), profilePublicKey: nil)
             }
@@ -65,7 +66,8 @@ final class TransportE2ETests: XCTestCase {
         // t1 should receive ResponseReceived
         if let respEv = try waitForEvent(t1, "ResponseReceived") {
             if case let .map(map) = respEv,
-               let corrV = map[.utf8String("correlation_id")], case let .utf8String(corrBack) = corrV {
+               let corrV = map[.utf8String("correlation_id")], case let .utf8String(corrBack) = corrV
+            {
                 XCTAssertEqual(corrBack, correlation)
             }
         }
@@ -76,18 +78,16 @@ final class TransportE2ETests: XCTestCase {
         _ = try waitForEvent(t2, "EventReceived")
 
         // Update local node info on t1
-        let updatedInfo = TestFixtures.nodeInfo(publicKey: try n1.publicKey(), addresses: ["127.0.0.1:50601"], networks: [can.defaultNetworkId], version: 1)
+        let updatedInfo = try TestFixtures.nodeInfo(publicKey: n1.publicKey(), addresses: ["127.0.0.1:50601"], networks: [can.defaultNetworkId], version: 1)
         try t1.updateLocalNodeInfo(updatedInfo)
 
         // Disconnect
-        try t1.disconnectPeer(try n2.nodeId())
+        try t1.disconnectPeer(n2.nodeId())
         _ = try waitForEvent(t1, "PeerDisconnected")
-        XCTAssertFalse(try t1.isConnected(try n2.nodeId()))
+        XCTAssertFalse(try t1.isConnected(n2.nodeId()))
 
         // Stop
         try t1.stop()
         try t2.stop()
     }
 }
-
-

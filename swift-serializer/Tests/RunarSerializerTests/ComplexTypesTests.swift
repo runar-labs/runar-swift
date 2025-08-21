@@ -339,8 +339,8 @@ final class ComplexTypesTests: XCTestCase {
     ]
 }
 
-import XCTest
 @testable import RunarSerializer
+import XCTest
 
 final class CrossLangVectorsTests: XCTestCase {
     func testLoadRustVectors_primitivesAndContainers() async throws {
@@ -375,7 +375,7 @@ final class CrossLangVectorsTests: XCTestCase {
             let d = try Data(contentsOf: base.appendingPathComponent("bytes.bin"))
             let v = try AnyValue.deserialize(d)
             let bytes: Data = try await v.asType()
-            XCTAssertEqual(bytes, Data([1,2,3]))
+            XCTAssertEqual(bytes, Data([1, 2, 3]))
         }
         // json
         do {
@@ -413,7 +413,7 @@ final class CrossLangVectorsTests: XCTestCase {
             let d = try Data(contentsOf: base.appendingPathComponent("list_i64.bin"))
             let v = try AnyValue.deserialize(d)
             let arr: [Int64] = try await v.asType()
-            XCTAssertEqual(arr, [1,2,3])
+            XCTAssertEqual(arr, [1, 2, 3])
         }
         // map<string,i64>
         do {

@@ -1,8 +1,9 @@
 import Foundation
-import SwiftCBOR
 import RunarSerializer
+import SwiftCBOR
 
 // MARK: - Rust Vector Validation
+
 // Validates that Swift can read and understand Rust-generated test vectors
 
 enum ValidationError: Error, LocalizedError {
@@ -12,18 +13,17 @@ enum ValidationError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .fileNotFound(let path):
+        case let .fileNotFound(path):
             "File not found: \(path)"
-        case .deserializationFailed(let message):
+        case let .deserializationFailed(message):
             "Deserialization failed: \(message)"
-        case .validationFailed(let expected, let actual):
+        case let .validationFailed(expected, actual):
             "Validation failed - Expected: \(expected), Actual: \(actual)"
         }
     }
 }
 
-struct RustVectorValidator {
-
+enum RustVectorValidator {
     static func validateAll() throws {
         print("🔬 Cross-Platform Serializer Validation (Swift reading Rust)")
         print("==========================================================")
@@ -44,7 +44,7 @@ struct RustVectorValidator {
             validateMapAny,
             validateListI64,
             validateMapStringI64,
-            validateStructPlain
+            validateStructPlain,
         ]
 
         var passed = 0

@@ -1,5 +1,5 @@
-import Foundation
 import CRunarFFI
+import Foundation
 import SwiftCBOR
 
 public struct EnvelopeEncryptedData: Sendable, Equatable, Codable {
@@ -50,7 +50,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
     // Returns canonical CBOR (as produced by Rust) of the envelope encrypted data
     private func encryptWithEnvelopeCBOR(data: Data, networkId: String?, profilePublicKeys: [Data]) throws -> Data {
         var outCbor: UnsafeMutablePointer<UInt8>?
-        var outLen: Int = 0
+        var outLen = 0
         // Allocate C buffers to keep pointers valid during the call
         var pkRawBuffers: [UnsafeMutablePointer<UInt8>] = []
         pkRawBuffers.reserveCapacity(profilePublicKeys.count)
@@ -97,7 +97,9 @@ public final class FFIKeyStore: EnvelopeCrypto {
             }
         }
         // Free allocated buffers
-        for p in pkRawBuffers { p.deallocate() }
+        for p in pkRawBuffers {
+            p.deallocate()
+        }
         if let e = err { throw e }
         guard let ptr = outCbor else { throw FFIError(code: -1, message: "encrypt_with_envelope returned null") }
         let eedCbor = Data(bytes: ptr, count: outLen)
@@ -108,7 +110,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
     // Accepts canonical EED CBOR (e.g., produced by encryptWithEnvelope) and returns plaintext
     private func decryptEnvelopeCBOR(_ cbor: Data) throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
-        var outLen: Int = 0
+        var outLen = 0
         let (_, err) = withRnError { errPtr in
             cbor.withUnsafeBytes { raw in
                 rn_keys_decrypt_envelope(keys.handle,
@@ -127,6 +129,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
     }
 
     // MARK: CBOR translate
+
     private func decodeEnvelopeFromFFICBOR(_ data: Data) throws -> EnvelopeEncryptedData {
         let itemOpt = try CBORDecoder(input: [UInt8](data)).decodeItem()
         guard let item = itemOpt, case let CBOR.map(map) = item else { throw FFIError(code: 2, message: "Invalid envelope CBOR") }
@@ -137,7 +140,9 @@ public final class FFIKeyStore: EnvelopeCrypto {
                 case let .array(arr):
                     var out: [UInt8] = []
                     out.reserveCapacity(arr.count)
-                    for e in arr { if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) { out.append(UInt8(u)) } }
+                    for e in arr {
+                        if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) { out.append(UInt8(u)) }
+                    }
                     return Data(out)
                 default: return Data()
                 }
@@ -158,7 +163,9 @@ public final class FFIKeyStore: EnvelopeCrypto {
                 case let .array(arr):
                     var out: [UInt8] = []
                     out.reserveCapacity(arr.count)
-                    for e in arr { if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) { out.append(UInt8(u)) } }
+                    for e in arr {
+                        if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) { out.append(UInt8(u)) }
+                    }
                     profileMap[pid] = Data(out)
                 default:
                     break
@@ -190,5 +197,3 @@ public final class FFIKeyStore: EnvelopeCrypto {
         return Data(CBOR.map(map).encode())
     }
 }
-
-

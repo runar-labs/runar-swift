@@ -28,7 +28,7 @@ public enum TestFixtures {
         let mappingCBOR = Data(emptyMapping.encode())
         try node.setLabelMapping(mappingCBOR)
         // Proper initial NodeInfo using real public key and configured network id; address uses bind 0 (updated after start)
-        let placeholderInfo = nodeInfo(publicKey: try node.publicKey(), addresses: ["127.0.0.1:0"], networks: ["net"], version: 0)
+        let placeholderInfo = try nodeInfo(publicKey: node.publicKey(), addresses: ["127.0.0.1:0"], networks: ["net"], version: 0)
         try node.setLocalNodeInfo(placeholderInfo)
         return node
     }
@@ -54,7 +54,7 @@ public enum TestFixtures {
         map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
         map[.utf8String("node_metadata")] = .map([
             .utf8String("services"): .array([]),
-            .utf8String("subscriptions"): .array([])
+            .utf8String("subscriptions"): .array([]),
         ])
         map[.utf8String("version")] = .unsignedInt(UInt64(max(0, version)))
         return Data(CBOR.map(map).encode())
@@ -75,7 +75,7 @@ public enum TestFixtures {
         _ = try ca.nodeId()
         var nodes: [FFIKeys] = []
         var nodeIds: [String] = []
-        for i in 0..<count {
+        for i in 0 ..< count {
             let node = try FFIKeys()
             let csr = try node.generateCSR()
             let ncm = try ca.processSetupToken(csr)
@@ -88,10 +88,8 @@ public enum TestFixtures {
             let info = nodeInfo(publicKey: pk, addresses: [addresses[i]], networks: [defaultNetworkId], version: 0)
             try node.setLocalNodeInfo(info)
             nodes.append(node)
-            nodeIds.append(try node.nodeId())
+            try nodeIds.append(node.nodeId())
         }
         return CANodes(ca: ca, nodes: nodes, nodeIds: nodeIds, defaultNetworkId: defaultNetworkId)
     }
 }
-
-

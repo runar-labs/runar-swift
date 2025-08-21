@@ -86,5 +86,3 @@ let _typeNameRegistryBootstrap: Void = {
         await TypeNameRegistry.shared.preRegisterContainers()
     }
 }()
-
-
