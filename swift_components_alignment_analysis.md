@@ -374,7 +374,155 @@ This document provides a comprehensive analysis of the alignment between Swift a
 6. Test coverage matches Rust implementation
 7. Performance characteristics are equivalent
 
- 
+---
+
+## Additional Missing Components & Considerations
+
+### 5. Swift-FFI vs Runar-FFI
+
+#### Current State - Swift-FFI
+- **FFIKeys.swift** - Rust key management wrapper
+- **FFITransport.swift** - Network transport wrapper
+- **FFIDiscovery.swift** - Peer discovery wrapper
+- **FFIKeyStore.swift** - Envelope crypto implementation
+- **FFIErrors.swift** - Error handling utilities
+
+#### Current State - Runar-FFI
+- **Complete C FFI layer** for Rust components
+- **Memory management** and safety guarantees
+- **Error propagation** across language boundaries
+- **Performance optimizations** for FFI calls
+
+#### Gaps and Misalignments
+1. **FFI Layer Completeness:**
+   - ❌ Missing FFI functions coverage
+   - ❌ Memory management verification
+   - ❌ Error handling consistency
+   - ❌ Performance optimization
+
+2. **Safety Guarantees:**
+   - ❌ Memory safety across boundaries
+   - ❌ Thread safety for concurrent access
+   - ❌ Resource cleanup verification
+
+#### Implementation Plan - Swift-FFI
+1. **Complete FFI coverage** audit vs Rust FFI
+2. **Memory safety verification** and testing
+3. **Performance optimization** of FFI calls
+4. **Error handling standardization**
+
+---
+
+### 13. FFI Design Review: Setup Token Agreement Key Extraction
+
+#### Current Issue
+**Problematic FFI Method:**
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn rn_keys_extract_agreement_pk_from_setup_token(
+    st_cbor: *const u8,
+    st_len: usize,
+    out_pk: *mut *mut u8,
+    out_len: *mut usize,
+    err: *mut RnError,
+) -> i32
+```
+
+**Issues Identified:**
+1. **Unnecessary complexity** - Swift needs agreement PK from setup token
+2. **Tight coupling** - Forces Swift to handle SetupToken CBOR serialization
+3. **Data flow mismatch** - Doesn't align with mobile/node key manager responsibilities
+4. **Potential security issues** - Exposing internal token structure to FFI
+
+#### Analysis Completed - End-to-End Test Review
+
+**Data Flow Analysis from @end_to_end_test.rs:**
+
+1. **Node Setup Phase** (lines 74-89):
+   - Node creates its own keypairs (TLS, Storage, Agreement) in constructor
+   - Node generates SetupToken via `generate_csr()` containing:
+     - `node_public_key` (node ID)
+     - `node_agreement_public_key` (for encrypted communication)
+     - CSR (certificate signing request)
+   - **Key Finding**: Node has direct access to its agreement key - it's part of its key material
+
+2. **Mobile Processing Phase** (lines 108-121):
+   - Mobile receives encrypted SetupToken, decrypts it
+   - Mobile processes SetupToken to create certificate
+   - Mobile needs node's agreement public key for encrypted communication
+
+3. **Certificate Transmission Phase** (lines 143-151):
+   - Mobile encrypts certificate message using `node_agreement_public_key`
+   - Mobile calls: `encrypt_message_for_node(&data, &setup_token_mobile.node_agreement_public_key)`
+
+4. **Network Key Phase** (lines 441-445):
+   - Mobile creates network key message using `node_agreement_public_key`
+   - Mobile calls: `create_network_key_message(&network_id, &setup_token_mobile.node_agreement_public_key)`
+
+**Key Finding: Agreement PK is Independent of Setup Token**
+- Node creates its agreement key during initialization (separate from setup token)
+- Node should be able to provide its agreement public key directly
+- Current FFI method is unnecessarily complex and tightly coupled
+
+**Recommended Solution:**
+
+**Option A: Direct Node Key Manager Access (Preferred)**
+- Add FFI method: `rn_node_get_agreement_public_key(handle) -> Vec<u8>`
+- Node key manager should expose its agreement public key directly
+- Eliminates need to parse SetupToken in Swift
+
+**Option B: Setup Token Extraction with Better Design**
+- Keep current approach but improve error handling
+- Add validation that SetupToken is properly formed
+- Document that this is temporary until direct access is available
+
+**Decision: Go with Option A (Direct Access)**
+- **Rationale**: Agreement public key is independent of setup token creation
+- **Security**: Direct access is safer than exposing token parsing to FFI
+- **Performance**: Eliminates unnecessary CBOR serialization/deserialization
+- **Maintainability**: Cleaner separation of concerns
+
+**Implementation Plan:**
+1. Add `get_agreement_public_key()` method to NodeKeyManager
+2. Create FFI wrapper: `rn_node_get_agreement_public_key()`
+3. Update Swift FFI wrapper to use direct access
+4. Remove `rn_keys_extract_agreement_pk_from_setup_token()` FFI method
+5. Update any Swift code using the old method
+
+**Status:** Analysis complete - Direct access recommended
+
+---
+
+### 6. Swift-Test-Utils vs Runar Test Infrastructure
+
+#### Current State - Swift-Test-Utils
+- **KeysAndTransportFixtures.swift** - Test fixtures and helpers
+
+#### Current State - Runar Test Infrastructure
+- **test_utils/** - Comprehensive test utilities
+- **fixtures/** - Test data and setup helpers
+- **integration tests** - End-to-end testing
+
+#### Gaps and Misalignments
+1. **Cross-Platform Network Testing:**
+   - ❌ Swift node ↔ Rust node network communication
+   - ❌ QUIC transport between platforms
+   - ❌ Service discovery across platforms
+   - ❌ Remote action calls between Swift and Rust nodes
+
+2. **Test Coverage:**
+   - ❌ Cross-platform integration test framework
+   - ❌ Mixed platform test scenarios
+   - ❌ End-to-end compatibility validation
+
+#### Implementation Plan - Swift-Test-Utils
+1. **Create cross-platform test utilities** for Swift/Rust node communication
+2. **Implement QUIC transport testing** between Swift and Rust nodes
+3. **Add service discovery testing** across platforms
+4. **Build end-to-end test framework** for mixed platform scenarios
+5. **Test remote action calls** between Swift and Rust nodes (similar to @remote_test.rs)
+6. **Create sample macOS/iOS apps** for real device testing
+
 
 ---
 

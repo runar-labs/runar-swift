@@ -159,9 +159,35 @@ enum SerializerTestVectors {
     }
 }
 
+// Parse command line arguments
+let args = CommandLine.arguments
+let command = args.count > 1 ? args[1] : "generate"
+
 do {
-    try SerializerTestVectors.generate()
+    switch command {
+    case "generate":
+        print("🔧 Generating Swift serializer test vectors...")
+        try SerializerTestVectors.generate()
+        print("✅ Successfully generated test vectors")
+
+    case "validate-rust":
+        print("🔍 Validating Rust-generated test vectors...")
+        try RustVectorValidator.validateAll()
+        print("✅ Successfully validated Rust vectors")
+
+    case "validate-swift":
+        print("🔍 Validating Swift-generated test vectors...")
+        print("⚠️  Swift vector validation not yet implemented")
+
+    default:
+        print("❌ Unknown command: \(command)")
+        print("Available commands:")
+        print("  generate       - Generate Swift test vectors")
+        print("  validate-rust  - Validate Rust vectors with Swift")
+        print("  validate-swift - Validate Swift vectors (not implemented)")
+        exit(1)
+    }
 } catch {
-    print("❌ Error generating test vectors: \(error)")
+    print("❌ Error: \(error)")
     exit(1)
 }
