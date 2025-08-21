@@ -159,14 +159,14 @@ public final class SwiftNode {
 
 	public func addService(_ service: AbstractService) async throws {
 		// Register local service metadata
-		registry.registerLocalService(servicePath: service.path, name: service.name, version: service.version, description: service.description)
+		await registry.registerLocalService(servicePath: service.path, name: service.name, version: service.version, description: service.description)
 		let topic = "\(config.defaultNetworkId):\(service.path)"
 		let ctx = LifecycleContext(networkId: config.defaultNetworkId, servicePath: service.path, config: nil, logger: logger, nodeDelegate: self)
 		try await service.initService(ctx)
 		if started {
 			// Node already started: start service immediately and mark running
 			try await service.start(ctx)
-			registry.updateLocalServiceState(servicePath: service.path, newState: .running)
+			await registry.updateLocalServiceState(servicePath: service.path, newState: .running)
 			logger.info("Service started: \(topic)")
 		} else {
 			// Keep instance to start later during node.start()
@@ -182,8 +182,8 @@ public final class SwiftNode {
 		// Start local services and mark them running only after start completes
 		for (path, svc) in localServices {
 			let svcCtx = LifecycleContext(networkId: config.defaultNetworkId, servicePath: path, config: nil, logger: logger, nodeDelegate: self)
-			try await svc.start(svcCtx)
-			registry.updateLocalServiceState(servicePath: path, newState: .running)
+							try await svc.start(svcCtx)
+				await registry.updateLocalServiceState(servicePath: path, newState: .running)
 		}
 		// Initialize keys/transport via FFI when networking is enabled
 		if let transport {
@@ -311,7 +311,7 @@ public final class SwiftNode {
 				   let item = try? CBORDecoder(input: [UInt8](bs)).decodeItem(),
 				   case let CBOR.array(arr) = item {
 					let services = arr.compactMap { if case let .utf8String(s) = $0 { return s } else { return nil } }
-					registry.updatePeerServices(peerNodeId: peerId, servicePaths: services)
+					await registry.updatePeerServices(peerNodeId: peerId, servicePaths: services)
 				} else {
 					Task { [weak self] in
 						guard let self else { return }
@@ -331,7 +331,7 @@ public final class SwiftNode {
 										}
 									}
 									let svcPaths = metas.map { $0.service_path }
-									await MainActor.run { self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths) }
+									await self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
 								}
 							}
 						} catch {
@@ -340,9 +340,9 @@ public final class SwiftNode {
 					}
 				}
 			}
-		case "PeerDisconnected":
-			if let peerId = str("peer_node_id") {
-				registry.removePeer(peerId)
+					case "PeerDisconnected":
+				if let peerId = str("peer_node_id") {
+					await registry.removePeer(peerId)
 				logger.info("peer disconnected id=\(peerId)")
 				// Publish internal disconnected event
 				let topic = "$registry/peer/\(peerId)/disconnected"
@@ -389,17 +389,18 @@ public final class SwiftNode {
 		let lifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$registry", config: nil, logger: logger, nodeDelegate: self)
 		try await lifecycle.registerAction("services/list") { _, _ in
 			let services = self.registry.getLocalServices()
-			let now = UInt64(Date().timeIntervalSince1970)
+			let now = Date().timeIntervalSince1970
 			let nid = self.config.defaultNetworkId
 			let typed: [RegistryServiceMetadata] = services.map { svc in
-				RegistryServiceMetadata(
+				let lastStartTime = svc.lastStartTime?.timeIntervalSince1970 ?? now
+				return RegistryServiceMetadata(
 					network_id: nid,
-					service_path: svc.servicePath,
+					service_path: svc.servicePath.asString(),
 					name: svc.name,
 					version: svc.version,
 					description: svc.description,
-					registration_time: now,
-					last_start_time: now
+					registration_time: UInt64(svc.registrationTime.timeIntervalSince1970),
+					last_start_time: UInt64(lastStartTime)
 				)
 			}
 			return AnyValue.struct(typed)
@@ -407,16 +408,17 @@ public final class SwiftNode {
 		try await lifecycle.registerAction("services/{service_path}") { _, ctx in
 			let path = ctx.servicePath
 			if let info = self.registry.getLocalService(servicePath: path) {
-				let now = UInt64(Date().timeIntervalSince1970)
+				let now = Date().timeIntervalSince1970
 				let nid = self.config.defaultNetworkId
+				let lastStartTime = info.lastStartTime?.timeIntervalSince1970 ?? now
 				let meta = RegistryServiceMetadata(
 					network_id: nid,
-					service_path: info.servicePath,
+					service_path: info.servicePath.asString(),
 					name: info.name,
 					version: info.version,
 					description: info.description,
-					registration_time: now,
-					last_start_time: now
+					registration_time: UInt64(info.registrationTime.timeIntervalSince1970),
+					last_start_time: UInt64(lastStartTime)
 				)
 				return AnyValue.struct(meta)
 			}
@@ -427,16 +429,16 @@ public final class SwiftNode {
 		try await lifecycle.registerAction("services/{service_path}/state") { _, ctx in
 			let path = ctx.servicePath
 			if let entry = self.registry.getLocalService(servicePath: path) {
-				return AnyValue.primitive(entry.state.rawValue)
+				return AnyValue.primitive(entry.serviceState.rawValue)
 			}
 			return AnyValue.null()
 		}
 		try await lifecycle.registerAction("services/{service_path}/pause") { _, ctx in
-			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused)
+			await self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused)
 			return AnyValue.primitive(true)
 		}
 		try await lifecycle.registerAction("services/{service_path}/resume") { _, ctx in
-			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running)
+			await self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running)
 			return AnyValue.primitive(true)
 		}
 	}
@@ -467,9 +469,30 @@ public final class SwiftNode {
 		map[.utf8String("node_public_key")] = .array([UInt8](pk).map { .unsignedInt(UInt64($0)) })
 		map[.utf8String("network_ids")] = .array(config.networkIds.map { .utf8String($0) })
 		map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
+		let subscribedTopics = registry.getSubscribedTopics()
+		let services = registry.getLocalServices()
+
+		// Build services array with ServiceMetadata structs
+		let serviceMetadatas = services.map { service -> CBOR in
+			// For now, create empty actions array - will be populated when actions are registered
+			let actions = [CBOR]()  // TODO: Get actual actions from service registry
+
+			let serviceMetadata: [CBOR: CBOR] = [
+				.utf8String("network_id"): .utf8String(service.servicePath.networkId),
+				.utf8String("service_path"): .utf8String(service.servicePath.segments.joined(separator: "/")),
+				.utf8String("name"): .utf8String(service.name),
+				.utf8String("version"): .utf8String(service.version),
+				.utf8String("description"): .utf8String(service.description),
+				.utf8String("actions"): .array(actions),
+				.utf8String("registration_time"): .unsignedInt(UInt64(service.registrationTime.timeIntervalSince1970)),
+				.utf8String("last_start_time"): service.lastStartTime.map { .unsignedInt(UInt64($0.timeIntervalSince1970)) } ?? .null
+			]
+			return .map(serviceMetadata)
+		}
+
 		map[.utf8String("node_metadata")] = .map([
-			.utf8String("services"): .array([]),
-			.utf8String("subscriptions"): .array([])
+			.utf8String("services"): .array(serviceMetadatas),
+			.utf8String("subscriptions"): .array(subscribedTopics.map { .utf8String($0) })
 		])
 		map[.utf8String("version")] = .unsignedInt(0)
 		return Data(CBOR.map(map).encode())
@@ -478,9 +501,9 @@ public final class SwiftNode {
 	public func request(_ path: String, payload: AnyValue?) async throws -> AnyValue {
 		let full = qualify(path)
 		if let (handler, params) = registry.getLocalAction(topicPath: full) {
-			// Gate local routing on service running state
-			let targetService = parseService(full)
-			if let meta = registry.getLocalService(servicePath: targetService), meta.state != .running {
+								// Gate local routing on service running state
+					let targetService = parseService(full)
+					if let meta = registry.getLocalService(servicePath: targetService), meta.serviceState != .running {
 				throw NSError(domain: "SwiftNode", code: 503, userInfo: [NSLocalizedDescriptionKey: "Service not running: \(targetService)"])
 			}
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: params, userProfilePublicKey: Data())
@@ -537,7 +560,7 @@ public final class SwiftNode {
 	public func publishWithOptions(_ topic: String, data: AnyValue?, options: PublishOptions) async throws {
 		let qualified = qualify(topic)
 		let targets = registry.snapshotSubscribers(topicPath: qualified)
-		logger.debug("publish to \(qualified) subscribers=\(targets.count)")
+		logger.debug("publish to \(qualified) subscribers=\(targets.count) (from: \(topic))")
 		for callback in targets {
 			let ctx = EventContext(topic: qualified, logger: logger, nodeDelegate: self, isLocal: true)
 			do { try await callback(ctx, data) } catch { logger.error("Event handler error: \(error)") }
@@ -565,6 +588,7 @@ public final class SwiftNode {
 	public func subscribe(_ topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
 		let full = qualify(topic)
 		let id = registry.subscribe(topicPath: full, handler: callback)
+		logger.debug("Subscribed to \(full) id=\(id) (from: \(topic))")
 		// Deliver past retained event if requested (exact-topic only)
 		if let lookback = options?.includePast, lookback > 0 {
 			let cutoff = Date().addingTimeInterval(-lookback)
@@ -694,7 +718,7 @@ public final class SwiftNode {
 extension SwiftNode: NodeDelegate {
 	public func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws {
 		let full = "\(networkId):\(servicePath)/\(action)"
-		registry.registerLocalAction(topicPath: full, handler: handler)
+		await registry.registerLocalAction(topicPath: full, handler: handler)
 	}
 
 	public func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {

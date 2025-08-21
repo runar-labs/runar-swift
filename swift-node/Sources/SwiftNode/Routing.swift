@@ -1,18 +1,18 @@
 import Foundation
 
 // TopicPath: normalized path with network id and segments
-struct TopicPath: Equatable, Hashable {
-	let networkId: String
-	let segments: [String]
-	let isPattern: Bool
+public struct TopicPath: Equatable, Hashable, Sendable {
+	public let networkId: String
+	public let segments: [String]
+	public let isPattern: Bool
 
-	init(networkId: String, segments: [String]) {
+	public init(networkId: String, segments: [String]) {
 		self.networkId = networkId
 		self.segments = segments
 		self.isPattern = segments.contains("*") || segments.contains(">") || segments.contains(where: { $0.hasPrefix("{") && $0.hasSuffix("}") })
 	}
 
-	static func parse(_ full: String) -> TopicPath {
+	public static func parse(_ full: String) -> TopicPath {
 		let parts = full.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
 		let net = parts.count > 1 ? parts[0] : "default"
 		let rest = parts.count > 1 ? parts[1] : parts[0]
@@ -20,7 +20,7 @@ struct TopicPath: Equatable, Hashable {
 		return TopicPath(networkId: net, segments: segs)
 	}
 
-	func asString() -> String { "\(networkId):\(segments.joined(separator: "/"))" }
+	public func asString() -> String { "\(networkId):\(segments.joined(separator: "/"))" }
 }
 
 struct PathTrieMatch<T> {

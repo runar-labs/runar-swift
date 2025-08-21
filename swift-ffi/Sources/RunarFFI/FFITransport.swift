@@ -154,6 +154,7 @@ public final class FFITransport {
 	}
 
 	public func publish(path: String, correlationId: String, payload: Data, destPeerId: String?) throws {
+		print("FFITransport.publish: path=\(path), correlationId=\(correlationId), payload.count=\(payload.count), destPeerId=\(destPeerId ?? "nil")")
 		guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
 		let (_, err) = withRnError { errPtr in
 			if payload.isEmpty {

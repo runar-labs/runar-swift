@@ -52,14 +52,16 @@ final class NetworkTests: XCTestCase {
             XCTFail("did not receive discovered event: \(err)")
         }
 
-        // Subscribe on node2, trigger publish on node1
+                // Subscribe on node2, trigger publish on node1
         let exp = expectation(description: "recv")
         _ = try await n2.subscribe("pub/evt", options: EventRegistrationOptions(includePast: 10.0)) { _, v in
-            let s: String? = try? await v?.asType()
-            if s == "hi" { exp.fulfill() }
-        }
+             let s: String? = try? await v?.asType()
+             if s == "hi" { exp.fulfill() }
+         }
+        // Small delay to ensure subscription is fully established
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
         try await n1.publish("pub/evt", data: AnyValue.primitive("hi"), retainFor: 10.0)
-        await fulfillment(of: [exp], timeout: 10.0)
+        await fulfillment(of: [exp], timeout: 5.0)
 
         await n2.stop()
         await n1.stop()
