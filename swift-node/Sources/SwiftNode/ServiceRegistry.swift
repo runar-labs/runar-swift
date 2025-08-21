@@ -2,7 +2,7 @@ import Foundation
 import RunarSerializer
 import SwiftCommon
 
-public typealias ActionHandler = @Sendable (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
+public typealias ActionHandler = (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
 public typealias EventHandler = @Sendable (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
 
 public struct EventRegistrationOptions: Sendable {

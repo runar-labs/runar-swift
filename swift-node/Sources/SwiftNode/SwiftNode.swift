@@ -4,7 +4,7 @@ import RunarSerializer
 import RunarFFI
 import SwiftCBOR
 
-public struct SwiftNetworkConfig {
+public struct SwiftNetworkConfig: Sendable {
 	public var enabled: Bool
 	public var bindAddress: String?
 	public var handshakeTimeoutMs: UInt64?
@@ -345,67 +345,62 @@ public final class SwiftNode {
 		// $registry: list services, service info, state
 		let lifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$registry", config: nil, logger: logger, nodeDelegate: self)
 		try await lifecycle.registerAction("services/list") { _, _ in
-			let services = await self.registry.getLocalServices()
-			let now = UInt64(Date().timeIntervalSince1970)
-			let typed: [RegistryServiceMetadata] = services.map { svc in
-				RegistryServiceMetadata(
-					network_id: await self.config.defaultNetworkId,
-					service_path: svc.servicePath,
-					name: svc.name,
-					version: svc.version,
-					description: svc.description,
-					registration_time: now,
-					last_start_time: now
-				)
+			let result: AnyValue = await MainActor.run {
+				let services = self.registry.getLocalServices()
+				let now = UInt64(Date().timeIntervalSince1970)
+				let nid = self.config.defaultNetworkId
+				let typed: [RegistryServiceMetadata] = services.map { svc in
+					RegistryServiceMetadata(
+						network_id: nid,
+						service_path: svc.servicePath,
+						name: svc.name,
+						version: svc.version,
+						description: svc.description,
+						registration_time: now,
+						last_start_time: now
+					)
+				}
+				return AnyValue.struct(typed)
 			}
-			return AnyValue.struct(typed)
+			return result
 		}
 		try await lifecycle.registerAction("services/{service_path}") { _, ctx in
 			let path = ctx.servicePath
-			if let info = await self.registry.getLocalService(servicePath: path) {
-				let now = UInt64(Date().timeIntervalSince1970)
-				let meta = RegistryServiceMetadata(
-					network_id: await self.config.defaultNetworkId,
-					service_path: info.servicePath,
-					name: info.name,
-					version: info.version,
-					description: info.description,
-					registration_time: now,
-					last_start_time: now
-				)
-				return AnyValue.struct(meta)
+			return await MainActor.run {
+				if let info = self.registry.getLocalService(servicePath: path) {
+					let now = UInt64(Date().timeIntervalSince1970)
+					let nid = self.config.defaultNetworkId
+					let meta = RegistryServiceMetadata(
+						network_id: nid,
+						service_path: info.servicePath,
+						name: info.name,
+						version: info.version,
+						description: info.description,
+						registration_time: now,
+						last_start_time: now
+					)
+					return AnyValue.struct(meta)
+				}
+				return AnyValue.null()
 			}
-			return AnyValue.null()
-		}
-		// $keys: ensure_symmetric_key (placeholder wired to FFI later)
-		let keysLifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$keys", config: nil, logger: logger, nodeDelegate: self)
-		struct EnsureKeyRequest: Codable { let name: String }
-		struct EnsureKeyResponse: Codable { let ensured: Bool; let key_name: String }
-		try await keysLifecycle.registerAction("ensure_symmetric_key") { params, _ in
-			// Expect a typed request later; for now accept string name or struct
-			if let p = params, let name: String = try? await p.asType() {
-				return AnyValue.struct(EnsureKeyResponse(ensured: true, key_name: name))
-			}
-			if let p = params, let req: EnsureKeyRequest = try? await p.asType() {
-				return AnyValue.struct(EnsureKeyResponse(ensured: true, key_name: req.name))
-			}
-			return AnyValue.struct(EnsureKeyResponse(ensured: true, key_name: "default"))
 		}
 
 		// $registry: service state, pause/resume (local only)
 		try await lifecycle.registerAction("services/{service_path}/state") { _, ctx in
 			let path = ctx.servicePath
-			if let entry = await self.registry.getLocalService(servicePath: path) {
-				return AnyValue.primitive(entry.state.rawValue)
+			return await MainActor.run {
+				if let entry = self.registry.getLocalService(servicePath: path) {
+					return AnyValue.primitive(entry.state.rawValue)
+				}
+				return AnyValue.null()
 			}
-			return AnyValue.null()
 		}
 		try await lifecycle.registerAction("services/{service_path}/pause") { _, ctx in
-			await self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused)
+			await MainActor.run { self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused) }
 			return AnyValue.primitive(true)
 		}
 		try await lifecycle.registerAction("services/{service_path}/resume") { _, ctx in
-			await self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running)
+			await MainActor.run { self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running) }
 			return AnyValue.primitive(true)
 		}
 	}
@@ -448,7 +443,8 @@ public final class SwiftNode {
 		let full = qualify(path)
 		if let (handler, params) = registry.getLocalAction(topicPath: full) {
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: params, userProfilePublicKey: Data())
-			return try await handler(payload, ctx)
+			let value: AnyValue = await MainActor.run { try? await handler(payload, ctx) } ?? AnyValue.null()
+			return value
 		}
 		// If transport is available, send network request with correlation
 		if let transport {
@@ -483,7 +479,8 @@ public final class SwiftNode {
 		let remotes = registry.getRemoteActionHandlers(topicPath: full)
 		if let handler = remotes.first {
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: [:], userProfilePublicKey: Data())
-			return try await handler(payload, ctx)
+			let value: AnyValue = await MainActor.run { try? await handler(payload, ctx) } ?? AnyValue.null()
+			return value
 		}
 		throw NSError(domain: "SwiftNode", code: 404, userInfo: [NSLocalizedDescriptionKey: "No handler for \(full)"])
 	}
