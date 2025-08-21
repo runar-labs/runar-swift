@@ -2,6 +2,9 @@ import Foundation
 import RunarSerializer
 import SwiftCommon
 
+// MARK: - Type Aliases for SwiftCommon Types
+typealias PathTrie<T> = SwiftCommon.PathTrie<T>
+
 public typealias ActionHandler = @MainActor (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
 public typealias EventHandler = @MainActor @Sendable (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
 public typealias RemoteEventHandler = @MainActor @Sendable (_ data: AnyValue?) async throws -> Void
@@ -218,7 +221,7 @@ final class ServiceRegistry {
 	}
 
 	init(logger: RunarLogger) {
-		self.logger = logger
+		self.logger = logger.withComponent(.registry)
 	}
 
 	// MARK: - Phase 1: Convert existing methods to async and remove NSLock

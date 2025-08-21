@@ -132,7 +132,7 @@ public final class SwiftNode {
 		pendingByCorrelationId.removeValue(forKey: id)?.box
 	}
 
-	public init(config: SwiftNodeConfig, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
+	public init(config: SwiftNodeConfig, logger: RunarLogger = RunarLogger(component: .node)) {
 		self.config = config
 		self.logger = logger
 		self.registry = ServiceRegistry(logger: logger)
@@ -140,7 +140,7 @@ public final class SwiftNode {
 	}
 
 	// Public initializer allowing dependency injection of pre-provisioned keys
-	public init(config: SwiftNodeConfig, keys: FFIKeys, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
+	  public init(config: SwiftNodeConfig, keys: FFIKeys, logger: RunarLogger = RunarLogger(component: .node)) {
 		self.config = config
 		self.logger = logger
 		self.registry = ServiceRegistry(logger: logger)
@@ -149,7 +149,7 @@ public final class SwiftNode {
 	}
 
 	// Internal/testing initializer to inject a custom transport
-	init(config: SwiftNodeConfig, transport: any NodeTransport, logger: RunarLogger = RunarLogger(subsystem: "com.runar", category: "node")) {
+	  init(config: SwiftNodeConfig, transport: any NodeTransport, logger: RunarLogger = RunarLogger(component: .node)) {
 		self.config = config
 		self.logger = logger
 		self.registry = ServiceRegistry(logger: logger)
