@@ -451,6 +451,34 @@ public final class CompactIdGenerator: Sendable {
     }
 }
 
+// MARK: - Cross-Platform Test Vectors Support
+
+/// Support structures for cross-platform test vectors
+/// These will be used by external test utilities to avoid cyclic dependencies
+public enum SerializerTestVectorsSupport {
+    /// Plain user struct matching Rust's PlainUser
+    public struct PlainUser: Codable, Sendable {
+        public let id: String
+        public let name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    /// Test profile struct matching Rust's TestProfile
+    public struct TestProfile: Codable, Sendable {
+        public let id: String
+        public let secret: String
+
+        public init(id: String, secret: String) {
+            self.id = id
+            self.secret = secret
+        }
+    }
+}
+
 // MARK: - Component-based Logging (Matching Rust Implementation)
 
 /// Predefined components for logging categorization
