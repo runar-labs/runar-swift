@@ -162,7 +162,60 @@ final class ServiceRegistry {
 	// MARK: - Peer Subscription Tracking (Phase 4)
 	private var remotePeerSubscriptions: [String: [String: String]] = [:] // peerId -> subscriptionId -> topicPath
 
+	// MARK: - Peer Subscription Management Methods (Phase 4)
+
+	/// Upsert a remote peer subscription (matches Rust's upsert_remote_peer_subscription)
+	func upsertRemotePeerSubscription(peerId: String, topicPath: String, subscriptionId: String) async {
+		if remotePeerSubscriptions[peerId] == nil {
+			remotePeerSubscriptions[peerId] = [:]
+		}
+		remotePeerSubscriptions[peerId]?[subscriptionId] = topicPath
+		logger.debug("Upserted remote peer subscription: peer=\(peerId), topic=\(topicPath), subId=\(subscriptionId)")
+	}
+
+	/// Remove a remote peer subscription (matches Rust's remove_remote_peer_subscription)
+	func removeRemotePeerSubscription(peerId: String, subscriptionId: String) async {
+		if let subscriptions = remotePeerSubscriptions[peerId] {
+			if let removedTopic = subscriptions[subscriptionId] {
+				remotePeerSubscriptions[peerId]?.removeValue(forKey: subscriptionId)
+				logger.debug("Removed remote peer subscription: peer=\(peerId), subId=\(subscriptionId), topic=\(removedTopic)")
+			}
+		}
+	}
+
+	/// Drain all remote peer subscriptions for a peer (matches Rust's drain_remote_peer_subscriptions)
+	func drainRemotePeerSubscriptions(peerId: String) async -> [String: String] {
+		let drainedSubscriptions = remotePeerSubscriptions.removeValue(forKey: peerId) ?? [:]
+		logger.debug("Drained \(drainedSubscriptions.count) remote peer subscriptions for peer=\(peerId)")
+		return drainedSubscriptions
+	}
+
+	/// Get all subscription IDs for a peer
+	func getPeerSubscriptionIds(peerId: String) -> [String] {
+		let subscriptions: [String: String] = remotePeerSubscriptions[peerId] ?? [:]
+		return Array(subscriptions.keys)
+	}
+
+	/// Get all peers with subscriptions
+	func getPeersWithSubscriptions() -> [String] {
+		return Array(remotePeerSubscriptions.keys)
+	}
+
+	/// Get topic path for a peer's subscription
+	func getPeerSubscriptionTopic(peerId: String, subscriptionId: String) -> String? {
+		return remotePeerSubscriptions[peerId]?[subscriptionId]
+	}
+
 	private let logger: RunarLogger
+
+	// MARK: - Internal Service Filtering (Phase 3)
+
+	private let internalServices = ["$registry", "$keys"]
+
+	/// Check if a service path is internal (matches Rust's is_internal_service)
+	func isInternalService(_ servicePath: String) -> Bool {
+		internalServices.contains { servicePath.hasPrefix($0) }
+	}
 
 	init(logger: RunarLogger) {
 		self.logger = logger
@@ -278,6 +331,9 @@ final class ServiceRegistry {
 	}
 
 	func removePeer(_ peerNodeId: String) async {
+		// Drain all peer subscriptions before removing the peer
+		let drainedSubscriptions = await drainRemotePeerSubscriptions(peerId: peerNodeId)
+
 		if let svcs = remoteServicesByPeer.removeValue(forKey: peerNodeId) {
 			for svc in svcs {
 				if let list = peersByService[svc] {
@@ -288,6 +344,8 @@ final class ServiceRegistry {
 		}
 		// Clear any rr index for services affected
 		rrIndexByService.removeAll(keepingCapacity: true)
+
+		logger.debug("Removed peer \(peerNodeId) with \(drainedSubscriptions.count) subscriptions drained")
 	}
 
 	func nextPeerForService(_ servicePath: String) -> String? {
@@ -386,7 +444,8 @@ final class ServiceRegistry {
 			// Note: In a real implementation, we'd need to traverse the PathTrie
 			// For now, we'll build this from our subscriptionIdToTopicPath mapping
 			for (subscriptionId, topicPath) in subscriptionIdToTopicPath {
-				if let subscriptionVec = eventSubscriptions.get(topic: topicPath) {
+				let matches = eventSubscriptions.findMatches(topic: topicPath)
+				if let subscriptionVec = matches.first?.content {
 					// Add local subscriptions
 					for handler in subscriptionVec.localHandlers {
 						let metadata = SubscriptionMetadata(
@@ -421,6 +480,65 @@ final class ServiceRegistry {
 	/// Get subscription metadata (alias for getAllSubscriptions)
 	func getSubscriptionsMetadata() async -> [SubscriptionMetadata] {
 		await getAllSubscriptions(includeInternalServices: false)
+	}
+
+	// MARK: - Service Introspection Methods (Phase 3)
+
+	/// Get service metadata for a specific service
+	func getServiceMetadata(servicePath: String) async -> ServiceMetadata? {
+		let topicPath = TopicPath.parse(servicePath)
+		guard let serviceEntry = localServices[topicPath] else {
+			return nil
+		}
+
+		// For now, return empty actions array - will be enhanced when action tracking is implemented
+		let actions = [ActionMetadata]()
+
+		return ServiceMetadata(
+			networkId: serviceEntry.servicePath.networkId,
+			servicePath: serviceEntry.servicePath.segments.joined(separator: "/"),
+			name: serviceEntry.name,
+			version: serviceEntry.version,
+			description: serviceEntry.description,
+			actions: actions,
+			registrationTime: serviceEntry.registrationTime,
+			lastStartTime: serviceEntry.lastStartTime
+		)
+	}
+
+	/// Get all service metadata
+	func getAllServiceMetadata(includeInternal: Bool = false) async -> [ServiceMetadata] {
+		var services = [ServiceMetadata]()
+
+		for serviceEntry in localServices.values {
+			// Apply internal service filtering
+			if !includeInternal && isInternalService(serviceEntry.servicePath.asString()) {
+				continue
+			}
+
+			// For now, return empty actions array - will be enhanced when action tracking is implemented
+			let actions = [ActionMetadata]()
+
+			let metadata = ServiceMetadata(
+				networkId: serviceEntry.servicePath.networkId,
+				servicePath: serviceEntry.servicePath.segments.joined(separator: "/"),
+				name: serviceEntry.name,
+				version: serviceEntry.version,
+				description: serviceEntry.description,
+				actions: actions,
+				registrationTime: serviceEntry.registrationTime,
+				lastStartTime: serviceEntry.lastStartTime
+			)
+			services.append(metadata)
+		}
+
+		return services
+	}
+
+	/// Get actions metadata (placeholder - will be enhanced when action tracking is implemented)
+	func getActionsMetadata(servicePath: String) async -> [ActionMetadata] {
+		// TODO: Implement when action metadata tracking is added
+		return []
 	}
 
 	/// Unsubscribe local event subscription
