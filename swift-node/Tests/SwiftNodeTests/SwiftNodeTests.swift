@@ -2,6 +2,7 @@ import XCTest
 @testable import SwiftNode
 import RunarSerializer
 
+@MainActor
 final class SwiftNodeTests: XCTestCase {
 	func testLocalActionAndRequest() async throws {
 		let node = SwiftNode(config: .init(defaultNetworkId: "net"))

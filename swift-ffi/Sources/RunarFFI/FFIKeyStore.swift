@@ -151,7 +151,18 @@ public final class FFIKeyStore: EnvelopeCrypto {
         var profileMap: [String: Data] = [:]
         if let pm = map[CBOR.utf8String("profile_encrypted_keys")], case let .map(m) = pm {
             for (k, v) in m {
-                if case let .utf8String(pid) = k, case let .byteString(b) = v { profileMap[pid] = Data(b) }
+                guard case let .utf8String(pid) = k else { continue }
+                switch v {
+                case let .byteString(b):
+                    profileMap[pid] = Data(b)
+                case let .array(arr):
+                    var out: [UInt8] = []
+                    out.reserveCapacity(arr.count)
+                    for e in arr { if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) { out.append(UInt8(u)) } }
+                    profileMap[pid] = Data(out)
+                default:
+                    break
+                }
             }
         }
         return EnvelopeEncryptedData(

@@ -1,4 +1,4 @@
-import RunarKeys
+import RunarFFI
 @testable import RunarSerializer
 import RunarSerializerMacros
 import SwiftCBOR
@@ -19,19 +19,21 @@ final class EncryptedMacroTest: XCTestCase {
         let jsonData = try encoder.encode(user)
 
         // Use real keystore
-        let keystore = RunarKeys.MobileKeyManager()
-        let networkId = "test-network"
-        let resolver = MockLabelResolver(networkId: networkId)
+        // Use FFI-backed keystore via FFIKeyStore. Initialize root key for profile encryption
+        let keys = try FFIKeys()
+        try keys.mobileInitializeUserRootKey()
+        let keystore = FFIKeyStore(keys: keys)
 
-        // Encrypt with envelope encryption (network only)
+        // Encrypt with envelope encryption (profile-only)
+        let profileId = "test-profile"
         let envelopeData = try keystore.encryptWithEnvelope(
             data: jsonData,
-            networkId: networkId,
-            profileIds: []
+            networkId: nil,
+            profileIds: [profileId]
         )
 
-        // Decrypt using network key
-        let decryptedData = try keystore.decryptWithNetwork(envelopeData: envelopeData)
+        // Decrypt using profile key
+        let decryptedData = try keystore.decryptWithProfile(envelopeData: envelopeData, profileId: profileId)
 
         // Decode JSON
         let decoder = JSONDecoder()
@@ -60,11 +62,12 @@ final class EncryptedMacroTest: XCTestCase {
         )
 
         // Create a real keystore and resolver
-        let keystore = RunarKeys.MobileKeyManager()
-        let resolver = MockLabelResolver(networkId: "test-network")
+        let keys = try FFIKeys()
+        try keys.mobileInitializeUserRootKey()
+        let keystore = FFIKeyStore(keys: keys)
 
         // Test encryption
-        let encrypted = try await user.encryptWithKeystore(keystore, resolver: resolver)
+        let encrypted = try await user.encryptWithKeystore(keystore, resolver: MockLabelResolver(networkId: nil))
         XCTAssertNotNil(encrypted.encryptedData)
         XCTAssertFalse(encrypted.encryptedData.encryptedData.isEmpty)
 
@@ -102,8 +105,10 @@ final class EncryptedMacroTest: XCTestCase {
             settings: UserSettings(theme: "dark", notifications: true, language: "en")
         )
 
-        let keystore = RunarKeys.MobileKeyManager()
-        let resolver = MockLabelResolver(networkId: "test-network")
+        let keys = try FFIKeys()
+        try keys.mobileInitializeUserRootKey()
+        let keystore = FFIKeyStore(keys: keys)
+        let resolver = MockLabelResolver(networkId: nil)
 
         // Test encryption
         let encrypted = try await profile.encryptWithKeystore(keystore, resolver: resolver)
@@ -146,8 +151,10 @@ final class EncryptedMacroTest: XCTestCase {
             numbers: numbers
         )
 
-        let keystore = RunarKeys.MobileKeyManager()
-        let resolver = MockLabelResolver(networkId: "test-network")
+        let keys = try FFIKeys()
+        try keys.mobileInitializeUserRootKey()
+        let keystore = FFIKeyStore(keys: keys)
+        let resolver = MockLabelResolver(networkId: nil)
 
         // Test encryption performance
         let encryptionStart = Date()

@@ -1,6 +1,7 @@
 import Foundation
 
 public extension AnyValue {
+    @MainActor
     func toJSONObject() async throws -> Any {
         if isNull { return NSNull() }
         // Prefer registry converter by wire name
@@ -52,12 +53,14 @@ public extension AnyValue {
         }
     }
 
+    @MainActor
     func toJSONData(prettyPrinted: Bool = false) async throws -> Data {
         let obj = try await toJSONObject()
         let options: JSONSerialization.WritingOptions = prettyPrinted ? [.prettyPrinted] : []
         return try JSONSerialization.data(withJSONObject: obj, options: options)
     }
 
+    @MainActor
     func toJSONString(prettyPrinted: Bool = false) async throws -> String {
         let data = try await toJSONData(prettyPrinted: prettyPrinted)
         return String(data: data, encoding: .utf8) ?? ""

@@ -470,6 +470,7 @@ public class AnyValue {
     }
 
     /// Get the value as a specific type
+    @MainActor
     public func asType<T>() async throws -> T {
         // First, try to get from materialized value
         if let value = materializedValue {
@@ -495,6 +496,7 @@ public class AnyValue {
     }
 
     /// Deserialize lazy data into a concrete value of target type
+    @MainActor
     private func deserializeLazyData<T>(_ lazyData: LazyData, to targetType: T.Type) async throws -> T {
         // Handle encrypted data using real decryption
         if lazyData.encrypted {
@@ -1169,6 +1171,7 @@ public extension PlainSerializable {
         AnyValue.struct(self)
     }
 
+    @MainActor
     static func fromAnyValue(_ value: AnyValue) async throws -> Self {
         try await value.asType()
     }

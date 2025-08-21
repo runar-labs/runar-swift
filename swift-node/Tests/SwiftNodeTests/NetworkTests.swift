@@ -3,6 +3,7 @@ import XCTest
 import RunarSerializer
 import RunarTestUtils
 
+@MainActor
 final class NetworkTests: XCTestCase {
     final class PubService: AbstractService {
         var name: String { "Pub" }
@@ -34,9 +35,9 @@ final class NetworkTests: XCTestCase {
         try await n2.start()
 
         // Connect peers
-        let p1 = try n1.exportPeerInfoCBOR()
+        let p1 = try await n1.exportPeerInfoCBOR()
         var lastError: Error?
-        for _ in 0..<5 { do { try n2.connectPeer(p1); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 200_000_000) } }
+        for _ in 0..<5 { do { try await n2.connectPeer(p1); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 200_000_000) } }
         if let e = lastError { throw e }
 
         // Subscribe on node2, trigger publish on node1

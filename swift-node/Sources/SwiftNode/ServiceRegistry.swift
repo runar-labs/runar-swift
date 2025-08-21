@@ -2,8 +2,8 @@ import Foundation
 import RunarSerializer
 import SwiftCommon
 
-public typealias ActionHandler = (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
-public typealias EventHandler = @Sendable (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
+public typealias ActionHandler = @MainActor (_ params: AnyValue?, _ ctx: RequestContext) async throws -> AnyValue
+public typealias EventHandler = @MainActor (_ ctx: EventContext, _ data: AnyValue?) async throws -> Void
 
 public struct EventRegistrationOptions: Sendable {
 	public var includePast: TimeInterval?
@@ -114,7 +114,7 @@ final class ServiceRegistry {
 		remoteServicesByPeer[peerNodeId] = newSet
 		// Remove peer from services no longer offered
 		for svc in oldSet.subtracting(newSet) {
-			if var list = peersByService[svc] {
+			if let list = peersByService[svc] {
 				peersByService[svc] = list.filter { $0 != peerNodeId }
 				if peersByService[svc]?.isEmpty == true { peersByService.removeValue(forKey: svc) }
 			}
@@ -131,7 +131,7 @@ final class ServiceRegistry {
 		lock.lock(); defer { lock.unlock() }
 		if let svcs = remoteServicesByPeer.removeValue(forKey: peerNodeId) {
 			for svc in svcs {
-				if var list = peersByService[svc] {
+				if let list = peersByService[svc] {
 					peersByService[svc] = list.filter { $0 != peerNodeId }
 					if peersByService[svc]?.isEmpty == true { peersByService.removeValue(forKey: svc) }
 				}
@@ -143,7 +143,7 @@ final class ServiceRegistry {
 
 	func nextPeerForService(_ servicePath: String) -> String? {
 		lock.lock(); defer { lock.unlock() }
-		guard var list = peersByService[servicePath], !list.isEmpty else { return nil }
+		guard let list = peersByService[servicePath], !list.isEmpty else { return nil }
 		let idx = rrIndexByService[servicePath] ?? 0
 		let sel = list[idx % list.count]
 		rrIndexByService[servicePath] = (idx + 1) % max(1, list.count)
@@ -162,8 +162,9 @@ final class ServiceRegistry {
 	}
 
 	func unsubscribe(id: String) {
-		lock.lock(); defer { lock.unlock() }
+		lock.lock()
 		// TODO: maintain index for efficient unsubscription (not needed for current tests)
+		lock.unlock()
 	}
 
 	func snapshotSubscribers(topicPath: String) -> [EventHandler] {

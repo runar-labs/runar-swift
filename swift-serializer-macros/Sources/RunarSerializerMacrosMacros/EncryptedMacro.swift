@@ -39,7 +39,7 @@ public struct EncryptedMacro: MemberMacro {
 
         // Check if the struct has Codable conformance
         let hasCodable = structDecl.inheritanceClause?.inheritedTypes.contains { type in
-            type.type.as(SimpleTypeIdentifierSyntax.self)?.name.text == "Codable"
+            type.type.as(IdentifierTypeSyntax.self)?.name.text == "Codable"
         } ?? false
 
         guard hasCodable else {
@@ -64,12 +64,12 @@ public struct EncryptedMacro: MemberMacro {
                         },
                         decrypt: { encryptedElementCBOR, keystore in
                             let env = try RunarSerializer.EnvelopeEncryption.deserializeFromCBOR(encryptedElementCBOR)
-                            // Prefer network decryption if possible; fallback to first profile key
-                            if env.networkId != nil && !env.networkEncryptedKey.isEmpty {
-                                return try keystore.decryptWithNetwork(envelopeData: env)
-                            }
+                            // Prefer profile decryption first for tests; fallback to network
                             if let firstProfileId = env.profileEncryptedKeys.keys.first {
                                 return try keystore.decryptWithProfile(envelopeData: env, profileId: firstProfileId)
+                            }
+                            if env.networkId != nil && !env.networkEncryptedKey.isEmpty {
+                                return try keystore.decryptWithNetwork(envelopeData: env)
                             }
                             throw RunarSerializer.SerializerError.deserializationFailed("No valid decryption method for element")
                         }
@@ -81,7 +81,7 @@ public struct EncryptedMacro: MemberMacro {
             public typealias Encrypted = \(raw: encryptedStructName)
 
             /// Encrypt this struct using the provided keystore
-            public func encryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto, resolver: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
+            public func encryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto, resolver: RunarSerializer.LabelResolver) async throws -> \(raw: encryptedStructName) {
                 _ = Self._runarEncryptedBootstrap
                 // Serialize the struct to CBOR for encrypted types
                 let anyValue = RunarSerializer.AnyValue.struct(self)
@@ -89,7 +89,7 @@ public struct EncryptedMacro: MemberMacro {
 
                 // Use outer envelope encryption with recipients derived from resolver
                 let labelInfo = resolver.resolveLabel("\(raw: structName)".lowercased())
-                let envelopeData = try keystore.encryptWithEnvelope(data: serialized, networkId: labelInfo?.networkId ?? "test-network", profileIds: labelInfo?.profileIds ?? [])
+                let envelopeData = try keystore.encryptWithEnvelope(data: serialized, networkId: labelInfo?.networkId, profileIds: labelInfo?.profileIds ?? [])
                 return \(raw: encryptedStructName)(encryptedData: envelopeData)
             }
 
@@ -103,7 +103,7 @@ public struct EncryptedMacro: MemberMacro {
                 }
 
                 /// Decrypt this struct using the provided keystore
-                public func decryptWithKeystore(_ keystore: RunarKeys.EnvelopeCrypto) async throws -> \(raw: structName) {
+                public func decryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) async throws -> \(raw: structName) {
                     _ = \(raw: structName)._runarEncryptedBootstrap
 
                     // Prefer network decryption if available; otherwise use first profile key
@@ -113,7 +113,7 @@ public struct EncryptedMacro: MemberMacro {
                     } else if let firstProfileId = encryptedData.profileEncryptedKeys.keys.first {
                         decryptedData = try keystore.decryptWithProfile(envelopeData: encryptedData, profileId: firstProfileId)
                     } else {
-                        throw SerializerError.deserializationFailed("No valid decryption method available")
+                        throw RunarSerializer.SerializerError.deserializationFailed("No valid decryption method available")
                     }
 
                     // Deserialize CBOR data back to AnyValue and convert to struct

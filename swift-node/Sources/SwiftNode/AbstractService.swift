@@ -12,6 +12,7 @@ public enum ServiceState: String, Codable {
 	case unknown
 }
 
+@MainActor
 public protocol AbstractService: AnyObject {
 	var name: String { get }
 	var version: String { get }

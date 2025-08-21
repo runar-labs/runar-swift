@@ -291,10 +291,23 @@ public final class SwiftNode {
 				} else {
 					do {
 						let full = "\(self.config.defaultNetworkId):$registry/services/list"
-						let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
-						if let metas: [RegistryServiceMetadata] = try? await resp.asType() {
-							let svcPaths = metas.map { $0.service_path }
-							self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
+						let any = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
+						// Decode directly from AnyValue payload without using async asType()
+						if let parsed = parseAnyValueSerialized(try any.serialize(context: nil)), parsed.typeName.contains("RegistryServiceMetadata") {
+							if let item = try? CBORDecoder(input: [UInt8](parsed.payload)).decodeItem(), case let CBOR.array(arr) = item {
+								var metas: [RegistryServiceMetadata] = []
+								let dec = CodableCBORDecoder()
+								for el in arr {
+									if case let .map(m) = el {
+										let data = Data(CBOR.map(m).encode())
+										if let meta = try? dec.decode(RegistryServiceMetadata.self, from: data) {
+											metas.append(meta)
+										}
+									}
+								}
+								let svcPaths = metas.map { $0.service_path }
+								self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
+							}
 						}
 					} catch {
 						self.logger.debug("peer registry query failed id=\(peerId): \(error)")
@@ -345,62 +358,55 @@ public final class SwiftNode {
 		// $registry: list services, service info, state
 		let lifecycle = LifecycleContext(networkId: config.defaultNetworkId, servicePath: "$registry", config: nil, logger: logger, nodeDelegate: self)
 		try await lifecycle.registerAction("services/list") { _, _ in
-			let result: AnyValue = await MainActor.run {
-				let services = self.registry.getLocalServices()
-				let now = UInt64(Date().timeIntervalSince1970)
-				let nid = self.config.defaultNetworkId
-				let typed: [RegistryServiceMetadata] = services.map { svc in
-					RegistryServiceMetadata(
-						network_id: nid,
-						service_path: svc.servicePath,
-						name: svc.name,
-						version: svc.version,
-						description: svc.description,
-						registration_time: now,
-						last_start_time: now
-					)
-				}
-				return AnyValue.struct(typed)
+			let services = self.registry.getLocalServices()
+			let now = UInt64(Date().timeIntervalSince1970)
+			let nid = self.config.defaultNetworkId
+			let typed: [RegistryServiceMetadata] = services.map { svc in
+				RegistryServiceMetadata(
+					network_id: nid,
+					service_path: svc.servicePath,
+					name: svc.name,
+					version: svc.version,
+					description: svc.description,
+					registration_time: now,
+					last_start_time: now
+				)
 			}
-			return result
+			return AnyValue.struct(typed)
 		}
 		try await lifecycle.registerAction("services/{service_path}") { _, ctx in
 			let path = ctx.servicePath
-			return await MainActor.run {
-				if let info = self.registry.getLocalService(servicePath: path) {
-					let now = UInt64(Date().timeIntervalSince1970)
-					let nid = self.config.defaultNetworkId
-					let meta = RegistryServiceMetadata(
-						network_id: nid,
-						service_path: info.servicePath,
-						name: info.name,
-						version: info.version,
-						description: info.description,
-						registration_time: now,
-						last_start_time: now
-					)
-					return AnyValue.struct(meta)
-				}
-				return AnyValue.null()
+			if let info = self.registry.getLocalService(servicePath: path) {
+				let now = UInt64(Date().timeIntervalSince1970)
+				let nid = self.config.defaultNetworkId
+				let meta = RegistryServiceMetadata(
+					network_id: nid,
+					service_path: info.servicePath,
+					name: info.name,
+					version: info.version,
+					description: info.description,
+					registration_time: now,
+					last_start_time: now
+				)
+				return AnyValue.struct(meta)
 			}
+			return AnyValue.null()
 		}
 
 		// $registry: service state, pause/resume (local only)
 		try await lifecycle.registerAction("services/{service_path}/state") { _, ctx in
 			let path = ctx.servicePath
-			return await MainActor.run {
-				if let entry = self.registry.getLocalService(servicePath: path) {
-					return AnyValue.primitive(entry.state.rawValue)
-				}
-				return AnyValue.null()
+			if let entry = self.registry.getLocalService(servicePath: path) {
+				return AnyValue.primitive(entry.state.rawValue)
 			}
+			return AnyValue.null()
 		}
 		try await lifecycle.registerAction("services/{service_path}/pause") { _, ctx in
-			await MainActor.run { self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused) }
+			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .paused)
 			return AnyValue.primitive(true)
 		}
 		try await lifecycle.registerAction("services/{service_path}/resume") { _, ctx in
-			await MainActor.run { self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running) }
+			self.registry.updateLocalServiceState(servicePath: ctx.servicePath, newState: .running)
 			return AnyValue.primitive(true)
 		}
 	}
@@ -443,8 +449,7 @@ public final class SwiftNode {
 		let full = qualify(path)
 		if let (handler, params) = registry.getLocalAction(topicPath: full) {
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: params, userProfilePublicKey: Data())
-			let value: AnyValue = await MainActor.run { try? await handler(payload, ctx) } ?? AnyValue.null()
-			return value
+			return try await handler(payload, ctx)
 		}
 		// If transport is available, send network request with correlation
 		if let transport {
@@ -479,8 +484,7 @@ public final class SwiftNode {
 		let remotes = registry.getRemoteActionHandlers(topicPath: full)
 		if let handler = remotes.first {
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: [:], userProfilePublicKey: Data())
-			let value: AnyValue = await MainActor.run { try? await handler(payload, ctx) } ?? AnyValue.null()
-			return value
+			return try await handler(payload, ctx)
 		}
 		throw NSError(domain: "SwiftNode", code: 404, userInfo: [NSLocalizedDescriptionKey: "No handler for \(full)"])
 	}
@@ -632,6 +636,19 @@ public final class SwiftNode {
 		let s = String(rest)
 		if let idx = s.firstIndex(of: "/") { return String(s[..<idx]) }
 		return s
+	}
+
+	private func parseAnyValueSerialized(_ data: Data) -> (category: UInt8, isEncrypted: Bool, typeName: String, payload: Data)? {
+		guard !data.isEmpty else { return nil }
+		let category = data[0]
+		guard data.count >= 3 else { return nil }
+		let isEncrypted = data[1] == 0x01
+		let nameLen = Int(data[2])
+		guard data.count >= 3 + nameLen else { return nil }
+		let nameData = data[3..<(3 + nameLen)]
+		guard let name = String(data: Data(nameData), encoding: .utf8) else { return nil }
+		let payload = data[(3 + nameLen)...]
+		return (category, isEncrypted, name, Data(payload))
 	}
 }
 

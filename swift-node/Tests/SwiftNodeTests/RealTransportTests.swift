@@ -5,6 +5,7 @@ import RunarSerializer
 import RunarTestUtils
 import SwiftCBOR
 
+@MainActor
 final class RealTransportTests: XCTestCase {
     final class EchoService: AbstractService {
         var name: String { "Echo" }
@@ -23,23 +24,23 @@ final class RealTransportTests: XCTestCase {
     func testTwoNodesRequestRoundTrip() async throws {
         // Build two nodes with CA-signed certs using test fixtures
         let fixture = try TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:0", "127.0.0.1:0"], defaultNetworkId: "net")
-        var keysA = fixture.nodes[0]
-        var keysB = fixture.nodes[1]
+        let keysA = fixture.nodes[0]
+        let keysB = fixture.nodes[1]
         // Node A (inject keys so start() uses them)
         let nodeA = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50611")), keys: keysA)
         try await nodeA.addService(EchoService())
         try await nodeA.start()
-        _ = try nodeA.exportPeerInfoCBOR()
+        _ = try await nodeA.exportPeerInfoCBOR()
         // Node B
         let nodeB = SwiftNode(config: .init(defaultNetworkId: fixture.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50612")), keys: keysB)
         try await nodeB.start()
-        _ = try nodeB.exportPeerInfoCBOR()
+        _ = try await nodeB.exportPeerInfoCBOR()
         // Export peer info from A and connect B, with retry/backoff
-        let peerInfoA = try nodeA.exportPeerInfoCBOR()
+        let peerInfoA = try await nodeA.exportPeerInfoCBOR()
         try? await Task.sleep(nanoseconds: 200_000_000)
         var lastError: Error?
         for _ in 0..<5 {
-            do { try nodeB.connectPeer(peerInfoA); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 300_000_000) }
+            do { try await nodeB.connectPeer(peerInfoA); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 300_000_000) }
         }
         if let e = lastError { throw e }
         // Wait a brief moment for connection establishment metadata propagation
@@ -50,7 +51,6 @@ final class RealTransportTests: XCTestCase {
         XCTAssertEqual(s, "hello")
         await nodeB.stop()
         await nodeA.stop()
-        _ = keysA; _ = keysB // ensure not optimized out (kept alive)
     }
 }
 
