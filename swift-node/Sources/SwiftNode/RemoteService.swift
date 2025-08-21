@@ -1,0 +1,703 @@
+import Foundation
+import SwiftCommon
+import RunarSerializer
+import RunarFFI
+
+// MARK: - Remote Service
+
+/// RemoteService handles remote service proxying and discovery
+/// This service manages remote service discovery, request routing, and response handling
+@MainActor
+public final class RemoteService: ServiceBase {
+    private let nodeId: String
+    private var serviceRegistry: ServiceRegistry
+    private var nodeDelegate: NodeDelegate?
+    private var loadBalancer: LoadBalancingStrategy?
+
+    public init(logger: RunarLogger = RunarLogger(component: .service), nodeId: String, serviceRegistry: ServiceRegistry) {
+        self.nodeId = nodeId
+        self.serviceRegistry = serviceRegistry
+        super.init(name: "$remote", version: "1.0.0", path: "$remote", description: "Remote service proxying and discovery", logger: logger)
+    }
+
+    // MARK: - Service Lifecycle
+
+    public override func performInit(_ context: LifecycleContext) async throws {
+        self.networkId = context.networkId
+        self.nodeDelegate = context.nodeDelegate
+    }
+
+    public override func performStart(_ context: LifecycleContext) async throws {
+        // Initialize load balancer
+        self.loadBalancer = RoundRobinLoadBalancer()
+
+        // Register all remote service actions
+        try await registerRemoteDiscoveryActions(context: context)
+        try await registerRemoteProxyActions(context: context)
+        try await registerLoadBalancingActions(context: context)
+    }
+
+    public override func performStop(_ context: LifecycleContext) async throws {
+        loadBalancer = nil
+    }
+
+    // MARK: - Remote Discovery Actions
+
+    private func registerRemoteDiscoveryActions(context: LifecycleContext) async throws {
+        // Discover remote services
+        try await context.registerAction("discover") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            guard let discoverRequest = payload?.deserialize(to: RemoteDiscoveryRequest.self) else {
+                throw BaseRunarError.serializationError("Invalid discovery request", component: .service)
+            }
+
+            let services = try await self.discoverRemoteServices(request: discoverRequest)
+            return AnyValue.struct(services)
+        }
+
+        // Get remote service info
+        try await context.registerAction("service/{service_path}") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            let servicePath = ctx.pathParams["service_path"] ?? "default"
+            let serviceInfo = try await self.getRemoteServiceInfo(servicePath: servicePath)
+            return AnyValue.struct(serviceInfo)
+        }
+
+        // List available remote nodes
+        try await context.registerAction("nodes") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            let nodes = try await self.listRemoteNodes()
+            return AnyValue.struct(nodes)
+        }
+
+        // Get remote node info
+        try await context.registerAction("node/{node_id}") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            let nodeId = ctx.pathParams["node_id"] ?? "unknown"
+            let nodeInfo = try await self.getRemoteNodeInfo(nodeId: nodeId)
+            return AnyValue.struct(nodeInfo)
+        }
+    }
+
+    // MARK: - Remote Proxy Actions
+
+    private func registerRemoteProxyActions(context: LifecycleContext) async throws {
+        // Proxy request to remote service
+        try await context.registerAction("proxy/{service_path}/{action}") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            let servicePath = ctx.pathParams["service_path"] ?? "default"
+            let action = ctx.pathParams["action"] ?? "default"
+
+            guard let proxyRequest = payload?.deserialize(to: RemoteProxyRequest.self) else {
+                throw BaseRunarError.serializationError("Invalid proxy request", component: .service)
+            }
+
+            let response = try await self.proxyRemoteRequest(
+                servicePath: servicePath,
+                action: action,
+                request: proxyRequest
+            )
+            return AnyValue.struct(response)
+        }
+
+        // Broadcast to multiple remote services
+        try await context.registerAction("broadcast/{service_path}/{action}") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            let servicePath = ctx.pathParams["service_path"] ?? "default"
+            let action = ctx.pathParams["action"] ?? "default"
+
+            guard let broadcastRequest = payload?.deserialize(to: RemoteBroadcastRequest.self) else {
+                throw BaseRunarError.serializationError("Invalid broadcast request", component: .service)
+            }
+
+            let responses = try await self.broadcastRemoteRequest(
+                servicePath: servicePath,
+                action: action,
+                request: broadcastRequest
+            )
+            return AnyValue.struct(responses)
+        }
+    }
+
+    // MARK: - Load Balancing Actions
+
+    private func registerLoadBalancingActions(context: LifecycleContext) async throws {
+        // Get load balancing stats
+        try await context.registerAction("stats") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            let stats = try await self.getLoadBalancingStats()
+            return AnyValue.struct(stats)
+        }
+
+        // Set load balancing strategy
+        try await context.registerAction("strategy") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            guard let strategyRequest = payload?.deserialize(to: LoadBalancingStrategyRequest.self) else {
+                throw BaseRunarError.serializationError("Invalid strategy request", component: .service)
+            }
+
+            try await self.setLoadBalancingStrategy(request: strategyRequest)
+            return AnyValue.primitive(true)
+        }
+
+        // Get service availability
+        try await context.registerAction("availability/{service_path}") { [weak self] payload, ctx in
+            guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
+
+            let servicePath = ctx.pathParams["service_path"] ?? "default"
+            let availability = try await self.getServiceAvailability(servicePath: servicePath)
+            return AnyValue.struct(availability)
+        }
+    }
+
+    // MARK: - Remote Discovery Implementation
+
+    public func discoverRemoteServices(request: RemoteDiscoveryRequest) async throws -> RemoteDiscoveryResponse {
+        // Query the registry for services available on remote nodes
+        let peers = serviceRegistry.getPeersWithSubscriptions()
+
+        var discoveredServices: [RemoteServiceInfo] = []
+
+        for peerId in peers {
+            let services = serviceRegistry.getPeerServices(peerNodeId: peerId)
+
+            for servicePath in services {
+                // Skip internal services unless requested
+                if !request.includeInternal && serviceRegistry.isInternalService(servicePath) {
+                    continue
+                }
+
+                discoveredServices.append(RemoteServiceInfo(
+                    servicePath: servicePath,
+                    nodeId: peerId,
+                    available: true,
+                    lastSeen: Date()
+                ))
+            }
+        }
+
+        return RemoteDiscoveryResponse(
+            services: discoveredServices,
+            totalCount: discoveredServices.count,
+            discoveredAt: Date()
+        )
+    }
+
+    public func getRemoteServiceInfo(servicePath: String) async throws -> RemoteServiceInfoResponse {
+        // Find which peers offer this service
+        let peers = serviceRegistry.getPeersWithSubscriptions()
+        var availablePeers: [String] = []
+
+        for peerId in peers {
+            let services = serviceRegistry.getPeerServices(peerNodeId: peerId)
+            if services.contains(servicePath) {
+                availablePeers.append(peerId)
+            }
+        }
+
+        guard !availablePeers.isEmpty else {
+            throw BaseRunarError.serviceNotFound(servicePath: servicePath, component: .service)
+        }
+
+        let info = RemoteServiceInfo(
+            servicePath: servicePath,
+            nodeId: availablePeers.first!, // Return first available peer
+            available: true,
+            lastSeen: Date()
+        )
+
+        return RemoteServiceInfoResponse(
+            service: info,
+            availablePeers: availablePeers
+        )
+    }
+
+    public func listRemoteNodes() async throws -> RemoteNodesResponse {
+        let peers = serviceRegistry.getPeersWithSubscriptions()
+
+        var nodeInfos: [RemoteNodeInfo] = []
+        for peerId in peers {
+            let services = serviceRegistry.getPeerServices(peerNodeId: peerId)
+            nodeInfos.append(RemoteNodeInfo(
+                nodeId: peerId,
+                serviceCount: services.count,
+                services: Array(services),
+                lastSeen: Date(),
+                connected: true
+            ))
+        }
+
+        return RemoteNodesResponse(
+            nodes: nodeInfos,
+            totalCount: peers.count
+        )
+    }
+
+    public func getRemoteNodeInfo(nodeId: String) async throws -> RemoteNodeInfoResponse {
+        let services = serviceRegistry.getPeerServices(peerNodeId: nodeId)
+
+        guard !services.isEmpty else {
+            throw BaseRunarError.peerUnavailable(peerId: nodeId, component: .service)
+        }
+
+        let nodeInfo = RemoteNodeInfo(
+            nodeId: nodeId,
+            serviceCount: services.count,
+            services: Array(services),
+            lastSeen: Date(),
+            connected: true
+        )
+
+        return RemoteNodeInfoResponse(node: nodeInfo)
+    }
+
+    // MARK: - Remote Proxy Implementation
+
+    public func proxyRemoteRequest(servicePath: String, action: String, request: RemoteProxyRequest) async throws -> RemoteProxyResponse {
+        // Determine target peer
+        let targetPeerId = request.targetNodeId ?? selectTargetPeer(for: servicePath)
+
+        guard let targetPeerId = targetPeerId else {
+            throw BaseRunarError.serviceError("No peer available for service: \(servicePath)", component: .service)
+        }
+
+        // Construct full path
+        let fullPath = "\(networkId ?? "default"):\(servicePath)/\(action)"
+
+        // Send request to remote peer
+        let response = try await nodeDelegate?.requestToPeer(
+            path: fullPath,
+            payload: request.payload,
+            peerNodeId: targetPeerId,
+            timeoutMs: request.timeoutMs
+        )
+
+        return RemoteProxyResponse(
+            result: response,
+            targetNodeId: targetPeerId,
+            responseTime: Date().timeIntervalSince1970
+        )
+    }
+
+    public func broadcastRemoteRequest(servicePath: String, action: String, request: RemoteBroadcastRequest) async throws -> RemoteBroadcastResponse {
+        // Find all peers that offer this service
+        let peers = serviceRegistry.getPeersWithSubscriptions()
+        var targetPeers: [String] = []
+
+        for peerId in peers {
+            let services = serviceRegistry.getPeerServices(peerNodeId: peerId)
+            if services.contains(servicePath) {
+                targetPeers.append(peerId)
+            }
+        }
+
+        // Apply peer limit if specified
+        if let maxPeers = request.maxPeers, targetPeers.count > maxPeers {
+            targetPeers = Array(targetPeers.prefix(maxPeers))
+        }
+
+        // Send broadcast requests concurrently
+        let fullPath = "\(networkId ?? "default"):\(servicePath)/\(action)"
+
+        var responses: [RemotePeerResponse] = []
+        try await withThrowingTaskGroup(of: (String, AnyValue?).self) { group in
+            for peerId in targetPeers {
+                group.addTask {
+                    do {
+                        let response = try await self.nodeDelegate?.requestToPeer(
+                            path: fullPath,
+                            payload: request.payload,
+                            peerNodeId: peerId,
+                            timeoutMs: request.timeoutMs
+                        )
+                        return (peerId, response)
+                    } catch {
+                        return (peerId, nil)
+                    }
+                }
+            }
+
+            for try await (peerId, response) in group {
+                responses.append(RemotePeerResponse(
+                    nodeId: peerId,
+                    response: response,
+                    success: response != nil,
+                    responseTime: Date().timeIntervalSince1970
+                ))
+            }
+        }
+
+        return RemoteBroadcastResponse(
+            responses: responses,
+            totalPeers: targetPeers.count,
+            successfulResponses: responses.filter { $0.success }.count
+        )
+    }
+
+    // MARK: - Load Balancing Implementation
+
+    public func getLoadBalancingStats() async throws -> LoadBalancingStatsResponse {
+        guard let loadBalancer = loadBalancer else {
+            throw BaseRunarError.serviceError("Load balancer not initialized", component: .service)
+        }
+
+        // Get stats from load balancer
+        let stats = loadBalancer.getStats()
+
+        return LoadBalancingStatsResponse(
+            strategy: "round_robin",
+            totalRequests: stats.totalRequests,
+            activeConnections: stats.activeConnections,
+            failedRequests: stats.failedRequests,
+            averageResponseTime: stats.averageResponseTime
+        )
+    }
+
+    public func setLoadBalancingStrategy(request: LoadBalancingStrategyRequest) async throws {
+        switch request.strategy {
+        case "round_robin":
+            loadBalancer = RoundRobinLoadBalancer()
+        case "least_connections":
+            loadBalancer = LeastConnectionsLoadBalancer()
+        case "random":
+            loadBalancer = RandomLoadBalancer()
+        default:
+            throw BaseRunarError.configError("Unknown load balancing strategy: \(request.strategy)", component: .service)
+        }
+
+        logger.info("Set load balancing strategy to: \(request.strategy)")
+    }
+
+    public func getServiceAvailability(servicePath: String) async throws -> ServiceAvailabilityResponse {
+        // Find all peers offering this service
+        let peers = serviceRegistry.getPeersWithSubscriptions()
+        var availablePeers: [String] = []
+
+        for peerId in peers {
+            let services = serviceRegistry.getPeerServices(peerNodeId: peerId)
+            if services.contains(servicePath) {
+                availablePeers.append(peerId)
+            }
+        }
+
+        return ServiceAvailabilityResponse(
+            servicePath: servicePath,
+            availablePeers: availablePeers,
+            totalAvailable: availablePeers.count,
+            lastChecked: Date()
+        )
+    }
+
+    // MARK: - Private Methods
+
+    private func selectTargetPeer(for servicePath: String) -> String? {
+        guard let loadBalancer = loadBalancer else {
+            // Fallback to round-robin without load balancer
+            return serviceRegistry.nextPeerForService(servicePath)
+        }
+
+        return loadBalancer.selectPeer(for: servicePath, registry: serviceRegistry)
+    }
+}
+
+// MARK: - Load Balancing Strategy Protocol
+
+public protocol LoadBalancingStrategy: Sendable {
+    func selectPeer(for servicePath: String, registry: ServiceRegistry) -> String?
+    func getStats() -> LoadBalancerStats
+}
+
+public struct LoadBalancerStats: Sendable {
+    public let totalRequests: Int
+    public let activeConnections: Int
+    public let failedRequests: Int
+    public let averageResponseTime: TimeInterval
+
+    public init(totalRequests: Int = 0, activeConnections: Int = 0, failedRequests: Int = 0, averageResponseTime: TimeInterval = 0) {
+        self.totalRequests = totalRequests
+        self.activeConnections = activeConnections
+        self.failedRequests = failedRequests
+        self.averageResponseTime = averageResponseTime
+    }
+}
+
+// MARK: - Load Balancer Implementations
+
+public final class RoundRobinLoadBalancer: LoadBalancingStrategy {
+    private let queue = DispatchQueue(label: "com.runar.roundrobin")
+    private var stats = LoadBalancerStats()
+
+    public func selectPeer(for servicePath: String, registry: ServiceRegistry) -> String? {
+        queue.sync {
+            stats = LoadBalancerStats(
+                totalRequests: stats.totalRequests + 1,
+                activeConnections: stats.activeConnections,
+                failedRequests: stats.failedRequests,
+                averageResponseTime: stats.averageResponseTime
+            )
+        }
+        return registry.nextPeerForService(servicePath)
+    }
+
+    public func getStats() -> LoadBalancerStats {
+        queue.sync { stats }
+    }
+}
+
+public final class LeastConnectionsLoadBalancer: LoadBalancingStrategy {
+    private let queue = DispatchQueue(label: "com.runar.leastconnections")
+    private var connectionCounts: [String: Int] = [:]
+    private var stats = LoadBalancerStats()
+
+    public func selectPeer(for servicePath: String, registry: ServiceRegistry) -> String? {
+        queue.sync {
+            stats = LoadBalancerStats(
+                totalRequests: stats.totalRequests + 1,
+                activeConnections: stats.activeConnections,
+                failedRequests: stats.failedRequests,
+                averageResponseTime: stats.averageResponseTime
+            )
+        }
+
+        // This is a simplified implementation
+        // In a real implementation, you'd track actual connection counts
+        return registry.nextPeerForService(servicePath)
+    }
+
+    public func getStats() -> LoadBalancerStats {
+        queue.sync { stats }
+    }
+}
+
+public final class RandomLoadBalancer: LoadBalancingStrategy {
+    private let queue = DispatchQueue(label: "com.runar.random")
+    private var stats = LoadBalancerStats()
+
+    public func selectPeer(for servicePath: String, registry: ServiceRegistry) -> String? {
+        queue.sync {
+            stats = LoadBalancerStats(
+                totalRequests: stats.totalRequests + 1,
+                activeConnections: stats.activeConnections,
+                failedRequests: stats.failedRequests,
+                averageResponseTime: stats.averageResponseTime
+            )
+        }
+
+        // Get all peers for this service and select randomly
+        let peers = registry.getPeersWithSubscriptions()
+        var targetPeers: [String] = []
+
+        for peerId in peers {
+            let services = registry.getPeerServices(peerNodeId: peerId)
+            if services.contains(servicePath) {
+                targetPeers.append(peerId)
+            }
+        }
+
+        return targetPeers.randomElement()
+    }
+
+    public func getStats() -> LoadBalancerStats {
+        queue.sync { stats }
+    }
+}
+
+// MARK: - NodeDelegate Extension
+
+extension NodeDelegate {
+    func requestToPeer(path: String, payload: AnyValue?, peerNodeId: String, timeoutMs: UInt64?) async throws -> AnyValue {
+        // This would need to be implemented in SwiftNode
+        // For now, return a placeholder
+        return AnyValue.null()
+    }
+}
+
+// MARK: - Request/Response Types
+
+public struct RemoteDiscoveryRequest: Codable, Sendable {
+    public let includeInternal: Bool
+    public let servicePattern: String?
+
+    public init(includeInternal: Bool = false, servicePattern: String? = nil) {
+        self.includeInternal = includeInternal
+        self.servicePattern = servicePattern
+    }
+}
+
+public struct RemoteProxyRequest: Codable, Sendable {
+    public let payload: AnyValue?
+    public let targetNodeId: String?
+    public let timeoutMs: UInt64?
+
+    public init(payload: AnyValue?, targetNodeId: String? = nil, timeoutMs: UInt64? = nil) {
+        self.payload = payload
+        self.targetNodeId = targetNodeId
+        self.timeoutMs = timeoutMs
+    }
+}
+
+public struct RemoteBroadcastRequest: Codable, Sendable {
+    public let payload: AnyValue?
+    public let maxPeers: Int?
+    public let timeoutMs: UInt64?
+
+    public init(payload: AnyValue?, maxPeers: Int? = nil, timeoutMs: UInt64? = nil) {
+        self.payload = payload
+        self.maxPeers = maxPeers
+        self.timeoutMs = timeoutMs
+    }
+}
+
+public struct LoadBalancingStrategyRequest: Codable, Sendable {
+    public let strategy: String
+
+    public init(strategy: String) {
+        self.strategy = strategy
+    }
+}
+
+public struct RemoteServiceInfo: Codable, Sendable {
+    public let servicePath: String
+    public let nodeId: String
+    public let available: Bool
+    public let lastSeen: Date
+
+    public init(servicePath: String, nodeId: String, available: Bool, lastSeen: Date) {
+        self.servicePath = servicePath
+        self.nodeId = nodeId
+        self.available = available
+        self.lastSeen = lastSeen
+    }
+}
+
+public struct RemoteNodeInfo: Codable, Sendable {
+    public let nodeId: String
+    public let serviceCount: Int
+    public let services: [String]
+    public let lastSeen: Date
+    public let connected: Bool
+
+    public init(nodeId: String, serviceCount: Int, services: [String], lastSeen: Date, connected: Bool) {
+        self.nodeId = nodeId
+        self.serviceCount = serviceCount
+        self.services = services
+        self.lastSeen = lastSeen
+        self.connected = connected
+    }
+}
+
+public struct RemotePeerResponse: Codable, Sendable {
+    public let nodeId: String
+    public let response: AnyValue?
+    public let success: Bool
+    public let responseTime: TimeInterval
+
+    public init(nodeId: String, response: AnyValue?, success: Bool, responseTime: TimeInterval) {
+        self.nodeId = nodeId
+        self.response = response
+        self.success = success
+        self.responseTime = responseTime
+    }
+}
+
+public struct RemoteDiscoveryResponse: Codable, Sendable {
+    public let services: [RemoteServiceInfo]
+    public let totalCount: Int
+    public let discoveredAt: Date
+
+    public init(services: [RemoteServiceInfo], totalCount: Int, discoveredAt: Date) {
+        self.services = services
+        self.totalCount = totalCount
+        self.discoveredAt = discoveredAt
+    }
+}
+
+public struct RemoteServiceInfoResponse: Codable, Sendable {
+    public let service: RemoteServiceInfo
+    public let availablePeers: [String]
+
+    public init(service: RemoteServiceInfo, availablePeers: [String]) {
+        self.service = service
+        self.availablePeers = availablePeers
+    }
+}
+
+public struct RemoteNodesResponse: Codable, Sendable {
+    public let nodes: [RemoteNodeInfo]
+    public let totalCount: Int
+
+    public init(nodes: [RemoteNodeInfo], totalCount: Int) {
+        self.nodes = nodes
+        self.totalCount = totalCount
+    }
+}
+
+public struct RemoteNodeInfoResponse: Codable, Sendable {
+    public let node: RemoteNodeInfo
+
+    public init(node: RemoteNodeInfo) {
+        self.node = node
+    }
+}
+
+public struct RemoteProxyResponse: Codable, Sendable {
+    public let result: AnyValue?
+    public let targetNodeId: String
+    public let responseTime: TimeInterval
+
+    public init(result: AnyValue?, targetNodeId: String, responseTime: TimeInterval) {
+        self.result = result
+        self.targetNodeId = targetNodeId
+        self.responseTime = responseTime
+    }
+}
+
+public struct RemoteBroadcastResponse: Codable, Sendable {
+    public let responses: [RemotePeerResponse]
+    public let totalPeers: Int
+    public let successfulResponses: Int
+
+    public init(responses: [RemotePeerResponse], totalPeers: Int, successfulResponses: Int) {
+        self.responses = responses
+        self.totalPeers = totalPeers
+        self.successfulResponses = successfulResponses
+    }
+}
+
+public struct LoadBalancingStatsResponse: Codable, Sendable {
+    public let strategy: String
+    public let totalRequests: Int
+    public let activeConnections: Int
+    public let failedRequests: Int
+    public let averageResponseTime: TimeInterval
+
+    public init(strategy: String, totalRequests: Int, activeConnections: Int, failedRequests: Int, averageResponseTime: TimeInterval) {
+        self.strategy = strategy
+        self.totalRequests = totalRequests
+        self.activeConnections = activeConnections
+        self.failedRequests = failedRequests
+        self.averageResponseTime = averageResponseTime
+    }
+}
+
+public struct ServiceAvailabilityResponse: Codable, Sendable {
+    public let servicePath: String
+    public let availablePeers: [String]
+    public let totalAvailable: Int
+    public let lastChecked: Date
+
+    public init(servicePath: String, availablePeers: [String], totalAvailable: Int, lastChecked: Date) {
+        self.servicePath = servicePath
+        self.availablePeers = availablePeers
+        self.totalAvailable = totalAvailable
+        self.lastChecked = lastChecked
+    }
+}

@@ -1,363 +1,183 @@
-# Swift Components Alignment Analysis
+# Swift Components Alignment Analysis - REMAINING WORK
 
 ## Overview
 
-This document provides a comprehensive analysis of the alignment between Swift and Rust components in the Runar project. It identifies gaps, misalignments, and provides a detailed plan for achieving 100% parity across all components.
+This document outlines the **remaining work** needed to achieve complete Swift/Rust component alignment. All completed items have been removed to avoid confusion.
 
-## Key Principles
+## Remaining Work by Component
 
-### Swift Implementation Approach
-- **100% API/Behavior Compatibility**: Swift components must match Rust public APIs and business logic
-- **Swift Best Practices**: Use proper Swift features, patterns, and language characteristics
-- **No Rust Semantics**: Don't force Rust-specific patterns into Swift code
-- **Functional Equivalence**: Achieve same goals (no-copy local calls, serialization, encryption) using Swift idioms
+### 1. Swift-Common - Core Infrastructure
 
-### Current Logging Situation
-- **Inconsistent Usage**: Components create their own `RunarLogger` instances instead of using centralized logging
-- **Missing Infrastructure**: SwiftCommon has `RunarLogger` but components don't use it consistently
-- **Impact**: Need unified logging infrastructure matching Rust's component-based logging
+**Priority: High (Foundation - Needed by all components)**
 
-## Component Analysis
+#### Critical Missing Features
+1. **Logging Consolidation**
+   - Update ALL components to use `SwiftCommon.Logger` consistently
+   - Remove individual logger instances from components
+   - Implement component-based structured logging
 
-### 1. Swift-Node vs Runar-Node
+2. **Component-Based Logging System**
+   - Add `Component`, `LogLevel`, `Logger` types matching Rust
+   - Structured logging with node ID context
+   - Logging configuration management
 
-#### Current State - Swift-Node
+3. **Error Handling System**
+   - Create error utility module
+   - Add standardized error types
+   - Implement error context and chaining
 
-**Files:**
-- `SwiftNode.swift` - Main node implementation
-- `ServiceRegistry.swift` - Service registry (recently rewritten)
-- `AbstractService.swift` - Service protocol
-- `Contexts.swift` - Context objects
-- `Routing.swift` - TopicPath and PathTrie
-- `Schemas.swift` - Data structures
-
-**Current Features:**
-- ✅ Basic Node lifecycle (init, start, stop)
-- ✅ Service registration and discovery
-- ✅ Request/Response handling
-- ✅ Publish/Subscribe with retained events
-- ✅ Basic networking via FFITransport
-- ✅ Peer discovery via FFIDiscovery
-- ✅ Internal $registry event handling
-- ✅ ServiceRegistry with unified event system (recently completed)
-
-#### Current State - Runar-Node
-
-**Modules:**
-- `node.rs` - Main node implementation
-- `services/` - Service implementations
-  - `abstract_service.rs` - Base service trait
-  - `service_registry.rs` - Service registry
-  - `registry_service.rs` - Registry service
-  - `keys_service.rs` - Keys service
-  - `load_balancing.rs` - Load balancing
-  - `remote_service.rs` - Remote service handling
-- `config/` - Configuration
-- `network/` - Network handling
-
-**Features:**
-- ✅ Complete Node lifecycle management
-- ✅ Service registry with full metadata tracking
-- ✅ Load balancing strategies (RoundRobin)
-- ✅ Remote service management
-- ✅ Keys service integration
-- ✅ Advanced error handling
-- ✅ Structured logging with component context
-- ✅ Service lifecycle hooks (initService, start, stop)
-- ✅ Service state management (running, paused, stopped)
-- ✅ Network configuration and transport management
-
-#### Gaps and Misalignments
-
-1. **Missing Services:**
-   - ❌ `KeysService` - Handles cryptographic operations
-   - ❌ `RegistryService` - Internal service registry management
-   - ❌ `RemoteService` - Remote service proxying
-   - ❌ `LoadBalancingStrategy` - Load balancing logic
-
-2. **Service Lifecycle:**
-   - ❌ Proper async service lifecycle (initService → start → running)
-   - ❌ Service state transitions with proper error handling
-   - ❌ Service dependency management
-
-3. **Advanced Features:**
-   - ❌ Load balancing for distributed requests
-   - ❌ Remote service discovery and proxying
-   - ❌ Advanced network configuration options
-   - ❌ Service health monitoring
-
-4. **Error Handling:**
-   - ❌ Structured error types matching Rust
-   - ❌ Component-based error context
-   - ❌ Proper error propagation and recovery
-
-#### Implementation Plan - Swift-Node
-
-**Phase 1: Service Infrastructure (Priority: High)**
-1. Implement `KeysService` for cryptographic operations
-2. Add `RegistryService` for internal registry management
-3. Create `RemoteService` for remote service proxying
-4. Implement `LoadBalancingStrategy` protocol and `RoundRobinLoadBalancer`
-
-**Phase 2: Lifecycle Management (Priority: High)**
-1. Enhance `AbstractService` with proper async lifecycle
-2. Add service state machine (init → starting → running → stopping → stopped)
-3. Implement service dependency resolution
-4. Add service health checks and monitoring
-
-**Phase 3: Advanced Features (Priority: Medium)**
-1. Add load balancing to request routing
-2. Implement remote service discovery
-3. Add advanced network configuration options
-4. Enhance error handling and logging
+4. **Routing & Utilities**
+   - Extract and enhance `PathTrie` from swift-node
+   - Implement compact ID generation (DNS-safe)
+   - Add common data structures
 
 ---
 
-### 2. Swift-Common vs Runar-Common
+### 2. Swift-Serializer - Advanced Features
 
-#### Current State - Swift-Common
+**Priority: High (Core Infrastructure - Needed by FFI and Node)**
 
-**Files:**
-- `Logger.swift` - Basic logging
-- `NodeId.swift` - Node ID utilities
-- `EnvelopeCrypto/` - Moved to swift-ffi
+#### Missing Registry Features
+1. **Advanced Registry Patterns**
+   - Runtime type registration and resolution
+   - Registry-based serialization
+   - Enhanced type resolution
 
-**Current Features:**
-- ✅ Basic Logger class
-- ✅ NodeId generation
-- ❌ Missing most functionality
+2. **Swift-Native Patterns**
+   - Protocol-oriented encryption design
+   - Swift-native serialization patterns
+   - Enhanced macro system integration
 
-#### Current State - Runar-Common
-
-**Modules:**
-- `errors/` - Error utilities
-- `logging/` - Structured logging with component context
-- `routing/` - PathTrie and routing utilities
-- `compact_ids` - DNS-safe ID generation
-
-**Features:**
-- ✅ Component-based structured logging
-- ✅ Lightweight error utilities
-- ✅ DNS-safe compact ID generation
-- ✅ PathTrie for routing with wildcard support
-- ✅ Logging configuration and context management
-
-#### Gaps and Misalignments
-
-1. **Logging System:**
-   - ❌ Component-based logging (Rust has `Component`, `LogLevel`, `Logger`)
-   - ❌ Structured logging with node ID context
-   - ❌ Logging configuration management
-   - ❌ Multiple log levels and filtering
-
-2. **Error Handling:**
-   - ❌ Error utility functions
-   - ❌ Error context and chaining
-   - ❌ Standardized error types
-
-3. **Routing Module:**
-   - ❌ PathTrie implementation (Swift has basic version in swift-node)
-   - ❌ Advanced routing features
-   - ❌ Network isolation support
-
-4. **Utilities:**
-   - ❌ Compact ID generation (DNS-safe)
-   - ❌ Common data structures and utilities
-
-#### Implementation Plan - Swift-Common
-
-**Phase 1: Core Infrastructure (Priority: High)**
-1. **Logging Consolidation**: Update all components to use SwiftCommon.Logger consistently
-2. Implement component-based logging system (Rust equivalent)
-3. Add structured logging with context
-4. Implement logging configuration management
-5. Add proper log levels and filtering
-
-**Phase 2: Error Handling (Priority: High)**
-1. Create error utility module
-2. Add standardized error types
-3. Implement error context and chaining
-4. Add error serialization support
-
-**Phase 3: Routing & Utilities (Priority: Medium)**
-1. Extract and enhance PathTrie from swift-node
-2. Add routing utilities and helpers
-3. Implement compact ID generation
-4. Add common data structures
+3. **Advanced Encryption**
+   - Label-based key resolution system
+   - Enhanced encryption features
+   - Advanced crypto integration
 
 ---
 
-### 3. Swift-Serializer vs Runar-Serializer
+### 3. Swift-Node - Missing Services
 
-#### Current State - Swift-Serializer
+**Priority: Medium**
 
-**Files:**
-- `AnyValue.swift` - Type-erased value container
-- `AnyValue+JSON.swift` - JSON conversion extensions
-- `SerializationContext.swift` - Serialization context
-- `TypeNameRegistry.swift` - Type name management
-- `EncryptionTypes.swift` - Encryption utilities
-- `EnvelopeEncryption.swift` - Envelope encryption
-- `WireNames.swift` - Wire name mapping
+#### Missing Services Implementation
+1. **KeysService** - Handles cryptographic operations
+   - Implement key management operations
+   - Add certificate handling
+   - Integrate with FFI crypto functions
 
-**Current Features:**
-- ✅ AnyValue type-erased container
-- ✅ CBOR serialization with encryption
-- ✅ JSON conversion support
-- ✅ Macro-based encryption (via swift-serializer-macros)
-- ✅ Type name registry
-- ✅ Serialization context management
+2. **RegistryService** - Internal service registry management
+   - Service registration and discovery
+   - Metadata management
+   - Internal service filtering
 
-#### Current State - Runar-Serializer
+3. **RemoteService** - Remote service proxying
+   - Remote service discovery
+   - Request routing to remote nodes
+   - Response handling
 
-**Modules:**
-- `arc_value.rs` - ArcValue (equivalent to AnyValue)
-- `encryption.rs` - Encryption utilities
-- `erased_arc.rs` - Type erasure utilities
-- `primitive_types.rs` - Primitive type handling
-- `registry.rs` - Serialization registry
-- `traits.rs` - Serialization traits
-- `utils.rs` - Utility functions
+4. **LoadBalancingStrategy** - Load balancing logic
+   - `LoadBalancingStrategy` protocol
+   - `RoundRobinLoadBalancer` implementation
+   - Request distribution logic
 
-**Features:**
-- ✅ ArcValue for type-erased storage
-- ✅ Macro-based derive macros for serialization
-- ✅ Selective field encryption
-- ✅ Registry-based type resolution
-- ✅ Trait-based serialization system
-- ✅ Advanced encryption integration
-- ✅ Label-based key resolution
+#### Service Lifecycle Enhancement
+1. **Async Service Lifecycle**
+   - `initService()` → `start()` → `running` state machine
+   - Proper error handling in state transitions
+   - Service dependency management
 
-#### Gaps and Misalignments
+2. **Service State Management**
+   - Running, paused, stopped states
+   - Health monitoring
+   - Automatic recovery
 
-1. **Type Erasure (Not Required):**
-   - ✅ **AnyValue provides functional equivalence** to ArcValue/ErasedArc
-   - ❌ **No need for ErasedArc**: Was Rust-specific due to ownership restrictions
-   - ✅ **Goal Achieved**: No-copy for local calls via AnyValue reference semantics
+---
+### 4. Swift-Serializer-Macros - Enhanced Coverage
 
-2. **Registry System:**
-   - ❌ Advanced registry patterns
-   - ❌ Runtime type registration and resolution
-   - ❌ Registry-based serialization
+**Priority: Medium**
 
-3. **Primitive Types:**
-   - ❌ Specialized primitive type handling
-   - ❌ Optimized primitive serialization
+#### Missing Macro Features
+1. **Complete Derive Macro Coverage**
+   - Full derive macro support
+   - Advanced macro features
+   - Enhanced code generation
 
-4. **Swift-Native Patterns:**
-   - ❌ Swift-native serialization patterns (vs trait-based)
-   - ❌ Protocol-oriented encryption design
-   - ❌ Swift macro system integration
-
-5. **Integration:**
-   - ❌ Full macro integration coverage
-   - ❌ Advanced encryption features
-   - ❌ Label-based key resolution system
-
-#### Implementation Plan - Swift-Serializer
-
-**Phase 1: Swift-Native Patterns (Priority: High)**
-1. Enhance AnyValue with Swift-native features
-2. Implement Swift protocol-oriented encryption
-3. Add Swift-native serialization patterns
-4. Ensure no-copy semantics for local calls
-
-**Phase 2: Cross-Platform Validation (Priority: High)**
-1. **Rust→Swift Compatibility**: Use `serializer_vectors.rs` to generate test vectors
-2. **Swift Deserialization Tests**: Ensure Swift can deserialize Rust-generated binary data
-3. **Swift→Rust Compatibility**: Create Swift test vectors for Rust validation
-4. **Rust Deserialization Tests**: Ensure Rust can deserialize Swift-generated binary data
-5. **Binary Format Compliance**: Verify CBOR encoding/decoding matches exactly
-
-**Phase 3: Registry & Integration (Priority: Medium)**
-1. Add registry-based type resolution
-2. Implement advanced encryption features
-3. Add label-based key resolution
-4. Enhance macro integration
-
-**Phase 4: Optimization (Priority: Low)**
-1. Performance optimizations
-2. Memory usage improvements
-3. Advanced serialization features
+2. **Integration Enhancement**
+   - Full Swift macro system integration
+   - Advanced code generation features
+   - Macro composition and patterns
 
 ---
 
-### 4. Swift-Serializer-Macros vs Runar-Serializer-Macros
+### 5. Swift-FFI - Completeness & Safety
 
-#### Current State - Swift-Serializer-Macros
+**Priority: High**
 
-**Files:**
-- `EncryptedMacro.swift` - @Encrypted macro
-- `PlainMacro.swift` - @Plain macro
-- `Plugin.swift` - Macro plugin
-- `TestMacro.swift` - Testing utilities
+#### Critical Missing Work
+1. **Complete FFI Coverage Audit**
+   - Compare Swift FFI vs Rust FFI function coverage
+   - Identify missing FFI functions
+   - Add missing wrappers
 
-**Current Features:**
-- ✅ @Encrypted macro for field encryption
-- ✅ @Plain macro for serialization
-- ✅ Basic macro plugin infrastructure
+2. **Memory Safety Verification**
+   - Verify memory management across boundaries
+   - Add safety checks and validation
+   - Test concurrent access safety
 
-#### Current State - Runar-Serializer-Macros
+3. **Performance Optimization**
+   - Optimize FFI call patterns
+   - Reduce serialization overhead
+   - Memory allocation optimization
 
-**Files:**
-- `lib.rs` - Macro implementations
+4. **Error Handling Standardization**
+   - Standardize error propagation
+   - Add consistent error handling patterns
+   - Improve error context
 
-**Features:**
-- ✅ Derive macros for serialization
-- ✅ Selective field encryption macros
-- ✅ Advanced macro features
-- ✅ Integration with serde
-
-#### Gaps and Misalignments
-
-1. **Macro Coverage:**
-   - ❌ Full derive macro coverage
-   - ❌ Advanced macro features
-   - ❌ Integration with Swift's macro system
-
-2. **Features:**
-   - ❌ All Rust macro capabilities
-   - ❌ Advanced code generation
-   - ❌ Integration patterns
-
-#### Implementation Plan - Swift-Serializer-Macros
-
-**Phase 1: Macro Expansion (Priority: High)**
-1. Add missing derive macros
-2. Implement advanced macro features
-3. Enhance macro plugin infrastructure
-4. Add comprehensive macro testing
-
-**Phase 2: Integration (Priority: Medium)**
-1. Full integration with Swift macro system
-2. Advanced code generation features
-3. Macro composition and patterns
+#### FFI Design Review
+**Issue:** `rn_keys_extract_agreement_pk_from_setup_token` FFI method
+- **Problem:** Unnecessarily complex, forces Swift to parse SetupToken
+- **Solution:** Add direct `rn_node_get_agreement_public_key()` method
+- **Action:** Remove problematic method and implement direct access
 
 ---
 
-## Overall Implementation Priority
+### 6. Swift-Test-Utils - Cross-Platform Testing
 
-### High Priority (Foundation)
+**Priority: High**
 
-1. **Swift-Common** - Core infrastructure needed by all components
-   - **Logging Consolidation**: Unify all logging to use SwiftCommon.Logger
-   - **Component-based Logging**: Implement Rust-equivalent structured logging
-   - **Error Handling**: Add error utilities and context management
-2. **Swift-Serializer Validation** - Cross-platform compatibility testing
-   - **Rust→Swift Test Vectors**: Validate deserialization of Rust-generated data
-   - **Swift→Rust Test Vectors**: Create Swift data for Rust validation
-   - **Binary Format Compliance**: Ensure exact CBOR compatibility
-3. **Swift-Node Services** - Complete service ecosystem
-4. **Swift-Serializer Core** - Enhanced type system and registry
+#### Missing Cross-Platform Features
+1. **Swift ↔ Rust Node Communication**
+   - Test QUIC transport between two Swift nodes - so we can have a simple test in swift only and validate the Swift layer.
+   - Test QUIC transport between Swift and Rust nodes
+   - Verify service discovery across platforms
+   - Test remote action calls between platforms
 
-### Medium Priority (Features)
+2. **Mixed Platform Test Framework**
+   - Create utilities for Swift/Rust node communication
+   - Implement cross-platform integration tests
+   - Add end-to-end compatibility validation
 
-1. **Swift-Serializer Advanced** - Trait system and encryption features
-2. **Swift-Node Advanced** - Load balancing and remote services
-3. **Swift-Serializer-Macros** - Complete macro coverage
+3. **Real Device Testing**
+   - Create sample macOS/iOS apps
+   - Test on real devices
+   - Validate platform-specific behaviors
+
+---
+
+## Implementation Priority
+
+### High Priority (Foundation - Start Here)
+1. **Swift-Common** - Core infrastructure needed by ALL components
+2. **Swift-Serializer** - Advanced features needed by FFI and Node
+3. **Swift-FFI** - Completeness audit and safety verification
+4. **Swift-Test-Utils** - Cross-platform network testing
+
+### Medium Priority (Services & Features)
+1. **Swift-Node Services** - Missing service implementations
+2. **Swift-Serializer-Macros** - Complete macro coverage
 
 ### Low Priority (Optimization)
-
 1. Performance optimizations
 2. Advanced features
 3. Integration improvements
@@ -366,164 +186,14 @@ This document provides a comprehensive analysis of the alignment between Swift a
 
 ### 100% Alignment Achieved When:
 
-1. **Swift-Node** has all Rust services and features
-2. **Swift-Common** provides all Rust common functionality
-3. **Swift-Serializer** matches Rust serialization capabilities
-4. **Swift-Serializer-Macros** covers all Rust macro features
+1. **Swift-Node** has all Rust services (KeysService, RegistryService, RemoteService, LoadBalancing)
+2. **Swift-Common** provides unified logging and error handling
+3. **Swift-FFI** has complete coverage and safety verification
+4. **Swift-Test-Utils** enables cross-platform Swift ↔ Rust node testing
 5. All components use consistent patterns and naming
-6. Test coverage matches Rust implementation
+6. Test coverage includes cross-platform scenarios
 7. Performance characteristics are equivalent
 
 ---
 
-## Additional Missing Components & Considerations
-
-### 5. Swift-FFI vs Runar-FFI
-
-#### Current State - Swift-FFI
-- **FFIKeys.swift** - Rust key management wrapper
-- **FFITransport.swift** - Network transport wrapper
-- **FFIDiscovery.swift** - Peer discovery wrapper
-- **FFIKeyStore.swift** - Envelope crypto implementation
-- **FFIErrors.swift** - Error handling utilities
-
-#### Current State - Runar-FFI
-- **Complete C FFI layer** for Rust components
-- **Memory management** and safety guarantees
-- **Error propagation** across language boundaries
-- **Performance optimizations** for FFI calls
-
-#### Gaps and Misalignments
-1. **FFI Layer Completeness:**
-   - ❌ Missing FFI functions coverage
-   - ❌ Memory management verification
-   - ❌ Error handling consistency
-   - ❌ Performance optimization
-
-2. **Safety Guarantees:**
-   - ❌ Memory safety across boundaries
-   - ❌ Thread safety for concurrent access
-   - ❌ Resource cleanup verification
-
-#### Implementation Plan - Swift-FFI
-1. **Complete FFI coverage** audit vs Rust FFI
-2. **Memory safety verification** and testing
-3. **Performance optimization** of FFI calls
-4. **Error handling standardization**
-
----
-
-### 13. FFI Design Review: Setup Token Agreement Key Extraction
-
-#### Current Issue
-**Problematic FFI Method:**
-```rust
-#[no_mangle]
-pub unsafe extern "C" fn rn_keys_extract_agreement_pk_from_setup_token(
-    st_cbor: *const u8,
-    st_len: usize,
-    out_pk: *mut *mut u8,
-    out_len: *mut usize,
-    err: *mut RnError,
-) -> i32
-```
-
-**Issues Identified:**
-1. **Unnecessary complexity** - Swift needs agreement PK from setup token
-2. **Tight coupling** - Forces Swift to handle SetupToken CBOR serialization
-3. **Data flow mismatch** - Doesn't align with mobile/node key manager responsibilities
-4. **Potential security issues** - Exposing internal token structure to FFI
-
-#### Analysis Completed - End-to-End Test Review
-
-**Data Flow Analysis from @end_to_end_test.rs:**
-
-1. **Node Setup Phase** (lines 74-89):
-   - Node creates its own keypairs (TLS, Storage, Agreement) in constructor
-   - Node generates SetupToken via `generate_csr()` containing:
-     - `node_public_key` (node ID)
-     - `node_agreement_public_key` (for encrypted communication)
-     - CSR (certificate signing request)
-   - **Key Finding**: Node has direct access to its agreement key - it's part of its key material
-
-2. **Mobile Processing Phase** (lines 108-121):
-   - Mobile receives encrypted SetupToken, decrypts it
-   - Mobile processes SetupToken to create certificate
-   - Mobile needs node's agreement public key for encrypted communication
-
-3. **Certificate Transmission Phase** (lines 143-151):
-   - Mobile encrypts certificate message using `node_agreement_public_key`
-   - Mobile calls: `encrypt_message_for_node(&data, &setup_token_mobile.node_agreement_public_key)`
-
-4. **Network Key Phase** (lines 441-445):
-   - Mobile creates network key message using `node_agreement_public_key`
-   - Mobile calls: `create_network_key_message(&network_id, &setup_token_mobile.node_agreement_public_key)`
-
-**Key Finding: Agreement PK is Independent of Setup Token**
-- Node creates its agreement key during initialization (separate from setup token)
-- Node should be able to provide its agreement public key directly
-- Current FFI method is unnecessarily complex and tightly coupled
-
-**Recommended Solution:**
-
-**Option A: Direct Node Key Manager Access (Preferred)**
-- Add FFI method: `rn_node_get_agreement_public_key(handle) -> Vec<u8>`
-- Node key manager should expose its agreement public key directly
-- Eliminates need to parse SetupToken in Swift
-
-**Option B: Setup Token Extraction with Better Design**
-- Keep current approach but improve error handling
-- Add validation that SetupToken is properly formed
-- Document that this is temporary until direct access is available
-
-**Decision: Go with Option A (Direct Access)**
-- **Rationale**: Agreement public key is independent of setup token creation
-- **Security**: Direct access is safer than exposing token parsing to FFI
-- **Performance**: Eliminates unnecessary CBOR serialization/deserialization
-- **Maintainability**: Cleaner separation of concerns
-
-**Implementation Plan:**
-1. Add `get_agreement_public_key()` method to NodeKeyManager
-2. Create FFI wrapper: `rn_node_get_agreement_public_key()`
-3. Update Swift FFI wrapper to use direct access
-4. Remove `rn_keys_extract_agreement_pk_from_setup_token()` FFI method
-5. Update any Swift code using the old method
-
-**Status:** Analysis complete - Direct access recommended
-
----
-
-### 6. Swift-Test-Utils vs Runar Test Infrastructure
-
-#### Current State - Swift-Test-Utils
-- **KeysAndTransportFixtures.swift** - Test fixtures and helpers
-
-#### Current State - Runar Test Infrastructure
-- **test_utils/** - Comprehensive test utilities
-- **fixtures/** - Test data and setup helpers
-- **integration tests** - End-to-end testing
-
-#### Gaps and Misalignments
-1. **Cross-Platform Network Testing:**
-   - ❌ Swift node ↔ Rust node network communication
-   - ❌ QUIC transport between platforms
-   - ❌ Service discovery across platforms
-   - ❌ Remote action calls between Swift and Rust nodes
-
-2. **Test Coverage:**
-   - ❌ Cross-platform integration test framework
-   - ❌ Mixed platform test scenarios
-   - ❌ End-to-end compatibility validation
-
-#### Implementation Plan - Swift-Test-Utils
-1. **Create cross-platform test utilities** for Swift/Rust node communication
-2. **Implement QUIC transport testing** between Swift and Rust nodes
-3. **Add service discovery testing** across platforms
-4. **Build end-to-end test framework** for mixed platform scenarios
-5. **Test remote action calls** between Swift and Rust nodes (similar to @remote_test.rs)
-6. **Create sample macOS/iOS apps** for real device testing
-
-
----
-
-*This analysis provides the roadmap for achieving complete Swift/Rust component parity across the entire Runar ecosystem.*
+*This document shows only the remaining work needed for Swift/Rust alignment. All completed items have been removed.*
