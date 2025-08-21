@@ -24,11 +24,13 @@ public struct SwiftNodeConfig: Sendable {
 	public var networkIds: [String]
 	public var requestTimeoutMs: UInt64
 	public var network: SwiftNetworkConfig?
-	public init(defaultNetworkId: String, networkIds: [String] = [], requestTimeoutMs: UInt64 = 30_000, network: SwiftNetworkConfig? = nil) {
+	public var internalEventsRetentionSec: TimeInterval?
+	public init(defaultNetworkId: String, networkIds: [String] = [], requestTimeoutMs: UInt64 = 30_000, network: SwiftNetworkConfig? = nil, internalEventsRetentionSec: TimeInterval? = nil) {
 		self.defaultNetworkId = defaultNetworkId
 		self.networkIds = Array(Set(networkIds + [defaultNetworkId]))
 		self.requestTimeoutMs = requestTimeoutMs
 		self.network = network
+		self.internalEventsRetentionSec = internalEventsRetentionSec
 	}
 }
 
@@ -120,6 +122,8 @@ public final class SwiftNode {
 	// Retained events storage (serial queue for async-safety)
 	private let retainedQueue = DispatchQueue(label: "com.runar.swiftnode.retained")
 	private var retainedByTopic: [String: [(ts: Date, data: AnyValue)]] = [:]
+	private var localServices: [String: AbstractService] = [:]
+	private var started: Bool = false
 	private let maxRetainedPerTopic = 16
 	private func setPending(_ id: String, box: ContinuationBox, timeoutAt: Date) {
 		pendingByCorrelationId[id] = (box, timeoutAt)
@@ -159,19 +163,33 @@ public final class SwiftNode {
 		let topic = "\(config.defaultNetworkId):\(service.path)"
 		let ctx = LifecycleContext(networkId: config.defaultNetworkId, servicePath: service.path, config: nil, logger: logger, nodeDelegate: self)
 		try await service.initService(ctx)
-		logger.info("Service initialized: \(topic)")
+		if started {
+			// Node already started: start service immediately and mark running
+			try await service.start(ctx)
+			registry.updateLocalServiceState(servicePath: service.path, newState: .running)
+			logger.info("Service started: \(topic)")
+		} else {
+			// Keep instance to start later during node.start()
+			localServices[service.path] = service
+			logger.info("Service initialized: \(topic)")
+		}
 	}
 
 	public func start() async throws {
 		logger.info("Node started networkId=\(config.defaultNetworkId)")
 		// Internal services registration (scaffolding)
 		try await registerInternalServices()
-		// Set services running
-		registry.setAllLocalServicesRunning()
+		// Start local services and mark them running only after start completes
+		for (path, svc) in localServices {
+			let svcCtx = LifecycleContext(networkId: config.defaultNetworkId, servicePath: path, config: nil, logger: logger, nodeDelegate: self)
+			try await svc.start(svcCtx)
+			registry.updateLocalServiceState(servicePath: path, newState: .running)
+		}
 		// Initialize keys/transport via FFI when networking is enabled
 		if let transport {
 			try transport.start()
 			startEventLoop()
+			started = true
 			return
 		}
 		guard config.network?.enabled == true else { return }
@@ -209,6 +227,7 @@ public final class SwiftNode {
 			self.discovery = disc
 		}
 		startEventLoop()
+		started = true
 	}
 
 	public func stop() async {
@@ -283,40 +302,43 @@ public final class SwiftNode {
 		case "PeerConnected":
 			if let peerId = str("peer_node_id") {
 				logger.info("peer connected id=\(peerId)")
-				// If event carries services list, use it immediately; else query peer registry
+				// Publish internal discovered event immediately, with retention
+				let topic = "$registry/peer/\(peerId)/discovered"
+				let ttl = self.config.internalEventsRetentionSec ?? 30.0
+				try? await self.publishWithOptions(topic, data: AnyValue.null(), options: PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: ttl, target: nil))
+				// If event carries services list, use it immediately; else query peer registry asynchronously
 				if let bs = bytes("services"),
 				   let item = try? CBORDecoder(input: [UInt8](bs)).decodeItem(),
 				   case let CBOR.array(arr) = item {
 					let services = arr.compactMap { if case let .utf8String(s) = $0 { return s } else { return nil } }
 					registry.updatePeerServices(peerNodeId: peerId, servicePaths: services)
 				} else {
-					do {
-						let full = "\(self.config.defaultNetworkId):$registry/services/list"
-						let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
-						// Decode directly from AnyValue payload without using async asType()
-						if let parsed = parseAnyValueSerialized(try resp.serialize(context: nil)), parsed.typeName.contains("RegistryServiceMetadata") {
-							if let item = try? CBORDecoder(input: [UInt8](parsed.payload)).decodeItem(), case let CBOR.array(arr) = item {
-								var metas: [RegistryServiceMetadata] = []
-								let dec = CodableCBORDecoder()
-								for el in arr {
-									if case let .map(m) = el {
-										let data = Data(CBOR.map(m).encode())
-										if let meta = try? dec.decode(RegistryServiceMetadata.self, from: data) {
-											metas.append(meta)
+					Task { [weak self] in
+						guard let self else { return }
+						do {
+							let full = "\(self.config.defaultNetworkId):$registry/services/list"
+							let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
+							if let parsed = parseAnyValueSerialized(try resp.serialize(context: nil)), parsed.typeName.contains("RegistryServiceMetadata") {
+								if let item = try? CBORDecoder(input: [UInt8](parsed.payload)).decodeItem(), case let CBOR.array(arr) = item {
+									var metas: [RegistryServiceMetadata] = []
+									let dec = CodableCBORDecoder()
+									for el in arr {
+										if case let .map(m) = el {
+											let data = Data(CBOR.map(m).encode())
+											if let meta = try? dec.decode(RegistryServiceMetadata.self, from: data) {
+												metas.append(meta)
+											}
 										}
 									}
+									let svcPaths = metas.map { $0.service_path }
+									await MainActor.run { self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths) }
 								}
-								let svcPaths = metas.map { $0.service_path }
-								self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
 							}
+						} catch {
+							self.logger.debug("peer registry query failed id=\(peerId): \(error)")
 						}
-					} catch {
-						self.logger.debug("peer registry query failed id=\(peerId): \(error)")
 					}
 				}
-				// Publish internal discovered event
-				let topic = "$registry/peer/\(peerId)/discovered"
-				try? await self.publishWithOptions(topic, data: AnyValue.null(), options: PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: 10.0, target: nil))
 			}
 		case "PeerDisconnected":
 			if let peerId = str("peer_node_id") {
@@ -324,7 +346,8 @@ public final class SwiftNode {
 				logger.info("peer disconnected id=\(peerId)")
 				// Publish internal disconnected event
 				let topic = "$registry/peer/\(peerId)/disconnected"
-				try? await self.publishWithOptions(topic, data: AnyValue.null(), options: PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: 10.0, target: nil))
+				let ttl = self.config.internalEventsRetentionSec ?? 30.0
+				try? await self.publishWithOptions(topic, data: AnyValue.null(), options: PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: ttl, target: nil))
 			}
 		case "EventReceived":
 			// Deliver incoming published events to local subscribers
@@ -455,6 +478,11 @@ public final class SwiftNode {
 	public func request(_ path: String, payload: AnyValue?) async throws -> AnyValue {
 		let full = qualify(path)
 		if let (handler, params) = registry.getLocalAction(topicPath: full) {
+			// Gate local routing on service running state
+			let targetService = parseService(full)
+			if let meta = registry.getLocalService(servicePath: targetService), meta.state != .running {
+				throw NSError(domain: "SwiftNode", code: 503, userInfo: [NSLocalizedDescriptionKey: "Service not running: \(targetService)"])
+			}
 			let ctx = RequestContext(networkId: parseNetwork(full), servicePath: parseService(full), logger: logger, nodeDelegate: self, pathParams: params, userProfilePublicKey: Data())
 			return try await handler(payload, ctx)
 		}

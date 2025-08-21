@@ -23,7 +23,7 @@ final class RealTransportTests: XCTestCase {
     }
     func testTwoNodesRequestRoundTrip() async throws {
         // Build two nodes with CA-signed certs using test fixtures
-        let fixture = try TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:0", "127.0.0.1:0"], defaultNetworkId: "net")
+        let fixture = try RunarTestUtils.TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:0", "127.0.0.1:0"], defaultNetworkId: "net")
         let keysA = fixture.nodes[0]
         let keysB = fixture.nodes[1]
         // Node A (inject keys so start() uses them)

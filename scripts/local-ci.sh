@@ -18,6 +18,16 @@ packages=(swift-common swift-serializer swift-serializer-macros swift-ffi swift-
 echo "== Swift versions =="
 swift --version || true
 
+echo "== Swift version compatibility check =="
+SWIFT_VERSION=$(swift --version | head -n1 | grep -o 'Swift version [0-9.]*' | cut -d' ' -f3)
+echo "Detected Swift version: $SWIFT_VERSION"
+if [[ "$SWIFT_VERSION" < "6.0" ]]; then
+  echo "Warning: Swift 6.0 or later is recommended for full compatibility"
+  echo "Some packages may fail to build with Swift $SWIFT_VERSION"
+else
+  echo "Swift version $SWIFT_VERSION is compatible"
+fi
+
 echo "== SwiftFormat (lint) =="
 run_to 180 swiftformat --lint "${packages[@]}" || echo "SwiftFormat lint timed out"
 

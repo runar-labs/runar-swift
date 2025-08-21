@@ -1182,8 +1182,7 @@ public extension PlainSerializable {
 // MARK: - Encryption Types
 
 /// Protocol for envelope encryption operations
-/// Matches the MobileKeyManager interface from swift-keys
-/// Use EnvelopeCrypto from RunarKeys
+/// Use EnvelopeCrypto from the appropriate keystore implementation
 
 // Dummy keystore used only when decrypting element-level payloads without a provided keystore.
 // This will throw if used; present to satisfy function signatures.

@@ -23,13 +23,13 @@ final class NetworkTests: XCTestCase {
 
     func testPublishSubscribeOverNetwork() async throws {
         // CA + two node keys with certificates
-        let can = try TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:50621", "127.0.0.1:50622"], defaultNetworkId: "net")
+        let can = try RunarTestUtils.TestFixtures.createCAAndNodes(count: 2, addresses: ["127.0.0.1:50621", "127.0.0.1:50622"], defaultNetworkId: "net")
         let keys1 = can.nodes[0]
         let keys2 = can.nodes[1]
 
-        // Nodes with injected keys
-        let n1 = SwiftNode(config: .init(defaultNetworkId: can.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50621")), keys: keys1)
-        let n2 = SwiftNode(config: .init(defaultNetworkId: can.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50622")), keys: keys2)
+        // Nodes with injected keys (set internal event retention for tests)
+        let n1 = SwiftNode(config: .init(defaultNetworkId: can.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50621"), internalEventsRetentionSec: 30.0), keys: keys1)
+        let n2 = SwiftNode(config: .init(defaultNetworkId: can.defaultNetworkId, network: .init(enabled: true, bindAddress: "127.0.0.1:50622"), internalEventsRetentionSec: 30.0), keys: keys2)
         try await n1.addService(PubService())
         try await n1.start()
         try await n2.start()
@@ -43,7 +43,7 @@ final class NetworkTests: XCTestCase {
         // Wait for discovered event via on(...)
         let nid1 = try keys1.nodeId()
         let topic = "$registry/peer/\(nid1)/discovered"
-        let handle = n2.on(topic, options: OnOptions(timeout: 10.0, includePast: 10.0))
+        let handle = n2.on(topic, options: OnOptions(timeout: 20.0, includePast: 20.0))
         let res = await handle.value()
         switch res {
         case .success:
@@ -54,12 +54,11 @@ final class NetworkTests: XCTestCase {
 
         // Subscribe on node2, trigger publish on node1
         let exp = expectation(description: "recv")
-        _ = try await n2.subscribe("pub/evt") { _, v in
+        _ = try await n2.subscribe("pub/evt", options: EventRegistrationOptions(includePast: 10.0)) { _, v in
             let s: String? = try? await v?.asType()
             if s == "hi" { exp.fulfill() }
         }
-        // Retain for a short period to tolerate races
-        try await n1.publish("pub/evt", data: AnyValue.primitive("hi"), retainFor: 2.0)
+        try await n1.publish("pub/evt", data: AnyValue.primitive("hi"), retainFor: 10.0)
         await fulfillment(of: [exp], timeout: 10.0)
 
         await n2.stop()

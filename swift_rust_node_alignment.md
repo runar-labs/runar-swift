@@ -66,19 +66,31 @@ Internal `$registry` actions registered in `registerInternalServices()`:
 - `services/{service_path}/pause`
 - `services/{service_path}/resume`
 
-Internal peer events (now emitted in `handleTransportEvent`):
-- `$registry/peer/{peer_id}/discovered` (retained for 10s)
-- `$registry/peer/{peer_id}/disconnected` (retained for 10s)
+Internal peer events (emitted in `handleTransportEvent`):
+- `$registry/peer/{peer_id}/discovered` (retained for 10s by default)
+- `$registry/peer/{peer_id}/disconnected` (retained for 10s by default)
+
+### Service lifecycle (Swift)
+- `addService`:
+  - Always registers metadata.
+  - Calls `service.initService(context)`.
+  - If node is already started, immediately calls `service.start(context)` and marks service state as `running`.
+  - If node not started, stores instance; start will occur during `node.start()`.
+- `start`:
+  - Registers internal `$registry` services first.
+  - Starts any pending local services via `service.start(context)`; only then marks service state as `running`.
+  - Starts transport and discovery, then sets the node to started.
+- Local request routing checks the target service state; if not `running`, the request is rejected.
 
 Runtime sequence (current Swift):
-1) `registerInternalServices()` on start
-2) Mark local services running
-3) If injected transport: start transport, start event loop
-4) Else if networking enabled: create/prepare `FFIKeys` and `FFITransport`, start transport, update `NodeInfo`, bind discovery events, start event loop
+1) Register internal services (always before transport).
+2) For each added-but-not-started service: call `start()` and mark `running` after success.
+3) Start transport; bind discovery to transport; start event loop.
+4) Emit internal peer events and handle service registry synchronization.
 
 Retained events:
-- `publishWithOptions` supports `retainFor`; retained events are stored as `AnyValue` to preserve zero-copy locally
-- Default retained deque per topic capped at 16 entries
+- `publishWithOptions` supports `retainFor`; retained events are stored as `AnyValue` to preserve zero-copy locally.
+- Default retained deque per topic capped at 16 entries (subject to alignment with Rust policy).
 
 ---
 
@@ -91,12 +103,12 @@ Retained events:
 
 2) Internal startup sequence
 - Rust: Internal services registered before transport start; then discovery and peer events begin.
-- Swift: Same ordering implemented; confirm there are no late-bound internal subscribers introduced after transport start.
-- Task: Add explicit assertion/logging in `start()` to guarantee ordering and fail fast if violated.
+- Swift: Implemented; also enforces service `start` gating before marking `running`.
+- Task: Add explicit unit test asserting internal `$registry` registration finishes before transport start and that services are unavailable before `start` completes.
 
 3) `$registry` peer events and retention
 - Rust: Tests wait on `$registry/peer/{id}/discovered` with include_past. Requires retention.
-- Swift: Now emits discovered/disconnected and retains 10s. Confirm Rust retention ttl; align TTL or make configurable.
+- Swift: Emits discovered/disconnected and retains 10s. Confirm Rust retention ttl; align TTL or make configurable.
 - Task: Add configurable retention TTL for internal events to mirror Rust default.
 
 4) `$registry/services/list` query fallback on connect
@@ -120,15 +132,11 @@ Retained events:
 - Swift binds FFIDiscovery to the transport after transport start. Confirm Rust’s discovery startup order and options.
 - Task: Ensure discovery lifecycle matches Rust (announcing/stop/shutdown hooks).
 
-9) Service metadata
+9) Schema parity
 - Swift’s `RegistryServiceMetadata` structure should match Rust exactly (field names/types).
 - Task: Cross-check schema field-by-field against Rust definitions.
 
-10) Concurrency and isolation guarantees
-- Swift constrains Node and Registry to `@MainActor`. Rust uses a single-threaded control plane with async tasks.
-- Task: Document this as the Swift equivalence to Rust’s serialized control plane; ensure no non-main-actor mutations of node state.
-
-11) `$registry` topic naming completeness
+10) `$registry` topic naming completeness
 - Ensure all Rust `$registry` topics exist in Swift (including any additional health/metrics endpoints if present in Rust).
 - Task: Audit topics and add missing ones.
 
@@ -142,12 +150,13 @@ Retained events:
 
 2) Internal services and startup ordering (Blocking)
 - [ ] Add explicit unit test asserting internal `$registry` registration finishes before transport start
+- [ ] Verify that services are not callable until `start()` completes; add test using a stateful service
 - [ ] Ensure discovery only starts after transport; verify ordering with logs/tests
 
 3) `$registry` peer events (High)
 - [ ] Confirm Rust retention TTL for `$registry/peer/*` events; align Swift default
 - [ ] Add configuration knob for internal-event retention TTL (match Rust if configurable)
-- [ ] Verify include_past delivers retained events reliably (add test)
+- [ ] Verify include_past delivers retained events reliably (add test using `on(...)`)
 
 4) Service advertisement and remote registry sync (High)
 - [ ] Confirm Rust behavior for initial peer services propagation
@@ -184,6 +193,7 @@ Retained events:
 - Implemented `on(_:options:) -> JoinHandle<Result<AnyValue?, Error>>` following Rust semantics; `includePast` supported via retained events.
 - Implemented `$registry` internal service topics and peer lifecycle topics (`discovered`/`disconnected`), with retention for includePast.
 - Ensured internal services register before transport startup; discovery binds after transport start.
+- Enforced service lifecycle: `initService` on add, `start` either during `node.start()` or immediately if node is already started; service is only marked running after `start` returns, and local routing is gated on running state.
 
 ---
 
@@ -203,3 +213,8 @@ Retained events:
 3) Keep this document as the single source of truth for alignment status
 
 
+Unrelate to RUST but very important issue to solve
+
+I noticed another issue.. that mnight be quyic to fix..  Circular Dependencies Blocking CI
+swift-ffi ↔ swift-test-utils (circular dependency)
+swift-ffi ↔ swift-serializer (circular dependency)  lprob because of tsts is my guess...   in swift-ffi lets move these tests out perjaps to a test only pacikage.. .. since  swift-test-utils  do need the ffi and also serialiser also need the ffi.. this way external test pakca can depends on all it needs and nothgn depend son the rtest package..

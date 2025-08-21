@@ -21,6 +21,7 @@ final class SwiftNodeTests: XCTestCase {
 			func stop(_ context: LifecycleContext) async throws {}
 		}
 		try await node.addService(EchoService())
+		try await node.start()
 		let res = try await node.request("echo/say", payload: AnyValue.primitive("hello"))
 		let text: String = try await res.asType()
 		XCTAssertEqual(text, "hello")
