@@ -67,8 +67,9 @@ public extension AnyValue {
     }
 }
 
+@MainActor
 private extension Array where Element == AnyValue {
-    func asyncMap<T>(_ transform: @escaping (AnyValue) async throws -> T) async throws -> [T] {
+    func asyncMap<T>(_ transform: @escaping @MainActor (AnyValue) async throws -> T) async throws -> [T] {
         var results: [T] = []
         results.reserveCapacity(count)
         for el in self { results.append(try await transform(el)) }

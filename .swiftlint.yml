@@ -1,9 +1,11 @@
 included:
   - swift-common
-  - swift-keys
   - swift-serializer
   - swift-serializer-macros
-  - swift-transporter
+  - swift-ffi
+  - swift-node
+  - swift-test-utils
+  - swift-ffi-poc
 
 excluded:
   - .build
@@ -12,11 +14,6 @@ excluded:
   - '**/.swiftpm/**'
   - '**/*.pb.swift'
   - '**/Reference/**'
-  - '**/RunarTransporter.xcworkspace/**'
-  - 'swift-transporter/Sources/QuicSample/**'
-  - 'swift-transporter/Sources/QuicIT/**'
-  - 'swift-transporter/Tests/RunarTransporterTests/SecIdentityPOC.swift'
-  - 'swift-transporter/Sources/RunarTransporter/DiscoveryProtobuf.swift'
   - '**/Examples/**'
 
 line_length:

@@ -61,6 +61,7 @@ public final class JoinHandle<T> {
 		self.task = task
 		self.mapper = mapper
 	}
+	@MainActor
 	public func value() async -> T {
 		let r = await task.value
 		return mapper(r)
@@ -291,9 +292,9 @@ public final class SwiftNode {
 				} else {
 					do {
 						let full = "\(self.config.defaultNetworkId):$registry/services/list"
-						let any = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
+						let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
 						// Decode directly from AnyValue payload without using async asType()
-						if let parsed = parseAnyValueSerialized(try any.serialize(context: nil)), parsed.typeName.contains("RegistryServiceMetadata") {
+						if let parsed = parseAnyValueSerialized(try resp.serialize(context: nil)), parsed.typeName.contains("RegistryServiceMetadata") {
 							if let item = try? CBORDecoder(input: [UInt8](parsed.payload)).decodeItem(), case let CBOR.array(arr) = item {
 								var metas: [RegistryServiceMetadata] = []
 								let dec = CodableCBORDecoder()
@@ -313,11 +314,17 @@ public final class SwiftNode {
 						self.logger.debug("peer registry query failed id=\(peerId): \(error)")
 					}
 				}
+				// Publish internal discovered event
+				let topic = "$registry/peer/\(peerId)/discovered"
+				try? await self.publishWithOptions(topic, data: AnyValue.null(), options: PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: 10.0, target: nil))
 			}
 		case "PeerDisconnected":
 			if let peerId = str("peer_node_id") {
 				registry.removePeer(peerId)
 				logger.info("peer disconnected id=\(peerId)")
+				// Publish internal disconnected event
+				let topic = "$registry/peer/\(peerId)/disconnected"
+				try? await self.publishWithOptions(topic, data: AnyValue.null(), options: PublishOptions(broadcast: true, guaranteedDelivery: false, retainFor: 10.0, target: nil))
 			}
 		case "EventReceived":
 			// Deliver incoming published events to local subscribers

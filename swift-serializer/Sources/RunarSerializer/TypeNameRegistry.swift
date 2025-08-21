@@ -8,7 +8,7 @@ public actor TypeNameRegistry {
     // wire name -> Swift.Type
     private var wireToSwift: [String: Any.Type] = [:]
     // wire name -> JSON converter closure
-    private var wireToJSON: [String: @Sendable (AnyValue) async throws -> Any] = [:]
+    private var wireToJSON: [String: @Sendable @MainActor (AnyValue) async throws -> Any] = [:]
     // wire name -> decoder closure (CBOR bytes -> Any)
     private var wireToDecoder: [String: @Sendable (Data) throws -> Any] = [:]
     // wire name -> Swift type name (diagnostics)
@@ -60,7 +60,7 @@ public actor TypeNameRegistry {
         }
     }
 
-    public func registerJSONConverter(for wireName: String, converter: @escaping @Sendable (AnyValue) async throws -> Any) {
+    public func registerJSONConverter(for wireName: String, converter: @escaping @Sendable @MainActor (AnyValue) async throws -> Any) {
         if wireToJSON[wireName] == nil {
             wireToJSON[wireName] = converter
         }
@@ -75,7 +75,7 @@ public actor TypeNameRegistry {
     public func lookupWireName(swiftTypeName: String) -> String? { swiftToWire[swiftTypeName] }
     public func lookupSwiftTypeByWireName(_ wire: String) -> Any.Type? { wireToSwift[wire] }
     public func lookupSwiftNameByWireName(_ wire: String) -> String? { wireToSwiftName[wire] }
-    public func lookupJsonByWireName(_ wire: String) -> (@Sendable (AnyValue) async throws -> Any)? { wireToJSON[wire] }
+    public func lookupJsonByWireName(_ wire: String) -> (@Sendable @MainActor (AnyValue) async throws -> Any)? { wireToJSON[wire] }
     public func lookupDecoderByWireName(_ wire: String) -> (@Sendable (Data) throws -> Any)? { wireToDecoder[wire] }
 }
 

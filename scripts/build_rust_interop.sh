@@ -9,15 +9,15 @@ resolve_repo_dir() {
     echo "$RUNAR_RUST_DIR"
     return 0
   fi
-  # Fallback: submodule path inside swift-transporter
+  # Fallback: local runar-rust directory
   local here
   here="$(cd "$(dirname "$0")/.." && pwd)"
-  local submodule="$here/swift-transporter/interop-deps/runar-rust"
+  local submodule="$here/runar-rust"
   if [[ -d "$submodule" ]]; then
     echo "$submodule"
     return 0
   fi
-  echo "RUNAR_RUST_DIR not set and no submodule found at $submodule" >&2
+  echo "RUNAR_RUST_DIR not set and no runar-rust directory found at $submodule" >&2
   exit 1
 }
 

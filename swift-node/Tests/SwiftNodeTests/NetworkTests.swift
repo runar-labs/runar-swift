@@ -40,15 +40,27 @@ final class NetworkTests: XCTestCase {
         for _ in 0..<5 { do { try await n2.connectPeer(p1); lastError = nil; break } catch { lastError = error; try? await Task.sleep(nanoseconds: 200_000_000) } }
         if let e = lastError { throw e }
 
+        // Wait for discovered event via on(...)
+        let nid1 = try keys1.nodeId()
+        let topic = "$registry/peer/\(nid1)/discovered"
+        let handle = n2.on(topic, options: OnOptions(timeout: 10.0, includePast: 10.0))
+        let res = await handle.value()
+        switch res {
+        case .success:
+            break
+        case let .failure(err):
+            XCTFail("did not receive discovered event: \(err)")
+        }
+
         // Subscribe on node2, trigger publish on node1
         let exp = expectation(description: "recv")
         _ = try await n2.subscribe("pub/evt") { _, v in
             let s: String? = try? await v?.asType()
             if s == "hi" { exp.fulfill() }
         }
-        // Retain for a short period to tolerate race with subscription binding
+        // Retain for a short period to tolerate races
         try await n1.publish("pub/evt", data: AnyValue.primitive("hi"), retainFor: 2.0)
-        await fulfillment(of: [exp], timeout: 5.0)
+        await fulfillment(of: [exp], timeout: 10.0)
 
         await n2.stop()
         await n1.stop()

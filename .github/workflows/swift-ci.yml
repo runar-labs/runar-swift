@@ -32,7 +32,7 @@ jobs:
       - name: SwiftFormat (lint mode)
         run: |
           set -euo pipefail
-          for dir in swift-common swift-keys swift-serializer swift-serializer-macros swift-transporter; do
+          for dir in swift-common swift-serializer swift-serializer-macros swift-ffi swift-node swift-test-utils swift-ffi-poc; do
             echo "Checking formatting in $dir"
             swiftformat --lint "$dir"
           done
@@ -40,7 +40,7 @@ jobs:
       - name: SwiftLint (strict)
         run: |
           set -euo pipefail
-          for dir in swift-common swift-keys swift-serializer swift-serializer-macros swift-transporter; do
+          for dir in swift-common swift-serializer swift-serializer-macros swift-ffi swift-node swift-test-utils swift-ffi-poc; do
             echo "SwiftLint in $dir (strict)"
             (cd "$dir" && swiftlint)
           done
@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [ swift-common, swift-keys, swift-serializer, swift-serializer-macros, swift-transporter ]
+        package: [ swift-common, swift-serializer, swift-serializer-macros, swift-ffi, swift-node, swift-test-utils, swift-ffi-poc ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
