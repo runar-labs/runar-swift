@@ -14,7 +14,6 @@ excluded:
   - '**/.swiftpm/**'
   - '**/*.pb.swift'
   - '**/Reference/**'
-  - '**/Examples/**'
 
 line_length:
   warning: 140
