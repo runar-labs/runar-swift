@@ -1,0 +1,81 @@
+# Production-Ready SwiftLint Configuration
+# Gold Standard based on Apple Swift Guidelines and Industry Best Practices
+# Systematically built to avoid configuration parsing issues
+
+# === ESSENTIAL FIXES ===
+disabled_rules:
+  - identifier_name          # Main cause of hangs - deprecated config options
+  - file_length              # Too restrictive for production code
+  - type_body_length         # Too restrictive for production code
+  - function_body_length     # Too restrictive for production code
+  - cyclomatic_complexity    # Too restrictive for production code
+
+# === PROJECT SCOPE ===
+included:
+  - swift-common
+  - swift-serializer
+  - swift-serializer-macros
+  - swift-ffi
+  - swift-node
+  - swift-test-utils
+  - swift-ffi-poc
+
+excluded:
+  - .build
+  - .swiftpm
+  - '**/.build/**'
+  - '**/.swiftpm/**'
+  - '**/*.pb.swift'
+  - '**/Reference/**'
+  - '**/build/**'
+  - '**/DerivedData/**'
+  - '**/*.generated.swift'
+  - '**/Generated/**'
+  - '**/generated/**'
+  - '**/checkouts/**'
+  - '**/Package.resolved'
+  - '**/swift-syntax/**'
+  - '**/SwiftSyntax/**'
+  - '**/*Syntax*.swift'
+  - '**/Vendor/**'
+
+# === CORE SAFETY RULES ===
+# These catch real bugs and unsafe patterns - Apple recommended
+opt_in_rules:
+  - force_cast               # Prevent unsafe type casting
+  # - force_try                # TEMPORARILY DISABLED: Acceptable in tests for fail-fast behavior
+  - force_unwrapping         # Prevent unsafe optionals
+  - implicitly_unwrapped_optional  # Catch unsafe optionals
+  - duplicate_conditions     # Catch logic errors
+  - duplicate_enum_cases     # Catch duplicate enum values
+  - yoda_condition          # Catch confusing conditionals
+  - identical_operands      # Catch logic errors
+  - unhandled_throwing_task # Catch unhandled async errors
+
+# === PERFORMANCE & MODERN API RULES ===
+# Following Apple's performance and modernization guidelines
+  - legacy_random           # Use modern random APIs
+  - legacy_hashing          # Use modern hashing APIs
+  - contains_over_filter_count    # Performance optimization
+  - contains_over_filter_is_empty # Performance optimization
+  - first_where             # Use more efficient APIs
+  - last_where              # Use more efficient APIs
+  - sorted_first_last       # Use more efficient APIs
+  - reduce_boolean          # Performance optimization
+
+# === CODE QUALITY & IDIOMATIC RULES ===
+# Apple Swift style guide compliant
+  - redundant_nil_coalescing       # Code cleanup
+  - redundant_optional_initialization  # Code cleanup
+  - redundant_void_return          # Code cleanup
+  - redundant_set_access_control   # Code cleanup
+  - redundant_string_enum_value    # Code cleanup
+  - void_function_in_ternary       # Code clarity
+  - toggle_bool                   # Code clarity
+  - prefer_zero_over_explicit_init # Modern Swift idioms
+
+# === CUSTOM THRESHOLDS ===
+# Reasonable defaults for production Swift code
+line_length: 180  # More reasonable than default 120 for modern displays
+
+

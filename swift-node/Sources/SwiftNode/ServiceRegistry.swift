@@ -83,7 +83,7 @@ public struct ServiceMetadata: Sendable {
 
 // Using existing TopicPath from Routing.swift which provides proper validation and pattern support
 
-public enum LocalServiceState: String, Sendable {
+public enum LocalServiceState: String, Codable, Sendable {
     case initialized
     case running
     case paused

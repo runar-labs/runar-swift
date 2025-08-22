@@ -47,7 +47,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("generate_keypair") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            let request = try payload?.asType(KeypairRequest.self) ?? KeypairRequest(algorithm: .ed25519)
+            let request = (try await payload?.asType() as KeypairRequest?) ?? KeypairRequest(algorithm: .ed25519)
             let keypair = try await self.generateKeypair(algorithm: request.algorithm)
             return AnyValue.struct(keypair)
         }
@@ -77,7 +77,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("generate_certificate") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let certRequest = try payload?.asType(CertificateRequest.self) else {
+            guard let certRequest = try await payload?.asType() as CertificateRequest? else {
                 throw BaseRunarError.serializationError("Invalid certificate request", component: .keys)
             }
 
@@ -89,7 +89,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("validate_certificate") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let certData = try payload?.asType(Data.self) else {
+            guard let certData = try await payload?.asType() as Data? else {
                 throw BaseRunarError.serializationError("Invalid certificate data", component: .keys)
             }
 
@@ -113,7 +113,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("encrypt") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let encryptRequest = try payload?.asType(EncryptRequest.self) else {
+            guard let encryptRequest = try await payload?.asType() as EncryptRequest? else {
                 throw BaseRunarError.serializationError("Invalid encrypt request", component: .keys)
             }
 
@@ -125,7 +125,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("decrypt") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let decryptRequest = try payload?.asType(DecryptRequest.self) else {
+            guard let decryptRequest = try await payload?.asType() as DecryptRequest? else {
                 throw BaseRunarError.serializationError("Invalid decrypt request", component: .keys)
             }
 
@@ -137,7 +137,7 @@ public final class KeysService: ServiceBase {
         try await context.registerAction("set_label_mapping") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
-            guard let mappingData = try payload?.asType(Data.self) else {
+            guard let mappingData = try await payload?.asType() as Data? else {
                 throw BaseRunarError.serializationError("Invalid label mapping data", component: .keys)
             }
 

@@ -42,7 +42,22 @@ public final class RegistryService: ServiceBase {
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let services = try await self.listServices()
-            return AnyValue.struct(services)
+            let serviceMaps = services.services.map { serviceInfo in
+                AnyValue.map([
+                    "servicePath": AnyValue.primitive(serviceInfo.servicePath),
+                    "name": AnyValue.primitive(serviceInfo.name),
+                    "version": AnyValue.primitive(serviceInfo.version),
+                    "description": AnyValue.primitive(serviceInfo.description),
+                    "state": AnyValue.primitive(String(describing: serviceInfo.state)),
+                    "registrationTime": AnyValue.primitive(serviceInfo.registrationTime.timeIntervalSince1970),
+                    "lastStartTime": serviceInfo.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null()
+                ])
+            }
+            return AnyValue.map([
+                "services": AnyValue.list(serviceMaps),
+                "totalCount": AnyValue.primitive(services.totalCount),
+                "nodeId": AnyValue.primitive(services.nodeId)
+            ])
         }
 
         // Get specific service info
@@ -51,14 +66,24 @@ public final class RegistryService: ServiceBase {
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let serviceInfo = try await self.getServiceInfo(servicePath: servicePath)
-            return AnyValue.struct(serviceInfo)
+            return AnyValue.map([
+                "service": AnyValue.map([
+                    "servicePath": AnyValue.primitive(serviceInfo.service.servicePath),
+                    "name": AnyValue.primitive(serviceInfo.service.name),
+                    "version": AnyValue.primitive(serviceInfo.service.version),
+                    "description": AnyValue.primitive(serviceInfo.service.description),
+                    "state": AnyValue.primitive(String(describing: serviceInfo.service.state)),
+                    "registrationTime": AnyValue.primitive(serviceInfo.service.registrationTime.timeIntervalSince1970),
+                    "lastStartTime": serviceInfo.service.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null()
+                ])
+            ])
         }
 
         // Discover services by peer
         try await context.registerAction("services/discover") { [weak self] (payload: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
-            guard let discoverRequest = try payload?.asType(ServiceDiscoveryRequest.self) else {
+            guard let discoverRequest = try await payload?.asType() as ServiceDiscoveryRequest? else {
                 throw BaseRunarError.serializationError("Invalid discovery request", component: .registry)
             }
 
@@ -72,7 +97,12 @@ public final class RegistryService: ServiceBase {
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let state = try await self.getServiceState(servicePath: servicePath)
-            return AnyValue.struct(state)
+            return AnyValue.map([
+                "servicePath": AnyValue.primitive(state.servicePath),
+                "state": AnyValue.primitive(String(describing: state.state)),
+                "lastStartTime": state.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null(),
+                "registrationTime": AnyValue.primitive(state.registrationTime.timeIntervalSince1970)
+            ])
         }
     }
 
@@ -83,7 +113,7 @@ public final class RegistryService: ServiceBase {
         try await context.registerAction("services/register") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
-            guard let registerRequest = try payload?.asType(ServiceRegistrationRequest.self) else {
+            guard let registerRequest = try await payload?.asType() as ServiceRegistrationRequest? else {
                 throw BaseRunarError.serializationError("Invalid registration request", component: .registry)
             }
 
@@ -95,7 +125,7 @@ public final class RegistryService: ServiceBase {
         try await context.registerAction("services/unregister") { [weak self] payload, _ in
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
-            guard let unregisterRequest = try payload?.asType(ServiceUnregistrationRequest.self) else {
+            guard let unregisterRequest = try await payload?.asType() as ServiceUnregistrationRequest? else {
                 throw BaseRunarError.serializationError("Invalid unregistration request", component: .registry)
             }
 
@@ -131,7 +161,23 @@ public final class RegistryService: ServiceBase {
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let metadata = try await self.getServiceMetadata(servicePath: servicePath)
-            return AnyValue.struct(metadata)
+            return AnyValue.map([
+                "metadata": AnyValue.map([
+                    "networkId": AnyValue.primitive(metadata.metadata.networkId),
+                    "servicePath": AnyValue.primitive(metadata.metadata.servicePath),
+                    "name": AnyValue.primitive(metadata.metadata.name),
+                    "version": AnyValue.primitive(metadata.metadata.version),
+                    "description": AnyValue.primitive(metadata.metadata.description),
+                    "actions": AnyValue.list(metadata.metadata.actions.map { action in
+                        AnyValue.map([
+                            "path": AnyValue.primitive(action.path),
+                            "description": action.description.map { AnyValue.primitive($0) } ?? AnyValue.null()
+                        ])
+                    }),
+                    "registrationTime": AnyValue.primitive(metadata.metadata.registrationTime.timeIntervalSince1970),
+                    "lastStartTime": metadata.metadata.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null()
+                ])
+            ])
         }
 
         // Update service metadata
@@ -139,7 +185,7 @@ public final class RegistryService: ServiceBase {
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
-            guard let updateRequest = try payload?.asType(MetadataUpdateRequest.self) else {
+            guard let updateRequest = try await payload?.asType() as MetadataUpdateRequest? else {
                 throw BaseRunarError.serializationError("Invalid metadata update request", component: .registry)
             }
 
@@ -362,7 +408,7 @@ public struct MetadataUpdateRequest: Codable, Sendable {
     }
 }
 
-public struct ServiceInfo: Codable, Sendable {
+public struct ServiceInfo: Sendable {
     public let servicePath: String
     public let name: String
     public let version: String
@@ -382,7 +428,7 @@ public struct ServiceInfo: Codable, Sendable {
     }
 }
 
-public struct ServiceListResponse: Codable, Sendable {
+public struct ServiceListResponse: Sendable {
     public let services: [ServiceInfo]
     public let totalCount: Int
     public let nodeId: String
@@ -394,7 +440,7 @@ public struct ServiceListResponse: Codable, Sendable {
     }
 }
 
-public struct ServiceInfoResponse: Codable, Sendable {
+public struct ServiceInfoResponse: Sendable {
     public let service: ServiceInfo
 
     public init(service: ServiceInfo) {
@@ -414,7 +460,7 @@ public struct ServiceDiscoveryResponse: Codable, Sendable {
     }
 }
 
-public struct ServiceStateResponse: Codable, Sendable {
+public struct ServiceStateResponse: Sendable {
     public let servicePath: String
     public let state: LocalServiceState
     public let lastStartTime: Date?
@@ -428,7 +474,7 @@ public struct ServiceStateResponse: Codable, Sendable {
     }
 }
 
-public struct ServiceMetadataResponse: Codable, Sendable {
+public struct ServiceMetadataResponse: Sendable {
     public let metadata: ServiceMetadata
 
     public init(metadata: ServiceMetadata) {

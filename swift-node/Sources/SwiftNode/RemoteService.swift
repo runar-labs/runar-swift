@@ -48,7 +48,7 @@ public final class RemoteService: ServiceBase {
         try await context.registerAction("discover") { [weak self] (payload: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
-            guard let discoverRequest = payload?.deserialize(to: RemoteDiscoveryRequest.self) else {
+            guard let discoverRequest = try await payload?.asType() as RemoteDiscoveryRequest? else {
                 throw BaseRunarError.serializationError("Invalid discovery request", component: .service)
             }
 
@@ -93,7 +93,7 @@ public final class RemoteService: ServiceBase {
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let action = ctx.pathParams["action"] ?? "default"
 
-            guard let proxyRequest = payload?.deserialize(to: RemoteProxyRequest.self) else {
+            guard let proxyRequest = try await payload?.asType() as RemoteProxyRequest? else {
                 throw BaseRunarError.serializationError("Invalid proxy request", component: .service)
             }
 
@@ -102,7 +102,11 @@ public final class RemoteService: ServiceBase {
                 action: action,
                 request: proxyRequest
             )
-            return AnyValue.struct(response)
+            return AnyValue.map([
+                "result": response.result ?? AnyValue.null(),
+                "targetNodeId": AnyValue.primitive(response.targetNodeId),
+                "responseTime": AnyValue.primitive(response.responseTime)
+            ])
         }
 
         // Broadcast to multiple remote services
@@ -112,7 +116,7 @@ public final class RemoteService: ServiceBase {
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let action = ctx.pathParams["action"] ?? "default"
 
-            guard let broadcastRequest = payload?.deserialize(to: RemoteBroadcastRequest.self) else {
+            guard let broadcastRequest = try await payload?.asType() as RemoteBroadcastRequest? else {
                 throw BaseRunarError.serializationError("Invalid broadcast request", component: .service)
             }
 
@@ -121,7 +125,19 @@ public final class RemoteService: ServiceBase {
                 action: action,
                 request: broadcastRequest
             )
-            return AnyValue.struct(responses)
+            let responseMaps = responses.responses.map { peerResponse in
+                AnyValue.map([
+                    "nodeId": AnyValue.primitive(peerResponse.nodeId),
+                    "response": peerResponse.response ?? AnyValue.null(),
+                    "success": AnyValue.primitive(peerResponse.success),
+                    "responseTime": AnyValue.primitive(peerResponse.responseTime)
+                ])
+            }
+            return AnyValue.map([
+                "responses": AnyValue.list(responseMaps),
+                "totalPeers": AnyValue.primitive(responses.totalPeers),
+                "successfulResponses": AnyValue.primitive(responses.successfulResponses)
+            ])
         }
     }
 
@@ -140,7 +156,7 @@ public final class RemoteService: ServiceBase {
         try await context.registerAction("strategy") { [weak self] (payload: AnyValue?, _: RequestContext) in
             guard let self = self else { throw BaseRunarError.serviceError("RemoteService not available", component: .service) }
 
-            guard let strategyRequest = payload?.deserialize(to: LoadBalancingStrategyRequest.self) else {
+            guard let strategyRequest = try await payload?.asType() as LoadBalancingStrategyRequest? else {
                 throw BaseRunarError.serializationError("Invalid strategy request", component: .service)
             }
 
@@ -678,7 +694,7 @@ public struct RemoteProxyResponse: Sendable {
     }
 }
 
-public struct RemoteBroadcastResponse: Codable, Sendable {
+public struct RemoteBroadcastResponse: Sendable {
     public let responses: [RemotePeerResponse]
     public let totalPeers: Int
     public let successfulResponses: Int

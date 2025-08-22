@@ -180,7 +180,7 @@ open class ServiceBase: AbstractService {
 
         // Log error with context
         let errorContext = ErrorContext(
-            nodeId: context.nodeId,
+            nodeId: context.networkId,
             servicePath: path,
             peerId: nil,
             additionalInfo: [
