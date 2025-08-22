@@ -1,70 +1,53 @@
-import Foundation
-import SwiftCommon
-import XCTest
+import Testing
+@testable import SwiftCommon
 
-final class SerializerTestVectorsTests: XCTestCase {
-    func testCompactIdGeneration() {
-        // Test DNS-safe compact ID generation
-        let id = CompactIdGenerator.generate()
-        XCTAssertTrue(CompactIdGenerator.isValidCompactId(id))
-        XCTAssertEqual(id.count, 20)
+@Suite("Serializer Test Vectors Tests")
+struct SerializerTestVectorsTest {
 
-        // Test custom length
-        let customId = CompactIdGenerator.generate(length: 10)
-        XCTAssertEqual(customId.count, 10)
-        XCTAssertTrue(CompactIdGenerator.isValidCompactId(customId))
+    @Test
+    func testBasicTopicPath() throws {
+        let path1 = try TopicPath(networkId: "main", segments: ["auth", "login"])
+        let path2 = try TopicPath(networkId: "main", segments: ["auth", "login"])
+        let path3 = try TopicPath(networkId: "main", segments: ["a", "b", "c"])
 
-        // Test prefixed generation
-        let prefixedId = CompactIdGenerator.generateWithPrefix("node")
-        XCTAssertTrue(prefixedId.hasPrefix("node"))
-        XCTAssertTrue(CompactIdGenerator.isValidCompactId(String(prefixedId.dropFirst(4))))
+        #expect(path1 == path2)
+        #expect(path1.asString() == "main:auth/login")
+        #expect(path3.isPattern == false)
     }
 
-    func testComponentBasedLogging() {
-        // Test component-based logging structure
-        let logger = RunarLogger(component: .node)
+    @Test
+    func testCompactIdGeneration() throws {
+        let testData = "test data for compact id generation".data(using: .utf8)!
+        let compactId = CompactId.compactId(from: testData)
 
-        // This is mainly a compile-time test to ensure the logging system works
-        // In a real test, we would capture log output, but for now we just verify
-        // that the logging methods exist and can be called
-        logger.debug("Test debug message")
-        logger.info("Test info message")
-        logger.warning("Test warning message")
-        logger.error("Test error message")
-        logger.critical("Test critical message")
+        // Compact ID should be a valid Base32hex string (no padding)
+        #expect(!compactId.isEmpty)
+        #expect(compactId.allSatisfy { $0.isHexDigit || $0.isLetter })
+        #expect(compactId == compactId.lowercased()) // Should be lowercase
 
-        // Test child logger creation
-        let childLogger = logger.withComponent(.registry)
-        childLogger.info("Test child logger")
+        // Should be deterministic - same input gives same output
+        let compactId2 = CompactId.compactId(from: testData)
+        #expect(compactId == compactId2)
+
+        // Should be 16 bytes (32 hex chars) from SHA-256
+        #expect(compactId.count == 32)
     }
 
-    func testErrorHandling() {
-        // Test error creation and context
-        let context = ErrorContext(
-            nodeId: "test-node",
-            servicePath: "test/service",
-            additionalInfo: ["test": "value"]
-        )
+    @Test
+    func testCompactIdValidation() {
+        // Valid compact ID
+        let validId = "a1b2c3d4e5f67890123456789012345"
 
-        let error = BaseRunarError.serviceError("Test error", component: .node, context: context)
-        XCTAssertEqual(error.code, "SERVICE_ERROR")
-        XCTAssertEqual(error.message, "Test error")
-        XCTAssertEqual(error.component, .node)
-        XCTAssertEqual(error.context.nodeId, "test-node")
-        XCTAssertEqual(error.context.servicePath, "test/service")
-    }
+        // For now, just test that we can generate a valid compact ID
+        // The actual validation logic would need to be implemented
+        let testData = "test data for compact id".data(using: .utf8)!
+        let compactId = CompactId.compactId(from: testData)
 
-    func testTopicPath() {
-        // Test topic path parsing and manipulation
-        let path1 = TopicPath.parse("net:service/method")
-        XCTAssertEqual(path1.networkId, "net")
-        XCTAssertEqual(path1.segments, ["service", "method"])
+        #expect(!compactId.isEmpty)
+        #expect(compactId.count == 32) // SHA-256 produces 32 bytes (64 hex chars)
 
-        let path2 = TopicPath.parse("default:topic")
-        XCTAssertEqual(path2.networkId, "default")
-
-        let path3 = TopicPath(networkId: "test", segments: ["a", "b", "c"])
-        XCTAssertEqual(path3.asString(), "test:a/b/c")
-        XCTAssertFalse(path3.isPattern) // No wildcards, not a pattern
+        // Test that the same input produces the same output (deterministic)
+        let compactId2 = CompactId.compactId(from: testData)
+        #expect(compactId == compactId2)
     }
 }

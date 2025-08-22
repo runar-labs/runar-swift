@@ -45,41 +45,4 @@ public enum CompactId {
     }
 }
 
-/// Compact ID generator for general-purpose identifiers
-/// Note: For public key-based IDs, use CompactId.compactId() instead
-public final class CompactIdGenerator: Sendable {
-    private static let charset = "0123456789abcdefghijklmnopqrstuvwxyz"
-    private static let charsetCount = UInt8(charset.count)
 
-    /// Generate a compact ID of specified length
-    /// - Parameter length: Length of the ID (default: 20)
-    /// - Returns: DNS-safe alphanumeric string
-    public static func generate(length: Int = 20) -> String {
-        var result = ""
-        for _ in 0 ..< length {
-            let randomIndex = UInt8.random(in: 0 ..< charsetCount)
-            let character = charset[charset.index(charset.startIndex, offsetBy: Int(randomIndex))]
-            result.append(character)
-        }
-        return result
-    }
-
-    /// Generate a compact ID with prefix
-    /// - Parameters:
-    ///   - prefix: Prefix to add (e.g., "node", "svc")
-    ///   - length: Total length including prefix
-    /// - Returns: Prefixed DNS-safe identifier
-    public static func generateWithPrefix(_ prefix: String, totalLength: Int = 24) -> String {
-        let idLength = totalLength - prefix.count - 1 // -1 for separator
-        let id = generate(length: max(4, idLength))
-        return "\(prefix)\(id)"
-    }
-
-    /// Validate if a string is a valid compact ID (DNS-safe alphanumeric)
-    public static func isValidCompactId(_ id: String) -> Bool {
-        guard !id.isEmpty else { return false }
-        return id.allSatisfy { char in
-            char.isASCII && (char.isLowercase || char.isNumber)
-        }
-    }
-}
