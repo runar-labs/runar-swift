@@ -169,7 +169,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         }
 
         // Parse and validate segments
-        let result = try parseAndValidateSegments(segments)
+        let result = try Self.parseAndValidateSegments(segments)
         let parsedSegments = result.segments
         let hasPattern = result.hasPattern
         let hasTemplateParams = result.hasTemplates
@@ -462,26 +462,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         rawPath
     }
 
-    /// Helper for test compatibility
-    public static func testDefault(_ path: String) -> TopicPath {
-        do {
-            return try TopicPath.parse("default:\(path)")
-        } catch {
-            // For test compatibility, return a minimal valid path if parsing fails
-            return TopicPath(
-                rawPath: "default:\(path)",
-                networkId: "default",
-                segments: [.literal(path)],
-                isPattern: false,
-                hasTemplates: false,
-                servicePath: path,
-                actionPath: path,
-                segmentCount: 1,
-                hashComponents: [0],
-                segmentTypeBitmap: 0
-            )
-        }
-    }
+
 
     /// Custom hash implementation using pre-computed components
     public func hash(into hasher: inout Hasher) {
@@ -530,11 +511,6 @@ private extension PathSegment {
 
     private var isLiteral: Bool {
         if case .literal = self { return true }
-        return false
-    }
-
-    private var isTemplate: Bool {
-        if case .template = self { return true }
         return false
     }
 

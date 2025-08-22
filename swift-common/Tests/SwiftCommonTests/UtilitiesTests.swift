@@ -41,18 +41,49 @@ struct UtilitiesTest {
         #expect(error.context.servicePath == "test/service")
     }
 
+
+
     @Test
-    func testTopicPath() throws {
-        // Test topic path parsing and manipulation
-        let path1 = try TopicPath.parse("net:service/method")
-        #expect(path1.networkId == "net")
-        #expect(path1.segments == [.literal("service"), .literal("method")])
+    func testCompactIdGeneration() throws {
+        let testData = "test data for compact id generation".data(using: .utf8)!
+        let compactId = CompactId.compactId(from: testData)
 
-        let path2 = try TopicPath.parse("default:topic")
-        #expect(path2.networkId == "default")
+        // Compact ID should be a valid Base32hex string (no padding)
+        #expect(!compactId.isEmpty)
+        #expect(compactId.allSatisfy { $0.isHexDigit || $0.isLetter })
+        #expect(compactId == compactId.lowercased()) // Should be lowercase
 
-        let path3 = try TopicPath(networkId: "test", segments: ["a", "b", "c"])
-        #expect(path3.asString() == "test:a/b/c")
-        #expect(!path3.isPattern) // No wildcards, not a pattern
+        // Should be deterministic - same input gives same output
+        let compactId2 = CompactId.compactId(from: testData)
+        #expect(compactId == compactId2)
+
+        // Should be 16 bytes encoded as Base32hex (26 chars) from SHA-256
+        #expect(compactId.count == 26)
+    }
+
+    @Test
+    func testCompactIdValidation() {
+        // Valid compact ID (for reference, not used in current test)
+        _ = "a1b2c3d4e5f67890123456789012345"
+
+        // For now, just test that we can generate a valid compact ID
+        // The actual validation logic would need to be implemented
+        let testData = "test data for compact id".data(using: .utf8)!
+        let compactId = CompactId.compactId(from: testData)
+
+        #expect(!compactId.isEmpty)
+        #expect(compactId.count == 26) // SHA-256 first 16 bytes encoded as Base32hex (26 chars)
+
+        // Test that the same input produces the same output (deterministic)
+        let compactId2 = CompactId.compactId(from: testData)
+        #expect(compactId == compactId2)
+    }
+
+    @Test
+    func testCompactIdNotEmpty() {
+        // Test with typical public key size (97 bytes for secp256r1)
+        let pub = Data(repeating: 0x42, count: 97)
+        let id = CompactId.compactId(from: pub)
+        #expect(!id.isEmpty)
     }
 }

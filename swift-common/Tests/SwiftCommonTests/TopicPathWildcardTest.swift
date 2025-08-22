@@ -156,7 +156,7 @@ struct TopicPathWildcardTest {
             }
         }
 
-        #expect(false, "No matching template found for \(concretePath)")
+        #expect(Bool(false), "No matching template found for \(concretePath)")
     }
 
     @Test
