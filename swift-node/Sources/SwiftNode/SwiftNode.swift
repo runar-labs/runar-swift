@@ -313,8 +313,7 @@ public final class SwiftNode {
                 // If event carries services list, use it immediately; else query peer registry asynchronously
                 if let bs = bytes("services"),
                    let item = try? CBORDecoder(input: [UInt8](bs)).decodeItem(),
-                   case let CBOR.array(arr) = item
-                {
+                   case let CBOR.array(arr) = item {
                     let services = arr.compactMap { if case let .utf8String(s) = $0 { return s } else { return nil } }
                     await registry.updatePeerServices(peerNodeId: peerId, servicePaths: services)
                 } else {
@@ -489,14 +488,14 @@ public final class SwiftNode {
                 .utf8String("description"): .utf8String(service.description),
                 .utf8String("actions"): .array(actions),
                 .utf8String("registration_time"): .unsignedInt(UInt64(service.registrationTime.timeIntervalSince1970)),
-                .utf8String("last_start_time"): service.lastStartTime.map { .unsignedInt(UInt64($0.timeIntervalSince1970)) } ?? .null,
+                .utf8String("last_start_time"): service.lastStartTime.map { .unsignedInt(UInt64($0.timeIntervalSince1970)) } ?? .null
             ]
             return .map(serviceMetadata)
         }
 
         map[.utf8String("node_metadata")] = .map([
             .utf8String("services"): .array(serviceMetadatas),
-            .utf8String("subscriptions"): .array(subscribedTopics.map { .utf8String($0) }),
+            .utf8String("subscriptions"): .array(subscribedTopics.map { .utf8String($0) })
         ])
         map[.utf8String("version")] = .unsignedInt(0)
         return Data(CBOR.map(map).encode())

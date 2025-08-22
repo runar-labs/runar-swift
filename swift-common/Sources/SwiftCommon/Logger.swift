@@ -1,10 +1,5 @@
 import Foundation
 import os
-import os.log
-
-// MARK: - Error Handling (Matching Rust Implementation)
-
-/// Base error type matching Rust's error handling patterns
 public protocol RunarError: Error, CustomStringConvertible {
     var code: String { get }
     var message: String { get }

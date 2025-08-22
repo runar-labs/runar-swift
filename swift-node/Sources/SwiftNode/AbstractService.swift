@@ -186,7 +186,7 @@ open class ServiceBase: AbstractService {
             additionalInfo: [
                 "service_name": name,
                 "service_version": version,
-                "service_state": state.rawValue,
+                "service_state": state.rawValue
             ]
         )
 

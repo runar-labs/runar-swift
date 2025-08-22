@@ -270,7 +270,7 @@ public final class KeysService: ServiceBase {
             .utf8String("issuer"): .utf8String(request.issuer),
             .utf8String("validFrom"): .utf8String(ISO8601DateFormatter().string(from: Date())),
             .utf8String("validUntil"): .utf8String(ISO8601DateFormatter().string(from: Date().addingTimeInterval(request.validityDays * 24 * 60 * 60))),
-            .utf8String("publicKey"): .byteString([UInt8](keys?.publicKey() ?? Data())),
+            .utf8String("publicKey"): .byteString([UInt8](keys?.publicKey() ?? Data()))
         ]
 
         return Data(CBOR.map(certMap).encode())
@@ -279,7 +279,7 @@ public final class KeysService: ServiceBase {
     private func validateCertificateFormat(_ certificateData: Data) throws -> Bool {
         // Placeholder validation - check if it's valid CBOR
         do {
-            let _ = try CBORDecoder(input: [UInt8](certificateData)).decodeItem()
+            _ = try CBORDecoder(input: [UInt8](certificateData)).decodeItem()
             return true
         } catch {
             return false
