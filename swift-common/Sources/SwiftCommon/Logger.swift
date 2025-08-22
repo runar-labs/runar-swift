@@ -438,47 +438,6 @@ public final class PathTrie<T> {
     }
 }
 
-// MARK: - Compact ID Generation (DNS-safe identifiers)
-
-/// Compact ID generator that creates DNS-safe, URL-safe identifiers
-/// Matches Rust's compact ID generation for node IDs and service identifiers
-public final class CompactIdGenerator: Sendable {
-    private static let charset = "0123456789abcdefghijklmnopqrstuvwxyz"
-    private static let charsetCount = UInt8(charset.count)
-
-    /// Generate a compact ID of specified length
-    /// - Parameter length: Length of the ID (default: 20)
-    /// - Returns: DNS-safe alphanumeric string
-    public static func generate(length: Int = 20) -> String {
-        var result = ""
-        for _ in 0 ..< length {
-            let randomIndex = UInt8.random(in: 0 ..< charsetCount)
-            let character = charset[charset.index(charset.startIndex, offsetBy: Int(randomIndex))]
-            result.append(character)
-        }
-        return result
-    }
-
-    /// Generate a compact ID with prefix
-    /// - Parameters:
-    ///   - prefix: Prefix to add (e.g., "node", "svc")
-    ///   - length: Total length including prefix
-    /// - Returns: Prefixed DNS-safe identifier
-    public static func generateWithPrefix(_ prefix: String, totalLength: Int = 24) -> String {
-        let idLength = totalLength - prefix.count - 1 // -1 for separator
-        let id = generate(length: max(4, idLength))
-        return "\(prefix)\(id)"
-    }
-
-    /// Validate if a string is a valid compact ID (DNS-safe alphanumeric)
-    public static func isValidCompactId(_ id: String) -> Bool {
-        guard !id.isEmpty else { return false }
-        return id.allSatisfy { char in
-            char.isASCII && (char.isLowercase || char.isNumber)
-        }
-    }
-}
-
 // MARK: - Cross-Platform Test Vectors Support
 
 /// Support structures for cross-platform test vectors
@@ -763,3 +722,16 @@ public class SimpleRunarLogger {
     public func error(_ message: String) { logger.error(message) }
     public func critical(_ message: String) { logger.critical(message) }
 }
+
+// MARK: - Error Utilities
+
+/// Note: ErrorUtil enum already exists earlier in this file
+/// See lines ~133 for the existing ErrorUtil implementation
+
+// MARK: - Routing & Path Utilities
+
+/// Note: CompactId utilities moved to Utilities.swift - not logging related
+
+/// Path routing utilities - extracted from swift-node for common use
+/// Note: Uses the existing PathTrie class in this file for pattern matching
+public typealias PathRouter = PathTrie

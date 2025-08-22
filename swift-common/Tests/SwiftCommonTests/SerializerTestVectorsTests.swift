@@ -65,6 +65,6 @@ final class SerializerTestVectorsTests: XCTestCase {
 
         let path3 = TopicPath(networkId: "test", segments: ["a", "b", "c"])
         XCTAssertEqual(path3.asString(), "test:a/b/c")
-        XCTAssertTrue(path3.isPattern) // Contains segments
+        XCTAssertFalse(path3.isPattern) // No wildcards, not a pattern
     }
 }
