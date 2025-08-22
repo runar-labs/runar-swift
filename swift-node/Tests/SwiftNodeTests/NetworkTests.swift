@@ -1,5 +1,6 @@
 import RunarSerializer
 import RunarTestUtils
+import SwiftCommon
 @testable import SwiftNode
 import XCTest
 
@@ -11,6 +12,8 @@ final class NetworkTests: XCTestCase {
         var path: String { "pub" }
         var description: String { "test" }
         var networkId: String?
+        var state: ServiceState = .created
+        var logger: RunarLogger = RunarLogger(component: .service)
         func initService(_ ctx: LifecycleContext) async throws {
             try await ctx.registerAction("trigger") { _, ctx in
                 try await ctx.nodeDelegate.publish(topic: "pub/evt", data: AnyValue.primitive("hi"))

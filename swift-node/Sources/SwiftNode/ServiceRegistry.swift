@@ -37,7 +37,7 @@ public struct SubscriptionMetadata: Sendable {
 }
 
 /// Action metadata structure
-public struct ActionMetadata: Sendable {
+public struct ActionMetadata: Codable, Sendable {
     public let path: String
     public let description: String?
 
@@ -48,7 +48,7 @@ public struct ActionMetadata: Sendable {
 }
 
 /// Service metadata structure matching Rust's ServiceMetadata
-public struct ServiceMetadata: Sendable {
+public struct ServiceMetadata: Codable, Sendable {
     public let networkId: String
     public let servicePath: String
     public let name: String

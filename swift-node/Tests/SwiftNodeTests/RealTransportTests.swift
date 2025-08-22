@@ -2,6 +2,7 @@ import RunarFFI
 import RunarSerializer
 import RunarTestUtils
 import SwiftCBOR
+import SwiftCommon
 @testable import SwiftNode
 import XCTest
 
@@ -13,6 +14,8 @@ final class RealTransportTests: XCTestCase {
         var path: String { "svc" }
         var description: String { "test" }
         var networkId: String?
+        var state: ServiceState = .created
+        var logger: RunarLogger = RunarLogger(component: .service)
         func initService(_ ctx: LifecycleContext) async throws {
             try await ctx.registerAction("echo") { params, _ in
                 params ?? AnyValue.null()

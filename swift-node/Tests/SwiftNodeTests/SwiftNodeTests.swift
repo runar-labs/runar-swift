@@ -1,4 +1,5 @@
 import RunarSerializer
+import SwiftCommon
 @testable import SwiftNode
 import XCTest
 
@@ -12,6 +13,8 @@ final class SwiftNodeTests: XCTestCase {
             var path: String { "echo" }
             var description: String { "echo service" }
             var networkId: String?
+            var state: ServiceState = .created
+            var logger: RunarLogger = RunarLogger(component: .service)
             func initService(_ context: LifecycleContext) async throws {
                 try await context.registerAction("say") { params, _ in
                     params ?? AnyValue.null()
@@ -36,6 +39,8 @@ final class SwiftNodeTests: XCTestCase {
             var path: String { "svc" }
             var description: String { "svc desc" }
             var networkId: String?
+            var state: ServiceState = .created
+            var logger: RunarLogger = RunarLogger(component: .service)
             func initService(_: LifecycleContext) async throws {}
             func start(_: LifecycleContext) async throws {}
             func stop(_: LifecycleContext) async throws {}
@@ -69,6 +74,8 @@ final class SwiftNodeTests: XCTestCase {
             var path: String { "pub" }
             var description: String { "pub service" }
             var networkId: String?
+            var state: ServiceState = .created
+            var logger: RunarLogger = RunarLogger(component: .service)
             func initService(_ context: LifecycleContext) async throws {
                 try await context.registerAction("trigger") { _, ctx in
                     try await ctx.nodeDelegate.publish(topic: "pub/evt", data: AnyValue.primitive("event"))

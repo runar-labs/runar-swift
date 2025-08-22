@@ -8,8 +8,6 @@ public enum ServiceState: String, Codable, Sendable {
     case initialized
     case starting
     case running
-    case pausing
-    case paused
     case stopping
     case stopped
     case error
@@ -17,7 +15,7 @@ public enum ServiceState: String, Codable, Sendable {
 
     public var isActive: Bool {
         switch self {
-        case .running, .pausing, .paused:
+        case .running:
             return true
         default:
             return false
@@ -44,12 +42,11 @@ public protocol AbstractService: AnyObject {
     var state: ServiceState { get }
     var logger: RunarLogger { get }
 
+    /// Initialize the service (renamed from 'init' due to Swift reserved keyword)
+    /// Note: This diverges from Rust's 'init' method name due to Swift language constraints
     func initService(_ context: LifecycleContext) async throws
     func start(_ context: LifecycleContext) async throws
-    func pause(_ context: LifecycleContext) async throws
-    func resume(_ context: LifecycleContext) async throws
     func stop(_ context: LifecycleContext) async throws
-    func handleError(_ error: Error, context: LifecycleContext) async
 }
 
 // MARK: - ServiceBase Implementation
@@ -109,12 +106,11 @@ open class ServiceBase: AbstractService {
     public func initService(_ context: LifecycleContext) async throws {
         await transition(to: .initializing)
         do {
-            try await performInit(context)
+            try await performInitService(context)
             await transition(to: .initialized)
             logger.info("Service \(name) initialized successfully")
         } catch {
             await transition(to: .error)
-            await handleError(error, context: context)
             throw error
         }
     }
@@ -127,40 +123,11 @@ open class ServiceBase: AbstractService {
             logger.info("Service \(name) started successfully")
         } catch {
             await transition(to: .error)
-            await handleError(error, context: context)
             throw error
         }
     }
 
-    public func pause(_ context: LifecycleContext) async throws {
-        await transition(to: .pausing)
-        do {
-            try await performPause(context)
-            await transition(to: .paused)
-            logger.info("Service \(name) paused successfully")
-        } catch {
-            await transition(to: .error)
-            await handleError(error, context: context)
-            throw error
-        }
-    }
 
-    public func resume(_ context: LifecycleContext) async throws {
-        guard state == .paused else {
-            throw BaseRunarError.serviceError("Service is not paused", component: .service)
-        }
-
-        await transition(to: .starting)
-        do {
-            try await performResume(context)
-            await transition(to: .running)
-            logger.info("Service \(name) resumed successfully")
-        } catch {
-            await transition(to: .error)
-            await handleError(error, context: context)
-            throw error
-        }
-    }
 
     public func stop(_ context: LifecycleContext) async throws {
         await transition(to: .stopping)
@@ -170,7 +137,6 @@ open class ServiceBase: AbstractService {
             logger.info("Service \(name) stopped successfully")
         } catch {
             await transition(to: .error)
-            await handleError(error, context: context)
             throw error
         }
     }
@@ -197,22 +163,13 @@ open class ServiceBase: AbstractService {
     // MARK: - Template Methods
 
     /// Override in subclasses to implement custom initialization logic
-    open func performInit(_: LifecycleContext) async throws {
+    /// Called by initService() - use performStart() for startup logic
+    open func performInitService(_: LifecycleContext) async throws {
         // Default implementation does nothing
     }
 
     /// Override in subclasses to implement custom start logic
     open func performStart(_: LifecycleContext) async throws {
-        // Default implementation does nothing
-    }
-
-    /// Override in subclasses to implement custom pause logic
-    open func performPause(_: LifecycleContext) async throws {
-        // Default implementation does nothing
-    }
-
-    /// Override in subclasses to implement custom resume logic
-    open func performResume(_: LifecycleContext) async throws {
         // Default implementation does nothing
     }
 

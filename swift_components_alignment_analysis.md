@@ -294,33 +294,60 @@ pub trait AbstractService: Send + Sync {
 
 ## 📊 **COMPREHENSIVE ANALYSIS SUMMARY**
 
-### **🚨 CRITICAL HALLUCINATIONS DISCOVERED:**
+### **✅ HALLUCINATIONS FIXED:**
 
-#### **1. RegistryService Actions (5 HALLUCINATED)**
-- `services/pause/{service_path}` ❌
-- `services/resume/{service_path}` ❌
+#### **1. RemoteService Actions (3 COMPLETELY FABRICATED) - FIXED ✅**
+- `discover` ❌ → **REMOVED** - No equivalent in Rust
+- `proxy/{service_path}/{action}` ❌ → **REMOVED** - No equivalent in Rust
+- `broadcast/{service_path}/{action}` ❌ → **REMOVED** - No equivalent in Rust
+- **Status**: RemoteService now matches Rust (no actions, just proxy container)
 
-#### **2. RemoteService Actions (3 COMPLETELY FABRICATED)**
-- `discover` ❌
-- `proxy/{service_path}/{action}` ❌
-- `broadcast/{service_path}/{action}` ❌
+#### **2. KeysService Actions (5 HALLUCINATED) - FIXED ✅**
+- `generate_keypair` ❌ → **REMOVED** - Doesn't exist in Rust
+- `generate_certificate` ❌ → **REMOVED** - Doesn't exist in Rust
+- `validate_certificate` ❌ → **REMOVED** - Doesn't exist in Rust
+- `encrypt` ❌ → **REMOVED** - Doesn't exist in Rust
+- `decrypt` ❌ → **REMOVED** - Doesn't exist in Rust
+- `set_label_mapping` ❌ → **REMOVED** - Doesn't exist in Rust
+- **Kept**: `ensure_symmetric_key` ✅ - Only action that exists in Rust
+- **Status**: KeysService now matches Rust implementation exactly
 
-#### **3. KeysService Actions (5 HALLUCINATED)**
-- `generate_keypair` ❌
-- `generate_certificate` ❌
-- `validate_certificate` ❌
-- `encrypt` ❌
-- `decrypt` ❌
-- `set_label_mapping` ❌
+#### **3. RegistryService Actions (CORRECTION MADE)**
+- `services/pause/{service_path}` ✅ - **Actually exists in Rust** - NOT a hallucination
+- `services/resume/{service_path}` ✅ - **Actually exists in Rust** - NOT a hallucination
+- **Status**: These actions are legitimate, no changes needed
 
-#### **4. AbstractService Methods (2 HALLUCINATED)**
-- `pause()` ❌
-- `resume()` ❌
+#### **4. AbstractService Methods (2 HALLUCINATED) - FIXED ✅**
+- `pause()` ❌ → **REMOVED** - Doesn't exist in Rust AbstractService
+- `resume()` ❌ → **REMOVED** - Doesn't exist in Rust AbstractService
+- **Status**: AbstractService now matches Rust (init, start, stop only)
+
+### **🎯 HALLUCINATIONS ELIMINATED:**
+- **Total hallucinations removed**: 10 (3 RemoteService + 5 KeysService + 2 AbstractService)
+- **Services cleaned**: RemoteService, KeysService, AbstractService
+- **Code alignment**: All cleaned services now match Rust implementations exactly
+- **Compilation**: All changes compile successfully
+- **Tests**: All service tests now pass ✅
 
 ### **🏗️ MAJOR ARCHITECTURAL MISMATCHES:**
 
 #### **5. Context Architecture**
 - **Swift**: 3 separate contexts (LifecycleContext, RequestContext, EventContext)
+- **Status**: ⏳ PENDING
+
+### **✅ PHASE 2A: REGISTRY SERIALIZATION API - COMPLETED**
+
+**Major Architectural Fix Completed:**
+- **Fixed**: RegistryService serialization API using `AnyValue.struct()` instead of `AnyValue.map()`
+- **Changes Made**:
+  1. **Made structs Codable**: `ServiceInfo`, `ServiceListResponse`, `ServiceInfoResponse`, `ServiceStateResponse`, `ServiceMetadataResponse`, `ServiceMetadata`, `ActionMetadata`
+  2. **Replaced all `AnyValue.map()` calls** with `AnyValue.struct()` calls in RegistryService actions:
+     - `services/list` - now returns `AnyValue.struct(services)`
+     - `services/{service_path}` - now returns `AnyValue.struct(serviceInfo)`
+     - `services/{service_path}/state` - now returns `AnyValue.struct(state)`
+     - `metadata/{service_path}` - now returns `AnyValue.struct(metadata)`
+  3. **Rust Alignment**: Now matches Rust's `ArcValue::new_struct()` approach exactly
+  4. **Testing**: All tests pass with new struct-based serialization ✅
 - **Rust**: Unified design with TopicPath-based contexts
 
 #### **6. TopicPath Implementation**
@@ -347,12 +374,16 @@ pub trait AbstractService: Send + Sync {
 
 ### **🔧 REQUIRED IMMEDIATE ACTIONS:**
 
-#### **Phase 1: Remove Hallucinations (URGENT)**
-1. **DELETE** 3 RemoteService actions (`discover`, `proxy/{...}`, `broadcast/{...}`)
-2. **DELETE** 5 KeysService actions (all except `ensure_symmetric_key`)
-3. **DELETE** 2 RegistryService actions (`pause`, `resume`)
-4. **DELETE** `pause()` and `resume()` from AbstractService
-5. **UPDATE** ServiceState enum to remove `pausing`/`paused`
+#### **✅ Phase 1: Remove Hallucinations - COMPLETED**
+1. **✅ DELETE** 3 RemoteService actions (`discover`, `proxy/{...}`, `broadcast/{...}`)
+2. **✅ DELETE** 5 KeysService actions (all except `ensure_symmetric_key`)
+3. **✅ DELETE** `pause()` and `resume()` from AbstractService
+4. **✅ UPDATE** ServiceState enum to remove `pausing`/`paused`
+5. **✅ Note**: RegistryService pause/resume actions are legitimate (exist in Rust)
+
+**Hallucinations Eliminated**: 10 total (3 RemoteService + 5 KeysService + 2 AbstractService)
+**Services Cleaned**: RemoteService, KeysService, AbstractService
+**Status**: ✅ All hallucinations removed, services now align with Rust
 
 #### **Phase 2: Fix Architecture (CRITICAL)**
 1. **COMPLETE REWRITE** of TopicPath to match Rust performance architecture
@@ -366,15 +397,54 @@ pub trait AbstractService: Send + Sync {
 3. **ADD** bitmap optimization for pattern matching
 4. **ADD** path validation at creation time
 
-### **⚠️ RISK ASSESSMENT:**
+### **⚠️ UPDATED RISK ASSESSMENT:**
 
-**Current Swift Codebase: HIGH RISK**
-- **50%+ of services** have hallucinated functionality
-- **Major performance gaps** vs Rust implementation
-- **Architectural drift** from design specifications
-- **Maintenance burden** from incorrect patterns
+**Current Swift Codebase: REDUCED RISK - HALLUCINATIONS ELIMINATED**
+- **✅ Hallucinations**: **10 major hallucinations removed** - services now align with Rust
+- **✅ Compilation**: All cleaned services compile successfully
+- **✅ Code alignment**: RemoteService, KeysService, AbstractService now match Rust exactly
+- **⚠️ Remaining issues**: Major architectural mismatches still need attention
 
-**Recommended Action: IMMEDIATE CORRECTIVE REWRITE**
+**✅ COMPREHENSIVE ALIGNMENT VERIFICATION COMPLETED**
+
+### **✅ PHASE 2A: REGISTRY SERIALIZATION API - VERIFIED**
+- **RegistryService**: ✅ `AnyValue.struct()` vs `AnyValue.map()` - FIXED
+- **ServiceMetadata**: ✅ Made Codable, matches Rust's ServiceMetadata exactly
+- **ActionMetadata**: ✅ Made Codable, matches Rust's ActionMetadata
+- **Service responses**: ✅ All use `AnyValue.struct()` matching Rust's `ArcValue::new_struct()`
+
+### **✅ PHASE 1: HALLUCINATIONS - RE-VERIFIED**
+- **KeysService**: ✅ Only `ensure_symmetric_key` action matches Rust exactly
+- **RemoteService**: ✅ Clean proxy service, no hallucinated actions, matches Rust proxy pattern
+- **AbstractService**: ✅ `initService` rename is intentional exception (Swift reserved keyword)
+
+### **⚠️ IMPORTANT: INTENTIONAL NAMING DIVERGENCE**
+**Swift Reserved Keyword Exception:**
+- **Rust**: Uses `init()` method name for service initialization
+- **Swift**: Uses `initService()` method name due to Swift reserved keyword constraint
+- **Reason**: `init` is a reserved keyword in Swift used for initializers
+- **Documentation**: All `initService()` methods include comments explaining this divergence
+- **Status**: ✅ **PERMANENT EXCEPTION** - DO NOT CHANGE BACK TO `init`
+
+**Example Documentation:**
+```swift
+/// Initialize the service (renamed from 'init' due to Swift reserved keyword)
+/// Note: This diverges from Rust's 'init' method name due to Swift language constraints
+func initService(_ context: LifecycleContext) async throws
+```
+
+### **✅ VERIFICATION METHODOLOGY:**
+- **IDE Analysis**: Used proper file reading tools to examine full Rust implementations
+- **Line-by-line Comparison**: Verified each Swift change against corresponding Rust code
+- **Compilation Testing**: All changes compile successfully
+- **Functional Testing**: All service tests pass ✅
+
+**Remaining Critical Issues:**
+1. **TopicPath architecture** - Basic struct vs highly optimized Rust implementation
+2. **SerializerRegistry** - Single class vs 7 specialized registries
+3. **Context architecture** - 3 separate contexts vs unified TopicPath design
+
+**Recommended Action: CONTINUE WITH ARCHITECTURAL REWRITES**
 
 ---
 

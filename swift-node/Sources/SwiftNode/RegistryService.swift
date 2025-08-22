@@ -19,7 +19,7 @@ public final class RegistryService: ServiceBase {
 
     // MARK: - Service Lifecycle
 
-    override public func performInit(_ context: LifecycleContext) async throws {
+    override public func performInitService(_ context: LifecycleContext) async throws {
         networkId = context.networkId
     }
 
@@ -42,22 +42,7 @@ public final class RegistryService: ServiceBase {
             guard let self = self else { throw BaseRunarError.serviceError("RegistryService not available", component: .registry) }
 
             let services = try await self.listServices()
-            let serviceMaps = services.services.map { serviceInfo in
-                AnyValue.map([
-                    "servicePath": AnyValue.primitive(serviceInfo.servicePath),
-                    "name": AnyValue.primitive(serviceInfo.name),
-                    "version": AnyValue.primitive(serviceInfo.version),
-                    "description": AnyValue.primitive(serviceInfo.description),
-                    "state": AnyValue.primitive(String(describing: serviceInfo.state)),
-                    "registrationTime": AnyValue.primitive(serviceInfo.registrationTime.timeIntervalSince1970),
-                    "lastStartTime": serviceInfo.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null()
-                ])
-            }
-            return AnyValue.map([
-                "services": AnyValue.list(serviceMaps),
-                "totalCount": AnyValue.primitive(services.totalCount),
-                "nodeId": AnyValue.primitive(services.nodeId)
-            ])
+            return AnyValue.struct(services)
         }
 
         // Get specific service info
@@ -66,17 +51,7 @@ public final class RegistryService: ServiceBase {
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let serviceInfo = try await self.getServiceInfo(servicePath: servicePath)
-            return AnyValue.map([
-                "service": AnyValue.map([
-                    "servicePath": AnyValue.primitive(serviceInfo.service.servicePath),
-                    "name": AnyValue.primitive(serviceInfo.service.name),
-                    "version": AnyValue.primitive(serviceInfo.service.version),
-                    "description": AnyValue.primitive(serviceInfo.service.description),
-                    "state": AnyValue.primitive(String(describing: serviceInfo.service.state)),
-                    "registrationTime": AnyValue.primitive(serviceInfo.service.registrationTime.timeIntervalSince1970),
-                    "lastStartTime": serviceInfo.service.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null()
-                ])
-            ])
+            return AnyValue.struct(serviceInfo)
         }
 
         // Discover services by peer
@@ -97,12 +72,7 @@ public final class RegistryService: ServiceBase {
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let state = try await self.getServiceState(servicePath: servicePath)
-            return AnyValue.map([
-                "servicePath": AnyValue.primitive(state.servicePath),
-                "state": AnyValue.primitive(String(describing: state.state)),
-                "lastStartTime": state.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null(),
-                "registrationTime": AnyValue.primitive(state.registrationTime.timeIntervalSince1970)
-            ])
+            return AnyValue.struct(state)
         }
     }
 
@@ -161,23 +131,7 @@ public final class RegistryService: ServiceBase {
 
             let servicePath = ctx.pathParams["service_path"] ?? "default"
             let metadata = try await self.getServiceMetadata(servicePath: servicePath)
-            return AnyValue.map([
-                "metadata": AnyValue.map([
-                    "networkId": AnyValue.primitive(metadata.metadata.networkId),
-                    "servicePath": AnyValue.primitive(metadata.metadata.servicePath),
-                    "name": AnyValue.primitive(metadata.metadata.name),
-                    "version": AnyValue.primitive(metadata.metadata.version),
-                    "description": AnyValue.primitive(metadata.metadata.description),
-                    "actions": AnyValue.list(metadata.metadata.actions.map { action in
-                        AnyValue.map([
-                            "path": AnyValue.primitive(action.path),
-                            "description": action.description.map { AnyValue.primitive($0) } ?? AnyValue.null()
-                        ])
-                    }),
-                    "registrationTime": AnyValue.primitive(metadata.metadata.registrationTime.timeIntervalSince1970),
-                    "lastStartTime": metadata.metadata.lastStartTime.map { AnyValue.primitive($0.timeIntervalSince1970) } ?? AnyValue.null()
-                ])
-            ])
+            return AnyValue.struct(metadata)
         }
 
         // Update service metadata
@@ -408,7 +362,7 @@ public struct MetadataUpdateRequest: Codable, Sendable {
     }
 }
 
-public struct ServiceInfo: Sendable {
+public struct ServiceInfo: Codable, Sendable {
     public let servicePath: String
     public let name: String
     public let version: String
@@ -428,7 +382,7 @@ public struct ServiceInfo: Sendable {
     }
 }
 
-public struct ServiceListResponse: Sendable {
+public struct ServiceListResponse: Codable, Sendable {
     public let services: [ServiceInfo]
     public let totalCount: Int
     public let nodeId: String
@@ -440,7 +394,7 @@ public struct ServiceListResponse: Sendable {
     }
 }
 
-public struct ServiceInfoResponse: Sendable {
+public struct ServiceInfoResponse: Codable, Sendable {
     public let service: ServiceInfo
 
     public init(service: ServiceInfo) {
@@ -460,7 +414,7 @@ public struct ServiceDiscoveryResponse: Codable, Sendable {
     }
 }
 
-public struct ServiceStateResponse: Sendable {
+public struct ServiceStateResponse: Codable, Sendable {
     public let servicePath: String
     public let state: LocalServiceState
     public let lastStartTime: Date?
@@ -474,7 +428,7 @@ public struct ServiceStateResponse: Sendable {
     }
 }
 
-public struct ServiceMetadataResponse: Sendable {
+public struct ServiceMetadataResponse: Codable, Sendable {
     public let metadata: ServiceMetadata
 
     public init(metadata: ServiceMetadata) {
