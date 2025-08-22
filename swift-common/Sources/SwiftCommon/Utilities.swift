@@ -44,5 +44,3 @@ public enum CompactId {
         return output.lowercased()
     }
 }
-
-

@@ -82,17 +82,23 @@ public struct BaseRunarError: RunarError {
 
 public extension BaseRunarError {
     /// Network-related errors
-    static func networkError(_ message: String, component: Component, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func networkError(_ message: String,
+                             component: Component,
+                             context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError(code: "NETWORK_ERROR", message: message, component: component, context: context)
     }
 
     /// Service-related errors
-    static func serviceError(_ message: String, component: Component, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func serviceError(_ message: String,
+                             component: Component,
+                             context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError(code: "SERVICE_ERROR", message: message, component: component, context: context)
     }
 
     /// Service not found errors
-    static func serviceNotFound(servicePath: String, component: Component = .registry, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func serviceNotFound(servicePath: String,
+                                component: Component = .registry,
+                                context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError.serviceError("Service not found", component: component, context: ErrorContext(
             servicePath: servicePath,
             additionalInfo: context.additionalInfo
@@ -100,7 +106,9 @@ public extension BaseRunarError {
     }
 
     /// Peer unavailable errors
-    static func peerUnavailable(peerId: String, component: Component = .transporter, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func peerUnavailable(peerId: String,
+                                component: Component = .transporter,
+                                context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError.networkError("Peer unavailable", component: component, context: ErrorContext(
             peerId: peerId,
             additionalInfo: context.additionalInfo
@@ -108,22 +116,30 @@ public extension BaseRunarError {
     }
 
     /// Registry-related errors
-    static func registryError(_ message: String, component: Component, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func registryError(_ message: String,
+                              component: Component,
+                              context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError(code: "REGISTRY_ERROR", message: message, component: component, context: context)
     }
 
     /// Serialization errors
-    static func serializationError(_ message: String, component: Component, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func serializationError(_ message: String,
+                                   component: Component,
+                                   context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError(code: "SERIALIZATION_ERROR", message: message, component: component, context: context)
     }
 
     /// Authentication/authorization errors
-    static func authError(_ message: String, component: Component, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func authError(_ message: String,
+                          component: Component,
+                          context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError(code: "AUTH_ERROR", message: message, component: component, context: context)
     }
 
     /// Configuration errors
-    static func configError(_ message: String, component: Component, context: ErrorContext = ErrorContext()) -> BaseRunarError {
+    static func configError(_ message: String,
+                            component: Component,
+                            context: ErrorContext = ErrorContext()) -> BaseRunarError {
         BaseRunarError(code: "CONFIG_ERROR", message: message, component: component, context: context)
     }
 }
