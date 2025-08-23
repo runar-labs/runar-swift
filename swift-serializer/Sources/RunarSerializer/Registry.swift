@@ -15,6 +15,7 @@ public final class SerializerRegistry {
     private let encryptRegistry = ConcurrentMap<String, (Any, EnvelopeCrypto, LabelResolver) throws -> Data>()
     private let jsonRegistry = ConcurrentMap<String, (Data) throws -> Any>()
     private let wireNameRegistry = ConcurrentMap<String, String>() // rust_name -> wire_name
+    private let encryptedWireByPlainWire = ConcurrentMap<String, String>() // plain_wire -> encrypted_wire
 
     private init() {}
 
@@ -45,6 +46,7 @@ public final class SerializerRegistry {
     public func registerEncryptor<T: Encodable>(
         for type: T.Type,
         wireName: String? = nil,
+        targetEncryptedWireName: String? = nil,
         encryptor: @escaping (T, EnvelopeCrypto, LabelResolver) throws -> Data
     ) {
         let typeName = String(describing: type)
@@ -56,11 +58,18 @@ public final class SerializerRegistry {
             }
             return try encryptor(typedValue, crypto, resolver)
         }
+
+        if let target = targetEncryptedWireName { encryptedWireByPlainWire[registryKey] = target }
     }
 
     /// Get encryptor for a wire name
     public func encryptor(for wireName: String) -> ((Any, EnvelopeCrypto, LabelResolver) throws -> Data)? {
         encryptRegistry[wireName]
+    }
+
+    /// Get the encrypted wire name for a plain type wire name, if registered
+    public func encryptedWireName(for plainWireName: String) -> String? {
+        encryptedWireByPlainWire[plainWireName]
     }
 
     // MARK: - JSON Conversion Registration
