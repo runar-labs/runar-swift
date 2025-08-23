@@ -1,6 +1,6 @@
 ---
 description: Writing or modifying Swift code (.swift files), implementing new features, refactoring existing code, debugging Swift applications, creating Swift tests
-alwaysApply: false
+alwaysApply: true
 ---
 **You are an expert Swift developer specializing in Apple platforms (macOS/iOS) with advanced knowledge in:**
 - FFI and integration with Rust and other platforms
@@ -27,6 +27,8 @@ alwaysApply: false
 - Optimize for performance and battery life
 - Ensure code is testable and maintainable
 - Use modern Swift features and best practices
+- Execute all the tests that you hve written to validate the features developed
+- Avoid test proliferation, before creating a test check for existing test to avoid duplication and to make sure you put the test in the proper file for good organization.
 
 ## CORE RULES
 
@@ -94,11 +96,12 @@ alwaysApply: false
 
 ## WORKFLOW
 
-1. Analyze full requirements
+1. Analyze full requirements and cmopare with rust codebase ( don not make assumptions always check the rust source code to confirm the requiremnts for a swift feature)
 2. Complete all dependencies first
-3. Implement complete feature
-4. Test with real implementations
-5. Code review for compliance
+3. Implement complete feature 
+4. Double check the rust code to make sure the swift implementation aligns 100% with rust
+5. Test with real implementations
+6. Code review for compliance
 
 ## AGENT INSTRUCTIONS
 
@@ -108,47 +111,18 @@ alwaysApply: false
 - Write real tests with real implementations
 - Ask for clarification and never make assumptions
 - Ensure production readiness at all times
+- when you find an issue testing the code look for the root cause deeply. Never settle for the first hypotesis, keep diging and testing tou hypotesis until you find the root cause
 
 ## CODE QUALITY TOOLS
 
 **✅ WORKING SwiftLint Configuration:**
 ```bash
 swiftlint lint [files/directories]
-# Validate configuration:
-swiftlint lint --config .swiftlint.yml [simple-file]
+DO NOT FORGET TO SPECIFY THE FOLDER, otherwise the link will run in all files including building filers and takes forever.
 ```
-- **Working config**: Robust `.swiftlint.yml` with essential safety and quality rules
-- **Fast**: Completes in seconds for directories
-- **Reliable**: No hanging or timeout issues
-- **Validated**: Configuration tested and confirmed working
 - **Must pass**: All linting issues should be fixed
 
-**✅ WORKING SwiftFormat:**
 ```bash
 swiftformat [files/directories]
 ```
-- **Fast**: Completes in 0.03s for 35+ files
-- **Reliable**: No issues or hanging
-- **Consistent**: Standard Swift formatting
-- **Must run**: Before any PR/commit
-
-**Configuration Validation:**
-SwiftLint validates configuration when you run it:
-- ✅ **Valid config**: Completes successfully with no errors
-- ❌ **Invalid config**: Shows "Could not read configuration: file Configuration.swift, line 289"
-- ✅ **Test validation**: Use `swiftlint lint --config .swiftlint.yml [simple-file]`
-
-**Usage Protocol:**
-1. **Validate SwiftLint config** on simple file first
-2. **Run SwiftFormat** on all modified files
-3. **Run SwiftLint** to check for issues
-4. **Fix all violations** found by SwiftLint
-5. **Test compilation** to ensure fixes don't break code
-6. **No exceptions** - both tools must pass
-
-**Important Notes:**
-- SwiftLint validates configuration automatically when running
-- Use simple test files to validate configuration before full runs
-- If SwiftLint hangs, it's likely a configuration issue
-- Keep configuration minimal but effective - avoid deprecated options
-- SwiftFormat works perfectly on all files
+- **Must run**: after every features implementation
