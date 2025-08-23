@@ -413,28 +413,44 @@ public class AnyValue {
             return Data([0]) // Single byte for null
         }
 
-        let typeName = box.typeName
+        let plainWireName = box.typeName
         let categoryByte = category.rawValue
 
         var buf = Data()
         buf.append(categoryByte)
 
-        let typeNameBytes = typeName.data(using: .utf8)!
+        // Decide header wire name: prefer encrypted wire when using registry encryptor
+        var headerWireName = plainWireName
+        if let ctx = context, let encWire = SerializerRegistry.shared.encryptedWireName(for: plainWireName) {
+            headerWireName = encWire
+        }
+
+        let typeNameBytes = headerWireName.data(using: .utf8)!
         if typeNameBytes.count > 255 {
-            throw SerializerError.typeNameTooLong(typeName)
+            throw SerializerError.typeNameTooLong(headerWireName)
         }
 
         if let ctx = context {
-            // Encrypted serialization (envelope around payload)
-            let bytes = try box.serialize(context: context)
-            let envelopeData = try EnvelopeEncryption.encrypt(bytes, context: ctx)
-            let envelopeBytes = try EnvelopeEncryption.serializeToCBOR(envelopeData)
+            // Prefer registry encryptor for struct/plain types when available
+            if let encryptor = SerializerRegistry.shared.encryptor(for: plainWireName), let value = materializedValue {
+                let payload = try encryptor(value, ctx.keystore, ctx.resolver)
+                let isEncryptedByte: UInt8 = 0x00
+                buf.append(isEncryptedByte)
+                buf.append(UInt8(typeNameBytes.count))
+                buf.append(typeNameBytes)
+                buf.append(payload)
+            } else {
+                // Envelope encryption of raw payload (category-level)
+                let bytes = try box.serialize(context: context)
+                let envelopeData = try EnvelopeEncryption.encrypt(bytes, context: ctx)
+                let envelopeBytes = try EnvelopeEncryption.serializeToCBOR(envelopeData)
 
-            let isEncryptedByte: UInt8 = 0x01
-            buf.append(isEncryptedByte)
-            buf.append(UInt8(typeNameBytes.count))
-            buf.append(typeNameBytes)
-            buf.append(envelopeBytes)
+                let isEncryptedByte: UInt8 = 0x01
+                buf.append(isEncryptedByte)
+                buf.append(UInt8(typeNameBytes.count))
+                buf.append(typeNameBytes)
+                buf.append(envelopeBytes)
+            }
         } else {
             // Plain serialization
             let bytes = try box.serialize(context: nil)
@@ -612,7 +628,6 @@ public class AnyValue {
                     break
                 }
             }
-            // Fallback to Codable decoder for canonical integer
             do {
                 let v = try SwiftCBOR.CodableCBORDecoder().decode(Int64.self, from: Data(lazyData.data))
                 if let casted = v as? T { return casted }
@@ -865,18 +880,16 @@ public class AnyValue {
                     return result
                 }
 
-                // If T is an Encrypted<Plain> type that conforms to AnyRunarDecryptable, allow casting accordingly
-                if T.self is AnyRunarDecryptable.Type {
-                    if let value = try? decoder(lazyData.data) as? AnyRunarDecryptable,
-                       let casted = value as? T {
-                        return casted
+                // If decoder produced an encrypted value but T is the plain type, decrypt with keystore
+                if let value = try? decoder(lazyData.data) as? AnyRunarDecryptable, let ks = lazyData.keystore {
+                    if let decrypted = try? value._runarDecryptWithKeystore(ks) as? T {
+                        return decrypted
                     }
                 }
 
-                // Fallback: attempt to decode directly into T via CBOR if T is Decodable
-                if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(lazyData.data)) as? T {
-                    return decodedAny
+                // If T is an Encrypted type, allow direct cast
+                if T.self is AnyRunarDecryptable.Type, let enc = try? decoder(lazyData.data) as? T {
+                    return enc
                 }
 
                 throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")

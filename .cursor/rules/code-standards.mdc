@@ -38,6 +38,7 @@ alwaysApply: true
 - No temporary solutions, workarounds, or "quick fixes"
 - No simplified versions, hardcoded values, or debug-only code
 - No TODO placeholders that become permanent
+- NO Fallbacks. fallbacks are a bad practices that lead to bugs and unintented behaviour. It hides bugs making it diffucult to find root causes. The code must be deterministic and have a single path. Always validate and fail early (return error) when the expected conditions are not met.
 
 **DEPENDENCY MANAGEMENT**
 - If Feature A needs Feature B, stop A and complete B first
