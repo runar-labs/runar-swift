@@ -1,0 +1,20 @@
+import XCTest
+@testable import RunarFFI
+
+final class AgreementKeyTest: XCTestCase {
+    func testGetAgreementPublicKey() throws {
+        let keys = try FFIKeys()
+
+        // Test that we can get the agreement public key directly
+        let pk = try keys.getAgreementPublicKey()
+
+        // Should return non-empty data
+        XCTAssertFalse(pk.isEmpty, "Agreement public key should not be empty")
+
+        // Should be a reasonable size for a public key (typically 65 bytes for secp256r1)
+        XCTAssertGreaterThan(pk.count, 32, "Agreement public key should be at least 32 bytes")
+        XCTAssertLessThan(pk.count, 256, "Agreement public key should be less than 256 bytes")
+
+        print("✅ Agreement public key retrieved successfully: \(pk.count) bytes")
+    }
+}

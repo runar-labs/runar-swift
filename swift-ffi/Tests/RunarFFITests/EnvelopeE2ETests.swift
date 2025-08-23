@@ -4,6 +4,22 @@ import SwiftCBOR
 import XCTest
 
 final class EnvelopeE2ETests: XCTestCase {
+    func testGetAgreementPublicKey() throws {
+        let keys = try FFIKeys()
+
+        // Test that we can get the agreement public key directly
+        let pk = try keys.getAgreementPublicKey()
+
+        // Should return non-empty data
+        XCTAssertFalse(pk.isEmpty, "Agreement public key should not be empty")
+
+        // Should be a reasonable size for a public key (typically 65 bytes for secp256r1)
+        XCTAssertGreaterThan(pk.count, 32, "Agreement public key should be at least 32 bytes")
+        XCTAssertLessThan(pk.count, 256, "Agreement public key should be less than 256 bytes")
+
+        print("✅ Agreement public key retrieved successfully: \(pk.count) bytes")
+    }
+
     func testEnvelopeEncryptDecryptViaFFI() async throws {
         let tempDir = NSTemporaryDirectory() + "ffi_env_test_\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
@@ -24,12 +40,12 @@ final class EnvelopeE2ETests: XCTestCase {
         // Prefer FFI helper to extract agreement PK
         var usedNetwork = false
         do {
-            let pk = try keys.extractAgreementPk(fromSetupTokenCBOR: csr)
+            let pk = try keys.getAgreementPublicKey()
             let nkm = try keys.mobileCreateNetworkKeyMessage(networkId: nid, nodeAgreementPk: pk)
             try keys.nodeInstallNetworkKey(nkm)
             usedNetwork = true
         } catch {
-            throw XCTSkip("SetupToken missing node_agreement_public_key; skipping network flow")
+            throw XCTSkip("Unable to get agreement public key; skipping network flow")
         }
 
         // Encrypt/decrypt end-to-end via AnyValue serialization using FFI keystore

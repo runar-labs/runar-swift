@@ -300,24 +300,9 @@ public final class FFIKeys {
         return plain
     }
 
-    public func extractAgreementPk(fromSetupTokenCBOR st: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let (_, err) = withRnError { errPtr in
-            st.withUnsafeBytes { raw in
-                rn_keys_extract_agreement_pk_from_setup_token(
-                    raw.bindMemory(to: UInt8.self).baseAddress,
-                    st.count,
-                    &out,
-                    &outLen,
-                    errPtr
-                )
-            }
-        }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let pk = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return pk
+    /// Get the node agreement public key directly from the keystore
+    /// This replaces the problematic extractAgreementPk(fromSetupTokenCBOR:) method
+    public func getAgreementPublicKey() throws -> Data {
+        return try publicKey()
     }
 }
