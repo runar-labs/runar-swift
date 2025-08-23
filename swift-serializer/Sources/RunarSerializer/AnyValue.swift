@@ -474,6 +474,14 @@ public class AnyValue {
         throw SerializerError.typeMismatch("Cannot get value as \(T.self)")
     }
 
+    /// Convenience: get encrypted form of a plain type stored in this AnyValue
+    /// by first materializing the plain value and then applying field-group encryption.
+    @MainActor
+    public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: KeyStore, resolver: LabelResolver) async throws -> T.Encrypted {
+        let plain: T = try await asType()
+        return try plain.encryptWithKeystore(keystore, resolver: resolver)
+    }
+
     /// Deserialize lazy data into a concrete value of target type
     @MainActor
     private func deserializeLazyData<T>(_ lazyData: LazyData, to targetType: T.Type) async throws -> T {
@@ -853,10 +861,25 @@ public class AnyValue {
             // Structs and custom types: require known wire name in registry
             // Try to find a registered decoder for this wire name
             if let decoder = await TypeNameRegistry.shared.lookupDecoderByWireName(lazyData.typeName) {
-                guard let result = try decoder(lazyData.data) as? T else {
-                    throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
+                if let result = try? decoder(lazyData.data) as? T {
+                    return result
                 }
-                return result
+
+                // If T is an Encrypted<Plain> type that conforms to AnyRunarDecryptable, allow casting accordingly
+                if T.self is AnyRunarDecryptable.Type {
+                    if let value = try? decoder(lazyData.data) as? AnyRunarDecryptable,
+                       let casted = value as? T {
+                        return casted
+                    }
+                }
+
+                // Fallback: attempt to decode directly into T via CBOR if T is Decodable
+                if let target = T.self as? Decodable.Type,
+                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(lazyData.data)) as? T {
+                    return decodedAny
+                }
+
+                throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
             }
 
             // If we reach here, the wire name is unknown; reject strictly

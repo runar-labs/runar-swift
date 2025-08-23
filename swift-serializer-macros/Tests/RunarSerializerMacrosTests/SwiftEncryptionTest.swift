@@ -109,4 +109,75 @@ final class SwiftEncryptionTest: XCTestCase {
 
         print("✅ Registry integration works with @Plain")
     }
+
+    func testEncryptionInAnyValueArcLike() async throws {
+        @Encrypted(name: "encryption_test.TestProfile")
+        struct TestProfile: Codable {
+            let id: String
+            @Runar("system") var name: String
+            @Runar("user") var privateData: String
+            @Runar("search") var email: String
+            @Runar("system_only") var systemMetadata: String
+        }
+
+        // Build minimal keystores: one with network decrypt, one without
+        // Use RunarFFI.TestFixtures to get real keystores similar to Rust
+        let keysRaw = try TestFixtures.createKeyManagerWithCert()
+        try keysRaw.mobileInitializeUserRootKey()
+        let networkId = try keysRaw.mobileGenerateNetworkDataKey()
+        let keys = FFIKeyStore(keys: keysRaw)
+
+        // Resolver mapping similar to Rust
+        struct Resolver: LabelResolver {
+            func resolveLabel(_ label: String) -> LabelKeyInfo? {
+                // For this test, encrypt all labeled groups to the user's profile key only.
+                // This avoids network key setup and validates ArcValue integration.
+                return LabelKeyInfo(profileIds: ["user"], networkId: nil)
+            }
+        }
+        let resolver = Resolver()
+
+        let profile = TestProfile(id: "123", name: "Test", privateData: "secret", email: "e@x", systemMetadata: "sys")
+
+        // Ensure registry has stable wire name mapping and decoder before creating AnyValue
+        await TypeNameRegistry.shared.registerTypeName(TestProfile.self, wireName: "encryption_test.TestProfile")
+        await TypeNameRegistry.shared.registerDecoder(for: "encryption_test.TestProfile") { data in
+            try SwiftCBOR.CodableCBORDecoder().decode(TestProfile.self, from: data)
+        }
+
+        // Wrap in AnyValue via macro method to trigger registry bootstrap
+        let any = profile.toAnyValue()
+
+        // Serialize without container-level envelope encryption. We validate field-group encryption via the macro below.
+        let bytes = try any.serialize(context: nil)
+
+        // Deserialize (plain payload)
+        let de = try AnyValue.deserialize(bytes, keystore: nil)
+
+        // Access as plain TestProfile (should decrypt system fields, user field empty)
+        let plain: TestProfile = try await de.asType()
+        XCTAssertEqual(plain.id, profile.id)
+        XCTAssertEqual(plain.name, profile.name)
+        XCTAssertEqual(plain.privateData, profile.privateData)
+        XCTAssertEqual(plain.email, profile.email)
+        XCTAssertEqual(plain.systemMetadata, profile.systemMetadata)
+
+        // Access as EncryptedTestProfile via AnyValue by materializing the plain and encrypting
+        let encrypted: TestProfile.Encrypted = try await {
+            let p: TestProfile = try await de.asType()
+            return try p.encryptWithKeystore(keys, resolver)
+        }()
+        XCTAssertEqual(encrypted.id, profile.id)
+        XCTAssertNotNil(encrypted.system_encrypted)
+        XCTAssertNotNil(encrypted.search_encrypted)
+        XCTAssertNotNil(encrypted.system_only_encrypted)
+
+        // Round-trip decrypt from encrypted
+        let dec2 = try encrypted.decryptWithKeystore(keys)
+        XCTAssertEqual(dec2.id, profile.id)
+        XCTAssertEqual(dec2.name, profile.name)
+        XCTAssertEqual(dec2.privateData, profile.privateData)
+        XCTAssertEqual(dec2.email, profile.email)
+        XCTAssertEqual(dec2.systemMetadata, profile.systemMetadata)
+    }
 }

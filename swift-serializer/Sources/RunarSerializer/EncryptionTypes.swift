@@ -104,3 +104,17 @@ extension Dictionary: RunarDefault {
 public extension LabelResolver {
     func canResolve(_ label: String) -> Bool { resolveLabel(label) != nil }
 }
+
+// MARK: - Dynamic decrypt/encrypt interoperability for AnyValue
+
+/// Type-erased decryptable interface so decoders can return encrypted structs
+/// and callers can request the plain type via AnyValue APIs.
+public protocol AnyRunarDecryptable {
+    func _runarDecryptWithKeystore(_ keystore: EnvelopeCrypto) throws -> Any
+}
+
+/// Type-erased encryptable-to-CBOR interface used by AnyValue to produce
+/// Encrypted<T> CBOR when a SerializationContext is provided.
+public protocol RunarEncryptableCBOR {
+    func _runarEncryptCBOR(context: SerializationContext) throws -> Data
+}

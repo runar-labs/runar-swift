@@ -149,6 +149,10 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         		await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(wireName)") { data in
         			try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
         		}
+        		// Also register decoder under Swift type name to avoid races during bootstrap
+        		await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(structName)") { data in
+        			try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
+        		}
         	}
         }()
 
@@ -170,7 +174,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
         \(substructs.joined(separator: "\n            "))
 
-        public struct \(encryptedStructName): Codable {
+        public struct \(encryptedStructName): Codable, RunarSerializer.AnyRunarDecryptable {
         	\(plainFieldDecls)
         	\(encryptedFieldDecls.isEmpty ? "" : "\n                \(encryptedFieldDecls)")
 
@@ -183,6 +187,10 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         		\(decryptBlocks.joined(separator: "\n                "))
         		return \(structName)(\(decryptInitArgs))
         	}
+            // Type-erased hook for AnyValue
+            public func _runarDecryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> Any {
+                try decryptWithKeystore(keystore) as \(structName)
+            }
         }
         """
 
@@ -263,8 +271,25 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
     }
 
     public static func expansion(
-        of _: AttributeSyntax,
-        providingPeersOf _: some DeclSyntaxProtocol,
+        of node: AttributeSyntax,
+        providingPeersOf declaration: some DeclSyntaxProtocol,
         in _: some MacroExpansionContext
-    ) throws -> [DeclSyntax] { [] }
+    ) throws -> [DeclSyntax] {
+        guard let structDecl = declaration.as(StructDeclSyntax.self) else { return [] }
+        let structName = structDecl.name.text
+
+        let extEncryptable: DeclSyntax = """
+        extension \(raw: structName): RunarSerializer.RunarEncryptable {
+        	public typealias Encrypted = \(raw: structName).\(raw: "Encrypted\(structName)")
+        }
+        """
+
+        let extDecryptable: DeclSyntax = """
+        extension \(raw: structName).\(raw: "Encrypted\(structName)"): RunarSerializer.RunarDecryptable {
+        	public typealias Decrypted = \(raw: structName)
+        }
+        """
+
+        return [extEncryptable, extDecryptable]
+    }
 }
