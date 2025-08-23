@@ -69,4 +69,29 @@ final class KeysTests: XCTestCase {
         let recovered = try keys.decryptLocalData(cipher)
         XCTAssertEqual(recovered, plaintext)
     }
+
+    func testMobileInstallNetworkPublicKey() throws {
+        // Create a CA and a node to obtain a network public key, then install in another mobile-only keystore
+        let ca = try FFIKeys()
+        try ca.mobileInitializeUserRootKey()
+
+        let node = try FFIKeys()
+        let csr = try node.generateCSR()
+        let ncm = try ca.processSetupToken(csr)
+        try node.installCertificate(ncm)
+
+        // Generate a network id and retrieve its public key from the mobile (CA)
+        let networkId = try ca.mobileGenerateNetworkDataKey()
+        let networkPk = try ca.mobileGetNetworkPublicKey(networkId)
+        // Do not install network key on node in this test; we only validate mobile public key install
+
+        // Create a separate mobile-only keys and install the network public key
+        let userMobile = try FFIKeys()
+        try userMobile.mobileInitializeUserRootKey()
+        try userMobile.mobileInstallNetworkPublicKey(networkPk)
+
+        // Verify that the installed network public key can be retrieved by the userMobile keystore
+        let retrieved = try userMobile.mobileGetNetworkPublicKey(networkId)
+        XCTAssertEqual(retrieved, networkPk)
+    }
 }

@@ -18,6 +18,8 @@ public struct NodeInfo: Codable {
 public enum TestFixtures {
     public static func createKeyManagerWithCert() throws -> FFIKeys {
         let ca = try FFIKeys()
+        // Initialize CA mobile root key first, before any cert steps
+        try ca.mobileInitializeUserRootKey()
         _ = try ca.nodeId() // ensure ok
         let node = try FFIKeys()
         let csr = try node.generateCSR()

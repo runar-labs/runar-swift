@@ -212,6 +212,80 @@ public final class FFIKeys {
         return nidCStr.map { String(cString: $0) } ?? ""
     }
 
+    public func mobileInstallNetworkPublicKey(_ publicKey: Data) throws {
+        guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+        let (_, err) = withRnError { errPtr in
+            publicKey.withUnsafeBytes { raw in
+                rn_keys_mobile_install_network_public_key(h,
+                                                          raw.bindMemory(to: UInt8.self).baseAddress,
+                                                          publicKey.count,
+                                                          errPtr)
+            }
+        }
+        if let e = err { throw e }
+    }
+
+    public func mobileGetNetworkPublicKey(_ networkId: String) throws -> Data {
+        guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (_, err) = withRnError { errPtr in
+            networkId.withCString { cNid in
+                rn_keys_mobile_get_network_public_key(h, cNid, &out, &outLen, errPtr)
+            }
+        }
+        if let e = err { throw e }
+        guard let p = out else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
+    }
+
+    public func encryptForNetwork(_ data: Data, networkId: String) throws -> Data {
+        guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (_, err) = withRnError { errPtr in
+            data.withUnsafeBytes { raw in
+                networkId.withCString { cNid in
+                    rn_keys_encrypt_for_network(h,
+                                                raw.bindMemory(to: UInt8.self).baseAddress,
+                                                data.count,
+                                                cNid,
+                                                &out,
+                                                &outLen,
+                                                errPtr)
+                }
+            }
+        }
+        if let e = err { throw e }
+        guard let p = out else { return Data() }
+        let cbor = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return cbor
+    }
+
+    public func decryptNetworkData(_ eedCBOR: Data) throws -> Data {
+        guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (_, err) = withRnError { errPtr in
+            eedCBOR.withUnsafeBytes { raw in
+                rn_keys_decrypt_network_data(h,
+                                             raw.bindMemory(to: UInt8.self).baseAddress,
+                                             eedCBOR.count,
+                                             &out,
+                                             &outLen,
+                                             errPtr)
+            }
+        }
+        if let e = err { throw e }
+        guard let p = out else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
+    }
+
     public func mobileCreateNetworkKeyMessage(networkId: String, nodeAgreementPk: Data) throws -> Data {
         guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
         var outCbor: UnsafeMutablePointer<UInt8>?
