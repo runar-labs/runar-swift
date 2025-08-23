@@ -462,10 +462,10 @@ public class AnyValue {
     public func asType<T>() async throws -> T {
         // First, try to get from materialized value
         if let value = materializedValue {
-            guard let result = value as? T else {
-                throw SerializerError.typeMismatch("Cannot cast \(typeName) to \(T.self)")
+            if let result = value as? T {
+                return result
             }
-            return result
+            // Do not fail early; attempt box/lazy deserialization next
         }
 
         // Try to get from box (for already loaded values)

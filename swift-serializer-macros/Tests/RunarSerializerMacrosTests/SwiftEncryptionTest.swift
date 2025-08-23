@@ -158,14 +158,14 @@ final class SwiftEncryptionTest: XCTestCase {
         XCTAssertEqual(plain.email, profile.email)
         XCTAssertEqual(plain.systemMetadata, profile.systemMetadata)
 
-        // Access as EncryptedTestProfile via AnyValue by materializing the plain and encrypting
+        // Access as EncryptedTestProfile directly from AnyValue
         let encrypted: TestProfile.Encrypted = try await de.asType()
         XCTAssertEqual(encrypted.id, profile.id)
         XCTAssertNotNil(encrypted.system_encrypted)
         XCTAssertNotNil(encrypted.search_encrypted)
         XCTAssertNotNil(encrypted.system_only_encrypted)
 
-        // Round-trip decrypt from encrypted
+        // Round-trip decrypt from encrypted and compare
         let dec2 = try encrypted.decryptWithKeystore(keys)
         XCTAssertEqual(dec2.id, profile.id)
         XCTAssertEqual(dec2.name, profile.name)
