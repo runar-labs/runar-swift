@@ -440,16 +440,8 @@ public class AnyValue {
                 buf.append(typeNameBytes)
                 buf.append(payload)
             } else {
-                // Envelope encryption of raw payload (category-level)
-                let bytes = try box.serialize(context: context)
-                let envelopeData = try EnvelopeEncryption.encrypt(bytes, context: ctx)
-                let envelopeBytes = try EnvelopeEncryption.serializeToCBOR(envelopeData)
-
-                let isEncryptedByte: UInt8 = 0x01
-                buf.append(isEncryptedByte)
-                buf.append(UInt8(typeNameBytes.count))
-                buf.append(typeNameBytes)
-                buf.append(envelopeBytes)
+                // Strict: no registry encryptor for struct -> error
+                throw SerializerError.serializationFailed("No encryptor registered for wire name: \(plainWireName)")
             }
         } else {
             // Plain serialization

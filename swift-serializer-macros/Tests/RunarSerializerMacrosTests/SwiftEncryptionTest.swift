@@ -139,20 +139,15 @@ final class SwiftEncryptionTest: XCTestCase {
 
         let profile = TestProfile(id: "123", name: "Test", privateData: "secret", email: "e@x", systemMetadata: "sys")
 
-        // Ensure registry has stable wire name mapping and decoder before creating AnyValue
-        await TypeNameRegistry.shared.registerTypeName(TestProfile.self, wireName: "encryption_test.TestProfile")
-        await TypeNameRegistry.shared.registerDecoder(for: "encryption_test.TestProfile") { data in
-            try SwiftCBOR.CodableCBORDecoder().decode(TestProfile.self, from: data)
-        }
-
-        // Wrap in AnyValue via macro method to trigger registry bootstrap
+        // Wrap in AnyValue via macro method to trigger macro bootstrap (registry registrations)
         let any = profile.toAnyValue()
 
-        // Serialize without container-level envelope encryption. We validate field-group encryption via the macro below.
-        let bytes = try any.serialize(context: nil)
+        // Serialize with context so registry encryptor is used (strict: context required)
+        let ctx = SerializationContext(keystore: keys, resolver: resolver, networkId: networkId)
+        let bytes = try any.serialize(context: ctx)
 
-        // Deserialize (plain payload)
-        let de = try AnyValue.deserialize(bytes, keystore: nil)
+        // Deserialize
+        let de = try AnyValue.deserialize(bytes, keystore: keys)
 
         // Access as plain TestProfile (should decrypt system fields, user field empty)
         let plain: TestProfile = try await de.asType()
@@ -163,10 +158,7 @@ final class SwiftEncryptionTest: XCTestCase {
         XCTAssertEqual(plain.systemMetadata, profile.systemMetadata)
 
         // Access as EncryptedTestProfile via AnyValue by materializing the plain and encrypting
-        let encrypted: TestProfile.Encrypted = try await {
-            let p: TestProfile = try await de.asType()
-            return try p.encryptWithKeystore(keys, resolver)
-        }()
+        let encrypted: TestProfile.Encrypted = try await de.asType()
         XCTAssertEqual(encrypted.id, profile.id)
         XCTAssertNotNil(encrypted.system_encrypted)
         XCTAssertNotNil(encrypted.search_encrypted)

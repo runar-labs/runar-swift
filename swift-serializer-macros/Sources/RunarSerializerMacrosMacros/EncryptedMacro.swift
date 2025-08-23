@@ -159,11 +159,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         			let encoder = SwiftCBOR.CodableCBOREncoder()
         			return try encoder.encode(enc)
         		}
-				// Register decryptor for encrypted type wire name
-				RunarSerializer.SerializerRegistry.shared.registerDecryptor(for: Encrypted\(structName).self, wireName: "Encrypted_\(wireName)") { data, _ in
-					try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
-				}
-        	}
+                                                                            	}
         }()
 
         public func toAnyValue() -> RunarSerializer.AnyValue {
