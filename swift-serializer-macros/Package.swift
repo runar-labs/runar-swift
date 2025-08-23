@@ -5,10 +5,10 @@ import PackageDescription
 let package = Package(
     name: "RunarSerializerMacros",
     platforms: [
-        .iOS(.v13),
-        .macOS(.v10_15),
-        .tvOS(.v13),
-        .watchOS(.v6),
+        .iOS(.v15),
+        .macOS(.v13),
+        .tvOS(.v15),
+        .watchOS(.v8),
     ],
     products: [
         .library(
@@ -19,11 +19,17 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "509.0.0"),
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.4.0"),
+        .package(path: "../swift-serializer"),
+        .package(path: "../swift-ffi"),
     ],
     targets: [
         .target(
             name: "RunarSerializerMacros",
             dependencies: ["RunarSerializerMacrosMacros"]
+        ),
+        .target(
+            name: "RunarSerializerMacrosPlaceholders",
+            dependencies: []
         ),
         .macro(
             name: "RunarSerializerMacrosMacros",
@@ -31,6 +37,8 @@ let package = Package(
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
                 .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+                .product(name: "RunarSerializer", package: "swift-serializer"),
+                .product(name: "RunarFFI", package: "swift-ffi"),
             ]
         ),
         .testTarget(

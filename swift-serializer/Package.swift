@@ -17,7 +17,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
-        .package(path: "../swift-serializer-macros"),
         .package(path: "../swift-common"),
         .package(path: "../swift-ffi"),
     ],
@@ -26,7 +25,6 @@ let package = Package(
             name: "RunarSerializer",
             dependencies: [
                 "SwiftCBOR",
-                .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
                 .product(name: "SwiftCommon", package: "swift-common"),
                 .product(name: "RunarFFI", package: "swift-ffi"),
             ],
@@ -36,7 +34,6 @@ let package = Package(
             name: "RunarSerializerTests",
             dependencies: [
                 "RunarSerializer",
-                .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
                 "SwiftCBOR",
             ],
             path: "Tests/RunarSerializerTests"

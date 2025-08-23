@@ -2,6 +2,7 @@ import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
+import RunarSerializer
 
 /// Implementation of the `Runar` macro for field-level label mapping.
 ///
@@ -70,24 +71,31 @@ public struct RunarMacro: PeerMacro {
             return []
         }
 
-        // Handle string literal arguments like @Runar("user") or @Runar("user, system")
-        if let stringLiteral = arguments.as(StringLiteralExprSyntax.self) {
-            if let content = stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text {
-                return content.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        // Handle labeled expression list (most common case for @Runar("label"))
+        if let labeledArgs = arguments.as(LabeledExprListSyntax.self) {
+            // @Runar("user") creates a labeled argument with no explicit label
+            for argument in labeledArgs {
+                // If there's no explicit label, it might be a positional argument
+                if argument.label == nil,
+                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self),
+                   let content = stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text {
+                    return content.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                }
+
+                // If there's an explicit label, check for "label" or "_"
+                if let label = argument.label?.text,
+                   (label == "label" || label == "_" || label == ""),
+                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self),
+                   let content = stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text {
+                    return content.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                }
             }
         }
 
-        // Handle labeled arguments (if needed for future extensions)
-        if let labeledArgs = arguments.as(LabeledExprListSyntax.self) {
-            for argument in labeledArgs {
-                if let label = argument.label?.text,
-                   (label == "label" || label == "labels"),
-                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
-                    if let content = stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text {
-                        return content.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                    }
-                }
-            }
+        // Handle direct string literal (fallback)
+        if let stringLiteral = arguments.as(StringLiteralExprSyntax.self),
+           let content = stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text {
+            return content.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         }
 
         return []

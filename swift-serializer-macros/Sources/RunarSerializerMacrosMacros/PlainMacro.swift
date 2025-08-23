@@ -2,8 +2,9 @@ import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
-import SwiftCBOR
 import Foundation
+import SwiftCBOR
+import RunarSerializer
 
 /// Implementation of the `Plain` macro, which provides struct-level serialization functionality.
 ///
@@ -72,22 +73,25 @@ public struct PlainMacro: MemberMacro {
             """
             /// Bootstrap to register wire name and decoder in TypeNameRegistry
             private static let _runarPlainBootstrap: Void = {
-                // Registration will happen at runtime when the struct is used
-                // This is a placeholder for macro compilation
+                Task {
+                    await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(raw: finalWireName)")
+                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: finalWireName)") { data in
+                        let decoder = SwiftCBOR.CodableCBORDecoder()
+                        return try decoder.decode(Self.self, from: data)
+                    }
+                }
             }()
 
             /// Convert this struct to an AnyValue for serialization
-            public func toAnyValue() -> AnyValueType {
+            public func toAnyValue() -> RunarSerializer.AnyValue {
                 _ = Self._runarPlainBootstrap
-                // Placeholder - real implementation will use RunarSerializer.AnyValue
-                fatalError("toAnyValue() requires RunarSerializer dependency")
+                return RunarSerializer.AnyValue.struct(self)
             }
 
             /// Create this struct from AnyValue
-            public static func fromAnyValue(_ anyValue: AnyValueType) async throws -> \(raw: structName) {
+            public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> \(raw: structName) {
                 _ = Self._runarPlainBootstrap
-                // Placeholder - real implementation will use RunarSerializer.AnyValue
-                fatalError("fromAnyValue() requires RunarSerializer dependency")
+                return try await anyValue.asType()
             }
             """,
         ]

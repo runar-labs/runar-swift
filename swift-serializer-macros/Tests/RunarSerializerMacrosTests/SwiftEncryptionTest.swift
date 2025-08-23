@@ -1,4 +1,5 @@
 import RunarSerializerMacros
+import RunarSerializerMacrosPlaceholders
 import XCTest
 
 /// Swift equivalent of Rust's encryption_test.rs

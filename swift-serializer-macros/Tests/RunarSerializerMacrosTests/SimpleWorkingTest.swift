@@ -1,4 +1,5 @@
 import RunarSerializerMacros
+import RunarSerializerMacrosPlaceholders
 import XCTest
 
 /// Simple working test that demonstrates the macro functionality

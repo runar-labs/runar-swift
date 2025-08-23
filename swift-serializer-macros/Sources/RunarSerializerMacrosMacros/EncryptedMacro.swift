@@ -2,8 +2,10 @@ import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
-import SwiftCBOR
 import Foundation
+import SwiftCBOR
+import RunarSerializer
+import RunarFFI
 
 /// Implementation of the `Encrypted` macro, which generates encryption code for structs.
 ///
@@ -63,29 +65,31 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
             /// Bootstrap to register wire name and decoder in TypeNameRegistry
             private static let _runarEncryptedBootstrap: Void = {
-                // Registration will happen at runtime when the struct is used
-                // This is a placeholder for macro compilation
+                Task {
+                    await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(raw: wireName)")
+                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: wireName)") { data in
+                        let decoder = SwiftCBOR.CodableCBORDecoder()
+                        return try decoder.decode(Self.self, from: data)
+                    }
+                }
             }()
 
             /// Convert this struct to an AnyValue for serialization
-            public func toAnyValue() -> AnyValueType {
+            public func toAnyValue() -> RunarSerializer.AnyValue {
                 _ = Self._runarEncryptedBootstrap
-                // Placeholder - real implementation will use RunarSerializer.AnyValue
-                fatalError("toAnyValue() requires RunarSerializer dependency")
+                return RunarSerializer.AnyValue.struct(self)
             }
 
             /// Create this struct from AnyValue
-            public static func fromAnyValue(_ anyValue: AnyValueType) async throws -> Self {
+            public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> Self {
                 _ = Self._runarEncryptedBootstrap
-                // Placeholder - real implementation will use RunarSerializer.AnyValue
-                fatalError("fromAnyValue() requires RunarSerializer dependency")
+                return try await anyValue.asType()
             }
 
             /// Encrypt this struct instance using provided keystore and resolver
-            /// Note: This requires the real RunarFFI.EnvelopeCrypto and RunarSerializer.LabelResolver protocols
             public func encryptWithKeystore(
-                _ keystore: any EnvelopeCryptoProtocol,
-                _ resolver: any LabelResolverProtocol
+                _ keystore: RunarFFI.EnvelopeCrypto,
+                _ resolver: RunarSerializer.LabelResolver
             ) throws -> \(raw: encryptedStructName) {
                 _ = Self._runarEncryptedBootstrap
 
@@ -108,7 +112,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             /// Encrypted version of \(raw: structName) with field-level access control
             public struct \(raw: encryptedStructName): Codable {
                 /// Plain fields (fields without @Runar labels)
-                \(raw: generatePlainFieldDeclarations(allFields, fieldLabels))
+                \(raw: generatePlainFieldDeclarationsForStruct(allFields, fieldLabels))
 
                 /// Encrypted fields (fields with @Runar labels)
                 \(raw: generateEncryptedFieldDeclarations(encryptedFields))
@@ -119,8 +123,8 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
                     \(raw: generateEncryptedStructInitBody(allFields, fieldLabels))
                 }
 
-                /// Decrypt this encrypted instance using provided keystore
-                public func decryptWithKeystore(_ keystore: any EnvelopeCryptoProtocol) throws -> \(raw: structName) {
+                            /// Decrypt this encrypted instance using provided keystore
+            public func decryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> \(raw: structName) {
                     // Decrypt each encrypted field
                     // TODO: Implement field-level decryption
 
@@ -236,6 +240,11 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         return plainFields.map { "public let \($0.key): \($0.value)" }.joined(separator: "\n                ")
     }
 
+    private static func generatePlainFieldDeclarationsForStruct(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
+        let plainFields = allFields.filter { !fieldLabels.keys.contains($0.key) }
+        return plainFields.map { "public let \($0.key): \($0.value)" }.joined(separator: "\n                ")
+    }
+
     private static func generateEncryptedFieldDeclarations(_ encryptedFields: [String]) -> String {
         return encryptedFields.map { "public let \($0): Data?" }.joined(separator: "\n                ")
     }
@@ -243,7 +252,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
     private static func generateEncryptedStructInitParams(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
         var params: [String] = []
 
-        // Add plain field params
+        // Add plain field params (no comments to avoid syntax errors)
         for (fieldName, fieldType) in allFields {
             if !fieldLabels.keys.contains(fieldName) {
                 params.append("\(fieldName): \(fieldType)")
@@ -256,6 +265,11 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         }
 
         return params.joined(separator: ",\n                    ")
+    }
+
+    private static func generatePlainFieldParams(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
+        let plainFields = allFields.filter { !fieldLabels.keys.contains($0.key) }
+        return plainFields.map { "\($0.key): \($0.value)" }.joined(separator: ",\n                    ")
     }
 
     private static func generateEncryptedStructInitBody(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
@@ -286,8 +300,8 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         // Assign all fields in original struct order
         for fieldName in allFields.keys {
             if fieldLabels.keys.contains(fieldName) {
-                // This is an encrypted field - assign decrypted value
-                assignments.append("\(fieldName): // TODO: decrypt \(fieldName)_encrypted")
+                // This is an encrypted field - assign decrypted value (no comments to avoid syntax errors)
+                assignments.append("\(fieldName): Data()") // Placeholder - would decrypt from \(fieldName)_encrypted
             } else {
                 // This is a plain field - assign directly
                 assignments.append("\(fieldName): self.\(fieldName)")

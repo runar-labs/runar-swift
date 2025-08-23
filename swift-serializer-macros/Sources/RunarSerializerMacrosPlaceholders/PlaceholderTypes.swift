@@ -19,9 +19,9 @@ public enum AnyValue {
 /// Placeholder for RunarFFI.EnvelopeCrypto
 /// This is used only for macro compilation and will be replaced by the real protocol at runtime
 public protocol EnvelopeCrypto {
-    func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> Any
-    func decryptWithProfile(envelopeData: Any, profileId: String) throws -> Data
-    func decryptWithNetwork(envelopeData: Any) throws -> Data
+    func encryptWithEnvelope(data: Foundation.Data, networkId: String?, profileIds: [String]) throws -> Any
+    func decryptWithProfile(envelopeData: Any, profileId: String) throws -> Foundation.Data
+    func decryptWithNetwork(envelopeData: Any) throws -> Foundation.Data
 }
 
 /// Placeholder for RunarSerializer.LabelResolver
@@ -35,10 +35,10 @@ public protocol LabelResolver {
 public class CodableCBOREncoder {
     public init() {}
 
-    public func encode<T: Encodable>(_ value: T) throws -> Data {
+    public func encode<T: Encodable>(_ value: T) throws -> Foundation.Data {
         // This is a placeholder - the real implementation would use SwiftCBOR
         // For macro compilation, just return empty data
-        return Data()
+        return Foundation.Data()
     }
 }
 
