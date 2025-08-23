@@ -12,7 +12,7 @@ Yes. The same concurrency and boundary principles apply at Swift↔FFI edges. Ke
   - Internal Task usage: PeerConnected registry query now awaited inline (done). Avoid ad-hoc Task captures elsewhere.
 
 - swift-serializer
-  - AnyValue.deserialize/element decryptors: element-level decryptors are registered via actor ElementCryptoRegistry and invoked synchronously on supplied keystore; no concurrency issues. Keep decryptor/encryptor closures @Sendable where applicable.
+  - AnyValue.deserialize: simplified deserialization with clean CBOR decoding; no complex element-level decryption needed.
 
 - swift-test-utils
   - Fixtures are synchronous (building CBOR, setting keys); no concurrency surfaces.

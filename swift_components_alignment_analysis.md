@@ -486,14 +486,14 @@ func initService(_ context: LifecycleContext) async throws
 **Completed Features:**
 1. **✅ Advanced Registry Patterns** - `SerializerRegistry` with thread-safe concurrent maps
 2. **✅ Swift-Native Patterns** - Protocol-oriented encryption design with Swift-native patterns
-3. **✅ Advanced Encryption** - Label-based key resolution with `ElementCryptoRegistry`
+3. **✅ Streamlined Encryption** - Clean struct-level encryption via `@Encrypted` macro
 
 **Architecture Analysis:**
-The current `SerializerRegistry` implementation provides **equivalent functionality** to Rust's 7-registry system:
+The current registry implementation provides **equivalent functionality** to Rust's 7-registry system:
 - **SerializerRegistry** - Main registry for encrypt/decrypt operations (equivalent to Rust's STRUCT_REGISTRY + ENCRYPT_REGISTRY)
 - **TypeNameRegistry** - Type name to wire name mappings (equivalent to Rust's wire name registries)
-- **ElementCryptoRegistry** - Element-level crypto operations
 - **WireNames** - Wire name parsing and generation
+- **@Encrypted macro** - Clean struct-level encryption (equivalent to Rust's encryption patterns)
 
 **Status**: ✅ **No rewrite needed** - Current architecture is optimal for Swift and provides equivalent functionality
 
@@ -738,13 +738,13 @@ static WIRE_NAME_TO_RUST: Lazy<DashMap<&'static str, &'static str>> = Lazy::new(
 **Swift-Serializer Architecture Analysis:**
 - **SerializerRegistry**: Single class with 4 internal registries ✅
 - **TypeNameRegistry**: Type name ↔ wire name mappings ✅
-- **ElementCryptoRegistry**: Element-level crypto operations ✅
+- **@Encrypted macro**: Clean struct-level encryption ✅
 - **WireNames**: Wire name parsing and generation ✅
 
 **Provides Equivalent Functionality to Rust's 7 Registries:**
 - **SerializerRegistry** handles: STRUCT_REGISTRY + ENCRYPT_REGISTRY + JSON_REGISTRY + TYPE_NAME_RUST_TO_WIRE
 - **TypeNameRegistry** handles: WIRE_NAME_TO_TYPEID + WIRE_NAME_TO_RUST + WIRE_NAME_JSON_REGISTRY
-- **ElementCryptoRegistry** provides: Element-level crypto operations (Swift-native)
+- **@Encrypted macro** provides: Clean struct-level encryption (equivalent to Rust patterns)
 - **WireNames** provides: Platform-neutral wire name parsing (Swift-native)
 
 **Architecture Decision: KEEP CURRENT DESIGN**

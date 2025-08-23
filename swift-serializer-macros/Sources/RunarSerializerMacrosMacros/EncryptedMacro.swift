@@ -11,7 +11,6 @@ import SwiftSyntaxMacros
 /// - Encrypted struct definition with encryption/decryption methods
 /// - Real encryption/decryption implementation
 /// - Registration in the global TypeNameRegistry (wire name + decoder)
-/// - Registration of element-level encryptor/decryptor for typed containers
 ///
 /// Note: The struct must explicitly conform to `Codable` for this macro to work.
 ///
@@ -48,7 +47,7 @@ public struct EncryptedMacro: MemberMacro {
 
         return [
             """
-            /// Bootstrap to register wire name, decoder, and element-level encrypt/decrypt for typed containers
+            /// Bootstrap to register wire name and decoder in TypeNameRegistry
             private static let _runarEncryptedBootstrap: Void = {
                 Task {
                     await RunarSerializer.TypeNameRegistry.shared.registerTypeName(\(raw: structName).self, wireName: "\(raw: structName)")
@@ -56,24 +55,6 @@ public struct EncryptedMacro: MemberMacro {
                         let decoder = SwiftCBOR.CodableCBORDecoder()
                         return try decoder.decode(\(raw: structName).self, from: data)
                     }
-                    await RunarSerializer.ElementCryptoRegistry.shared.register(
-                        wireName: "\(raw: structName)",
-                        encrypt: { plainCBOR, context in
-                            let env = try RunarSerializer.EnvelopeEncryption.encrypt(plainCBOR, context: context)
-                            return try RunarSerializer.EnvelopeEncryption.serializeToCBOR(env)
-                        },
-                        decrypt: { encryptedElementCBOR, keystore in
-                            let env = try RunarSerializer.EnvelopeEncryption.deserializeFromCBOR(encryptedElementCBOR)
-                            // Prefer profile decryption first for tests; fallback to network
-                            if let firstProfileId = env.profileEncryptedKeys.keys.first {
-                                return try keystore.decryptWithProfile(envelopeData: env, profileId: firstProfileId)
-                            }
-                            if env.networkId != nil && !env.networkEncryptedKey.isEmpty {
-                                return try keystore.decryptWithNetwork(envelopeData: env)
-                            }
-                            throw RunarSerializer.SerializerError.deserializationFailed("No valid decryption method for element")
-                        }
-                    )
                 }
             }()
 

@@ -5,7 +5,7 @@ final class MacroUsageTest: XCTestCase {
     func testPlainMacro() {
         // This test verifies that the @Plain macro compiles and expands correctly
         @Plain
-        struct TestUser {
+        struct TestUser: Codable {
             let id: Int
             let name: String
             let isActive: Bool
@@ -27,7 +27,7 @@ final class MacroUsageTest: XCTestCase {
     func testEncryptedMacro() {
         // This test verifies that the @Encrypted macro compiles and expands correctly
         @Encrypted
-        struct TestProfile {
+        struct TestProfile: Codable {
             let id: String
             var sensitive: String
         }

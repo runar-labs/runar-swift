@@ -242,17 +242,6 @@ public class AnyValue {
         let typeName = WireNames.listWireName(T.self)
 
         let serializeFn: (SerializationContext?) throws -> Data = { context in
-            // If element-level encryptor exists and context is provided, encrypt each element as CBOR bstr
-            if let ctx = context, let encryptor = awaitLookupEncryptor(forWireName: typeName) {
-                var arr: [CBOR] = []
-                let encoder = CodableCBOREncoder()
-                for v in values {
-                    let plain = try encoder.encode(v)
-                    let encrypted = try encryptor(plain, ctx)
-                    arr.append(.byteString([UInt8](encrypted)))
-                }
-                return Data(CBOR.array(arr).encode())
-            }
             let encoder = CodableCBOREncoder()
             return try encoder.encode(values)
         }
@@ -316,16 +305,6 @@ public class AnyValue {
         let typeName = WireNames.mapWireName(T.self)
 
         let serializeFn: (SerializationContext?) throws -> Data = { context in
-            if let ctx = context, let encryptor = awaitLookupEncryptor(forWireName: typeName) {
-                var map: [CBOR: CBOR] = [:]
-                let encoder = CodableCBOREncoder()
-                for (k, v) in values {
-                    let plain = try encoder.encode(v)
-                    let encrypted = try encryptor(plain, ctx)
-                    map[.utf8String(k)] = .byteString([UInt8](encrypted))
-                }
-                return Data(CBOR.map(map).encode())
-            }
             let encoder = CodableCBOREncoder()
             return try encoder.encode(values)
         }
@@ -849,75 +828,26 @@ public class AnyValue {
 
         default:
             // Typed containers: list<ElemWire> or map<string,ElemWire>
-            if let elemWire = WireNameParser.parseList(lazyData.typeName), lazyData.typeName != "list<any>" {
-                // Try element-level decryption: if elements are CBOR bstr, decrypt each, decode to CBOR, rebuild array, then decode typed target
+            if let _ = WireNameParser.parseList(lazyData.typeName), lazyData.typeName != "list<any>" {
+                // Decode as plain typed CBOR array to Decodable target
                 let cborData = Array(lazyData.data)
-                guard let cbor = try? CBOR.decode(cborData) else { throw SerializerError.deserializationFailed("Invalid CBOR for typed list") }
-                if case let .array(arr) = cbor {
-                    if let decryptor = await ElementCryptoRegistry.shared.getDecryptor(wireName: elemWire) {
-                        var rebuilt: [CBOR] = []
-                        var allByteStrings = true
-                        for el in arr {
-                            guard case let .byteString(b) = el else { allByteStrings = false; break }
-                            let decrypted = try decryptor(Data(b), lazyData.keystore ?? DummyKeystore())
-                            let inner = Array(decrypted)
-                            guard let innerCBOR = try? CBOR.decode(inner) else { throw SerializerError.deserializationFailed("Decrypted element not valid CBOR") }
-                            rebuilt.append(innerCBOR)
-                        }
-                        if allByteStrings {
-                            let rebuiltData = Data(CBOR.array(rebuilt).encode())
-                            if let target = T.self as? Decodable.Type,
-                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T
-                            {
-                                return decodedAny
-                            }
-                            throw SerializerError.deserializationFailed("Typed list decode failed to materialize Decodable target from decrypted elements")
-                        }
-                    }
-                }
-                // If not element-level encrypted array, attempt to decode as plain typed CBOR array to Decodable target
-                let cborDataPlain = Array(lazyData.data)
-                if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborDataPlain)) as? T
-                {
-                    return decodedAny
-                }
-                throw SerializerError.deserializationFailed("Typed list decode needs Decodable target and proper decryptor or plain decoding support")
-            }
-
-            if let elemWire = WireNameParser.parseMap(lazyData.typeName), lazyData.typeName != "map<string,any>" {
-                let cborData = Array(lazyData.data)
-                guard let cbor = try? CBOR.decode(cborData) else { throw SerializerError.deserializationFailed("Invalid CBOR for typed map") }
-                if case let .map(m) = cbor {
-                    if let decryptor = await ElementCryptoRegistry.shared.getDecryptor(wireName: elemWire) {
-                        var rebuilt: [CBOR: CBOR] = [:]
-                        var allByteStrings = true
-                        for (k, v) in m {
-                            guard case let .utf8String(key) = k else { throw SerializerError.deserializationFailed("Typed map key must be string") }
-                            guard case let .byteString(b) = v else { allByteStrings = false; break }
-                            let decrypted = try decryptor(Data(b), lazyData.keystore ?? DummyKeystore())
-                            let inner = Array(decrypted)
-                            guard let innerCBOR = try? CBOR.decode(inner) else { throw SerializerError.deserializationFailed("Decrypted map element not valid CBOR") }
-                            rebuilt[.utf8String(key)] = innerCBOR
-                        }
-                        if allByteStrings {
-                            let rebuiltData = Data(CBOR.map(rebuilt).encode())
-                            if let target = T.self as? Decodable.Type,
-                               let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: rebuiltData) as? T
-                            {
-                                return decodedAny
-                            }
-                            throw SerializerError.deserializationFailed("Typed map decode failed to materialize Decodable target from decrypted elements")
-                        }
-                    }
-                }
-                // Not element-level encrypted; try plain typed map decode to Decodable
                 if let target = T.self as? Decodable.Type,
                    let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T
                 {
                     return decodedAny
                 }
-                throw SerializerError.deserializationFailed("Typed map decode needs Decodable target and proper decryptor or plain decoding support")
+                throw SerializerError.deserializationFailed("Typed list decode failed")
+            }
+
+            if let _ = WireNameParser.parseMap(lazyData.typeName), lazyData.typeName != "map<string,any>" {
+                let cborData = Array(lazyData.data)
+                // Try plain typed map decode to Decodable
+                if let target = T.self as? Decodable.Type,
+                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T
+                {
+                    return decodedAny
+                }
+                throw SerializerError.deserializationFailed("Typed map decode failed")
             }
 
             // Structs and custom types: require known wire name in registry

@@ -83,21 +83,7 @@ func awaitTypeNameRegistryLookup(swiftName: String) throws -> String? {
     return result
 }
 
-func awaitLookupEncryptor(forWireName containerWireName: String) -> ElementCryptoRegistry.EncryptFn? {
-    // Extract element wire name from list<Elem> or map<string,Elem>
-    let elemWire: String?
-    if let e = WireNameParser.parseList(containerWireName) { elemWire = e } else if let e = WireNameParser.parseMap(containerWireName) { elemWire = e } else { elemWire = nil }
-    guard let elemWire else { return nil }
-    // Block to bridge async to sync context
-    var result: ElementCryptoRegistry.EncryptFn?
-    let semaphore = DispatchSemaphore(value: 0)
-    Task {
-        result = await ElementCryptoRegistry.shared.getEncryptor(wireName: elemWire)
-        semaphore.signal()
-    }
-    _ = semaphore.wait(timeout: .now() + 0.1)
-    return result
-}
+
 
 func awaitTypeNameRegistryHasWireName(_ wire: String) -> Bool {
     var result = false

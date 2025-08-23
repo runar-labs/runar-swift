@@ -173,7 +173,10 @@ extension UserProfile {
     private static let _runarEncryptedBootstrap: Void = {
         Task {
             await RunarSerializer.TypeNameRegistry.shared.registerTypeName(UserProfile.self, wireName: "profile")
-            await RunarSerializer.ElementCryptoRegistry.shared.register(/* encryption logic */)
+            await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "profile") { data in
+                let decoder = SwiftCBOR.CodableCBORDecoder()
+                return try decoder.decode(UserProfile.self, from: data)
+            }
         }
     }()
 
