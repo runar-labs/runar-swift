@@ -144,55 +144,64 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         public typealias Encrypted = \(encryptedStructName)
 
         private static let _runarEncryptedBootstrap: Void = {
-        	Task {
-        		await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(wireName)")
-        		await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(wireName)") { data in
-        			try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
-        		}
-        		// Also register decoder under Swift type name to avoid races during bootstrap
-        		await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(structName)") { data in
-        			try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
-        		}
-        		// Register encryptor pathway in SerializerRegistry keyed by plain wire name
-        		RunarSerializer.SerializerRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(wireName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
-        			let enc = try value.encryptWithKeystore(keystore, resolver)
-        			let encoder = SwiftCBOR.CodableCBOREncoder()
-        			return try encoder.encode(enc)
-        		}
-                                                                            	}
+                // Synchronous registrations (non-async)
+                RunarSerializer.SerializerRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(wireName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+                        let enc = try value.encryptWithKeystore(keystore, resolver)
+                        let encoder = SwiftCBOR.CodableCBOREncoder()
+                        return try encoder.encode(enc)
+                }
+                // Also register encryptor under Swift type name to avoid races during bootstrap
+                RunarSerializer.SerializerRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(structName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+                        let enc = try value.encryptWithKeystore(keystore, resolver)
+                        let encoder = SwiftCBOR.CodableCBOREncoder()
+                        return try encoder.encode(enc)
+                }
+                RunarSerializer.SerializerRegistry.shared.registerDecryptor(for: Encrypted\(structName).self, wireName: "Encrypted_\(wireName)") { data, _ in
+                        try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
+                }
+                // Async TypeNameRegistry work
+                Task {
+                        await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(wireName)")
+                        await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(wireName)") { data in
+                                try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
+                        }
+                        await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(structName)") { data in
+                                try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
+                        }
+                }
         }()
 
         public func toAnyValue() -> RunarSerializer.AnyValue {
-        	_ = Self._runarEncryptedBootstrap
-        	return RunarSerializer.AnyValue.struct(self)
+                _ = Self._runarEncryptedBootstrap
+                return RunarSerializer.AnyValue.struct(self)
         }
 
         public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> Self {
-        	_ = Self._runarEncryptedBootstrap
-        	return try await anyValue.asType()
+                _ = Self._runarEncryptedBootstrap
+                return try await anyValue.asType()
         }
 
         public func encryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto, _ resolver: RunarSerializer.LabelResolver) throws -> \(encryptedStructName) {
-        	_ = Self._runarEncryptedBootstrap
-        	\(encryptGroupLines.joined(separator: "\n                "))
-        	return \(encryptedStructName)(\(encReturnArgs))
+                _ = Self._runarEncryptedBootstrap
+                \(encryptGroupLines.joined(separator: "\n                "))
+                return \(encryptedStructName)(\(encReturnArgs))
         }
 
         \(substructs.joined(separator: "\n            "))
 
         public struct \(encryptedStructName): Codable, RunarSerializer.AnyRunarDecryptable {
-        	\(plainFieldDecls)
-        	\(encryptedFieldDecls.isEmpty ? "" : "\n                \(encryptedFieldDecls)")
+                \(plainFieldDecls)
+                \(encryptedFieldDecls.isEmpty ? "" : "\n                \(encryptedFieldDecls)")
 
-        	public init(\(encInitParams)) {
-        		\(encInitBody)
-        	}
+                public init(\(encInitParams)) {
+                        \(encInitBody)
+                }
 
-        	public func decryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> \(structName) {
-        		\(labeledLocalDefaults)
-        		\(decryptBlocks.joined(separator: "\n                "))
-        		return \(structName)(\(decryptInitArgs))
-        	}
+                public func decryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> \(structName) {
+                        \(labeledLocalDefaults)
+                        \(decryptBlocks.joined(separator: "\n                "))
+                        return \(structName)(\(decryptInitArgs))
+                }
             // Type-erased hook for AnyValue
             public func _runarDecryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> Any {
                 try decryptWithKeystore(keystore) as \(structName)

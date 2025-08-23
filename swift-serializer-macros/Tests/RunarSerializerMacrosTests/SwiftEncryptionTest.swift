@@ -139,7 +139,8 @@ final class SwiftEncryptionTest: XCTestCase {
 
         let profile = TestProfile(id: "123", name: "Test", privateData: "secret", email: "e@x", systemMetadata: "sys")
 
-        // Wrap in AnyValue via macro method to trigger macro bootstrap (registry registrations)
+        // Force macro bootstrap before serialization
+        _ = TestProfile.Encrypted.self
         let any = profile.toAnyValue()
 
         // Serialize with context so registry encryptor is used (strict: context required)

@@ -197,8 +197,9 @@ public class AnyValue {
             serializeFn: serializeFn,
             asTypeFn: asTypeFn
         )
-
-        return AnyValue(box: box, category: .struct)
+        let any = AnyValue(box: box, category: .struct)
+        any.materializedValue = value
+        return any
     }
 
     /// Create a list value (array of AnyValue)
