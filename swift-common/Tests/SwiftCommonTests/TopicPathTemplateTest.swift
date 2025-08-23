@@ -1,15 +1,14 @@
-import Testing
 @testable import SwiftCommon
+import Testing
 
 /// Tests for topic path templates and parameter extraction
 ///
 /// INTENTION: Verify that TopicPath template parameters are correctly handled.
 @Suite("TopicPath Template Tests")
 struct TopicPathTemplateTest {
-
     // Test matching a path against a template and extracting parameters
     @Test
-    func testExtractParamsFromTemplate() throws {
+    func extractParamsFromTemplate() throws {
         // A template pattern for our Registry Service paths
         let template = "services/{service_path}/state"
 
@@ -74,7 +73,7 @@ struct TopicPathTemplateTest {
         let params2 = [
             "service_type": "internal",
             "service_name": "registry",
-            "action": "list"
+            "action": "list",
         ]
 
         let path2 = try TopicPath.fromTemplate(template2, params: params2, networkId: "main")
@@ -82,7 +81,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testRegistryServiceUseCase() throws {
+    func registryServiceUseCase() throws {
         // Template for our registry service paths
         let listTemplate = "services/list"
         let serviceTemplate = "services/{service_path}"
@@ -120,7 +119,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testPathWithTemplates() throws {
+    func pathWithTemplates() throws {
         let pathStr = "main:services/{service_path}/state"
         let path = try TopicPath.parse(pathStr)
 
@@ -132,7 +131,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testTemplatePathActionPath() throws {
+    func templatePathActionPath() throws {
         let path = try TopicPath.parse("main:services/{service_path}/actions/{action_name}")
 
         #expect(path.servicePath == "services")
@@ -141,7 +140,7 @@ struct TopicPathTemplateTest {
         // Test with specific values
         let params = [
             "service_path": "math",
-            "action_name": "add"
+            "action_name": "add",
         ]
 
         let concretePath = try TopicPath.fromTemplate(
@@ -155,12 +154,12 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testComplexTemplateUsage() throws {
+    func complexTemplateUsage() throws {
         let template = "services/{service_path}/users/{user_id}/profile"
 
         let params = [
             "service_path": "auth",
-            "user_id": "12345"
+            "user_id": "12345",
         ]
 
         let path = try TopicPath.fromTemplate(template, params: params, networkId: "main")
@@ -175,7 +174,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testTemplateEdgeCases() throws {
+    func templateEdgeCases() throws {
         // Test empty parameter name (should still work)
         let path = try TopicPath.parse("main:services/{}/state")
         #expect(path.hasTemplates)
@@ -195,7 +194,7 @@ struct TopicPathTemplateTest {
         let params = [
             "service": "auth",
             "action": "login",
-            "id": "12345"
+            "id": "12345",
         ]
 
         let concrete = try TopicPath.fromTemplate("{service}/{action}/{id}", params: params, networkId: "main")
@@ -204,7 +203,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testServiceVersusActionTemplates() throws {
+    func serviceVersusActionTemplates() throws {
         let servicePath = try TopicPath.parse("main:services/{service_type}")
         #expect(servicePath.hasTemplates)
         #expect(servicePath.servicePath == "services")
@@ -217,7 +216,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testEventPathWithTemplates() throws {
+    func eventPathWithTemplates() throws {
         _ = try TopicPath.parse("main:services/{service_type}")
 
         // Instead of using new_event_topic, create the event path manually
@@ -229,7 +228,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testNormalizedTemplateMatching() throws {
+    func normalizedTemplateMatching() throws {
         let templatePath = try TopicPath.parse("main:services/{service_path}")
         let concretePath = try TopicPath.parse("main:services/math")
 
@@ -244,7 +243,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testRegistryServiceUseCaseComplex() throws {
+    func registryServiceUseCaseComplex() throws {
         // Test with a real-world use case: registry service
 
         // Template paths for registry service
@@ -305,7 +304,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testMatchesTemplateComplex() throws {
+    func matchesTemplateComplex() throws {
         let path = try TopicPath.parse("main:services/math/state")
 
         // Test with matching templates
@@ -321,10 +320,10 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testFromTemplateComplex() throws {
+    func fromTemplateComplex() throws {
         let params = [
             "service_path": "math",
-            "action": "add"
+            "action": "add",
         ]
 
         let path = try TopicPath.fromTemplate("services/{service_path}/{action}", params: params, networkId: "main")
@@ -340,7 +339,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testTemplatePathWithActionPathExtraction() throws {
+    func templatePathWithActionPathExtraction() throws {
         let path = try TopicPath.parse("main:services/{service_path}/actions/{action_name}")
 
         #expect(path.servicePath == "services")
@@ -349,7 +348,7 @@ struct TopicPathTemplateTest {
         // Test with specific values
         let params = [
             "service_path": "math",
-            "action_name": "add"
+            "action_name": "add",
         ]
 
         let concretePath = try TopicPath.fromTemplate(
@@ -363,7 +362,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testServicePathsVersusActionPathsWithTemplates() throws {
+    func servicePathsVersusActionPathsWithTemplates() throws {
         let servicePath = try TopicPath.parse("main:services/{service_type}")
         #expect(servicePath.hasTemplates)
         #expect(servicePath.servicePath == "services")
@@ -376,7 +375,7 @@ struct TopicPathTemplateTest {
     }
 
     @Test
-    func testEventPathCreationWithTemplates() throws {
+    func eventPathCreationWithTemplates() throws {
         _ = try TopicPath.parse("main:services/{service_type}")
 
         // Instead of using new_event_topic, create the event path manually

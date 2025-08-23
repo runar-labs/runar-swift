@@ -1,11 +1,10 @@
-import RunarSerializerMacros
-import RunarSerializer
 import RunarFFI
+import RunarSerializer
+import RunarSerializerMacros
 import SwiftCBOR
 import XCTest
 
 final class SimpleTest: XCTestCase {
-
     func testPlainMacroCompiles() {
         @Plain(name: "test_struct")
         struct TestStruct: Codable {

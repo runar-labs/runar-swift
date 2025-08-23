@@ -35,9 +35,9 @@ public enum EnvelopeEncryption {
         profileId: String? = nil
     ) throws -> Data {
         if let pid = profileId {
-            return try context.keystore.decryptWithProfile(envelopeData: envelopeData, profileId: pid)
+            try context.keystore.decryptWithProfile(envelopeData: envelopeData, profileId: pid)
         } else {
-            return try context.keystore.decryptWithNetwork(envelopeData: envelopeData)
+            try context.keystore.decryptWithNetwork(envelopeData: envelopeData)
         }
     }
 

@@ -160,7 +160,7 @@ private class MockNodeDelegate: NodeDelegate {
     }
 
     func subscribe(topic _: String, options _: EventRegistrationOptions?, callback _: @escaping EventHandler) async throws -> String {
-        return UUID().uuidString
+        UUID().uuidString
     }
 
     func unsubscribe(_: String) async throws {
@@ -173,6 +173,6 @@ private class MockNodeDelegate: NodeDelegate {
 
     func requestToPeer(path _: String, payload _: AnyValue?, peerNodeId _: String, timeoutMs _: UInt64?) async throws -> AnyValue {
         // Mock implementation - return null
-        return AnyValue.null()
+        AnyValue.null()
     }
 }

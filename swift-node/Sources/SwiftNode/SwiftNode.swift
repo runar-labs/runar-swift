@@ -313,15 +313,16 @@ public final class SwiftNode {
                 // If event carries services list, use it immediately; else query peer registry asynchronously
                 if let bs = bytes("services"),
                    let item = try? CBORDecoder(input: [UInt8](bs)).decodeItem(),
-                   case let CBOR.array(arr) = item {
-                    let services = arr.compactMap { if case let .utf8String(s) = $0 { return s } else { return nil } }
+                   case let CBOR.array(arr) = item
+                {
+                    let services = arr.compactMap { if case let .utf8String(s) = $0 { s } else { nil } }
                     await registry.updatePeerServices(peerNodeId: peerId, servicePaths: services)
                 } else {
                     Task { [weak self] in
                         guard let self else { return }
                         do {
-                            let full = "\(self.config.defaultNetworkId):$registry/services/list"
-                            let resp = try await self.requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: self.config.requestTimeoutMs)
+                            let full = "\(config.defaultNetworkId):$registry/services/list"
+                            let resp = try await requestAtPeer(full, payload: nil, peerNodeId: peerId, timeoutMs: config.requestTimeoutMs)
                             if let parsed = try parseAnyValueSerialized(resp.serialize(context: nil)), parsed.typeName.contains("RegistryServiceMetadata") {
                                 if let item = try? CBORDecoder(input: [UInt8](parsed.payload)).decodeItem(), case let CBOR.array(arr) = item {
                                     var metas: [RegistryServiceMetadata] = []
@@ -334,12 +335,12 @@ public final class SwiftNode {
                                             }
                                         }
                                     }
-                                    let svcPaths = metas.map { $0.service_path }
-                                    await self.registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
+                                    let svcPaths = metas.map(\.service_path)
+                                    await registry.updatePeerServices(peerNodeId: peerId, servicePaths: svcPaths)
                                 }
                             }
                         } catch {
-                            self.logger.debug("peer registry query failed id=\(peerId): \(error)")
+                            logger.debug("peer registry query failed id=\(peerId): \(error)")
                         }
                     }
                 }
@@ -488,14 +489,14 @@ public final class SwiftNode {
                 .utf8String("description"): .utf8String(service.description),
                 .utf8String("actions"): .array(actions),
                 .utf8String("registration_time"): .unsignedInt(UInt64(service.registrationTime.timeIntervalSince1970)),
-                .utf8String("last_start_time"): service.lastStartTime.map { .unsignedInt(UInt64($0.timeIntervalSince1970)) } ?? .null
+                .utf8String("last_start_time"): service.lastStartTime.map { .unsignedInt(UInt64($0.timeIntervalSince1970)) } ?? .null,
             ]
             return .map(serviceMetadata)
         }
 
         map[.utf8String("node_metadata")] = .map([
             .utf8String("services"): .array(serviceMetadatas),
-            .utf8String("subscriptions"): .array(subscribedTopics.map { .utf8String($0) })
+            .utf8String("subscriptions"): .array(subscribedTopics.map { .utf8String($0) }),
         ])
         map[.utf8String("version")] = .unsignedInt(0)
         return Data(CBOR.map(map).encode())
@@ -525,7 +526,7 @@ public final class SwiftNode {
                 Task { [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(max(0, timeout)) * 1_000_000_000)
                     guard let self else { return }
-                    if let box = self.takePending(correlationId) {
+                    if let box = takePending(correlationId) {
                         box.cont.resume(throwing: NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Request timeout: \(full)"]))
                     }
                 }
@@ -619,7 +620,7 @@ public final class SwiftNode {
         let box = OneShotBox()
         let task: Task<Result<Data?, Error>, Never> = Task { [weak self] in
             guard let self else { return Result<Data?, Error>.failure(NSError(domain: "SwiftNode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Node deallocated"])) }
-            let subId = try? await self.subscribe(full, options: nil, callback: { _, data in
+            let subId = try? await subscribe(full, options: nil, callback: { _, data in
                 let bytes = (try? data?.serialize(context: nil)) ?? Data()
                 _ = await box.setIfEmpty(.success(bytes))
             })
@@ -627,7 +628,7 @@ public final class SwiftNode {
             if let lookback = includePast {
                 let cutoff = Date().addingTimeInterval(-lookback)
                 var latest: (Date, AnyValue)?
-                self.retainedQueue.sync {
+                retainedQueue.sync {
                     if let deque = self.retainedByTopic[full] { latest = deque.last(where: { $0.ts >= cutoff }) }
                 }
                 if let (_, av) = latest {
@@ -638,7 +639,7 @@ public final class SwiftNode {
             try? await Task.sleep(nanoseconds: timeoutNs)
             _ = await box.setIfEmpty(.failure(NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Timeout waiting for event on topic: \(full)"])))
             // cleanup
-            if let subId { try? await self.unsubscribe(subId) }
+            if let subId { try? await unsubscribe(subId) }
             let res = await box.get() ?? Result<Data?, Error>.failure(NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Timeout waiting for event on topic: \(full)"]))
             return res
         }
@@ -675,7 +676,7 @@ public final class SwiftNode {
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(max(0, timeout)) * 1_000_000_000)
                 guard let self else { return }
-                if let box = self.takePending(correlationId) {
+                if let box = takePending(correlationId) {
                     box.cont.resume(throwing: NSError(domain: "SwiftNode", code: 408, userInfo: [NSLocalizedDescriptionKey: "Request timeout: \(fullPath)"]))
                 }
             }

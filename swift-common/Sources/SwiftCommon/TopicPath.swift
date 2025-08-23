@@ -24,7 +24,7 @@ public enum PathSegment: Equatable, Hashable, Sendable {
         case "*": return .singleWildcard
         case ">": return .multiWildcard
         default:
-            if segment.hasPrefix("{") && segment.hasSuffix("}") {
+            if segment.hasPrefix("{"), segment.hasSuffix("}") {
                 // Template parameter - extract the parameter name without braces
                 let paramName = String(segment.dropFirst().dropLast())
                 return .template(paramName)
@@ -37,26 +37,26 @@ public enum PathSegment: Equatable, Hashable, Sendable {
     /// Convert back to string representation
     public func asString() -> String {
         switch self {
-        case .literal(let value): return value
-        case .template(let param): return "{\(param)}"
-        case .singleWildcard: return "*"
-        case .multiWildcard: return ">"
+        case let .literal(value): value
+        case let .template(param): "{\(param)}"
+        case .singleWildcard: "*"
+        case .multiWildcard: ">"
         }
     }
 
     /// Check if this segment is a wildcard
     public var isWildcard: Bool {
         switch self {
-        case .singleWildcard, .multiWildcard: return true
-        case .literal, .template: return false
+        case .singleWildcard, .multiWildcard: true
+        case .literal, .template: false
         }
     }
 
     /// Check if this segment is a template parameter
     public var isTemplate: Bool {
         switch self {
-        case .template: return true
-        case .literal, .singleWildcard, .multiWildcard: return false
+        case .template: true
+        case .literal, .singleWildcard, .multiWildcard: false
         }
     }
 }
@@ -133,12 +133,11 @@ public struct TopicPath: Equatable, Hashable, Sendable {
             }
 
             // Add to bitmap (2 bits per segment)
-            let typeBits: UInt64
-            switch pathSegment {
-            case .literal: typeBits = 0b00
-            case .template: typeBits = 0b01
-            case .singleWildcard: typeBits = 0b10
-            case .multiWildcard: typeBits = 0b11
+            let typeBits: UInt64 = switch pathSegment {
+            case .literal: 0b00
+            case .template: 0b01
+            case .singleWildcard: 0b10
+            case .multiWildcard: 0b11
             }
             segmentTypeBits.append(typeBits)
         }
@@ -189,16 +188,16 @@ public struct TopicPath: Equatable, Hashable, Sendable {
             hashComps.append(UInt64(bitPattern: Int64(segment.asString().hashValue)))
         }
 
-        self.rawPath = rawPathStr
+        rawPath = rawPathStr
         self.networkId = networkId
         self.segments = parsedSegments
-        self.isPattern = hasPattern
-        self.hasTemplates = hasTemplateParams
-        self.servicePath = serviceSegment
-        self.actionPath = actionPathStr
-        self.segmentCount = parsedSegments.count
-        self.hashComponents = hashComps
-        self.segmentTypeBitmap = bitmap
+        isPattern = hasPattern
+        hasTemplates = hasTemplateParams
+        servicePath = serviceSegment
+        actionPath = actionPathStr
+        segmentCount = parsedSegments.count
+        hashComponents = hashComps
+        segmentTypeBitmap = bitmap
     }
 
     /// Create a TopicPath from a full path string
@@ -222,7 +221,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
 
     /// Create a service-only TopicPath
     public static func newService(_ networkId: String = "default", serviceName: String) throws -> TopicPath {
-        return try TopicPath(networkId: networkId, segments: [serviceName])
+        try TopicPath(networkId: networkId, segments: [serviceName])
     }
 
     /// Create an action TopicPath from a service path
@@ -285,7 +284,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         for (index, otherSegment) in other.segments.enumerated() {
             let thisSegment = segments[index]
             switch (thisSegment, otherSegment) {
-            case (.literal(let this), .literal(let other)):
+            case let (.literal(this), .literal(other)):
                 if this != other { return false }
             case (.template, .template):
                 // Template matches template
@@ -312,7 +311,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
             // Check each segment for template matching
             for (thisSegment, templateSegment) in zip(segments, templatePath.segments) {
                 switch (thisSegment, templateSegment) {
-                case (.literal(let this), .literal(let template)):
+                case let (.literal(this), .literal(template)):
                     // Literals must match exactly
                     if this != template { return false }
                 case (.literal, .template):
@@ -344,9 +343,9 @@ public struct TopicPath: Equatable, Hashable, Sendable {
 
             for (thisSegment, templateSegment) in zip(segments, templatePath.segments) {
                 switch (thisSegment, templateSegment) {
-                case (.literal(let this), .literal(let template)):
+                case let (.literal(this), .literal(template)):
                     if this != template { return nil }
-                case (.literal(let value), .template(let paramName)):
+                case let (.literal(value), .template(paramName)):
                     params[paramName] = value
                 case (.template, .template):
                     // Template matches template - no parameter extraction
@@ -365,12 +364,13 @@ public struct TopicPath: Equatable, Hashable, Sendable {
     /// Create a path from a template with parameters
     public static func fromTemplate(_ template: String,
                                     params: [String: String],
-                                    networkId: String = "default") throws -> TopicPath {
+                                    networkId: String = "default") throws -> TopicPath
+    {
         let segments = template.split(separator: "/").map(String.init)
         var resolvedSegments: [String] = []
 
         for segment in segments {
-            if segment.hasPrefix("{") && segment.hasSuffix("}") {
+            if segment.hasPrefix("{"), segment.hasSuffix("}") {
                 let paramName = String(segment.dropFirst().dropLast())
                 guard let paramValue = params[paramName] else {
                     throw TopicPathError.missingTemplateParameter("Missing parameter: \(paramName)")
@@ -396,11 +396,12 @@ public struct TopicPath: Equatable, Hashable, Sendable {
     private func matchesSegments(_ patternSegments: [PathSegment],
                                  patternIndex: Int,
                                  pathIndex: Int,
-                                 pathSegments: [PathSegment]? = nil) -> Bool {
+                                 pathSegments: [PathSegment]? = nil) -> Bool
+    {
         let actualPathSegments = pathSegments ?? segments
 
         // If we've consumed both pattern and path, we have a match
-        if patternIndex == patternSegments.count && pathIndex == actualPathSegments.count {
+        if patternIndex == patternSegments.count, pathIndex == actualPathSegments.count {
             return true
         }
 
@@ -430,9 +431,10 @@ public struct TopicPath: Equatable, Hashable, Sendable {
             }
 
             // Otherwise, try all possible positions for where the rest of the pattern should match
-            for nextPathIndex in pathIndex...actualPathSegments.count where
+            for nextPathIndex in pathIndex ... actualPathSegments.count where
                 matchesSegments(patternSegments, patternIndex: patternIndex + 1,
-                                pathIndex: nextPathIndex, pathSegments: actualPathSegments) {
+                                pathIndex: nextPathIndex, pathSegments: actualPathSegments)
+            {
                 return true
             }
             return false
@@ -462,8 +464,6 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         rawPath
     }
 
-
-
     /// Custom hash implementation using pre-computed components
     public func hash(into hasher: inout Hasher) {
         for component in hashComponents {
@@ -488,7 +488,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
 private extension PathSegment {
     func matchesSegment(_ other: PathSegment) -> Bool {
         // Handle literal cases first
-        if case (.literal(let this), .literal(let other)) = (self, other) {
+        if case let (.literal(this), .literal(other)) = (self, other) {
             return this == other
         }
 
@@ -499,13 +499,13 @@ private extension PathSegment {
     private func matchesByType(_ other: PathSegment) -> Bool {
         switch self {
         case .literal:
-            return false // Literal can only match identical literal
+            false // Literal can only match identical literal
         case .template:
-            return other.isLiteral || other.isTemplate
+            other.isLiteral || other.isTemplate
         case .singleWildcard:
-            return other.isLiteral || other.isTemplate || other.isSingleWildcard
+            other.isLiteral || other.isTemplate || other.isSingleWildcard
         case .multiWildcard:
-            return other.isLiteral || other.isTemplate || other.isMultiWildcard
+            other.isLiteral || other.isTemplate || other.isMultiWildcard
         }
     }
 

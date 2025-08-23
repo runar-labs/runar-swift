@@ -13,12 +13,12 @@ public enum Component: String, Sendable {
 
     public var displayName: String {
         switch self {
-        case .service: return "Service"
-        case .registry: return "Registry"
-        case .transporter: return "Transporter"
-        case .serializer: return "Serializer"
-        case .node: return "Node"
-        case .custom: return "Custom"
+        case .service: "Service"
+        case .registry: "Registry"
+        case .transporter: "Transporter"
+        case .serializer: "Serializer"
+        case .node: "Node"
+        case .custom: "Custom"
         }
     }
 }
@@ -86,7 +86,7 @@ public final class RunarLogger: Sendable {
         log(level: .error, message: message, file: file, line: line, function: function)
     }
 
-    private func log(level: LogLevel, message: String, file: String, line: Int, function: String) {
+    private func log(level: LogLevel, message: String, file _: String, line _: Int, function _: String) {
         guard shouldLog(level: level) else { return }
 
         var parts: [String] = []
@@ -102,7 +102,7 @@ public final class RunarLogger: Sendable {
             parts.append("[\(component.displayName)]")
         }
 
-        if config.includeNodeId, let nodeId = nodeId {
+        if config.includeNodeId, let nodeId {
             parts.append("[Node:\(nodeId)]")
         }
 
@@ -111,17 +111,18 @@ public final class RunarLogger: Sendable {
         let logMessage = parts.joined(separator: " ")
 
         #if DEBUG
-        print(logMessage)
+            print(logMessage)
         #else
-        // In production, use os_log or other logging framework
-        os_log("%{public}@", log: .default, type: .default, logMessage)
+            // In production, use os_log or other logging framework
+            os_log("%{public}@", log: .default, type: .default, logMessage)
         #endif
     }
 
     private func shouldLog(level: LogLevel) -> Bool {
         let levels: [LogLevel] = [.debug, .info, .warning, .error]
         guard let currentIndex = levels.firstIndex(of: config.level),
-              let messageIndex = levels.firstIndex(of: level) else {
+              let messageIndex = levels.firstIndex(of: level)
+        else {
             return false
         }
         return messageIndex >= currentIndex

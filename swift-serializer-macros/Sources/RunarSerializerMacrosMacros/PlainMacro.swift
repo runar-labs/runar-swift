@@ -1,11 +1,11 @@
+import Foundation
+import RunarFFI
+import RunarSerializer
+import SwiftCBOR
 import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
-import Foundation
-import SwiftCBOR
-import RunarSerializer
-import RunarFFI
 
 /// Implementation of the `Plain` macro, which provides struct-level serialization functionality.
 ///
@@ -46,7 +46,7 @@ public struct PlainMacro: MemberMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
-        in context: some MacroExpansionContext
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
         // Only support structs for member macro
         guard let structDecl = declaration.as(StructDeclSyntax.self) else {
@@ -106,7 +106,8 @@ public struct PlainMacro: MemberMacro {
             for argument in arguments {
                 if let label = argument.label?.text,
                    label == "name",
-                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
+                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self)
+                {
                     return stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text ?? structName
                 }
             }
@@ -120,5 +121,4 @@ public struct PlainMacro: MemberMacro {
         // Default to struct name if no name parameter provided
         return structName
     }
-
 }

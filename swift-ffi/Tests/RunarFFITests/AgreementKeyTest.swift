@@ -1,5 +1,5 @@
-import XCTest
 @testable import RunarFFI
+import XCTest
 
 final class AgreementKeyTest: XCTestCase {
     func testGetAgreementPublicKey() throws {

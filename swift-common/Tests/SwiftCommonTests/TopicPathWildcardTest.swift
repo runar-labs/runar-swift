@@ -1,10 +1,9 @@
-import Testing
 @testable import SwiftCommon
+import Testing
 
 /// INTENTION: Test comprehensive scenarios for wildcard pattern matching in TopicPath
 @Suite("TopicPath Wildcard Tests")
 struct TopicPathWildcardTest {
-
     @Test
     func testIsPattern() throws {
         // Test without wildcards
@@ -22,7 +21,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testSingleWildcardMatching() throws {
+    func singleWildcardMatching() throws {
         // Create pattern with single-segment wildcard
         let pattern = try TopicPath(networkId: "main", segments: ["services", "*", "state"])
 
@@ -44,7 +43,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testMultiWildcardMatching() throws {
+    func multiWildcardMatching() throws {
         // Create pattern with multi-segment wildcard
         let pattern = try TopicPath(networkId: "main", segments: ["services", ">"])
 
@@ -64,7 +63,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testMultiWildcardPosition() throws {
+    func multiWildcardPosition() throws {
         // Multi-wildcard must be the last segment
         #expect(throws: TopicPathError.self) {
             try TopicPath(networkId: "main", segments: ["services", ">", "state"])
@@ -77,7 +76,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testComplexPatterns() throws {
+    func complexPatterns() throws {
         // Pattern with both types of wildcards
         let pattern = try TopicPath(networkId: "main", segments: ["services", "*", "events", ">"])
 
@@ -97,7 +96,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testWildcardAtBeginning() throws {
+    func wildcardAtBeginning() throws {
         // Pattern with wildcard at beginning
         let pattern = try TopicPath(networkId: "main", segments: ["*", "state"])
 
@@ -115,7 +114,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testNetworkIsolation() throws {
+    func networkIsolation() throws {
         // Patterns should only match within the same network
         let pattern = try TopicPath(networkId: "main", segments: ["services", "*", "state"])
         let path1 = try TopicPath(networkId: "main", segments: ["services", "auth", "state"])
@@ -126,7 +125,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testEfficientWildcardPatternLookup() throws {
+    func efficientWildcardPatternLookup() throws {
         // Create a HashMap to store handlers by path pattern
         var handlers: [String: String] = [:]
         let networkId = "main"
@@ -160,7 +159,7 @@ struct TopicPathWildcardTest {
     }
 
     @Test
-    func testEfficientMultiWildcardPatternLookup() throws {
+    func efficientMultiWildcardPatternLookup() throws {
         // Create a HashMap to store handlers by path pattern
         var handlers: [String: String] = [:]
         let networkId = "main"
@@ -209,7 +208,7 @@ private func generatePossibleTemplates(_ path: TopicPath) -> [String] {
         let segments: [String] = pathPart.split(separator: "/").map(String.init)
 
         // Create specific template patterns based on the segments
-        if segments.count >= 3 && segments[0] == "services" {
+        if segments.count >= 3, segments[0] == "services" {
             // Create services/{service_path}/state pattern
             let networkId = concretePath.split(separator: ":").first ?? "main"
             let template = "\(networkId):services/{service_path}/state"
@@ -229,11 +228,12 @@ private func generateWildcardPatterns(_ path: TopicPath) -> [String] {
 
     // Extract segments (network_id:path/to/resource)
     if let networkPrefix = concretePath.split(separator: ":").first,
-       let pathPart = concretePath.split(separator: ":").last {
+       let pathPart = concretePath.split(separator: ":").last
+    {
         let segments: [String] = pathPart.split(separator: "/").map(String.init)
 
         // Generate wildcards based on structure
-        if segments.count >= 3 && segments[0] == "services" {
+        if segments.count >= 3, segments[0] == "services" {
             // Replace the middle segment with a * wildcard
             let wildcardMiddle = "\(networkPrefix):services/*/\(segments[2...].joined(separator: "/"))"
             patterns.append(wildcardMiddle)

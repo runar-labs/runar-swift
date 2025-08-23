@@ -1,402 +1,270 @@
+import Foundation
+import RunarFFI
+import RunarSerializer
+import SwiftCBOR
 import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
-import Foundation
-import SwiftCBOR
-import RunarSerializer
-import RunarFFI
 
-/// Implementation of the `Encrypted` macro, which generates encryption code for structs.
-///
-/// This macro automatically adds:
-/// - Type alias for the encrypted version
-/// - Encrypted struct definition with encryption/decryption methods
-/// - Real encryption/decryption implementation
-/// - Registration in the global TypeNameRegistry (wire name + decoder)
-///
-/// Note: The struct must explicitly conform to `Codable` for this macro to work.
-///
-/// ## Usage
-/// ```swift
-/// @Encrypted
-/// struct TestProfile: Codable {
-///     let id: String
-///     var sensitive: String
-/// }
-/// ```
+/// Implementation of the `Encrypted` macro, aligned with Rust `Encrypt` derive.
+/// Generates:
+/// - Nested sub-structs per label group (System/User/etc.)
+/// - Nested `Encrypted<Struct>` struct containing plain fields + per-label encrypted envelopes
+/// - `encryptWithKeystore(_:_: )` on the plain struct
+/// - `decryptWithKeystore(_:)` on the encrypted struct
+/// - TypeNameRegistry registration (wire name + decoder) for the plain struct
 public struct EncryptedMacro: MemberMacro, PeerMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
-        in context: some MacroExpansionContext
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        // Only support structs
         guard let structDecl = declaration.as(StructDeclSyntax.self) else {
             throw MacroError("Encrypted macro only supports structs")
         }
 
         let structName = structDecl.name.text
         let encryptedStructName = "Encrypted\(structName)"
-
-        // Extract wire name from macro arguments
         let wireName = extractWireName(from: node, structName: structName)
 
-        // Check if the struct has Codable conformance
+        // Require explicit Codable conformance for deterministic encoding
         let hasCodable = structDecl.inheritanceClause?.inheritedTypes.contains { type in
             type.type.as(IdentifierTypeSyntax.self)?.name.text == "Codable"
         } ?? false
+        guard hasCodable else { throw MacroError("Encrypted macro requires the struct to explicitly conform to Codable") }
 
-        guard hasCodable else {
-            throw MacroError("Encrypted macro requires the struct to explicitly conform to Codable")
+        // Extract ordered fields and labels
+        let orderedFields = extractOrderedFields(from: structDecl) // [(name, type)]
+        let fieldTypes = Dictionary(uniqueKeysWithValues: orderedFields.map { ($0.name, $0.type) })
+        let fieldLabels = extractFieldLabels(from: structDecl) // name -> [labels]
+        let labelOrder = makeOrderedLabels(from: fieldLabels) // [label]
+
+        // Build label->fields map preserving declaration order
+        let labelToFields: [String: [String]] = {
+            var map: [String: [String]] = [:]
+            for (name, _) in orderedFields {
+                if let labels = fieldLabels[name] {
+                    for l in labels {
+                        map[l, default: []].append(name)
+                    }
+                }
+            }
+            return map
+        }()
+
+        // Generate sub-structs per label
+        var substructs: [String] = []
+        for label in labelOrder {
+            guard let fields = labelToFields[label] else { continue }
+            let cap = toCamelCase(label)
+            let subName = "\(structName)\(cap)Fields"
+            let members = fields.compactMap { fname -> String? in
+                guard let ty = fieldTypes[fname] else { return nil }
+                return "public let \(fname): \(ty)"
+            }.joined(separator: "\n                ")
+            let sub = """
+            struct \(subName): Codable {
+            	\(members)
+            }
+            """
+            substructs.append(sub)
         }
 
-        // Extract all fields and field labels from the struct
-        let allFields = extractAllFields(from: structDecl)
-        let fieldLabels = extractFieldLabels(from: structDecl)
+        // Plain fields (no labels)
+        let plainFields = orderedFields.filter { fieldLabels[$0.name] == nil }
+        let plainFieldDecls = plainFields.map { "public let \($0.name): \($0.type)" }.joined(separator: "\n                ")
 
-        // Generate encrypted field names based on labels
-        let encryptedFields = generateEncryptedFields(fieldLabels)
+        // Encrypted fields per label -> EnvelopeEncryptedData?
+        let encryptedFieldDecls = labelOrder.map { label in
+            "public let \(label)_encrypted: RunarFFI.EnvelopeEncryptedData?"
+        }.joined(separator: "\n                ")
 
-        return [
+        // Encrypted struct init params/body
+        let encInitParamsPlain = plainFields.map { "\($0.name): \($0.type)" }
+        let encInitParamsEncrypted = labelOrder.map { "\($0)_encrypted: RunarFFI.EnvelopeEncryptedData?" }
+        let encInitParams = (encInitParamsPlain + encInitParamsEncrypted).joined(separator: ",\n                    ")
+        let encInitBodyPlain = plainFields.map { "self.\($0.name) = \($0.name)" }
+        let encInitBodyEncrypted = labelOrder.map { "self.\($0)_encrypted = \($0)_encrypted" }
+        let encInitBody = (encInitBodyPlain + encInitBodyEncrypted).joined(separator: "\n                    ")
+
+        // Encrypt: build each sub-struct and envelope if resolver has mapping
+        var encryptGroupLines: [String] = []
+        for label in labelOrder {
+            let cap = toCamelCase(label)
+            let subName = "\(structName)\(cap)Fields"
+            let fields = labelToFields[label] ?? []
+            let subInitArgs = fields.map { "\($0): self.\($0)" }.joined(separator: ", ")
+            let line = """
+            let \(label)Struct = \(subName)(\(subInitArgs))
+            var \(label)Encrypted: RunarFFI.EnvelopeEncryptedData? = nil
+            if let info = resolver.resolveLabel("\(label)") {
+            	let bytes = try SwiftCBOR.CodableCBOREncoder().encode(\(label)Struct)
+            	\(label)Encrypted = try keystore.encryptWithEnvelope(data: bytes, networkId: info.networkId, profileIds: info.profileIds)
+            }
             """
-            /// Type alias for the encrypted version of this struct
-            public typealias Encrypted = \(raw: encryptedStructName)
+            encryptGroupLines.append(line)
+        }
+        let encReturnArgsPlain = plainFields.map { "\($0.name): self.\($0.name)" }
+        let encReturnArgsEncrypted = labelOrder.map { "\($0)_encrypted: \($0)Encrypted" }
+        let encReturnArgs = (encReturnArgsPlain + encReturnArgsEncrypted).joined(separator: ",\n                    ")
 
-            /// Bootstrap to register wire name and decoder in TypeNameRegistry
-            private static let _runarEncryptedBootstrap: Void = {
-                Task {
-                    await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(raw: wireName)")
-                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: wireName)") { data in
-                        let decoder = SwiftCBOR.CodableCBORDecoder()
-                        return try decoder.decode(Self.self, from: data)
-                    }
-                }
-            }()
+        // Decrypt: prepare locals with defaults for labeled fields
+        let labeledFields = orderedFields.filter { fieldLabels[$0.name] != nil }
+        let labeledLocalDefaults = labeledFields.map { f in
+            "var \(f.name)_value: \(f.type) = (\(f.type)).runarDefaultValue"
+        }.joined(separator: "\n                ")
 
-            /// Convert this struct to an AnyValue for serialization
-            public func toAnyValue() -> RunarSerializer.AnyValue {
-                _ = Self._runarEncryptedBootstrap
-                return RunarSerializer.AnyValue.struct(self)
+        // For each label, attempt decrypt and assign into locals
+        var decryptBlocks: [String] = []
+        for label in labelOrder {
+            let fields = labelToFields[label] ?? []
+            let cap = toCamelCase(label)
+            let subName = "\(structName)\(cap)Fields"
+            let assignLines = fields.map { fname in "\(fname)_value = tmp.\(fname)" }.joined(separator: "\n                        ")
+            let block = """
+            if let group = self.\(label)_encrypted {
+            	if let data = try? keystore.decryptWithNetwork(envelopeData: group) {
+            		if let tmp = try? SwiftCBOR.CodableCBORDecoder().decode(\(subName).self, from: data) {
+            			\(assignLines)
+            		}
+            	}
             }
+            """
+            decryptBlocks.append(block)
+        }
 
-            /// Create this struct from AnyValue
-            public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> Self {
-                _ = Self._runarEncryptedBootstrap
-                return try await anyValue.asType()
-            }
+        // Build final initializer call with locals
+        let decryptInitArgs = orderedFields.map { f in
+            if fieldLabels[f.name] != nil { return "\(f.name): \(f.name)_value" }
+            return "\(f.name): self.\(f.name)"
+        }.joined(separator: ",\n                        ")
 
-            /// Encrypt this struct instance using provided keystore and resolver
-            public func encryptWithKeystore(
-                _ keystore: RunarFFI.EnvelopeCrypto,
-                _ resolver: RunarSerializer.LabelResolver
-            ) throws -> \(raw: encryptedStructName) {
-                _ = Self._runarEncryptedBootstrap
+        let members = """
+        public typealias Encrypted = \(encryptedStructName)
 
-                // Serialize the struct to CBOR
-                let encoder = SwiftCBOR.CodableCBOREncoder()
-                let cborData = try encoder.encode(self)
+        private static let _runarEncryptedBootstrap: Void = {
+        	Task {
+        		await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(wireName)")
+        		await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(wireName)") { data in
+        			try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
+        		}
+        	}
+        }()
 
-                // Create label mapping for encryption
-                var encryptedFields: [String: Data] = [:]
+        public func toAnyValue() -> RunarSerializer.AnyValue {
+        	_ = Self._runarEncryptedBootstrap
+        	return RunarSerializer.AnyValue.struct(self)
+        }
 
-                // Process fields with @Runar labels for encryption
-                for (fieldName, labels) in \(raw: fieldLabels) {
-                    // Get the field value using reflection
-                    let fieldValue = Mirror(reflecting: self).children
-                        .first(where: { $0.label == fieldName })?.value as Any
+        public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> Self {
+        	_ = Self._runarEncryptedBootstrap
+        	return try await anyValue.asType()
+        }
 
-                    if let value = fieldValue {
-                        // Serialize field value to CBOR directly
-                        let fieldEncoder = SwiftCBOR.CodableCBOREncoder()
-                        if let encodableValue = value as? Encodable,
-                           let fieldData = try? fieldEncoder.encode(encodableValue) {
+        public func encryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto, _ resolver: RunarSerializer.LabelResolver) throws -> \(encryptedStructName) {
+        	_ = Self._runarEncryptedBootstrap
+        	\(encryptGroupLines.joined(separator: "\n                "))
+        	return \(encryptedStructName)(\(encReturnArgs))
+        }
 
-                            // For each label, try to encrypt the field data
-                            for label in (labels as? [String]) ?? [] {
-                                if let labelInfo = resolver.resolveLabel(label) {
-                                    // Encrypt using the resolved label information
-                                    let envelopeData = try keystore.encryptWithEnvelope(
-                                        data: fieldData,
-                                        networkId: labelInfo.networkId,
-                                        profileIds: labelInfo.profileIds
-                                    )
-                                    // Serialize the envelope data to CBOR for storage
-                                    let envelopeEncoder = SwiftCBOR.CodableCBOREncoder()
-                                    let serializedEnvelope = try envelopeEncoder.encode(envelopeData)
-                                    // Store the serialized encrypted data
-                                    encryptedFields[fieldName] = serializedEnvelope
-                                    break // Use first successful encryption
-                                }
-                            }
-                        }
-                    }
-                }
+        \(substructs.joined(separator: "\n            "))
 
-                // Return encrypted struct
-                return \(raw: encryptedStructName)(
-                    \(raw: generateEncryptedStructConstructorCall(allFields, fieldLabels))
-                )
-            }
+        public struct \(encryptedStructName): Codable {
+        	\(plainFieldDecls)
+        	\(encryptedFieldDecls.isEmpty ? "" : "\n                \(encryptedFieldDecls)")
 
-            /// Encrypted version of \(raw: structName) with field-level access control
-            public struct \(raw: encryptedStructName): Codable {
-                /// Plain fields (fields without @Runar labels)
-                \(raw: generatePlainFieldDeclarationsForStruct(allFields, fieldLabels))
+        	public init(\(encInitParams)) {
+        		\(encInitBody)
+        	}
 
-                /// Encrypted fields (fields with @Runar labels)
-                \(raw: generateEncryptedFieldDeclarations(encryptedFields))
+        	public func decryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> \(structName) {
+        		\(labeledLocalDefaults)
+        		\(decryptBlocks.joined(separator: "\n                "))
+        		return \(structName)(\(decryptInitArgs))
+        	}
+        }
+        """
 
-                public init(
-                    \(raw: generateEncryptedStructInitParams(allFields, fieldLabels))
-                ) {
-                    \(raw: generateEncryptedStructInitBody(allFields, fieldLabels))
-                }
-
-                            /// Decrypt this encrypted instance using provided keystore
-            public func decryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> \(raw: structName) {
-                    // Decrypt each encrypted field
-                    // This is a simplified implementation that attempts network decryption
-                    // In a full implementation, this would try multiple decryption methods
-
-                    // Return original struct with decrypted values
-                    return \(raw: structName)(
-                        // Decrypted field assignments would go here
-                        // This is a simplified implementation for now
-                        \(raw: generateDecryptionFieldAssignments(allFields, fieldLabels))
-                    )
-                }
-            }
-            """,
-        ]
+        return ["\(raw: members)"]
     }
 
-    // MARK: - Helper Functions
+    // MARK: - Helpers
 
     private static func extractWireName(from node: AttributeSyntax, structName: String) -> String {
-        // Check if the @Encrypted macro has a name parameter
         if let arguments = node.arguments?.as(LabeledExprListSyntax.self) {
             for argument in arguments {
-                if let label = argument.label?.text,
-                   label == "name",
-                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
-                    return stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text ?? structName
+                if let label = argument.label?.text, label == "name",
+                   let str = argument.expression.as(StringLiteralExprSyntax.self)?.segments.first?.as(StringSegmentSyntax.self)?.content.text
+                {
+                    return str
                 }
             }
         }
         return structName
     }
 
+    private static func extractOrderedFields(from structDecl: StructDeclSyntax) -> [(name: String, type: String)] {
+        var fields: [(String, String)] = []
+        for member in structDecl.memberBlock.members {
+            guard let varDecl = member.decl.as(VariableDeclSyntax.self) else { continue }
+            for binding in varDecl.bindings {
+                guard let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
+                      let typeAnnotation = binding.typeAnnotation else { continue }
+                let typeString = typeAnnotation.type.description.trimmingCharacters(in: .whitespaces)
+                fields.append((name, typeString))
+            }
+        }
+        return fields
+    }
+
     private static func extractFieldLabels(from structDecl: StructDeclSyntax) -> [String: [String]] {
-        var fieldLabels: [String: [String]] = [:]
-
-        // Look for @Runar attributes on variable declarations
-        let memberBlock = structDecl.memberBlock
-        for member in memberBlock.members {
-            if let varDecl = member.decl.as(VariableDeclSyntax.self) {
-                // Get all variable names (handles multiple bindings like `let x, y: Int`)
-                for binding in varDecl.bindings {
-                    if let fieldName = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text {
-                        var labels: [String] = []
-
-                        // Check for @Runar attributes
-                        for attribute in varDecl.attributes {
-                            if let attr = attribute.as(AttributeSyntax.self),
-                               attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text == "Runar" {
-                                let runarLabels = RunarMacro.extractLabels(from: attr)
-                                if !runarLabels.isEmpty {
-                                    labels.append(contentsOf: runarLabels)
-                                }
-                            }
-                        }
-
-                        if !labels.isEmpty {
-                            fieldLabels[fieldName] = labels
-                        }
-                    }
+        var out: [String: [String]] = [:]
+        for member in structDecl.memberBlock.members {
+            guard let varDecl = member.decl.as(VariableDeclSyntax.self) else { continue }
+            var labels: [String] = []
+            for attribute in varDecl.attributes {
+                if let attr = attribute.as(AttributeSyntax.self),
+                   attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text == "Runar"
+                {
+                    labels.append(contentsOf: RunarMacro.extractLabels(from: attr))
+                }
+            }
+            if labels.isEmpty { continue }
+            for binding in varDecl.bindings {
+                if let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text {
+                    out[name] = labels
                 }
             }
         }
-
-        return fieldLabels
+        return out
     }
 
-    private static func extractAllFields(from structDecl: StructDeclSyntax) -> [String: String] {
-        var allFields: [String: String] = [:]
+    private static func toCamelCase(_ s: String) -> String {
+        s.split(whereSeparator: { $0 == "_" || $0 == "-" }).map { part in
+            guard let first = part.first else { return "" }
+            return String(first).uppercased() + String(part.dropFirst())
+        }.joined()
+    }
 
-        let memberBlock = structDecl.memberBlock
-        for member in memberBlock.members {
-            if let varDecl = member.decl.as(VariableDeclSyntax.self) {
-                // Extract type annotation for each field
-                for binding in varDecl.bindings {
-                    if let fieldName = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
-                       let typeAnnotation = binding.typeAnnotation {
-                        let typeString = typeAnnotation.type.description.trimmingCharacters(in: .whitespaces)
-                        allFields[fieldName] = typeString
-                    }
-                }
+    private static func makeOrderedLabels(from fieldLabels: [String: [String]]) -> [String] {
+        var set: Set<String> = []
+        for labels in fieldLabels.values {
+            for l in labels {
+                set.insert(l)
             }
         }
-
-        return allFields
-    }
-
-    private static func generateEncryptedFields(_ fieldLabels: [String: [String]]) -> [String] {
-        return fieldLabels.keys.map { "\($0)_encrypted" }
-    }
-
-    private static func processFieldEncryption(_ fieldLabels: [String: [String]], _ keystore: String, _ resolver: String) -> String {
-        // Generate code to encrypt each field based on its labels
-        return "// Field-level encryption implemented in encryptWithKeystore method"
-    }
-
-    private static func generateEncryptedStructConstructorCall(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
-        var assignments: [String] = []
-
-        // Add all field assignments in the original struct order
-        for (fieldName, _) in allFields {
-            if fieldLabels.keys.contains(fieldName) {
-                // This is an encrypted field
-                assignments.append("\(fieldName)_encrypted: encryptedFields[\"\(fieldName)\"] ?? Data()")
-            } else {
-                // This is a plain field
-                assignments.append("\(fieldName): self.\(fieldName)")
-            }
-        }
-
-        return assignments.joined(separator: ",\n                    ")
-    }
-
-    private static func generatePlainFieldDeclarations(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
-        let plainFields = allFields.filter { !fieldLabels.keys.contains($0.key) }
-        return plainFields.map { "public let \($0.key): \($0.value)" }.joined(separator: "\n                ")
-    }
-
-    private static func generatePlainFieldDeclarationsForStruct(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
-        let plainFields = allFields.filter { !fieldLabels.keys.contains($0.key) }
-        return plainFields.map { "public let \($0.key): \($0.value)" }.joined(separator: "\n                ")
-    }
-
-    private static func generateEncryptedFieldDeclarations(_ encryptedFields: [String]) -> String {
-        return encryptedFields.map { "public let \($0): Data?" }.joined(separator: "\n                ")
-    }
-
-    private static func generateEncryptedStructInitParams(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
-        var params: [String] = []
-
-        // Add plain field params (no comments to avoid syntax errors)
-        for (fieldName, fieldType) in allFields {
-            if !fieldLabels.keys.contains(fieldName) {
-                params.append("\(fieldName): \(fieldType)")
-            }
-        }
-
-        // Add encrypted field params
-        for fieldName in fieldLabels.keys {
-            params.append("\(fieldName)_encrypted: Data?")
-        }
-
-        return params.joined(separator: ",\n                    ")
-    }
-
-    private static func generatePlainFieldParams(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
-        let plainFields = allFields.filter { !fieldLabels.keys.contains($0.key) }
-        return plainFields.map { "\($0.key): \($0.value)" }.joined(separator: ",\n                    ")
-    }
-
-    private static func generateEncryptedStructInitBody(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
-        var body: [String] = []
-
-        // Assign plain fields
-        for fieldName in allFields.keys {
-            if !fieldLabels.keys.contains(fieldName) {
-                body.append("self.\(fieldName) = \(fieldName)")
-            }
-        }
-
-        // Assign encrypted fields
-        for fieldName in fieldLabels.keys {
-            body.append("self.\(fieldName)_encrypted = \(fieldName)_encrypted")
-        }
-
-        return body.joined(separator: "\n                    ")
-    }
-
-    private static func generateFieldDecryption(_ fieldLabels: [String: [String]], _ keystore: String) -> String {
-        return "// Field-level decryption implemented in decryptWithKeystore method"
-    }
-
-    private static func generateDecryptionFieldAssignments(_ allFields: [String: String], _ fieldLabels: [String: [String]]) -> String {
-        var assignments: [String] = []
-
-        // Assign all fields in original struct order
-        for fieldName in allFields.keys {
-            if fieldLabels.keys.contains(fieldName) {
-                // This is an encrypted field - assign decrypted value (no comments to avoid syntax errors)
-                // For encrypted fields without decrypted data, return empty value
-                assignments.append("\(fieldName): \(formatValueForAssignment(getEmptyValueForFieldType(allFields[fieldName] ?? "String"), allFields[fieldName] ?? "String"))")
-            } else {
-                // This is a plain field - assign directly
-                assignments.append("\(fieldName): self.\(fieldName)")
-            }
-        }
-
-        return assignments.joined(separator: ",\n                        ")
-    }
-
-    private static func getEmptyValueForFieldType(_ fieldType: String) -> Any {
-        // Return appropriate empty/default values based on field type
-        if fieldType.contains("String") {
-            return ""
-        } else if fieldType.contains("Int") || fieldType.contains("Int64") {
-            return 0
-        } else if fieldType.contains("Data") {
-            return Data()
-        } else {
-            return ""
+        let arr = Array(set)
+        return arr.sorted { a, b in
+            func rank(_ l: String) -> Int { (l == "system") ? 0 : (l == "user" ? 1 : 2) }
+            if rank(a) == rank(b) { return a < b }
+            return rank(a) < rank(b)
         }
     }
-
-    private static func generateDecryptionFieldAssignmentsWithValues(_ allFields: [String: String], _ fieldLabels: [String: [String]], _ decryptedFields: [String: Any]) -> String {
-        var assignments: [String] = []
-
-        // Assign all fields in original struct order
-        for fieldName in allFields.keys {
-            if let decryptedValue = decryptedFields[fieldName] {
-                // This field was successfully decrypted
-                assignments.append("\(fieldName): \(formatValueForAssignment(decryptedValue, allFields[fieldName] ?? "String"))")
-            } else if fieldLabels.keys.contains(fieldName) {
-                // This is an encrypted field that wasn't decrypted - use empty value
-                assignments.append("\(fieldName): \(formatValueForAssignment(getEmptyValueForFieldType(allFields[fieldName] ?? "String"), allFields[fieldName] ?? "String"))")
-            } else {
-                // This is a plain field - assign directly
-                assignments.append("\(fieldName): self.\(fieldName)")
-            }
-        }
-
-        return assignments.joined(separator: ",\n                        ")
-    }
-
-    private static func formatValueForAssignment(_ value: Any, _ fieldType: String) -> String {
-        if fieldType.contains("String") {
-            return "\"\(value)\""
-        } else if fieldType.contains("Data") {
-            return "Data()" // For now, just return empty Data
-        } else {
-            return "\(value)"
-        }
-    }
-
-    // MARK: - PeerMacro Implementation
 
     public static func expansion(
-        of node: AttributeSyntax,
-        providingPeersOf declaration: some DeclSyntaxProtocol,
-        in context: some MacroExpansionContext
-    ) throws -> [DeclSyntax] {
-        // For @Encrypted, we don't generate additional declarations at the peer level
-        // The encryption functionality is handled at the member level
-        return []
-    }
-
+        of _: AttributeSyntax,
+        providingPeersOf _: some DeclSyntaxProtocol,
+        in _: some MacroExpansionContext
+    ) throws -> [DeclSyntax] { [] }
 }

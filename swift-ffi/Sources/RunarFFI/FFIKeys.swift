@@ -303,6 +303,6 @@ public final class FFIKeys {
     /// Get the node agreement public key directly from the keystore
     /// This replaces the problematic extractAgreementPk(fromSetupTokenCBOR:) method
     public func getAgreementPublicKey() throws -> Data {
-        return try publicKey()
+        try publicKey()
     }
 }

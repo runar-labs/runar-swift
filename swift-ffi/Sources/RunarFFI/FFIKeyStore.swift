@@ -61,7 +61,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
         }
         // Build pointers and lengths arrays
         let pkPtrs: [UnsafePointer<UInt8>?] = pkRawBuffers.map { UnsafePointer($0) }
-        let pkLens: [Int] = profilePublicKeys.map { $0.count }
+        let pkLens: [Int] = profilePublicKeys.map(\.count)
 
         let (_, err) = withRnError { errPtr in
             data.withUnsafeBytes { dataRaw in

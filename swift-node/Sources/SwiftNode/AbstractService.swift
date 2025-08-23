@@ -16,18 +16,18 @@ public enum ServiceState: String, Codable, Sendable {
     public var isActive: Bool {
         switch self {
         case .running:
-            return true
+            true
         default:
-            return false
+            false
         }
     }
 
     public var canTransition: Bool {
         switch self {
         case .error, .unknown:
-            return false
+            false
         default:
-            return true
+            true
         }
     }
 }
@@ -127,8 +127,6 @@ open class ServiceBase: AbstractService {
         }
     }
 
-
-
     public func stop(_ context: LifecycleContext) async throws {
         await transition(to: .stopping)
         do {
@@ -152,7 +150,7 @@ open class ServiceBase: AbstractService {
             additionalInfo: [
                 "service_name": name,
                 "service_version": version,
-                "service_state": state.rawValue
+                "service_state": state.rawValue,
             ]
         )
 

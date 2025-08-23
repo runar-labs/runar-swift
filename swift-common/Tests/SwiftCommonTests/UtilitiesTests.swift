@@ -4,9 +4,8 @@ import Testing
 
 @Suite("Utilities Tests")
 struct UtilitiesTest {
-
     @Test
-    func testComponentBasedLogging() {
+    func componentBasedLogging() {
         // Test component-based logging structure
         let logger = RunarLogger(component: .node)
 
@@ -25,7 +24,7 @@ struct UtilitiesTest {
     }
 
     @Test
-    func testErrorHandling() {
+    func errorHandling() {
         // Test error creation and context
         let context = ErrorContext(
             nodeId: "test-node",
@@ -41,10 +40,8 @@ struct UtilitiesTest {
         #expect(error.context.servicePath == "test/service")
     }
 
-
-
     @Test
-    func testCompactIdGeneration() throws {
+    func compactIdGeneration() throws {
         let testData = "test data for compact id generation".data(using: .utf8)!
         let compactId = CompactId.compactId(from: testData)
 
@@ -62,7 +59,7 @@ struct UtilitiesTest {
     }
 
     @Test
-    func testCompactIdValidation() {
+    func compactIdValidation() {
         // Valid compact ID (for reference, not used in current test)
         _ = "a1b2c3d4e5f67890123456789012345"
 
@@ -80,7 +77,7 @@ struct UtilitiesTest {
     }
 
     @Test
-    func testCompactIdNotEmpty() {
+    func compactIdNotEmpty() {
         // Test with typical public key size (97 bytes for secp256r1)
         let pub = Data(repeating: 0x42, count: 97)
         let id = CompactId.compactId(from: pub)

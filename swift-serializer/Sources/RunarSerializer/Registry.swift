@@ -194,7 +194,7 @@ public extension AnyValue {
             throw SerializerError.deserializationFailed("No decryptor registered for wire name: \(wireName)")
         }
 
-        if let crypto = crypto {
+        if let crypto {
             let decryptedValue = try decryptor(data, crypto)
             return try AnyValueFromAny(decryptedValue)
         } else {
@@ -212,7 +212,7 @@ public extension AnyValue {
     func serializeWithRegistry(wireName: String? = nil, crypto: EnvelopeCrypto? = nil, resolver: LabelResolver? = nil) throws -> Data {
         let registryWireName = wireName ?? typeName
 
-        if crypto != nil && resolver != nil {
+        if crypto != nil, resolver != nil {
             // Check if encryptor is available (for future implementation)
             _ = SerializerRegistry.shared.encryptor(for: registryWireName)
 

@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 
 // MARK: - Compact ID Generation (DNS-safe identifiers)
 

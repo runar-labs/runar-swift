@@ -241,7 +241,7 @@ public class AnyValue {
     public static func listTyped<T: Codable>(_ values: [T]) -> AnyValue {
         let typeName = WireNames.listWireName(T.self)
 
-        let serializeFn: (SerializationContext?) throws -> Data = { context in
+        let serializeFn: (SerializationContext?) throws -> Data = { _ in
             let encoder = CodableCBOREncoder()
             return try encoder.encode(values)
         }
@@ -304,7 +304,7 @@ public class AnyValue {
     public static func mapTyped<T: Codable>(_ values: [String: T]) -> AnyValue {
         let typeName = WireNames.mapWireName(T.self)
 
-        let serializeFn: (SerializationContext?) throws -> Data = { context in
+        let serializeFn: (SerializationContext?) throws -> Data = { _ in
             let encoder = CodableCBOREncoder()
             return try encoder.encode(values)
         }

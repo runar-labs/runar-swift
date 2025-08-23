@@ -13,7 +13,7 @@ struct UserProfile: Codable {
     let id: String
     @Runar("user") var username: String
     @Runar("system") var metadata: String
-    let email: String  // Plain field (no @Runar)
+    let email: String // Plain field (no @Runar)
 }
 
 // This will generate code like:

@@ -47,7 +47,7 @@ public final class PathTrie<T> {
             handleWildcardSegment(segments: segments, index: index, values: values)
         } else if segment == ">" {
             handleMultiWildcardSegment(segment: segment, segments: segments, index: index, values: values)
-        } else if segment.hasPrefix("{") && segment.hasSuffix("}") {
+        } else if segment.hasPrefix("{"), segment.hasSuffix("}") {
             handleTemplateSegment(segments: segments, index: index, values: values)
         } else {
             handleLiteralSegment(segment: segment, segments: segments, index: index, values: values)
@@ -61,7 +61,7 @@ public final class PathTrie<T> {
         wildcardChild?.setValuesInternal(segments: segments, index: index + 1, contents: values)
     }
 
-    private func handleMultiWildcardSegment(segment: String, segments: [String], index: Int, values: [T]) {
+    private func handleMultiWildcardSegment(segment _: String, segments: [String], index: Int, values: [T]) {
         if index == segments.count - 1 {
             multiWildcard.append(contentsOf: values)
         }
@@ -129,7 +129,7 @@ public final class PathTrie<T> {
         }
 
         // Try template match
-        if segment.hasPrefix("{") && segment.hasSuffix("}") {
+        if segment.hasPrefix("{"), segment.hasSuffix("}") {
             // This is a search pattern, find all concrete paths at this level
             results.append(contentsOf: findAllConcretePaths())
         } else if let template = templateChild {
@@ -219,7 +219,7 @@ public final class PathTrie<T> {
         }
 
         // Try template match
-        if segment.hasPrefix("{") && segment.hasSuffix("}") {
+        if segment.hasPrefix("{"), segment.hasSuffix("}") {
             // This is a search pattern, find all concrete paths at this level
             results.append(contentsOf: findAllConcreteMatches(params: params))
         } else if let template = templateChild, let paramName = templateParamName {
@@ -380,7 +380,7 @@ public final class PathTrie<T> {
 
         if segment == "*" {
             wildcardChild?.removeInternal(segments: segments, index: index + 1, content: value)
-        } else if segment.hasPrefix("{") && segment.hasSuffix("}") {
+        } else if segment.hasPrefix("{"), segment.hasSuffix("}") {
             templateChild?.removeInternal(segments: segments, index: index + 1, content: value)
         } else {
             children[segment]?.removeInternal(segments: segments, index: index + 1, content: value)

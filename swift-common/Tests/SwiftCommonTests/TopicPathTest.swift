@@ -1,5 +1,5 @@
-import Testing
 @testable import SwiftCommon
+import Testing
 
 /// Comprehensive test suite for TopicPath
 ///
@@ -7,7 +7,6 @@ import Testing
 /// and validation according to documented requirements. Covers all methods and edge cases.
 @Suite("TopicPath Tests")
 struct TopicPathTest {
-
     /// Helper for test compatibility - creates a default network path
     private static func testDefault(_ path: String) -> TopicPath {
         do {
@@ -20,7 +19,7 @@ struct TopicPathTest {
 
     /// Test TopicPath::new() constructor with various valid inputs
     @Test
-    func testNewValidPaths() throws {
+    func newValidPaths() throws {
         // Test with network_id prefix
         let path = try TopicPath(networkId: "main", segments: ["auth", "login"])
         #expect(path.networkId == "main")
@@ -54,7 +53,7 @@ struct TopicPathTest {
 
     /// Test TopicPath::new() constructor with invalid inputs
     @Test
-    func testNewInvalidPaths() throws {
+    func newInvalidPaths() throws {
         // Empty path
         #expect(throws: TopicPathError.self) {
             try TopicPath(networkId: "", segments: [])
@@ -157,7 +156,7 @@ struct TopicPathTest {
 
     /// Test TopicPath::getSegments() for path segment extraction
     @Test
-    func testGetSegments() throws {
+    func getSegments() throws {
         // Simple path
         let path1 = try TopicPath(networkId: "main", segments: ["auth", "login"])
         #expect(path1.segments.count == 2)
@@ -180,7 +179,7 @@ struct TopicPathTest {
 
     /// Test TopicPath::testDefault() helper for tests
     @Test
-    func testDefaultHelper() throws {
+    func defaultHelper() throws {
         let path = Self.testDefault("auth/login")
         #expect(path.networkId == "default")
         #expect(path.servicePath == "auth")
@@ -190,7 +189,7 @@ struct TopicPathTest {
 
     /// Test consistency between methods
     @Test
-    func testMethodConsistency() throws {
+    func methodConsistency() throws {
         let path = try TopicPath(networkId: "main", segments: ["service", "action"])
 
         // The service_path should return just the service name (first segment)
@@ -207,7 +206,7 @@ struct TopicPathTest {
 
     /// Test with unusual but valid paths
     @Test
-    func testUnusualPaths() throws {
+    func unusualPaths() throws {
         // Network ID with special characters
         let path1 = try TopicPath(networkId: "test-network_01", segments: ["service"])
         #expect(path1.networkId == "test-network_01")
@@ -225,7 +224,7 @@ struct TopicPathTest {
 
     /// Test service paths with embedded slashes
     @Test
-    func testServicePathsWithSlashes() throws {
+    func servicePathsWithSlashes() throws {
         // Test with internal service path using $ prefix
         let path = try TopicPath.parse("test_network:$registry/services/list")
 
@@ -238,7 +237,7 @@ struct TopicPathTest {
 
     /// Test with internal registry service path using $ prefix
     @Test
-    func testRegistryServicePaths() throws {
+    func registryServicePaths() throws {
         // Create a service with $ prefix path
         let servicePath = "$registry"
 
@@ -283,7 +282,7 @@ struct TopicPathTest {
     }
 
     @Test
-    func testNestedActionPath() throws {
+    func nestedActionPath() throws {
         // Create a nested service path
         let servicePath = try TopicPath(networkId: "main", segments: ["serviceX"])
 
@@ -294,7 +293,7 @@ struct TopicPathTest {
     }
 
     @Test
-    func testNestedInvalidActionPath() throws {
+    func nestedInvalidActionPath() throws {
         // Create a nested service with action already
         let servicePath = try TopicPath(networkId: "main", segments: ["services", "auth"])
 
@@ -305,7 +304,7 @@ struct TopicPathTest {
     }
 
     @Test
-    func testDefaultNetworkId() throws {
+    func defaultNetworkId() throws {
         // Create a service path with default network ID
         let servicePath = try TopicPath(networkId: "test-network", segments: ["auth"])
 
@@ -319,7 +318,7 @@ struct TopicPathTest {
     }
 
     @Test
-    func testInvalidActionName() throws {
+    func invalidActionName() throws {
         // Create a service path
         let servicePath = try TopicPath(networkId: "main", segments: ["auth"])
 
@@ -331,7 +330,7 @@ struct TopicPathTest {
 
     // Test basic path parsing
     @Test
-    func testBasicParse() throws {
+    func basicParse() throws {
         // Parse a path with network ID and action
         let path = try TopicPath.parse("default:auth/login")
         #expect(path.networkId == "default")
@@ -342,7 +341,7 @@ struct TopicPathTest {
 
     // Test with various path formats
     @Test
-    func testVariousFormats() throws {
+    func variousFormats() throws {
         // Format 1: Full path with network ID and action
         let path1 = try TopicPath.parse("network:auth/login")
         #expect(path1.networkId == "network")

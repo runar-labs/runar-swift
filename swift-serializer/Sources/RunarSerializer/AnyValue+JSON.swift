@@ -70,12 +70,12 @@ public extension AnyValue {
 }
 
 @MainActor
-private extension Array where Element == AnyValue {
+private extension [AnyValue] {
     func asyncMap<T>(_ transform: @escaping @MainActor (AnyValue) async throws -> T) async throws -> [T] {
         var results: [T] = []
         results.reserveCapacity(count)
         for el in self {
-            try results.append(await transform(el))
+            try await results.append(transform(el))
         }
         return results
     }

@@ -19,7 +19,7 @@ public final class KeysService: ServiceBase {
 
     // MARK: - Service Lifecycle
 
-    override public func performInitService(_ context: LifecycleContext) async throws {
+    override public func performInitService(_: LifecycleContext) async throws {
         if keys == nil {
             keys = try FFIKeys()
         }
@@ -39,14 +39,14 @@ public final class KeysService: ServiceBase {
     private func registerEnsureSymmetricKeyAction(context: LifecycleContext) async throws {
         // Register the only action that exists in Rust: ensure_symmetric_key
         try await context.registerAction("ensure_symmetric_key") { [weak self] payload, _ in
-            guard let self = self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
+            guard let self else { throw BaseRunarError.serviceError("KeysService not available", component: .keys) }
 
             // Parse the key_name parameter from payload
             guard let keyName = try await payload?.asType() as String? else {
                 throw BaseRunarError.serializationError("key_name parameter is required and must be a string", component: .keys)
             }
 
-            let response = try await self.ensureSymmetricKey(keyName: keyName)
+            let response = try await ensureSymmetricKey(keyName: keyName)
             return AnyValue.struct(response)
         }
     }
@@ -57,7 +57,7 @@ public final class KeysService: ServiceBase {
         guard keys != nil else {
             throw BaseRunarError.serviceError("Keys not initialized", component: .keys)
         }
-        
+
         // Use FFI to ensure symmetric key exists
         // This would call the appropriate FFI method to ensure the key exists
         // For now, return a basic response structure
@@ -71,10 +71,10 @@ public final class KeysService: ServiceBase {
     // MARK: - Public API (for other services)
 
     public func getPublicKey() async throws -> PublicKeyResponse {
-        guard let keys = keys else {
+        guard let keys else {
             throw BaseRunarError.serviceError("Keys not initialized", component: .keys)
         }
-        
+
         let publicKey = try keys.publicKey()
         return PublicKeyResponse(publicKey: publicKey)
     }

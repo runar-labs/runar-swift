@@ -13,7 +13,7 @@ final class NetworkTests: XCTestCase {
         var description: String { "test" }
         var networkId: String?
         var state: ServiceState = .created
-        var logger: RunarLogger = RunarLogger(component: .service)
+        var logger: RunarLogger = .init(component: .service)
         func initService(_ ctx: LifecycleContext) async throws {
             try await ctx.registerAction("trigger") { _, ctx in
                 try await ctx.nodeDelegate.publish(topic: "pub/evt", data: AnyValue.primitive("hi"))

@@ -15,24 +15,24 @@ enum WireNames {
 
     static func primitiveWireName(_ type: Any.Type) -> String? {
         switch type {
-        case is String.Type: return "string"
-        case is Bool.Type: return "bool"
-        case is Data.Type: return "bytes"
-        case is Character.Type: return "char"
-        case is Int8.Type: return "i8"
-        case is Int16.Type: return "i16"
-        case is Int32.Type: return "i32"
-        case is Int64.Type: return "i64"
-        case is UInt8.Type: return "u8"
-        case is UInt16.Type: return "u16"
-        case is UInt32.Type: return "u32"
-        case is UInt64.Type: return "u64"
-        case is Float.Type: return "f32"
-        case is Double.Type: return "f64"
-        case is Int.Type: return "i64" // Apple 64-bit normalization
-        case is UInt.Type: return "u64" // Apple 64-bit normalization
+        case is String.Type: "string"
+        case is Bool.Type: "bool"
+        case is Data.Type: "bytes"
+        case is Character.Type: "char"
+        case is Int8.Type: "i8"
+        case is Int16.Type: "i16"
+        case is Int32.Type: "i32"
+        case is Int64.Type: "i64"
+        case is UInt8.Type: "u8"
+        case is UInt16.Type: "u16"
+        case is UInt32.Type: "u32"
+        case is UInt64.Type: "u64"
+        case is Float.Type: "f32"
+        case is Double.Type: "f64"
+        case is Int.Type: "i64" // Apple 64-bit normalization
+        case is UInt.Type: "u64" // Apple 64-bit normalization
         default:
-            return nil
+            nil
         }
     }
 
@@ -82,8 +82,6 @@ func awaitTypeNameRegistryLookup(swiftName: String) throws -> String? {
     _ = semaphore.wait(timeout: .now() + 0.05)
     return result
 }
-
-
 
 func awaitTypeNameRegistryHasWireName(_ wire: String) -> Bool {
     var result = false

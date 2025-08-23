@@ -208,12 +208,12 @@ public final class ServiceRegistry {
 
     /// Get all peers with subscriptions
     func getPeersWithSubscriptions() -> [String] {
-        return Array(remotePeerSubscriptions.keys)
+        Array(remotePeerSubscriptions.keys)
     }
 
     /// Get topic path for a peer's subscription
     func getPeerSubscriptionTopic(peerId: String, subscriptionId: String) -> String? {
-        return remotePeerSubscriptions[peerId]?[subscriptionId]
+        remotePeerSubscriptions[peerId]?[subscriptionId]
     }
 
     private let logger: RunarLogger
@@ -320,7 +320,7 @@ public final class ServiceRegistry {
 
     func getRemoteActionHandlers(topicPath: String) -> [ActionHandler] {
         let parsedTopic = TopicPath.parse(topicPath)
-        return remoteActionHandlers.findMatches(topic: parsedTopic).map { $0.content }
+        return remoteActionHandlers.findMatches(topic: parsedTopic).map(\.content)
     }
 
     // MARK: Remote service presence per peer
@@ -379,12 +379,10 @@ public final class ServiceRegistry {
 
         // Get existing subscription vector or create new one
         let matches = eventSubscriptions.findMatches(topic: parsedTopic)
-        var subscriptionVec: SubscriptionVec
-
-        if let existingMatch = matches.first {
-            subscriptionVec = existingMatch.content
+        var subscriptionVec: SubscriptionVec = if let existingMatch = matches.first {
+            existingMatch.content
         } else {
-            subscriptionVec = SubscriptionVec()
+            SubscriptionVec()
         }
 
         subscriptionVec.localHandlers.append(handler)
@@ -404,12 +402,10 @@ public final class ServiceRegistry {
 
         // Get existing subscription vector or create new one
         let matches = eventSubscriptions.findMatches(topic: parsedTopic)
-        var subscriptionVec: SubscriptionVec
-
-        if let existingMatch = matches.first {
-            subscriptionVec = existingMatch.content
+        var subscriptionVec: SubscriptionVec = if let existingMatch = matches.first {
+            existingMatch.content
         } else {
-            subscriptionVec = SubscriptionVec()
+            SubscriptionVec()
         }
 
         subscriptionVec.remoteHandlers.append(handler)
@@ -552,7 +548,7 @@ public final class ServiceRegistry {
     /// Get actions metadata (placeholder - will be enhanced when action tracking is implemented)
     func getActionsMetadata(servicePath _: String) async -> [ActionMetadata] {
         // TODO: Implement when action metadata tracking is added
-        return []
+        []
     }
 
     /// Unsubscribe local event subscription
@@ -626,7 +622,7 @@ public final class ServiceRegistry {
 
 private struct DummyNodeDelegate: NodeDelegate {
     @MainActor func registerAction(networkId _: String, servicePath _: String, action _: String, handler _: @escaping ActionHandler) async throws {}
-    @MainActor func subscribe(topic _: String, options _: EventRegistrationOptions?, callback _: @escaping EventHandler) async throws -> String { return "" }
+    @MainActor func subscribe(topic _: String, options _: EventRegistrationOptions?, callback _: @escaping EventHandler) async throws -> String { "" }
     @MainActor func unsubscribe(_: String) async throws {}
     @MainActor func publish(topic _: String, data _: AnyValue?) async throws {}
 }

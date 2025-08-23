@@ -25,7 +25,7 @@ public final class RemoteService: ServiceBase {
         // (matches Rust implementation)
     }
 
-    override public func performStart(_ context: LifecycleContext) async throws {
+    override public func performStart(_: LifecycleContext) async throws {
         // Remote services don't register actions - they just proxy requests
         // No action registration needed (matches Rust implementation)
         // No load balancer needed (not in Rust implementation)

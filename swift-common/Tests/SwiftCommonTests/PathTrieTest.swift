@@ -1,11 +1,10 @@
-import Testing
 @testable import SwiftCommon
+import Testing
 
 @Suite("PathTrie Tests")
 struct PathTrieTest {
-
     @Test
-    func testPathTrieTemplateMatch() throws {
+    func pathTrieTemplateMatch() throws {
         let trie = PathTrie<String>()
 
         // Register a template pattern
@@ -32,7 +31,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieWildcardSearch() throws {
+    func pathTrieWildcardSearch() throws {
         let trie = PathTrie<String>()
 
         // Simple template pattern
@@ -69,7 +68,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieTemplateMatchExtended() throws {
+    func pathTrieTemplateMatchExtended() throws {
         let trie = PathTrie<String>()
 
         // Simple template pattern
@@ -149,7 +148,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieWildcardMatch() throws {
+    func pathTrieWildcardMatch() throws {
         let trie = PathTrie<String>()
 
         // Register a wildcard pattern
@@ -170,7 +169,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieWildcardMatchExtended() throws {
+    func pathTrieWildcardMatchExtended() throws {
         let trie = PathTrie<String>()
 
         // Simple wildcard
@@ -237,7 +236,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieCombinedTemplateAndWildcard() throws {
+    func pathTrieCombinedTemplateAndWildcard() throws {
         let trie = PathTrie<String>()
 
         // Template + wildcard
@@ -303,7 +302,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieWildcardSearchIntermediateNodes() throws {
+    func pathTrieWildcardSearchIntermediateNodes() throws {
         let trie = PathTrie<String>()
 
         // Simulate the users_db service with actions at different levels
@@ -337,7 +336,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieWildcardSearchDeepIntermediateNodes() throws {
+    func pathTrieWildcardSearchDeepIntermediateNodes() throws {
         let trie = PathTrie<String>()
 
         // More complex case with deeper intermediate nodes
@@ -366,7 +365,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieWildcardSearchMixedLevels() throws {
+    func pathTrieWildcardSearchMixedLevels() throws {
         let trie = PathTrie<String>()
 
         // Mixed levels - some at root, some at intermediate
@@ -399,7 +398,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieNetworkIsolationComprehensive() throws {
+    func pathTrieNetworkIsolationComprehensive() throws {
         let trie = PathTrie<String>()
 
         // Add same paths with different networks
@@ -463,7 +462,7 @@ struct PathTrieTest {
     }
 
     @Test
-    func testPathTrieCrossNetworkSearch() throws {
+    func pathTrieCrossNetworkSearch() throws {
         // This test verifies the behavior of findMatches when searching across networks
         let trie = PathTrie<String>()
 

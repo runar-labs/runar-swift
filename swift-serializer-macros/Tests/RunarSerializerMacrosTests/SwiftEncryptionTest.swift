@@ -1,13 +1,12 @@
-import RunarSerializerMacros
-import RunarSerializer
 import RunarFFI
+import RunarSerializer
+import RunarSerializerMacros
 import SwiftCBOR
 import XCTest
 
 /// Swift equivalent of Rust's encryption_test.rs
 /// Tests basic macro functionality - comprehensive encryption tests require real keystores
 final class SwiftEncryptionTest: XCTestCase {
-
     // MARK: - Test Structures (Simplified to avoid macro compilation issues)
 
     @Plain(name: "simple_struct")
