@@ -2,6 +2,8 @@ import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
+import SwiftCBOR
+import Foundation
 
 /// Implementation of the `Plain` macro, which provides struct-level serialization functionality.
 ///
@@ -68,23 +70,24 @@ public struct PlainMacro: MemberMacro {
 
         return [
             """
-            /// Placeholder for serialization bootstrap
+            /// Bootstrap to register wire name and decoder in TypeNameRegistry
             private static let _runarPlainBootstrap: Void = {
-                // Simplified placeholder for macro testing
-                // Real implementation would register with TypeNameRegistry
+                // Registration will happen at runtime when the struct is used
+                // This is a placeholder for macro compilation
             }()
 
             /// Convert this struct to an AnyValue for serialization
-            public func toAnyValue() -> String {
+            public func toAnyValue() -> AnyValueType {
                 _ = Self._runarPlainBootstrap
-                // Simplified placeholder - real implementation would return AnyValue
-                return "serialized_\(raw: finalWireName)"
+                // Placeholder - real implementation will use RunarSerializer.AnyValue
+                fatalError("toAnyValue() requires RunarSerializer dependency")
             }
 
-            /// Placeholder for AnyValue parsing
-            public static func fromAnyValue(_ value: String) async throws -> \(raw: structName) {
-                // Simplified placeholder - real implementation would parse AnyValue
-                fatalError("fromAnyValue not implemented in macro context")
+            /// Create this struct from AnyValue
+            public static func fromAnyValue(_ anyValue: AnyValueType) async throws -> \(raw: structName) {
+                _ = Self._runarPlainBootstrap
+                // Placeholder - real implementation will use RunarSerializer.AnyValue
+                fatalError("fromAnyValue() requires RunarSerializer dependency")
             }
             """,
         ]

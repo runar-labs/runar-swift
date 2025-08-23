@@ -50,7 +50,7 @@ public struct RunarMacro: PeerMacro {
             throw MacroError("@Runar requires a variable with a valid identifier")
         }
 
-        let fieldName = identifier.identifier.text
+        _ = identifier.identifier.text
 
         // Extract labels from the macro arguments
         let labels = extractLabels(from: node)
@@ -65,7 +65,7 @@ public struct RunarMacro: PeerMacro {
     }
 
     /// Extracts labels from @Runar macro arguments
-    private static func extractLabels(from node: AttributeSyntax) -> [String] {
+    public static func extractLabels(from node: AttributeSyntax) -> [String] {
         guard let arguments = node.arguments else {
             return []
         }

@@ -31,6 +31,8 @@ let package = Package(
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
                 .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+                .product(name: "RunarSerializer", package: "swift-serializer"),
+                .product(name: "RunarFFI", package: "swift-ffi"),
             ]
         ),
         .testTarget(

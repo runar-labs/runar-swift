@@ -74,7 +74,7 @@ final class SimpleWorkingTest: XCTestCase {
         }
 
         let instance = AliasTest(value: "test")
-        let encrypted = instance.Encrypted.self
+        let encrypted = AliasTest.Encrypted.self
         _ = encrypted
 
         print("✅ @Encrypted macro generates Encrypted type alias")
