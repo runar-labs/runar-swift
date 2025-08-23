@@ -27,10 +27,6 @@ let package = Package(
             name: "RunarSerializerMacros",
             dependencies: ["RunarSerializerMacrosMacros"]
         ),
-        .target(
-            name: "RunarSerializerMacrosPlaceholders",
-            dependencies: []
-        ),
         .macro(
             name: "RunarSerializerMacrosMacros",
             dependencies: [
@@ -43,7 +39,11 @@ let package = Package(
         ),
         .testTarget(
             name: "RunarSerializerMacrosTests",
-            dependencies: ["RunarSerializerMacros"]
+            dependencies: [
+                "RunarSerializerMacros",
+                .product(name: "RunarSerializer", package: "swift-serializer"),
+                .product(name: "RunarFFI", package: "swift-ffi"),
+            ]
         ),
     ]
 )

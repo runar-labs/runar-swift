@@ -3,6 +3,7 @@ import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 import RunarSerializer
+import RunarFFI
 
 /// Implementation of the `Runar` macro for field-level label mapping.
 ///

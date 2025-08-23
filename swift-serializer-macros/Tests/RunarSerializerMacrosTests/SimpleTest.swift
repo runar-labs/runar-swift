@@ -1,5 +1,7 @@
 import RunarSerializerMacros
-import RunarSerializerMacrosPlaceholders
+import RunarSerializer
+import RunarFFI
+import SwiftCBOR
 import XCTest
 
 final class SimpleTest: XCTestCase {
@@ -26,7 +28,7 @@ final class SimpleTest: XCTestCase {
             let id: String
             @Runar("user") var username: String
             @Runar("system") var metadata: String
-            let email: String  // Plain field
+            let email: String
         }
 
         // Test that the struct compiles
@@ -47,7 +49,7 @@ final class SimpleTest: XCTestCase {
             let id: String
             @Runar("user") var userField: String
             @Runar("system") var systemField: String
-            @Runar("user, system") var sharedField: String
+            @Runar("user_system") var sharedField: String
         }
 
         // Test that the struct compiles with @Runar annotations

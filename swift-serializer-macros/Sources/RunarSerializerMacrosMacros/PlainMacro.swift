@@ -5,6 +5,7 @@ import SwiftSyntaxMacros
 import Foundation
 import SwiftCBOR
 import RunarSerializer
+import RunarFFI
 
 /// Implementation of the `Plain` macro, which provides struct-level serialization functionality.
 ///
