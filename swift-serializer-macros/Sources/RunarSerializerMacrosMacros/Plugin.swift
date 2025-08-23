@@ -5,7 +5,8 @@ import SwiftSyntaxMacros
 struct RunarSerializerMacrosPlugin: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
         TestMacro.self,
-        RunarMacro.self,
+        PlainMacro.self,
         EncryptedMacro.self,
+        RunarMacro.self,
     ]
 }

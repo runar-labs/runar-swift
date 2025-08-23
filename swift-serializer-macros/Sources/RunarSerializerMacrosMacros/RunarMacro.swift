@@ -3,119 +3,93 @@ import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 
-/// Implementation of the `Runar` macro, which provides struct-level serialization functionality.
+/// Implementation of the `Runar` macro for field-level label mapping.
 ///
-/// This macro supports struct-level usage patterns:
-/// 1. Basic: `@Runar` - Generates serialization methods using struct name as wire name
-/// 2. Named: `@Runar(name: "...")` - Generates serialization methods with custom wire name
+/// This macro is used to annotate individual fields with encryption labels.
+/// It supports single labels and multiple comma-separated labels.
 ///
 /// ## Usage Examples
 ///
-/// ### Struct-level serialization:
-/// ```swift
-/// @Runar
-/// struct User: Codable {
-///     let id: Int64
-///     let name: String
-/// }
-///
-/// @Runar(name: "custom_user")
-/// struct CustomUser: Codable {
-///     let id: Int64
-///     let email: String
-/// }
-/// ```
-///
-/// ### Field-level labels:
-/// Field-level encryption labels are handled by the `@Encrypted` macro:
+/// ### Single label:
 /// ```swift
 /// @Encrypted
 /// struct Profile: Codable {
 ///     let id: String
-///     @Runar("user") var privateData: String         // This should be handled by @Encrypted
-///     @Runar("system") var systemData: String       // This should be handled by @Encrypted
+///     @Runar("user") var privateData: String
+///     @Runar("system") var metadata: String
 /// }
 /// ```
-public struct RunarMacro: MemberMacro {
-    // MARK: - MemberMacro Implementation (Struct-level)
-
+///
+/// ### Multiple labels:
+/// ```swift
+/// @Encrypted
+/// struct Document: Codable {
+///     let id: String
+///     @Runar("user, system") var accessibleByMultiple: String
+///     @Runar("admin") var adminOnly: String
+/// }
+/// ```
+public struct RunarMacro: PeerMacro {
     public static func expansion(
         of node: AttributeSyntax,
-        providingMembersOf declaration: some DeclGroupSyntax,
+        providingPeersOf declaration: some DeclSyntaxProtocol,
         in context: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        // Only support structs for member macro
-        guard let structDecl = declaration.as(StructDeclSyntax.self) else {
-            throw MacroError("Runar macro can only be applied to structs")
+        // For field-level @Runar usage, we don't generate additional declarations
+        // The label information is processed by the EncryptedMacro during expansion
+        // This macro serves as a marker for field-level encryption labels
+
+        // Validate that the macro is applied to a variable declaration
+        guard let varDecl = declaration.as(VariableDeclSyntax.self) else {
+            throw MacroError("@Runar can only be applied to variable declarations")
         }
 
-        let structName = structDecl.name.text
-
-        // Check if the struct has Codable conformance
-        let hasCodable = structDecl.inheritanceClause?.inheritedTypes.contains { type in
-            type.type.as(IdentifierTypeSyntax.self)?.name.text == "Codable"
-        } ?? false
-
-        guard hasCodable else {
-            throw MacroError("Runar macro requires the struct to explicitly conform to Codable")
+        // Validate that the variable has a name
+        guard let binding = varDecl.bindings.first,
+              let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else {
+            throw MacroError("@Runar requires a variable with a valid identifier")
         }
 
-        // Extract wire name from macro arguments or use struct name as default
-        let wireName = extractWireName(from: node, structName: structName)
+        let fieldName = identifier.identifier.text
 
-        return [
-            """
-            /// Placeholder for serialization bootstrap
-            private static let _runarPlainBootstrap: Void = {
-                // Simplified placeholder for macro testing
-                // Real implementation would register with TypeNameRegistry
-            }()
+        // Extract labels from the macro arguments
+        let labels = extractLabels(from: node)
 
-            /// Placeholder for AnyValue conversion
-            public func toAnyValue() -> String {
-                _ = Self._runarPlainBootstrap
-                // Simplified placeholder - real implementation would return AnyValue
-                return "serialized_\(self)"
-            }
+        if labels.isEmpty {
+            throw MacroError("@Runar requires at least one label (e.g., @Runar(\"user\"))")
+        }
 
-            /// Placeholder for AnyValue parsing
-            public static func fromAnyValue(_ value: String) async throws -> \(raw: structName) {
-                // Simplified placeholder - real implementation would parse AnyValue
-                fatalError("fromAnyValue not implemented in macro context")
-            }
-            """,
-        ]
+        // For now, return empty declarations - the label information will be
+        // processed by the EncryptedMacro when it expands
+        return []
     }
 
-    // MARK: - Helper Functions
+    /// Extracts labels from @Runar macro arguments
+    private static func extractLabels(from node: AttributeSyntax) -> [String] {
+        guard let arguments = node.arguments else {
+            return []
+        }
 
-    private static func extractWireName(from node: AttributeSyntax, structName: String) -> String {
-        // Check if the @Runar macro has a name parameter
-        if let arguments = node.arguments?.as(LabeledExprListSyntax.self) {
-            for argument in arguments {
+        // Handle string literal arguments like @Runar("user") or @Runar("user, system")
+        if let stringLiteral = arguments.as(StringLiteralExprSyntax.self) {
+            if let content = stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text {
+                return content.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            }
+        }
+
+        // Handle labeled arguments (if needed for future extensions)
+        if let labeledArgs = arguments.as(LabeledExprListSyntax.self) {
+            for argument in labeledArgs {
                 if let label = argument.label?.text,
-                   label == "name",
+                   (label == "label" || label == "labels"),
                    let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self) {
-                    return stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text ?? structName
+                    if let content = stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text {
+                        return content.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    }
                 }
             }
         }
 
-        // Default to struct name if no name parameter provided
-        return structName
-    }
-
-}
-
-/// Error type for macro-related errors
-struct MacroError: Error, CustomStringConvertible {
-    let message: String
-
-    init(_ message: String) {
-        self.message = message
-    }
-
-    var description: String {
-        message
+        return []
     }
 }

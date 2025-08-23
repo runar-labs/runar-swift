@@ -51,16 +51,35 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
         return [
             """
-            /// Bootstrap to register wire name and decoder in TypeNameRegistry
             /// Type alias for the encrypted version of this struct
             public typealias Encrypted = \(raw: encryptedStructName)
 
+            /// Bootstrap to register wire name and decoder in TypeNameRegistry
+            private static let _runarEncryptedBootstrap: Void = {
+                // Simplified placeholder for macro testing
+                // Real implementation would register with TypeNameRegistry
+            }()
+
+            /// Convert this struct to an AnyValue for serialization
+            public func toAnyValue() -> String {
+                _ = Self._runarEncryptedBootstrap
+                // Simplified placeholder - real implementation would return AnyValue
+                return "encrypted_\(self)"
+            }
+
+            /// Deserialize from AnyValue to this struct
+            public static func fromAnyValue(_ value: String) throws -> Self {
+                _ = Self._runarEncryptedBootstrap
+                // Simplified placeholder - real implementation would parse AnyValue
+                fatalError("fromAnyValue not implemented in macro context")
+            }
+
             /// Placeholder for encryption functionality
-            /// In a real implementation, this would encrypt the struct using a keystore
             public func encryptWithKeystore() async throws -> \(raw: encryptedStructName) {
                 // Simplified placeholder for macro testing
                 // Real implementation would use external encryption libraries
-                fatalError("Encryption not implemented in macro context")
+                let data = Data("encrypted_data".utf8)
+                return \(raw: encryptedStructName)(encryptedData: data)
             }
 
             /// Encrypted version of \(raw: structName)
@@ -75,6 +94,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
                 /// Placeholder for decryption functionality
                 public func decryptWithKeystore() async throws -> \(raw: structName) {
                     // Simplified placeholder for macro testing
+                    // Real implementation would decrypt and return original struct
                     fatalError("Decryption not implemented in macro context")
                 }
             }

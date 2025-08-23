@@ -1,8 +1,8 @@
 import RunarSerializerMacros
 import XCTest
 
-/// Working test that demonstrates the macro functionality
-final class WorkingTest: XCTestCase {
+/// Simple working test that demonstrates the macro functionality
+final class SimpleWorkingTest: XCTestCase {
 
     func testPlainMacroWorks() {
         @Plain
@@ -27,7 +27,7 @@ final class WorkingTest: XCTestCase {
     }
 
     func testPlainMacroWithNameWorks() {
-        @Plain
+        @Plain(name: "custom_struct")
         struct CustomStruct: Codable {
             let data: String
         }
@@ -74,7 +74,7 @@ final class WorkingTest: XCTestCase {
         }
 
         let instance = AliasTest(value: "test")
-        let encrypted = AliasTest.Encrypted.self
+        let encrypted = instance.Encrypted.self
         _ = encrypted
 
         print("✅ @Encrypted macro generates Encrypted type alias")
