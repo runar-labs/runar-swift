@@ -203,16 +203,16 @@ final class SwiftEncryptionTest: XCTestCase {
         // Build user-mobile with only profile keys and installed network public key (no private)
         let userMobile = try FFIKeys()
         try userMobile.mobileInitializeUserRootKey()
-        // Install network pubkey into user mobile to allow encrypt-to-network
+        // Export network public key from CA and install in user mobile to allow encrypt-to-network
         let networkPk = try ca.mobileGetNetworkPublicKey(networkId)
         try userMobile.mobileInstallNetworkPublicKey(networkPk)
 
         // Label resolver mapping: route labels to profile vs system
-        struct Resolver: LabelResolver {
+        struct Resolver: LabelResolver { let networkId: String
             func resolveLabel(_ label: String) -> LabelKeyInfo? {
                 switch label {
                 case "system", "system_only":
-                    return LabelKeyInfo(profileIds: [], networkId: "net")
+                    return LabelKeyInfo(profileIds: [], networkId: networkId)
                 case "user", "search":
                     return LabelKeyInfo(profileIds: ["user"], networkId: nil)
                 default:
@@ -220,7 +220,7 @@ final class SwiftEncryptionTest: XCTestCase {
                 }
             }
         }
-        let resolver = Resolver()
+        let resolver = Resolver(networkId: networkId)
 
         // Prepare profile
         let profile = TestProfile3(id: "123", name: "Name", privateData: "secret", email: "e@x", systemMetadata: "sys")
