@@ -173,4 +173,101 @@ final class SwiftEncryptionTest: XCTestCase {
         XCTAssertEqual(dec2.email, profile.email)
         XCTAssertEqual(dec2.systemMetadata, profile.systemMetadata)
     }
+
+    func testThreeKeystoresEndToEnd() async throws {
+        @Encrypted(name: "encryption_test.TestProfile3")
+        struct TestProfile3: Codable {
+            let id: String
+            @Runar("system") var name: String
+            @Runar("user") var privateData: String
+            @Runar("search") var email: String
+            @Runar("system_only") var systemMetadata: String
+        }
+
+        // Build CA (master mobile)
+        let ca = try FFIKeys()
+        try ca.mobileInitializeUserRootKey()
+
+        // Build node and install certificate
+        let node = try FFIKeys()
+        let csr = try node.generateCSR()
+        let ncm = try ca.processSetupToken(csr)
+        try node.installCertificate(ncm)
+
+        // Create network id and install node network key
+        let networkId = try ca.mobileGenerateNetworkDataKey()
+        let nodeAgreementPk = try node.getAgreementPublicKey()
+        let nkm = try ca.mobileCreateNetworkKeyMessage(networkId: networkId, nodeAgreementPk: nodeAgreementPk)
+        try node.nodeInstallNetworkKey(nkm)
+
+        // Build user-mobile with only profile keys and installed network public key (no private)
+        let userMobile = try FFIKeys()
+        try userMobile.mobileInitializeUserRootKey()
+        // Install network pubkey into user mobile to allow encrypt-to-network
+        let networkPk = try ca.mobileGetNetworkPublicKey(networkId)
+        try userMobile.mobileInstallNetworkPublicKey(networkPk)
+
+        // Label resolver mapping: route labels to profile vs system
+        struct Resolver: LabelResolver {
+            func resolveLabel(_ label: String) -> LabelKeyInfo? {
+                switch label {
+                case "system", "system_only":
+                    return LabelKeyInfo(profileIds: [], networkId: "net")
+                case "user", "search":
+                    return LabelKeyInfo(profileIds: ["user"], networkId: nil)
+                default:
+                    return nil
+                }
+            }
+        }
+        let resolver = Resolver()
+
+        // Prepare profile
+        let profile = TestProfile3(id: "123", name: "Name", privateData: "secret", email: "e@x", systemMetadata: "sys")
+        _ = TestProfile3.Encrypted.self // force bootstrap
+
+        // Serialize with user-mobile keystore (will encrypt system groups for network, user groups for profile)
+        let userCtx = SerializationContext(keystore: FFIKeyStore(keys: userMobile), resolver: resolver, networkId: networkId)
+        let any = profile.toAnyValue()
+        let bytes = try any.serialize(context: userCtx)
+
+        // Case 1: Deserialize on user-mobile — should see user fields, system fields defaulted
+        let deUser = try AnyValue.deserialize(bytes, keystore: FFIKeyStore(keys: userMobile))
+        let plainUser: TestProfile3 = try await deUser.asType()
+        XCTAssertEqual(plainUser.id, profile.id)
+        XCTAssertEqual(plainUser.privateData, profile.privateData)
+        // System fields should decrypt only with node, so here they should remain defaults
+        XCTAssertEqual(plainUser.name, String.runarDefaultValue)
+        XCTAssertEqual(plainUser.systemMetadata, String.runarDefaultValue)
+
+        // Case 2: Deserialize on node — should see system fields, user fields defaulted
+        let deNode = try AnyValue.deserialize(bytes, keystore: FFIKeyStore(keys: node))
+        let plainNode: TestProfile3 = try await deNode.asType()
+        XCTAssertEqual(plainNode.id, profile.id)
+        XCTAssertEqual(plainNode.name, profile.name)
+        XCTAssertEqual(plainNode.systemMetadata, profile.systemMetadata)
+        // User fields should be defaults on node
+        XCTAssertEqual(plainNode.privateData, String.runarDefaultValue)
+        XCTAssertEqual(plainNode.email, String.runarDefaultValue)
+
+        // Case 3: Encrypted arc from user and node
+        let encFromUser: TestProfile3.Encrypted = try await deUser.asType()
+        XCTAssertNotNil(encFromUser.system_encrypted)
+        XCTAssertNotNil(encFromUser.user_encrypted)
+
+        let encFromNode: TestProfile3.Encrypted = try await deNode.asType()
+        XCTAssertNotNil(encFromNode.system_encrypted)
+        XCTAssertNotNil(encFromNode.user_encrypted)
+
+        // Node should not decrypt user groups
+        let nodeDecrypted = try encFromNode.decryptWithKeystore(FFIKeyStore(keys: node))
+        XCTAssertEqual(nodeDecrypted.name, profile.name)
+        XCTAssertEqual(nodeDecrypted.systemMetadata, profile.systemMetadata)
+        XCTAssertEqual(nodeDecrypted.privateData, String.runarDefaultValue)
+
+        // User-mobile should not decrypt system groups
+        let userDecrypted = try encFromUser.decryptWithKeystore(FFIKeyStore(keys: userMobile))
+        XCTAssertEqual(userDecrypted.privateData, profile.privateData)
+        XCTAssertEqual(userDecrypted.name, String.runarDefaultValue)
+    }
 }

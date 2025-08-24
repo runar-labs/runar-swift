@@ -124,11 +124,17 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let assignLines = fields.map { fname in "\(fname)_value = tmp.\(fname)" }.joined(separator: "\n                        ")
             let block = """
             if let group = self.\(label)_encrypted {
-            	if let data = try? keystore.decryptWithNetwork(envelopeData: group) {
-            		if let tmp = try? SwiftCBOR.CodableCBORDecoder().decode(\(subName).self, from: data) {
-            			\(assignLines)
-            		}
-            	}
+                var decrypted: Data? = nil
+                if let data = try? keystore.decryptWithNetwork(envelopeData: group) {
+                    decrypted = data
+                } else if let data = try? keystore.decryptWithProfile(envelopeData: group, profileId: "default") {
+                    decrypted = data
+                }
+                if let data = decrypted {
+                    if let tmp = try? SwiftCBOR.CodableCBORDecoder().decode(\(subName).self, from: data) {
+                        \(assignLines)
+                    }
+                }
             }
             """
             decryptBlocks.append(block)

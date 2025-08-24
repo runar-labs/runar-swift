@@ -377,6 +377,16 @@ public final class FFIKeys {
     /// Get the node agreement public key directly from the keystore
     /// This replaces the problematic extractAgreementPk(fromSetupTokenCBOR:) method
     public func getAgreementPublicKey() throws -> Data {
-        try publicKey()
+        guard let h = handle else { throw FFIError(code: -1, message: "keys freed") }
+        var buf: UnsafeMutablePointer<UInt8>?
+        var len = 0
+        let (_, err) = withRnError { errPtr in
+            rn_keys_node_get_agreement_public_key(h, &buf, &len, errPtr)
+        }
+        if let e = err { throw e }
+        guard let b = buf else { return Data() }
+        let data = Data(bytes: b, count: len)
+        rn_free(b, len)
+        return data
     }
 }
