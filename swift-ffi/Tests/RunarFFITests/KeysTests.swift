@@ -77,29 +77,29 @@ final class KeysTests: XCTestCase {
 
     func testMobileInstallNetworkPublicKey() throws {
         // Create a CA and a node to obtain a network public key, then install in another mobile-only keystore
-        let ca = try KeysFFI()
-        try ca.initializeAsMobile()
-        try ca.mobileInitializeUserRootKey()
+        let certificateAuthority = try KeysFFI()
+        try certificateAuthority.initializeAsMobile()
+        try certificateAuthority.mobileInitializeUserRootKey()
 
         let node = try KeysFFI()
         try node.initializeAsNode()
         let csr = try node.nodeGenerateCSR()
-        let ncm = try ca.mobileProcessSetupToken(csr)
+        let ncm = try certificateAuthority.mobileProcessSetupToken(csr)
         try node.nodeInstallCertificate(ncm)
 
         // Generate a network id and retrieve its public key from the mobile (CA)
-        let networkId = try ca.mobileGenerateNetworkDataKey()
-        let networkPk = try ca.mobileGetNetworkPublicKey(networkId)
+        let networkId = try certificateAuthority.mobileGenerateNetworkDataKey()
+        let networkPublicKey = try certificateAuthority.mobileGetNetworkPublicKey(networkId)
         // Do not install network key on node in this test; we only validate mobile public key install
 
         // Create a separate mobile-only keys and install the network public key
         let userMobile = try KeysFFI()
         try userMobile.initializeAsMobile()
         try userMobile.mobileInitializeUserRootKey()
-        try userMobile.mobileInstallNetworkPublicKey(networkPublicKey: networkPk)
+        try userMobile.mobileInstallNetworkPublicKey(networkPublicKey: networkPublicKey)
 
         // Verify that the installed network public key can be retrieved by the userMobile keystore
         let retrieved = try userMobile.mobileGetNetworkPublicKey(networkId)
-        XCTAssertEqual(retrieved, networkPk)
+        XCTAssertEqual(retrieved, networkPublicKey)
     }
 }

@@ -10,59 +10,59 @@ public final class FFIDiscovery {
         var out: UnsafeMutableRawPointer?
         let (_, err) = withRnError { errPtr in
             optionsCBOR.withUnsafeBytes { rawBuf in
-                let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_discovery_new_with_multicast(keys.rawHandle, p, optionsCBOR.count, &out, errPtr)
+                let rawPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_discovery_new_with_multicast(keys.rawHandle, rawPtr, optionsCBOR.count, &out, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
         handle = out
     }
 
-    deinit { if let h = handle { rn_discovery_free(h) } }
+    deinit { if let discoveryHandle = handle { rn_discovery_free(discoveryHandle) } }
 
     public func initWithOptions(_ optionsCBOR: Data) throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "discovery freed") }
+        guard let discoveryHandle = handle else { throw FFIError(code: -1, message: "discovery freed") }
         let (_, err) = withRnError { errPtr in
             optionsCBOR.withUnsafeBytes { rawBuf in
-                let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_discovery_init(h, p, optionsCBOR.count, errPtr)
+                let rawPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_discovery_init(discoveryHandle, rawPtr, optionsCBOR.count, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 
     public func bindEvents(to transport: FFITransport) throws {
-        guard let h = handle, let th = transport.handle else { throw FFIError(code: -1, message: "handles freed") }
-        let (_, err) = withRnError { rn_discovery_bind_events_to_transport(h, th, $0) }
-        if let e = err { throw e }
+        guard let discoveryHandle = handle, let transportHandle = transport.handle else { throw FFIError(code: -1, message: "handles freed") }
+        let (_, err) = withRnError { rn_discovery_bind_events_to_transport(discoveryHandle, transportHandle, $0) }
+        if let error = err { throw error }
     }
 
     public func startAnnouncing() throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "discovery freed") }
-        let (_, err) = withRnError { rn_discovery_start_announcing(h, $0) }
-        if let e = err { throw e }
+        guard let discoveryHandle = handle else { throw FFIError(code: -1, message: "discovery freed") }
+        let (_, err) = withRnError { rn_discovery_start_announcing(discoveryHandle, $0) }
+        if let error = err { throw error }
     }
 
     public func stopAnnouncing() throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "discovery freed") }
-        let (_, err) = withRnError { rn_discovery_stop_announcing(h, $0) }
-        if let e = err { throw e }
+        guard let discoveryHandle = handle else { throw FFIError(code: -1, message: "discovery freed") }
+        let (_, err) = withRnError { rn_discovery_stop_announcing(discoveryHandle, $0) }
+        if let error = err { throw error }
     }
 
     public func shutdown() throws {
-        guard let h = handle else { return }
-        let (_, err) = withRnError { rn_discovery_shutdown(h, $0) }
-        if let e = err { throw e }
+        guard let discoveryHandle = handle else { return }
+        let (_, err) = withRnError { rn_discovery_shutdown(discoveryHandle, $0) }
+        if let error = err { throw error }
     }
 
     public func updateLocalPeerInfo(_ peerInfoCBOR: Data) throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "discovery freed") }
+        guard let discoveryHandle = handle else { throw FFIError(code: -1, message: "discovery freed") }
         let (_, err) = withRnError { errPtr in
             peerInfoCBOR.withUnsafeBytes { rawBuf in
-                let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_discovery_update_local_peer_info(h, p, peerInfoCBOR.count, errPtr)
+                let rawPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_discovery_update_local_peer_info(discoveryHandle, rawPtr, peerInfoCBOR.count, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 }

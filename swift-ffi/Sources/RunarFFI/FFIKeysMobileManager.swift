@@ -18,7 +18,7 @@ class MobileKeyManagerImpl: MobileKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_mobile_initialize_user_root_key(handle, errPtr)
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 
     func getUserPublicKey() throws -> Data {
@@ -27,10 +27,10 @@ class MobileKeyManagerImpl: MobileKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_mobile_get_user_public_key(handle, &out, &outLen, errPtr)
         }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        if let error = err { throw error }
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -50,11 +50,11 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -70,7 +70,7 @@ class MobileKeyManagerImpl: MobileKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_mobile_get_keystore_state(handle, &state, errPtr)
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
         return state
     }
 
@@ -81,9 +81,9 @@ class MobileKeyManagerImpl: MobileKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_mobile_generate_network_data_key(handle, &out, &outLen, errPtr)
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        defer { if let s = out { rn_string_free(s) } }
+        defer { if let outString = out { rn_string_free(outString) } }
         return out.map { String(cString: $0) } ?? ""
     }
 
@@ -96,11 +96,11 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 rn_keys_mobile_get_network_public_key(handle, cNetworkId, &out, &outLen, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -123,11 +123,11 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 }
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -140,11 +140,11 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 rn_keys_mobile_derive_user_profile_key(handle, cLabel, &out, &outLen, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -164,11 +164,11 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -188,11 +188,11 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -207,11 +207,35 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 
     func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        // Prepare profile keys array
+        let (profileKeysArray, profileLensArray) = try prepareProfileKeys(profileKeys)
+
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let result = try performEnvelopeEncryption(
+            data: data,
+            networkId: networkId,
+            profileKeysArray: profileKeysArray,
+            profileLensArray: profileLensArray,
+            out: &out,
+            outLen: &outLen
+        )
+
+        if result != 0 {
+            throw FFIError.operationFailed("Failed to encrypt with envelope")
+        }
+
+        guard let outPtr = out else { return Data() }
+        let cbor = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
+        return cbor
+    }
+
+    private func prepareProfileKeys(_ profileKeys: [Data]?) throws -> ([UnsafePointer<UInt8>?], [Int]) {
         var profileKeysArray: [UnsafePointer<UInt8>?] = []
         var profileLensArray: [Int] = []
 
@@ -227,10 +251,18 @@ class MobileKeyManagerImpl: MobileKeyManager {
             }
         }
 
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
+        return (profileKeysArray, profileLensArray)
+    }
 
-        let result = data.withUnsafeBytes { raw in
+    private func performEnvelopeEncryption(
+        data: Data,
+        networkId: String?,
+        profileKeysArray: [UnsafePointer<UInt8>?],
+        profileLensArray: [Int],
+        out: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
+        outLen: UnsafeMutablePointer<Int>
+    ) throws -> Int32 {
+        return data.withUnsafeBytes { raw in
             if let networkId = networkId {
                 return networkId.withCString { cNid in
                     profileKeysArray.withUnsafeBufferPointer { keysPtr in
@@ -243,8 +275,8 @@ class MobileKeyManagerImpl: MobileKeyManager {
                                 profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
                                 profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
                                 profileKeysArray.count,
-                                &out,
-                                &outLen,
+                                out,
+                                outLen,
                                 nil
                             )
                         }
@@ -261,21 +293,13 @@ class MobileKeyManagerImpl: MobileKeyManager {
                             profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
                             profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
                             profileKeysArray.count,
-                            &out,
-                            &outLen,
+                            out,
+                            outLen,
                             nil
                         )
                     }
                 }
             }
         }
-
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to encrypt with envelope")
-        }
-        guard let p = out else { return Data() }
-        let cbor = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return cbor
     }
 }

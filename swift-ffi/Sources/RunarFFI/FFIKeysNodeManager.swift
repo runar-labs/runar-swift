@@ -20,10 +20,10 @@ class NodeKeyManagerImpl: NodeKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_node_get_public_key(handle, &out, &outLen, errPtr)
         }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        if let error = err { throw error }
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -33,10 +33,10 @@ class NodeKeyManagerImpl: NodeKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_node_get_agreement_public_key(handle, &out, &outLen, errPtr)
         }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        if let error = err { throw error }
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -46,10 +46,10 @@ class NodeKeyManagerImpl: NodeKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_node_generate_csr(handle, &out, &outLen, errPtr)
         }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        if let error = err { throw error }
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -64,7 +64,7 @@ class NodeKeyManagerImpl: NodeKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 
     func registerDeviceKeystore(_: DeviceKeystore) throws {
@@ -79,7 +79,7 @@ class NodeKeyManagerImpl: NodeKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_node_get_keystore_state(handle, &state, errPtr)
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
         return state
     }
 
@@ -94,11 +94,35 @@ class NodeKeyManagerImpl: NodeKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 
     func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        // Prepare profile keys array
+        let (profileKeysArray, profileLensArray) = try prepareProfileKeys(profileKeys)
+
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let result = try performEnvelopeEncryption(
+            data: data,
+            networkId: networkId,
+            profileKeysArray: profileKeysArray,
+            profileLensArray: profileLensArray,
+            out: &out,
+            outLen: &outLen
+        )
+
+        if result != 0 {
+            throw FFIError.operationFailed("Failed to encrypt with envelope")
+        }
+
+        guard let outPtr = out else { return Data() }
+        let cbor = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
+        return cbor
+    }
+
+    private func prepareProfileKeys(_ profileKeys: [Data]?) throws -> ([UnsafePointer<UInt8>?], [Int]) {
         var profileKeysArray: [UnsafePointer<UInt8>?] = []
         var profileLensArray: [Int] = []
 
@@ -114,10 +138,18 @@ class NodeKeyManagerImpl: NodeKeyManager {
             }
         }
 
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
+        return (profileKeysArray, profileLensArray)
+    }
 
-        let result = data.withUnsafeBytes { raw in
+    private func performEnvelopeEncryption(
+        data: Data,
+        networkId: String?,
+        profileKeysArray: [UnsafePointer<UInt8>?],
+        profileLensArray: [Int],
+        out: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
+        outLen: UnsafeMutablePointer<Int>
+    ) throws -> Int32 {
+        return data.withUnsafeBytes { raw in
             if let networkId = networkId {
                 return networkId.withCString { cNid in
                     profileKeysArray.withUnsafeBufferPointer { keysPtr in
@@ -130,8 +162,8 @@ class NodeKeyManagerImpl: NodeKeyManager {
                                 profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
                                 profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
                                 profileKeysArray.count,
-                                &out,
-                                &outLen,
+                                out,
+                                outLen,
                                 nil
                             )
                         }
@@ -148,22 +180,14 @@ class NodeKeyManagerImpl: NodeKeyManager {
                             profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
                             profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
                             profileKeysArray.count,
-                            &out,
-                            &outLen,
+                            out,
+                            outLen,
                             nil
                         )
                     }
                 }
             }
         }
-
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to encrypt with envelope")
-        }
-        guard let p = out else { return Data() }
-        let cbor = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return cbor
     }
 
     func encryptLocalData(_ data: Data) throws -> Data {
@@ -180,11 +204,11 @@ class NodeKeyManagerImpl: NodeKeyManager {
                                            errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let cipher = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let cipher = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return cipher
     }
 
@@ -202,11 +226,11 @@ class NodeKeyManagerImpl: NodeKeyManager {
                                            errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let plain = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let plain = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return plain
     }
 
@@ -226,11 +250,11 @@ class NodeKeyManagerImpl: NodeKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -250,11 +274,11 @@ class NodeKeyManagerImpl: NodeKeyManager {
                 )
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
     }
 
@@ -264,9 +288,9 @@ class NodeKeyManagerImpl: NodeKeyManager {
         let (_, err) = withRnError { errPtr in
             rn_keys_node_get_node_id(handle, &out, &outLen, errPtr)
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
 
-        defer { if let s = out { rn_string_free(s) } }
+        defer { if let outString = out { rn_string_free(outString) } }
         return out.map { String(cString: $0) } ?? ""
     }
 }

@@ -56,9 +56,9 @@ public final class FFIKeyStore: EnvelopeCrypto {
         // Allocate C buffers to keep pointers valid during the call
         var pkRawBuffers: [UnsafeMutablePointer<UInt8>] = []
         pkRawBuffers.reserveCapacity(profilePublicKeys.count)
-        for pk in profilePublicKeys {
-            let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: pk.count)
-            pk.copyBytes(to: buf, count: pk.count)
+        for profileKey in profilePublicKeys {
+            let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: profileKey.count)
+            profileKey.copyBytes(to: buf, count: profileKey.count)
             pkRawBuffers.append(buf)
         }
         // Build pointers and lengths arrays
@@ -90,10 +90,10 @@ public final class FFIKeyStore: EnvelopeCrypto {
                                                                           nil,
                                                                           ptrsBuf.baseAddress,
                                                                           lensBuf.baseAddress,
-                                                                          profilePublicKeys.count,
-                                                                          &outCbor,
-                                                                          &outLen,
-                                                                          errPtr)
+                                                                              profilePublicKeys.count,
+                                                                              &outCbor,
+                                                                              &outLen,
+                                                                              errPtr)
                         }
                     }
                 }
@@ -101,10 +101,10 @@ public final class FFIKeyStore: EnvelopeCrypto {
             return result
         }
         // Free allocated buffers
-        for p in pkRawBuffers {
-            p.deallocate()
+        for buffer in pkRawBuffers {
+            buffer.deallocate()
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
         guard let ptr = outCbor else { throw FFIError(code: -1, message: "encrypt_with_envelope returned null") }
         let eedCbor = Data(bytes: ptr, count: outLen)
         rn_free(ptr, outLen)
@@ -125,10 +125,10 @@ public final class FFIKeyStore: EnvelopeCrypto {
                                                 errPtr)
             }
         }
-        if let e = err { throw e }
-        guard let p = outPtr else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        if let error = err { throw error }
+        guard let outPointer = outPtr else { return Data() }
+        let data = Data(bytes: outPointer, count: outLen)
+        rn_free(outPointer, outLen)
         return data
     }
 
@@ -138,14 +138,14 @@ public final class FFIKeyStore: EnvelopeCrypto {
         let itemOpt = try CBORDecoder(input: [UInt8](data)).decodeItem()
         guard let item = itemOpt, case let CBOR.map(map) = item else { throw FFIError(code: 2, message: "Invalid envelope CBOR") }
         func bytes(_ key: String) -> Data {
-            if let v = map[CBOR.utf8String(key)] {
-                switch v {
-                case let .byteString(b): return Data(b)
+            if let value = map[CBOR.utf8String(key)] {
+                switch value {
+                case let .byteString(byteArray): return Data(byteArray)
                 case let .array(arr):
                     var out: [UInt8] = []
                     out.reserveCapacity(arr.count)
-                    for e in arr {
-                        if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) { out.append(UInt8(u)) }
+                    for element in arr {
+                        if case let .unsignedInt(unsignedValue) = element, unsignedValue <= UInt64(UInt8.max) { out.append(UInt8(unsignedValue)) }
                     }
                     return Data(out)
                 default: return Data()
@@ -153,9 +153,85 @@ public final class FFIKeyStore: EnvelopeCrypto {
             }
             return Data()
         }
-        func stringOpt(_ key: String) -> String? {
-            if let v = map[CBOR.utf8String(key)], case let .utf8String(s) = v { return s }
-            return nil
+        func string(_ key: String) -> String {
+            if let value = map[CBOR.utf8String(key)] {
+                switch value {
+                case let .utf8String(str): return str
+                default: return ""
+                }
+            }
+            return ""
+        }
+        func unsignedInt(_ key: String) -> UInt64 {
+            if let value = map[CBOR.utf8String(key)] {
+                switch value {
+                case let .unsignedInt(unsignedValue): return unsignedValue
+                default: return 0
+                }
+            }
+            return 0
+        }
+        func array(_ key: String) -> [Data] {
+            if let value = map[CBOR.utf8String(key)] {
+                switch value {
+                case let .array(arr):
+                    var out: [Data] = []
+                    out.reserveCapacity(arr.count)
+                    for element in arr {
+                        if case let .byteString(byteArray) = element { out.append(Data(byteArray)) }
+                    }
+                    return out
+                default: return []
+                }
+            }
+            return []
+        }
+        func arrayOfStrings(_ key: String) -> [String] {
+            if let value = map[CBOR.utf8String(key)] {
+                switch value {
+                case let .array(arr):
+                    var out: [String] = []
+                    out.reserveCapacity(arr.count)
+                    for element in arr {
+                        if case let .utf8String(str) = element { out.append(str) }
+                    }
+                    return out
+                default: return []
+                }
+            }
+            return []
+        }
+        func map(_ key: String) -> [String: String] {
+            if let value = map[CBOR.utf8String(key)] {
+                switch value {
+                case let .map(mapValue):
+                    var out: [String: String] = [:]
+                    for (key, value) in mapValue {
+                        if case let .utf8String(keyStr) = key, case let .utf8String(valueStr) = value {
+                            out[keyStr] = valueStr
+                        }
+                    }
+                    return out
+                default: return [:]
+                }
+            }
+            return [:]
+        }
+        func mapOfStrings(_ key: String) -> [String: String] {
+            if let value = map[CBOR.utf8String(key)] {
+                switch value {
+                case let .map(mapValue):
+                    var out: [String: String] = [:]
+                    for (key, value) in mapValue {
+                        if case let .utf8String(keyStr) = key, case let .utf8String(valueStr) = value {
+                            out[keyStr] = valueStr
+                        }
+                    }
+                    return out
+                default: return [:]
+                }
+            }
+            return [:]
         }
         var profileMap: [String: Data] = [:]
         if let pm = map[CBOR.utf8String("profile_encrypted_keys")], case let .map(m) = pm {
@@ -178,7 +254,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
         }
         return EnvelopeEncryptedData(
             encryptedData: bytes("encrypted_data"),
-            networkId: stringOpt("network_id"),
+            networkId: string("network_id"),
             networkEncryptedKey: bytes("network_encrypted_key"),
             profileEncryptedKeys: profileMap
         )

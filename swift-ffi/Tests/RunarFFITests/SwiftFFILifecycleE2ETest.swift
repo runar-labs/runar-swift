@@ -7,16 +7,16 @@ extension Data {
     init?(hex: String) {
         let len = hex.count / 2
         var data = Data(capacity: len)
-        var i = hex.startIndex
+        var currentIndex = hex.startIndex
         for _ in 0 ..< len {
-            let j = hex.index(i, offsetBy: 2)
-            let bytes = hex[i ..< j]
+            let nextIndex = hex.index(currentIndex, offsetBy: 2)
+            let bytes = hex[currentIndex ..< nextIndex]
             if var num = UInt8(bytes, radix: 16) {
                 data.append(&num, count: 1)
             } else {
                 return nil
             }
-            i = j
+            currentIndex = nextIndex
         }
         self = data
     }
@@ -32,106 +32,31 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
         print("   📋 Following EXACT steps from ffi_lifecycle_test.rs")
 
         // ==========================================
-        // Mobile side - first time use - generate user keys
+        // Phase 1: Mobile Setup
         // ==========================================
-        print("\n📱 MOBILE SIDE - First Time Setup")
-
-        let mobileKeys = try KeysFFI()
-        try mobileKeys.initializeAsMobile()
-
-        // 1 - (mobile side) - generate user master key
-        // Generate user root agreement public key for ECIES
-        try mobileKeys.mobileInitializeUserRootKey()
-
-        // Get the user root public key (essential for encrypting setup tokens)
-        let userPublicKey = try mobileKeys.mobileGetUserPublicKey()
-        XCTAssertEqual(userPublicKey.count, 65, "User root key should have a valid public key")
-        print("   ✅ User public key generated: \(userPublicKey.count) bytes")
+        let (mobileKeys, userPublicKey) = try setupMobileSide()
 
         // ==========================================
-        // Node first time use - enter in setup mode
+        // Phase 2: Node Setup
         // ==========================================
-        print("\n🖥️  NODE SIDE - Setup Mode")
-
-        let nodeKeys = try KeysFFI()
-        try nodeKeys.initializeAsNode()
-
-        // 2 - node side (setup mode) - generate its own TLS and Storage keypairs
-        // and generate a setup handshake token which contains the CSR request and the node public key
-        // which will be presented as QR code.. here in the test we use the token as a string directly.
-
-        // Get the node public key (node ID) - keys are created in constructor
-        let nodePublicKey = try nodeKeys.nodeGetPublicKey()
-        print("   ✅ Node identity created: \(nodePublicKey.count) bytes")
-
-        // Generate setup token (CSR)
-        let setupToken = try nodeKeys.nodeGenerateCSR()
-        print("   ✅ Setup token (CSR) generated: \(setupToken.count) bytes")
-
-        // In a real scenario, the node gets the mobile public key (e.g., by scanning a QR code)
-        // and uses it to encrypt the setup token.
-        let encryptedSetupToken = try nodeKeys.encryptMessageForMobile(
-            message: setupToken,
-            mobilePublicKey: userPublicKey
-        )
-
-        // The encrypted token is then encoded (e.g., into a QR code).
-        let setupTokenStr = encryptedSetupToken.map { String(format: "%02x", $0) }.joined()
-        print("   ✅ Encrypted setup token created for QR code")
+        let (nodeKeys, setupToken, encryptedSetupToken) = try setupNodeSide(userPublicKey: userPublicKey)
 
         // ==========================================
-        // Mobile scans a Node QR code which contains the setup token
+        // Phase 3: Certificate Exchange
         // ==========================================
-        print("\n📱 MOBILE SIDE - Processing Node Setup Token")
-
-        // Mobile decodes the QR code and decrypts the setup token.
-        // FIXED: Use proper hex decoding instead of UTF8 conversion
-        guard let encryptedSetupTokenMobile = Data(hex: setupTokenStr) else {
-            XCTFail("Failed to decode hex string back to data")
-            return
-        }
-        let decryptedSetupTokenBytes = try mobileKeys.mobileDecryptMessageFromNode(
-            encryptedMessage: encryptedSetupTokenMobile
-        )
-
-        // 3 - (mobile side) - received the token and sign the CSR
-        let certMessage = try mobileKeys.mobileProcessSetupToken(decryptedSetupTokenBytes)
-        print("   ✅ Certificate issued")
-
-        // Extract the node's public key from the now-decrypted setup token
-        // Note: In a real implementation, we'd parse the setup token CBOR to get the node agreement public key
-        // For now, we'll use the node public key we already have
-        let nodeAgreementPublicKey = try nodeKeys.nodeGetAgreementPublicKey()
-        print("   ✅ Node agreement public key obtained: \(nodeAgreementPublicKey.count) bytes")
+        try performCertificateExchange(mobileKeys: mobileKeys, nodeKeys: nodeKeys, encryptedSetupToken: encryptedSetupToken)
 
         // ==========================================
-        // Secure certificate transmission to node
-        // ==========================================
-        print("\n🔐 SECURE CERTIFICATE TRANSMISSION")
-
-        // The certificate message is serialized and then encrypted for the node using its public key.
-        let encryptedCertMsg = try mobileKeys.encryptMessageForNode(
-            message: certMessage,
-            nodeAgreementPublicKey: nodeAgreementPublicKey
-        )
-
-        // Node side - receives the encrypted certificate message, decrypts, and installs it.
-        let decryptedCertMsgBytes = try nodeKeys.decryptMessageFromMobile(
-            encryptedMessage: encryptedCertMsg
-        )
-
-        // 4 - (node side) - received the certificate message, validates it, and stores it
-        try nodeKeys.nodeInstallCertificate(decryptedCertMsgBytes)
-        print("   ✅ Certificate installed on node")
-
-        // ==========================================
-        // Phase 3: Network Setup
+        // Phase 4: Network Setup
         // ==========================================
         print("\n🌐 PHASE 3: Network Setup")
 
         // 3.1 Mobile generates network data key
         let networkId = try mobileKeys.mobileGenerateNetworkDataKey()
         print("   ✅ Network data key generated: \(networkId)")
+
+        // Get node agreement public key for network key message
+        let nodeAgreementPublicKey = try nodeKeys.nodeGetAgreementPublicKey()
 
         // 3.2 Mobile creates network key message
         let networkKeyMessage = try mobileKeys.mobileCreateNetworkKeyMessage(
@@ -235,5 +160,101 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
         print("   • Node certificates: 1")
         print("   • Storage encryption: ✅")
         print("   • State persistence: ✅")
+    }
+
+    // MARK: - Helper Methods
+
+    private func setupMobileSide() throws -> (KeysFFI, Data) {
+        print("\n📱 MOBILE SIDE - First Time Setup")
+
+        let mobileKeys = try KeysFFI()
+        try mobileKeys.initializeAsMobile()
+
+        // 1 - (mobile side) - generate user master key
+        // Generate user root agreement public key for ECIES
+        try mobileKeys.mobileInitializeUserRootKey()
+
+        // Get the user root public key (essential for encrypting setup tokens)
+        let userPublicKey = try mobileKeys.mobileGetUserPublicKey()
+        XCTAssertEqual(userPublicKey.count, 65, "User root key should have a valid public key")
+        print("   ✅ User public key generated: \(userPublicKey.count) bytes")
+
+        return (mobileKeys, userPublicKey)
+    }
+
+    private func setupNodeSide(userPublicKey: Data) throws -> (KeysFFI, Data, String) {
+        print("\n🖥️  NODE SIDE - Setup Mode")
+
+        let nodeKeys = try KeysFFI()
+        try nodeKeys.initializeAsNode()
+
+        // 2 - node side (setup mode) - generate its own TLS and Storage keypairs
+        // and generate a setup handshake token which contains the CSR request and the node public key
+        // which will be presented as QR code.. here in the test we use the token as a string directly.
+
+        // Get the node public key (node ID) - keys are created in constructor
+        let nodePublicKey = try nodeKeys.nodeGetPublicKey()
+        print("   ✅ Node identity created: \(nodePublicKey.count) bytes")
+
+        // Generate setup token (CSR)
+        let setupToken = try nodeKeys.nodeGenerateCSR()
+        print("   ✅ Setup token (CSR) generated: \(setupToken.count) bytes")
+
+        // In a real scenario, the node gets the mobile public key (e.g., by scanning a QR code)
+        // and uses it to encrypt the setup token.
+        let encryptedSetupToken = try nodeKeys.encryptMessageForMobile(
+            message: setupToken,
+            mobilePublicKey: userPublicKey
+        )
+
+        // The encrypted token is then encoded (e.g., into a QR code).
+        let setupTokenStr = encryptedSetupToken.map { String(format: "%02x", $0) }.joined()
+        print("   ✅ Encrypted setup token created for QR code")
+
+        return (nodeKeys, setupToken, setupTokenStr)
+    }
+
+    private func performCertificateExchange(mobileKeys: KeysFFI, nodeKeys: KeysFFI, encryptedSetupToken: String) throws {
+        print("\n📱 MOBILE SIDE - Processing Node Setup Token")
+
+        // Mobile decodes the QR code and decrypts the setup token.
+        // FIXED: Use proper hex decoding instead of UTF8 conversion
+        guard let encryptedSetupTokenMobile = Data(hex: encryptedSetupToken) else {
+            XCTFail("Failed to decode hex string back to data")
+            return
+        }
+        let decryptedSetupTokenBytes = try mobileKeys.mobileDecryptMessageFromNode(
+            encryptedMessage: encryptedSetupTokenMobile
+        )
+
+        // 3 - (mobile side) - received the token and sign the CSR
+        let certMessage = try mobileKeys.mobileProcessSetupToken(decryptedSetupTokenBytes)
+        print("   ✅ Certificate issued")
+
+        // Extract the node's public key from the now-decrypted setup token
+        // Note: In a real implementation, we'd parse the setup token CBOR to get the node agreement public key
+        // For now, we'll use the node public key we already have
+        let nodeAgreementPublicKey = try nodeKeys.nodeGetAgreementPublicKey()
+        print("   ✅ Node agreement public key obtained: \(nodeAgreementPublicKey.count) bytes")
+
+        // ==========================================
+        // Secure certificate transmission to node
+        // ==========================================
+        print("\n🔐 SECURE CERTIFICATE TRANSMISSION")
+
+        // The certificate message is serialized and then encrypted for the node using its public key.
+        let encryptedCertMsg = try mobileKeys.encryptMessageForNode(
+            message: certMessage,
+            nodeAgreementPublicKey: nodeAgreementPublicKey
+        )
+
+        // Node side - receives the encrypted certificate message, decrypts, and installs it.
+        let decryptedCertMsgBytes = try nodeKeys.decryptMessageFromMobile(
+            encryptedMessage: encryptedCertMsg
+        )
+
+        // 4 - (node side) - received the certificate message, validates it, and stores it
+        try nodeKeys.nodeInstallCertificate(decryptedCertMsgBytes)
+        print("   ✅ Certificate installed on node")
     }
 }

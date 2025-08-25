@@ -10,6 +10,7 @@ public extension KeysFFI {
         let manager = try validateMobileManager()
         try manager.installNetworkPublicKey(networkPublicKey: networkPublicKey)
     }
+
     func encryptForPublicKey(data: Data, recipientPublicKey: Data) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
@@ -36,9 +37,9 @@ public extension KeysFFI {
         }
         if let error = error { throw error }
 
-        guard let p = out else { return Data() }
-        let result = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let result = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return result
     }
 
@@ -68,9 +69,9 @@ public extension KeysFFI {
         }
         if let error = error { throw error }
 
-        guard let p = out else { return Data() }
-        let result = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let result = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return result
     }
 
@@ -97,9 +98,9 @@ public extension KeysFFI {
         }
         if let error = error { throw error }
 
-        guard let p = out else { return Data() }
-        let result = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let result = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return result
     }
 
@@ -125,9 +126,9 @@ public extension KeysFFI {
         }
         if let error = error { throw error }
 
-        guard let p = out else { return Data() }
-        let result = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let result = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return result
     }
 }

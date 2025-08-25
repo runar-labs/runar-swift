@@ -32,9 +32,9 @@ public extension KeysFFI {
         }
         if let error = error { throw error }
 
-        guard let p = out else { return Data() }
-        let result = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let result = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return result
     }
 
@@ -65,9 +65,9 @@ public extension KeysFFI {
         }
         if let error = error { throw error }
 
-        guard let p = out else { return Data() }
-        let result = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let result = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return result
     }
 

@@ -4,14 +4,22 @@ import SwiftCBOR
 
 public enum FixturesError: Error { case generic(String) }
 
-public struct PeerInfo: Codable { public let public_key: Data; public let addresses: [String] }
+public struct PeerInfo: Codable {
+    public let publicKey: Data
+    public let addresses: [String]
+}
+
 public struct Empty: Codable {}
-public struct NodeMetadata: Codable { public var services: [Empty]; public var subscriptions: [Empty] }
+public struct NodeMetadata: Codable {
+    public var services: [Empty]
+    public var subscriptions: [Empty]
+}
+
 public struct NodeInfo: Codable {
-    public var node_public_key: Data
-    public var network_ids: [String]
+    public var nodePublicKey: Data
+    public var networkIds: [String]
     public var addresses: [String]
-    public var node_metadata: NodeMetadata
+    public var nodeMetadata: NodeMetadata
     public var version: Int64
 }
 
@@ -19,14 +27,14 @@ public struct NodeInfo: Codable {
 public enum TestFixtures {
     @available(macOS 11.0, *)
     public static func createKeyManagerWithCert() throws -> KeysFFI {
-        let ca = try KeysFFI()
+        let certificateAuthority = try KeysFFI()
         // Initialize CA mobile root key first, before any cert steps
-        try ca.mobileInitializeUserRootKey()
-        _ = try ca.nodeGetPublicKey() // ensure ok
+        try certificateAuthority.mobileInitializeUserRootKey()
+        _ = try certificateAuthority.nodeGetPublicKey() // ensure ok
         let node = try KeysFFI()
         try node.initializeAsNode()
         let csr = try node.nodeGenerateCSR()
-        let ncm = try ca.mobileProcessSetupToken(csr)
+        let ncm = try certificateAuthority.mobileProcessSetupToken(csr)
         try node.nodeInstallCertificate(ncm)
         // Install an empty label mapping and a placeholder NodeInfo; SwiftNode will update addresses after start
         let emptyMapping = CBOR.map([:])
@@ -39,8 +47,14 @@ public enum TestFixtures {
     }
 
     public static func transportOptions(bindAddr: String?, handshakeMs: UInt64? = nil, openStreamMs: UInt64? = nil, maxMessage: UInt64? = nil) -> Data {
-        struct Opts: Codable { let v: UInt32; let bind_addr: String?; let handshake_timeout_ms: UInt64?; let open_stream_timeout_ms: UInt64?; let max_message_size: UInt64? }
-        let opts = Opts(v: 1, bind_addr: bindAddr, handshake_timeout_ms: handshakeMs, open_stream_timeout_ms: openStreamMs, max_message_size: maxMessage)
+        struct Opts: Codable {
+            let version: UInt32
+            let bindAddress: String?
+            let handshakeTimeoutMs: UInt64?
+            let openStreamTimeoutMs: UInt64?
+            let maxMessageSize: UInt64?
+        }
+        let opts = Opts(version: 1, bindAddress: bindAddr, handshakeTimeoutMs: handshakeMs, openStreamTimeoutMs: openStreamMs, maxMessageSize: maxMessage)
         let enc = CodableCBOREncoder()
         return (try? enc.encode(opts)) ?? Data()
     }
@@ -59,7 +73,7 @@ public enum TestFixtures {
         map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
         map[.utf8String("node_metadata")] = .map([
             .utf8String("services"): .array([]),
-            .utf8String("subscriptions"): .array([])
+            .utf8String("subscriptions"): .array([]),
         ])
         map[.utf8String("version")] = .unsignedInt(UInt64(max(0, version)))
         return Data(CBOR.map(map).encode())
@@ -69,7 +83,7 @@ public enum TestFixtures {
 
     @available(macOS 11.0, *)
     public struct CANodes {
-        public let ca: KeysFFI
+        public let certificateAuthority: KeysFFI
         public let nodes: [KeysFFI]
         public let nodeIds: [String]
         public let defaultNetworkId: String
@@ -78,29 +92,29 @@ public enum TestFixtures {
     @available(macOS 11.0, *)
     public static func createCAAndNodes(count: Int, addresses: [String], defaultNetworkId: String = "net") throws -> CANodes {
         precondition(count == addresses.count, "addresses count must match nodes count")
-        let ca = try KeysFFI()
-        try ca.initializeAsMobile()
-        _ = try ca.nodeGetPublicKey()
+        let certificateAuthority = try KeysFFI()
+        try certificateAuthority.initializeAsMobile()
+        _ = try certificateAuthority.nodeGetPublicKey()
         var nodes: [KeysFFI] = []
         var nodeIds: [String] = []
-        for i in 0 ..< count {
+        for index in 0 ..< count {
             let node = try KeysFFI()
             try node.initializeAsNode()
             let csr = try node.nodeGenerateCSR()
-            let ncm = try ca.mobileProcessSetupToken(csr)
+            let ncm = try certificateAuthority.mobileProcessSetupToken(csr)
             try node.nodeInstallCertificate(ncm)
             // empty resolver mapping
             let emptyMapping = CBOR.map([:])
             try node.setLabelMapping(Data(emptyMapping.encode()))
             // set NodeInfo with provided bind address
-            let pk = try node.nodeGetPublicKey()
-            let info = nodeInfo(publicKey: pk, addresses: [addresses[i]], networks: [defaultNetworkId], version: 0)
+            let publicKey = try node.nodeGetPublicKey()
+            let info = nodeInfo(publicKey: publicKey, addresses: [addresses[index]], networks: [defaultNetworkId], version: 0)
             try node.setLocalNodeInfo(info)
             nodes.append(node)
             // Generate node ID from public key (simplified)
-            let nodeId = pk.base64EncodedString()
+            let nodeId = publicKey.base64EncodedString()
             nodeIds.append(nodeId)
         }
-        return CANodes(ca: ca, nodes: nodes, nodeIds: nodeIds, defaultNetworkId: defaultNetworkId)
+        return CANodes(certificateAuthority: certificateAuthority, nodes: nodes, nodeIds: nodeIds, defaultNetworkId: defaultNetworkId)
     }
 }

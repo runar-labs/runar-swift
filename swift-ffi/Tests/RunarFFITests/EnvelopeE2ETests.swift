@@ -7,16 +7,16 @@ final class EnvelopeE2ETests: XCTestCase {
         try keys.initializeAsNode()
 
         // Test that we can get the agreement public key directly
-        let pk = try keys.nodeGetAgreementPublicKey()
+        let publicKey = try keys.nodeGetAgreementPublicKey()
 
         // Should return non-empty data
-        XCTAssertFalse(pk.isEmpty, "Agreement public key should not be empty")
+        XCTAssertFalse(publicKey.isEmpty, "Agreement public key should not be empty")
 
         // Should be a reasonable size for a public key (typically 65 bytes for secp256r1)
-        XCTAssertGreaterThan(pk.count, 32, "Agreement public key should be at least 32 bytes")
-        XCTAssertLessThan(pk.count, 256, "Agreement public key should be less than 256 bytes")
+        XCTAssertGreaterThan(publicKey.count, 32, "Agreement public key should be at least 32 bytes")
+        XCTAssertLessThan(publicKey.count, 256, "Agreement public key should be less than 256 bytes")
 
-        print("✅ Agreement public key retrieved successfully: \(pk.count) bytes")
+        print("✅ Agreement public key retrieved successfully: \(publicKey.count) bytes")
     }
 
     func testEnvelopeEncryptDecryptViaFFI() async throws {
@@ -41,8 +41,8 @@ final class EnvelopeE2ETests: XCTestCase {
             // Need to create a separate node instance to get agreement public key
             nodeKeys = try KeysFFI()
             try nodeKeys!.initializeAsNode()
-            let pk = try nodeKeys!.nodeGetAgreementPublicKey()
-            let nkm = try keys.mobileCreateNetworkKeyMessage(networkId: nid, nodeAgreementPk: pk)
+            let publicKey = try nodeKeys!.nodeGetAgreementPublicKey()
+            let nkm = try keys.mobileCreateNetworkKeyMessage(networkId: nid, nodeAgreementPk: publicKey)
             try nodeKeys!.nodeInstallNetworkKey(nkm)
             usedNetwork = true
         } catch {

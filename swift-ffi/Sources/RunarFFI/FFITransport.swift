@@ -157,70 +157,70 @@ public final class FFITransport {
 
     public func publish(path: String, correlationId: String, payload: Data, destPeerId: String?) throws {
         print("FFITransport.publish: path=\(path), correlationId=\(correlationId), payload.count=\(payload.count), destPeerId=\(destPeerId ?? "nil")")
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
             if payload.isEmpty {
                 var zero: UInt8 = 0
-                let p: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
                 let destCString = (destPeerId ?? "").withCString { strdup($0) }
-                defer { if let c = destCString { free(c) } }
-                rn_transport_publish(h, path, correlationId, p, 0, destCString, errPtr)
+                defer { if let destString = destCString { free(destString) } }
+                rn_transport_publish(transportHandle, path, correlationId, zeroPtr, 0, destCString, errPtr)
             } else {
                 payload.withUnsafeBytes { rawBuf in
-                    let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                    let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
                     let destCString = (destPeerId ?? "").withCString { strdup($0) }
-                    defer { if let c = destCString { free(c) } }
-                    rn_transport_publish(h, path, correlationId, p, payload.count, destCString, errPtr)
+                    defer { if let destString = destCString { free(destString) } }
+                    rn_transport_publish(transportHandle, path, correlationId, payloadPtr, payload.count, destCString, errPtr)
                 }
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 
     public func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
             if responsePayload.isEmpty {
                 var zero: UInt8 = 0
-                let p: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
-                if let pk = profilePublicKey {
-                    pk.withUnsafeBytes { pkRaw in
-                        let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                        rn_transport_complete_request(h, requestId, p, 0, pkp, pk.count, errPtr)
+                let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                if let profileKey = profilePublicKey {
+                    profileKey.withUnsafeBytes { pkRaw in
+                        let profileKeyPtr = pkRaw.bindMemory(to: UInt8.self).baseAddress
+                        rn_transport_complete_request(transportHandle, requestId, zeroPtr, 0, profileKeyPtr, profileKey.count, errPtr)
                     }
                 } else {
-                    var z: UInt8 = 0
-                    let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
-                    rn_transport_complete_request(h, requestId, p, 0, pkp, 0, errPtr)
+                    var zero: UInt8 = 0
+                    let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                    rn_transport_complete_request(transportHandle, requestId, zeroPtr, 0, zeroPtr, 0, errPtr)
                 }
             } else {
                 responsePayload.withUnsafeBytes { rawBuf in
-                    let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                    if let pk = profilePublicKey {
-                        pk.withUnsafeBytes { pkRaw in
-                            let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                            rn_transport_complete_request(h, requestId, p, responsePayload.count, pkp, pk.count, errPtr)
+                    let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                    if let profileKey = profilePublicKey {
+                        profileKey.withUnsafeBytes { pkRaw in
+                            let profileKeyPtr = pkRaw.bindMemory(to: UInt8.self).baseAddress
+                            rn_transport_complete_request(transportHandle, requestId, payloadPtr, responsePayload.count, profileKeyPtr, profileKey.count, errPtr)
                         }
                     } else {
-                        var z: UInt8 = 0
-                        let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
-                        rn_transport_complete_request(h, requestId, p, responsePayload.count, pkp, 0, errPtr)
+                        var zero: UInt8 = 0
+                        let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                        rn_transport_complete_request(transportHandle, requestId, payloadPtr, responsePayload.count, zeroPtr, 0, errPtr)
                     }
                 }
             }
         }
-        if let e = err { throw e }
+        if let error = err { throw error }
     }
 
     public func pollEvent() throws -> Data? {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         var buf: UnsafeMutablePointer<UInt8>?
         var len = 0
-        let (_, err) = withRnError { rn_transport_poll_event(h, &buf, &len, $0) }
-        if let e = err { throw e }
-        guard let b = buf, len > 0 else { return nil }
-        let data = Data(bytes: b, count: len)
-        rn_free(b, len)
+        let (_, err) = withRnError { rn_transport_poll_event(transportHandle, &buf, &len, $0) }
+        if let error = err { throw error }
+        guard let buffer = buf, len > 0 else { return nil }
+        let data = Data(bytes: buffer, count: len)
+        rn_free(buffer, len)
         return data
     }
 }
