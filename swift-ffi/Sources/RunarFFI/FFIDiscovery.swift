@@ -1,15 +1,17 @@
 import CRunarFFI
 import Foundation
 
+@available(macOS 11.0, *)
 public final class FFIDiscovery {
     private var handle: UnsafeMutableRawPointer?
 
-    public init(keys: FFIKeys, optionsCBOR: Data) throws {
+    @available(macOS 11.0, *)
+    public init(keys: KeysFFI, optionsCBOR: Data) throws {
         var out: UnsafeMutableRawPointer?
         let (_, err) = withRnError { errPtr in
             optionsCBOR.withUnsafeBytes { rawBuf in
                 let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_discovery_new_with_multicast(keys.handle, p, optionsCBOR.count, &out, errPtr)
+                rn_discovery_new_with_multicast(keys.rawHandle, p, optionsCBOR.count, &out, errPtr)
             }
         }
         if let e = err { throw e }

@@ -22,10 +22,12 @@ public protocol EnvelopeCrypto {
     func decryptWithNetwork(envelopeData: EnvelopeEncryptedData) throws -> Data
 }
 
+@available(macOS 11.0, *)
 public final class FFIKeyStore: EnvelopeCrypto {
-    private let keys: FFIKeys
+        private let keys: KeysFFI
 
-    public init(keys: FFIKeys) { self.keys = keys }
+    @available(macOS 11.0, *)
+    public init(keys: KeysFFI) { self.keys = keys }
 
     // EnvelopeCrypto
     public func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData {
@@ -63,38 +65,40 @@ public final class FFIKeyStore: EnvelopeCrypto {
         let pkPtrs: [UnsafePointer<UInt8>?] = pkRawBuffers.map { UnsafePointer($0) }
         let pkLens: [Int] = profilePublicKeys.map(\.count)
 
-        let (_, err) = withRnError { errPtr in
+        let (_, err) = withRnError { errPtr -> Int32 in
+            var result: Int32 = 0
             data.withUnsafeBytes { dataRaw in
                 pkPtrs.withUnsafeBufferPointer { ptrsBuf in
                     pkLens.withUnsafeBufferPointer { lensBuf in
                         if let nid = networkId, !nid.isEmpty {
                             nid.withCString { cstr in
-                                rn_keys_encrypt_with_envelope(keys.handle,
-                                                              dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                                                              data.count,
-                                                              cstr,
-                                                              ptrsBuf.baseAddress,
-                                                              lensBuf.baseAddress,
-                                                              profilePublicKeys.count,
-                                                              &outCbor,
-                                                              &outLen,
-                                                              errPtr)
+                                result = rn_keys_encrypt_with_envelope(keys.rawHandle,
+                                                                     dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                                                     data.count,
+                                                                     cstr,
+                                                                     ptrsBuf.baseAddress,
+                                                                     lensBuf.baseAddress,
+                                                                     profilePublicKeys.count,
+                                                                     &outCbor,
+                                                                     &outLen,
+                                                                     errPtr)
                             }
                         } else {
-                            rn_keys_encrypt_with_envelope(keys.handle,
-                                                          dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                                                          data.count,
-                                                          nil,
-                                                          ptrsBuf.baseAddress,
-                                                          lensBuf.baseAddress,
-                                                          profilePublicKeys.count,
-                                                          &outCbor,
-                                                          &outLen,
-                                                          errPtr)
+                            result = rn_keys_encrypt_with_envelope(keys.rawHandle,
+                                                                 dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                                                 data.count,
+                                                                 nil,
+                                                                 ptrsBuf.baseAddress,
+                                                                 lensBuf.baseAddress,
+                                                                 profilePublicKeys.count,
+                                                                 &outCbor,
+                                                                 &outLen,
+                                                                 errPtr)
                         }
                     }
                 }
             }
+            return result
         }
         // Free allocated buffers
         for p in pkRawBuffers {
@@ -113,7 +117,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
         var outLen = 0
         let (_, err) = withRnError { errPtr in
             cbor.withUnsafeBytes { raw in
-                rn_keys_decrypt_envelope(keys.handle,
+                rn_keys_decrypt_envelope(keys.rawHandle,
                                          raw.bindMemory(to: UInt8.self).baseAddress,
                                          cbor.count,
                                          &outPtr,

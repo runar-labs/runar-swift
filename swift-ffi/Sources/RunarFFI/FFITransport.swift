@@ -12,15 +12,17 @@ public struct TransportOptions: Codable {
     public init() {}
 }
 
+@available(macOS 11.0, *)
 public final class FFITransport {
     var handle: UnsafeMutableRawPointer?
 
-    public init(keys: FFIKeys, optionsCBOR: Data) throws {
+    @available(macOS 11.0, *)
+    public init(keys: KeysFFI, optionsCBOR: Data) throws {
         var out: UnsafeMutableRawPointer?
         let (_, err) = withRnError { errPtr in
             optionsCBOR.withUnsafeBytes { rawBuf in
                 let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_transport_new_with_keys(keys.handle, p, optionsCBOR.count, &out, errPtr)
+                rn_transport_new_with_keys(keys.rawHandle, p, optionsCBOR.count, &out, errPtr)
             }
         }
         if let e = err { throw e }

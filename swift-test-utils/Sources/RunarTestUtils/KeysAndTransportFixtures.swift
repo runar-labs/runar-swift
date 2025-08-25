@@ -16,19 +16,20 @@ public struct NodeInfo: Codable {
 }
 
 public enum TestFixtures {
-    public static func createKeyManagerWithCert() throws -> FFIKeys {
-        let ca = try FFIKeys()
-        _ = try ca.nodeId() // ensure ok
-        let node = try FFIKeys()
-        let csr = try node.generateCSR()
-        let ncm = try ca.processSetupToken(csr)
-        try node.installCertificate(ncm)
+    public static func createKeyManagerWithCert() throws -> KeysFFI {
+        let ca = try KeysFFI()
+        _ = try ca.nodeGetPublicKey() // ensure ok
+        let node = try KeysFFI()
+        try node.initializeAsNode()
+        let csr = try node.nodeGenerateCSR()
+        let ncm = try ca.mobileProcessSetupToken(csr)
+        try node.nodeInstallCertificate(ncm)
         // Install an empty label mapping and a placeholder NodeInfo; SwiftNode will update addresses after start
         let emptyMapping = CBOR.map([:])
         let mappingCBOR = Data(emptyMapping.encode())
         try node.setLabelMapping(mappingCBOR)
         // Proper initial NodeInfo using real public key and configured network id; address uses bind 0 (updated after start)
-        let placeholderInfo = try nodeInfo(publicKey: node.publicKey(), addresses: ["127.0.0.1:0"], networks: ["net"], version: 0)
+        let placeholderInfo = try nodeInfo(publicKey: node.nodeGetPublicKey(), addresses: ["127.0.0.1:0"], networks: ["net"], version: 0)
         try node.setLocalNodeInfo(placeholderInfo)
         return node
     }
@@ -63,32 +64,36 @@ public enum TestFixtures {
     // MARK: - CA + Nodes builders (no persistence export/import)
 
     public struct CANodes {
-        public let ca: FFIKeys
-        public let nodes: [FFIKeys]
+        public let ca: KeysFFI
+        public let nodes: [KeysFFI]
         public let nodeIds: [String]
         public let defaultNetworkId: String
     }
 
     public static func createCAAndNodes(count: Int, addresses: [String], defaultNetworkId: String = "net") throws -> CANodes {
         precondition(count == addresses.count, "addresses count must match nodes count")
-        let ca = try FFIKeys()
-        _ = try ca.nodeId()
-        var nodes: [FFIKeys] = []
+        let ca = try KeysFFI()
+        try ca.initializeAsMobile()
+        _ = try ca.nodeGetPublicKey()
+        var nodes: [KeysFFI] = []
         var nodeIds: [String] = []
         for i in 0 ..< count {
-            let node = try FFIKeys()
-            let csr = try node.generateCSR()
-            let ncm = try ca.processSetupToken(csr)
-            try node.installCertificate(ncm)
+            let node = try KeysFFI()
+            try node.initializeAsNode()
+            let csr = try node.nodeGenerateCSR()
+            let ncm = try ca.mobileProcessSetupToken(csr)
+            try node.nodeInstallCertificate(ncm)
             // empty resolver mapping
             let emptyMapping = CBOR.map([:])
             try node.setLabelMapping(Data(emptyMapping.encode()))
             // set NodeInfo with provided bind address
-            let pk = try node.publicKey()
+            let pk = try node.nodeGetPublicKey()
             let info = nodeInfo(publicKey: pk, addresses: [addresses[i]], networks: [defaultNetworkId], version: 0)
             try node.setLocalNodeInfo(info)
             nodes.append(node)
-            try nodeIds.append(node.nodeId())
+            // Generate node ID from public key (simplified)
+            let nodeId = pk.base64EncodedString()
+            nodeIds.append(nodeId)
         }
         return CANodes(ca: ca, nodes: nodes, nodeIds: nodeIds, defaultNetworkId: defaultNetworkId)
     }

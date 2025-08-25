@@ -5,10 +5,11 @@ import XCTest
 
 final class EnvelopeE2ETests: XCTestCase {
     func testGetAgreementPublicKey() throws {
-        let keys = try FFIKeys()
+        let keys = try KeysFFI()
+        try keys.initializeAsNode()
 
         // Test that we can get the agreement public key directly
-        let pk = try keys.getAgreementPublicKey()
+        let pk = try keys.nodeGetAgreementPublicKey()
 
         // Should return non-empty data
         XCTAssertFalse(pk.isEmpty, "Agreement public key should not be empty")
@@ -24,25 +25,29 @@ final class EnvelopeE2ETests: XCTestCase {
         let tempDir = NSTemporaryDirectory() + "ffi_env_test_\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
-        let keys = try FFIKeys()
-        try keys.setPersistenceDir(tempDir)
-        try keys.enableAutoPersist(true)
+        let keys = try KeysFFI()
+        try keys.initializeAsMobile()
+        try keys.mobileSetPersistenceDirectory(URL(fileURLWithPath: tempDir))
+        try keys.mobileEnableAutoPersist(true)
         try keys.mobileInitializeUserRootKey()
 
         // Profile keys not required for this E2E (network-based envelope)
 
         // Generate network id and CSR (SetupToken CBOR)
         let nid = try keys.mobileGenerateNetworkDataKey()
-        let csr = try keys.generateCSR()
+        let csr = try keys.mobileGenerateCSR()
 
         // Extract node agreement public key from CSR CBOR (schema may evolve)
         // Parse SetupToken CBOR: expect map with keys matching Rust struct fields
         // Prefer FFI helper to extract agreement PK
         var usedNetwork = false
         do {
-            let pk = try keys.getAgreementPublicKey()
+            // Need to create a separate node instance to get agreement public key
+            let nodeKeys = try KeysFFI()
+            try nodeKeys.initializeAsNode()
+            let pk = try nodeKeys.nodeGetAgreementPublicKey()
             let nkm = try keys.mobileCreateNetworkKeyMessage(networkId: nid, nodeAgreementPk: pk)
-            try keys.nodeInstallNetworkKey(nkm)
+            try nodeKeys.nodeInstallNetworkKey(nkm)
             usedNetwork = true
         } catch {
             throw XCTSkip("Unable to get agreement public key; skipping network flow")

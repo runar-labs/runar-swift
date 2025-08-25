@@ -3,10 +3,11 @@ import XCTest
 
 final class AgreementKeyTest: XCTestCase {
     func testGetAgreementPublicKey() throws {
-        let keys = try FFIKeys()
+        let keys = try KeysFFI()
+        try keys.initializeAsNode()
 
         // Test that we can get the agreement public key directly
-        let pk = try keys.getAgreementPublicKey()
+        let pk = try keys.nodeGetAgreementPublicKey()
 
         // Should return non-empty data
         XCTAssertFalse(pk.isEmpty, "Agreement public key should not be empty")
