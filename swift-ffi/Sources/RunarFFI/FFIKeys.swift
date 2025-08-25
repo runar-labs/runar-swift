@@ -40,8 +40,6 @@ public protocol MobileKeyManager {
     func getUserPublicKey() throws -> Data
     func processSetupToken(setupTokenCBOR: Data) throws -> Data
     func registerDeviceKeystore(_ keystore: DeviceKeystore) throws
-    func setPersistenceDirectory(_ directory: URL) throws
-    func enableAutoPersist(_ enabled: Bool) throws
     func getKeystoreState() throws -> Int32
     func generateNetworkDataKey() throws -> String
     func getNetworkPublicKey(_ networkId: String) throws -> Data
@@ -53,10 +51,6 @@ public protocol MobileKeyManager {
     func decryptMessageFromNode(encryptedMessage: Data) throws -> Data
     func decryptEnvelope(eedCbor: Data) throws -> Data
     func installNetworkPublicKey(networkPublicKey: Data) throws
-
-    // REMOVE these non-existent functions:
-    // func generateCSR() throws -> Data  // ❌ DOES NOT EXIST IN RUST FFI
-    // func installCertificate(_ nodeCertificateMessageCBOR: Data) throws  // ❌ DOES NOT EXIST IN RUST FFI
 }
 
 /// Node Key Manager - mirrors Rust NodeKeyManager
@@ -66,8 +60,6 @@ public protocol NodeKeyManager {
     func generateCSR() throws -> Data
     func installCertificate(_ nodeCertificateMessageCBOR: Data) throws
     func registerDeviceKeystore(_ keystore: DeviceKeystore) throws
-    func setPersistenceDirectory(_ directory: URL) throws
-    func enableAutoPersist(_ enabled: Bool) throws
     func getKeystoreState() throws -> Int32
     func installNetworkKey(_ nkmCbor: Data) throws
     func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data
@@ -143,11 +135,17 @@ public final class KeysFFI {
             throw FFIError.wrongManagerType("Already initialized as mobile")
         }
 
+        // Call the Rust FFI to initialize
+        let (_, error) = withRnError { errPtr in
+            rn_keys_init_as_mobile(h, errPtr)
+        }
+        if let error = error { throw error }
+
         let manager = MobileKeyManagerImpl(handle: h, logger: logger)
         mobileKeyManager = manager
         nodeKeyManager = nil
 
-        logger.info("Initialized as mobile key manager")
+        logger.info("Initialized as mobile key manager via FFI")
     }
 
     public func initializeAsNode() throws {
@@ -158,52 +156,20 @@ public final class KeysFFI {
             throw FFIError.wrongManagerType("Already initialized as node")
         }
 
+        // Call the Rust FFI to initialize
+        let (_, error) = withRnError { errPtr in
+            rn_keys_init_as_node(h, errPtr)
+        }
+        if let error = error { throw error }
+
         let manager = NodeKeyManagerImpl(handle: h, logger: logger)
         nodeKeyManager = manager
         mobileKeyManager = nil
 
-        logger.info("Initialized as node key manager")
-    }
-
-    // MARK: - FFI Initialization Functions
-
-    /// Initialize FFI instance as mobile manager using Rust FFI
-        public func keysInitAsMobile() throws {
-        guard let keysHandle = handle else {
-            throw FFIError.invalidHandle("Keys handle not initialized")
-        }
-        
-        let (_, error) = withRnError { errPtr in
-            rn_keys_init_as_mobile(keysHandle, errPtr)
-        }
-        if let error = error { throw error }
-        
-        // Update internal state
-        let manager = MobileKeyManagerImpl(handle: keysHandle, logger: logger)
-        mobileKeyManager = manager
-        nodeKeyManager = nil
-        
-        logger.info("Initialized as mobile key manager via FFI")
-    }
-
-    /// Initialize FFI instance as node manager using Rust FFI
-        public func keysInitAsNode() throws {
-        guard let keysHandle = handle else {
-            throw FFIError.invalidHandle("Keys handle not initialized")
-        }
-        
-        let (_, error) = withRnError { errPtr in
-            rn_keys_init_as_node(keysHandle, errPtr)
-        }
-        if let error = error { throw error }
-        
-        // Update internal state
-        let manager = NodeKeyManagerImpl(handle: keysHandle, logger: logger)
-        nodeKeyManager = manager
-        mobileKeyManager = nil
-        
         logger.info("Initialized as node key manager via FFI")
     }
+
+
 
     internal func validateMobileManager() throws -> MobileKeyManager {
         guard let manager = mobileKeyManager else {
@@ -217,6 +183,123 @@ public final class KeysFFI {
             throw FFIError.notInitialized
         }
         return manager
+    }
+
+    // MARK: - Core FFI Functions (Direct Rust FFI calls)
+
+    /// Set label mapping from CBOR-encoded HashMap<String, LabelKeyInfo>
+    public func setLabelMapping(_ mappingCBOR: Data) throws {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let result = mappingCBOR.withUnsafeBytes { raw in
+            rn_keys_set_label_mapping(h, raw.bindMemory(to: UInt8.self).baseAddress, mappingCBOR.count)
+        }
+        if result != 0 {
+            throw FFIError.operationFailed("Failed to set label mapping")
+        }
+    }
+
+    /// Set local NodeInfo from CBOR buffer
+    public func setLocalNodeInfo(_ nodeInfoCBOR: Data) throws {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let result = nodeInfoCBOR.withUnsafeBytes { raw in
+            rn_keys_set_local_node_info(h, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCBOR.count)
+        }
+        if result != 0 {
+            throw FFIError.operationFailed("Failed to set local node info")
+        }
+    }
+
+    /// Set persistence directory
+    public func setPersistenceDirectory(_ directory: URL) throws {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let (_, error) = withRnError { errPtr in
+            directory.path.withCString { cDir in
+                rn_keys_set_persistence_dir(h, cDir, errPtr)
+            }
+        }
+        if let error = error { throw error }
+    }
+
+    /// Enable auto persist
+    public func enableAutoPersist(_ enabled: Bool) throws {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let (_, error) = withRnError { errPtr in
+            rn_keys_enable_auto_persist(h, enabled, errPtr)
+        }
+        if let error = error { throw error }
+    }
+
+    /// Wipe persistence
+    public func wipePersistence() throws {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let (_, error) = withRnError { errPtr in
+            rn_keys_wipe_persistence(h, errPtr)
+        }
+        if let error = error { throw error }
+    }
+
+    /// Get keystore capabilities
+    public func getKeystoreCaps() throws -> RNAPIRnDeviceKeystoreCaps {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        var caps = RNAPIRnDeviceKeystoreCaps()
+        let (_, error) = withRnError { errPtr in
+            rn_keys_get_keystore_caps(h, &caps, errPtr)
+        }
+        if let error = error { throw error }
+        
+        return caps
+    }
+
+    /// Flush state
+    public func flushState() throws {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let (_, error) = withRnError { errPtr in
+            rn_keys_flush_state(h, errPtr)
+        }
+        if let error = error { throw error }
+    }
+
+    /// Ensure symmetric key exists
+    public func ensureSymmetricKey(_ keyName: String) throws -> Data {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        
+        let (_, error) = withRnError { errPtr in
+            keyName.withCString { cKeyName in
+                rn_keys_ensure_symmetric_key(h, cKeyName, &out, &outLen, errPtr)
+            }
+        }
+        if let error = error { throw error }
+        
+        guard let p = out else { return Data() }
+        let result = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return result
     }
 
     // MARK: - API Functions
@@ -253,14 +336,12 @@ public final class KeysFFI {
 
     /// Mobile: Set persistence directory
     public func mobileSetPersistenceDirectory(_ directory: URL) throws {
-        let manager = try validateMobileManager()
-        try manager.setPersistenceDirectory(directory)
+        try setPersistenceDirectory(directory)
     }
 
     /// Mobile: Enable auto persist
     public func mobileEnableAutoPersist(_ enabled: Bool) throws {
-        let manager = try validateMobileManager()
-        try manager.enableAutoPersist(enabled)
+        try enableAutoPersist(enabled)
     }
 
     /// Mobile: Get keystore state
@@ -345,14 +426,12 @@ public final class KeysFFI {
 
     /// Node: Set persistence directory
     public func nodeSetPersistenceDirectory(_ directory: URL) throws {
-        let manager = try validateNodeManager()
-        try manager.setPersistenceDirectory(directory)
+        try setPersistenceDirectory(directory)
     }
 
     /// Node: Enable auto persist
     public func nodeEnableAutoPersist(_ enabled: Bool) throws {
-        let manager = try validateNodeManager()
-        try manager.enableAutoPersist(enabled)
+        try enableAutoPersist(enabled)
     }
 
     /// Node: Get keystore state
@@ -385,31 +464,7 @@ public final class KeysFFI {
         return try manager.decryptLocalData(encrypted)
     }
 
-    /// Set label mapping
-    public func setLabelMapping(_ mappingCBOR: Data) throws {
-        guard let h = handle else {
-            throw FFIError.invalidHandle("Keys handle not initialized")
-        }
-        let result = mappingCBOR.withUnsafeBytes { raw in
-            rn_keys_set_label_mapping(h, raw.bindMemory(to: UInt8.self).baseAddress, mappingCBOR.count)
-        }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to set label mapping")
-        }
-    }
 
-    /// Set local node info
-    public func setLocalNodeInfo(_ nodeInfoCBOR: Data) throws {
-        guard let h = handle else {
-            throw FFIError.invalidHandle("Keys handle not initialized")
-        }
-        let result = nodeInfoCBOR.withUnsafeBytes { raw in
-            rn_keys_set_local_node_info(h, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCBOR.count)
-        }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to set local node info")
-        }
-    }
 
     /// Create new keys handle (static function for compatibility)
     public static func keysNew() throws -> KeysFFI {
