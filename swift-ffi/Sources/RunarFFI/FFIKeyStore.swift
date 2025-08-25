@@ -72,7 +72,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
                     pkLens.withUnsafeBufferPointer { lensBuf in
                         if let nid = networkId, !nid.isEmpty {
                             nid.withCString { cstr in
-                                result = rn_keys_encrypt_with_envelope(keys.rawHandle,
+                                result = rn_keys_mobile_encrypt_with_envelope(keys.rawHandle,
                                                                      dataRaw.bindMemory(to: UInt8.self).baseAddress,
                                                                      data.count,
                                                                      cstr,
@@ -84,7 +84,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
                                                                      errPtr)
                             }
                         } else {
-                            result = rn_keys_encrypt_with_envelope(keys.rawHandle,
+                            result = rn_keys_mobile_encrypt_with_envelope(keys.rawHandle,
                                                                  dataRaw.bindMemory(to: UInt8.self).baseAddress,
                                                                  data.count,
                                                                  nil,
@@ -117,7 +117,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
         var outLen = 0
         let (_, err) = withRnError { errPtr in
             cbor.withUnsafeBytes { raw in
-                rn_keys_decrypt_envelope(keys.rawHandle,
+                rn_keys_mobile_decrypt_envelope(keys.rawHandle,
                                          raw.bindMemory(to: UInt8.self).baseAddress,
                                          cbor.count,
                                          &outPtr,

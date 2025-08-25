@@ -33,13 +33,10 @@ final class EnvelopeE2ETests: XCTestCase {
 
         // Profile keys not required for this E2E (network-based envelope)
 
-        // Generate network id and CSR (SetupToken CBOR)
+        // Generate network id
         let nid = try keys.mobileGenerateNetworkDataKey()
-        let csr = try keys.mobileGenerateCSR()
 
-        // Extract node agreement public key from CSR CBOR (schema may evolve)
-        // Parse SetupToken CBOR: expect map with keys matching Rust struct fields
-        // Prefer FFI helper to extract agreement PK
+        // Get node agreement public key to create network key message
         var usedNetwork = false
         do {
             // Need to create a separate node instance to get agreement public key
