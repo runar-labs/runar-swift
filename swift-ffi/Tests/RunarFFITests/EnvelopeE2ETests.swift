@@ -58,10 +58,10 @@ final class EnvelopeE2ETests: XCTestCase {
                 networkId: nid,
                 profileKeys: nil
             )
-            
+
             // Decrypt using the node keys
             let decryptedData = try nodeKeys.nodeDecryptEnvelope(eedCbor: encryptedData)
-            
+
             XCTAssertEqual(decryptedData, plaintext, "Decrypted data should match original")
             print("✅ Envelope encryption/decryption successful via direct FFI calls")
         }

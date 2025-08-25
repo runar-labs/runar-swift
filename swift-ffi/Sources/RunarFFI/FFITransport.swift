@@ -2,12 +2,12 @@ import CRunarFFI
 import Foundation
 
 public struct TransportOptions: Codable {
-    public var v: UInt32 = 1
-    public var bind_addr: String?
-    public var handshake_timeout_ms: UInt64?
-    public var open_stream_timeout_ms: UInt64?
-    public var max_message_size: UInt64?
-    public var log_level: UInt8? // wire mapped if needed
+    public var version: UInt32 = 1
+    public var bindAddress: String?
+    public var handshakeTimeoutMs: UInt64?
+    public var openStreamTimeoutMs: UInt64?
+    public var maxMessageSize: UInt64?
+    public var logLevel: UInt8? // wire mapped if needed
 
     public init() {}
 }
@@ -19,140 +19,140 @@ public final class FFITransport {
     @available(macOS 11.0, *)
     public init(keys: KeysFFI, optionsCBOR: Data) throws {
         var out: UnsafeMutableRawPointer?
-        let (_, err) = withRnError { errPtr in
+        let (_, error) = withRnError { errPtr in
             optionsCBOR.withUnsafeBytes { rawBuf in
-                let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_transport_new_with_keys(keys.rawHandle, p, optionsCBOR.count, &out, errPtr)
+                let ptr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_transport_new_with_keys(keys.rawHandle, ptr, optionsCBOR.count, &out, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = error { throw error }
         handle = out
     }
 
-    deinit { if let h = handle { rn_transport_free(h) } }
+    deinit { if let transportHandle = handle { rn_transport_free(transportHandle) } }
 
     public func start() throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
-        let (_, err) = withRnError { rn_transport_start(h, $0) }
-        if let e = err { throw e }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
+        let (_, error) = withRnError { rn_transport_start(transportHandle, $0) }
+        if let error = error { throw error }
     }
 
     public func stop() throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
-        let (_, err) = withRnError { rn_transport_stop(h, $0) }
-        if let e = err { throw e }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
+        let (_, error) = withRnError { rn_transport_stop(transportHandle, $0) }
+        if let error = error { throw error }
     }
 
     public func localAddr() throws -> String {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         var cstr: UnsafeMutablePointer<CChar>?
         var len = 0
-        let (_, err) = withRnError { rn_transport_local_addr(h, &cstr, &len, $0) }
-        if let e = err { throw e }
-        defer { if let s = cstr { rn_string_free(s) } }
+        let (_, error) = withRnError { rn_transport_local_addr(transportHandle, &cstr, &len, $0) }
+        if let error = error { throw error }
+        defer { if let cString = cstr { rn_string_free(cString) } }
         return cstr.map { String(cString: $0) } ?? ""
     }
 
     public func connectPeer(_ peerInfoCBOR: Data) throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
-        let (_, err) = withRnError { errPtr in
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
+        let (_, error) = withRnError { errPtr in
             peerInfoCBOR.withUnsafeBytes { rawBuf in
-                let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_transport_connect_peer(h, p, peerInfoCBOR.count, errPtr)
+                let ptr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_transport_connect_peer(transportHandle, ptr, peerInfoCBOR.count, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = error { throw error }
     }
 
     public func disconnectPeer(_ peerNodeId: String) throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
-        let (_, err) = withRnError { rn_transport_disconnect_peer(h, peerNodeId, $0) }
-        if let e = err { throw e }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
+        let (_, error) = withRnError { rn_transport_disconnect_peer(transportHandle, peerNodeId, $0) }
+        if let error = error { throw error }
     }
 
     public func isConnected(_ peerNodeId: String) throws -> Bool {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         var connected = false
-        let (_, err) = withRnError { rn_transport_is_connected(h, peerNodeId, &connected, $0) }
-        if let e = err { throw e }
+        let (_, error) = withRnError { rn_transport_is_connected(transportHandle, peerNodeId, &connected, $0) }
+        if let error = error { throw error }
         return connected
     }
 
     public func updateLocalNodeInfo(_ nodeInfoCBOR: Data) throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
-        let (_, err) = withRnError { errPtr in
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
+        let (_, error) = withRnError { errPtr in
             nodeInfoCBOR.withUnsafeBytes { rawBuf in
-                let p = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_transport_update_local_node_info(h, p, nodeInfoCBOR.count, errPtr)
+                let ptr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_transport_update_local_node_info(transportHandle, ptr, nodeInfoCBOR.count, errPtr)
             }
         }
-        if let e = err { throw e }
+        if let error = error { throw error }
     }
 
     // Note: mapping updates are pushed via keys before creating transport (no callback path).
 
     public func request(path: String, correlationId: String, payload: Data, destPeerId: String?, profilePublicKey: Data?) throws {
-        guard let h = handle else { throw FFIError(code: -1, message: "transport freed") }
-        let (_, err) = withRnError { errPtr in
+        guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
+        let (_, error) = withRnError { errPtr in
             // Prepare non-null C strings for path, correlationId, destPeerId (empty string when nil)
             let destCString = (destPeerId ?? "").withCString { strdup($0) }
-            defer { if let c = destCString { free(c) } }
+            defer { if let destString = destCString { free(destString) } }
             if payload.isEmpty {
                 var zero: UInt8 = 0
-                let p: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
                 if let dest = destPeerId {
-                    if let pk = profilePublicKey {
-                        pk.withUnsafeBytes { pkRaw in
+                    if let profileKey = profilePublicKey {
+                        profileKey.withUnsafeBytes { pkRaw in
                             let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                            rn_transport_request(h, path, correlationId, p, 0, dest, pkp, pk.count, errPtr)
+                            rn_transport_request(transportHandle, path, correlationId, zeroPtr, 0, dest, pkp, profileKey.count, errPtr)
                         }
                     } else {
-                        var z: UInt8 = 0
-                        let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
-                        rn_transport_request(h, path, correlationId, p, 0, dest, pkp, 0, errPtr)
+                        var zero: UInt8 = 0
+                        let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                        rn_transport_request(transportHandle, path, correlationId, zeroPtr, 0, dest, zeroPtr, 0, errPtr)
                     }
                 } else {
-                    if let pk = profilePublicKey {
-                        pk.withUnsafeBytes { pkRaw in
+                    if let profileKey = profilePublicKey {
+                        profileKey.withUnsafeBytes { pkRaw in
                             let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                            rn_transport_request(h, path, correlationId, p, 0, destCString, pkp, pk.count, errPtr)
+                            rn_transport_request(transportHandle, path, correlationId, zeroPtr, 0, destCString, pkp, profileKey.count, errPtr)
                         }
                     } else {
-                        var z: UInt8 = 0
-                        let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
-                        rn_transport_request(h, path, correlationId, p, 0, destCString, pkp, 0, errPtr)
+                        var zero: UInt8 = 0
+                        let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                        rn_transport_request(transportHandle, path, correlationId, zeroPtr, 0, destCString, zeroPtr, 0, errPtr)
                     }
                 }
             } else {
                 payload.withUnsafeBytes { payloadRaw in
-                    let p = payloadRaw.bindMemory(to: UInt8.self).baseAddress
+                    let payloadPtr = payloadRaw.bindMemory(to: UInt8.self).baseAddress
                     if let dest = destPeerId {
-                        if let pk = profilePublicKey {
-                            pk.withUnsafeBytes { pkRaw in
+                        if let profileKey = profilePublicKey {
+                            profileKey.withUnsafeBytes { pkRaw in
                                 let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                                rn_transport_request(h, path, correlationId, p, payload.count, dest, pkp, pk.count, errPtr)
+                                rn_transport_request(transportHandle, path, correlationId, payloadPtr, payload.count, dest, pkp, profileKey.count, errPtr)
                             }
                         } else {
-                            var z: UInt8 = 0
-                            let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
-                            rn_transport_request(h, path, correlationId, p, payload.count, dest, pkp, 0, errPtr)
+                            var zero: UInt8 = 0
+                            let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                            rn_transport_request(transportHandle, path, correlationId, payloadPtr, payload.count, dest, zeroPtr, 0, errPtr)
                         }
                     } else {
-                        if let pk = profilePublicKey {
-                            pk.withUnsafeBytes { pkRaw in
+                        if let profileKey = profilePublicKey {
+                            profileKey.withUnsafeBytes { pkRaw in
                                 let pkp = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                                rn_transport_request(h, path, correlationId, p, payload.count, destCString, pkp, pk.count, errPtr)
+                                rn_transport_request(transportHandle, path, correlationId, payloadPtr, payload.count, destCString, pkp, profileKey.count, errPtr)
                             }
                         } else {
-                            var z: UInt8 = 0
-                            let pkp: UnsafePointer<UInt8>? = withUnsafePointer(to: &z) { $0 }
-                            rn_transport_request(h, path, correlationId, p, payload.count, destCString, pkp, 0, errPtr)
+                            var zero: UInt8 = 0
+                            let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
+                            rn_transport_request(transportHandle, path, correlationId, payloadPtr, payload.count, destCString, zeroPtr, 0, errPtr)
                         }
                     }
                 }
             }
         }
-        if let e = err { throw e }
+        if let error = error { throw error }
     }
 
     public func publish(path: String, correlationId: String, payload: Data, destPeerId: String?) throws {

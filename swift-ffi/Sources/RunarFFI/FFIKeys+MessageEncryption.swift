@@ -1,13 +1,12 @@
-import Foundation
 import CRunarFFI
+import Foundation
 
 // MARK: - Message Encryption Functions Extension
 
 @available(macOS 11.0, *)
-extension KeysFFI {
-
+public extension KeysFFI {
     /// Node: Encrypt message for mobile using mobile's public key
-    public func encryptMessageForMobile(message: Data, mobilePublicKey: Data) throws -> Data {
+    func encryptMessageForMobile(message: Data, mobilePublicKey: Data) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
@@ -40,7 +39,7 @@ extension KeysFFI {
     }
 
     /// Mobile: Encrypt message for node using node's agreement public key
-    public func encryptMessageForNode(message: Data, nodeAgreementPublicKey: Data) throws -> Data {
+    func encryptMessageForNode(message: Data, nodeAgreementPublicKey: Data) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
@@ -73,13 +72,13 @@ extension KeysFFI {
     }
 
     /// Mobile: Decrypt message from node using mobile's agreement private key
-    public func mobileDecryptMessageFromNode(encryptedMessage: Data) throws -> Data {
+    func mobileDecryptMessageFromNode(encryptedMessage: Data) throws -> Data {
         let manager = try validateMobileManager()
         return try manager.decryptMessageFromNode(encryptedMessage: encryptedMessage)
     }
 
     /// Node: Decrypt message from mobile using node's agreement private key
-    public func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data {
+    func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data {
         let manager = try validateNodeManager()
         return try manager.decryptMessageFromMobile(encryptedMessage: encryptedMessage)
     }

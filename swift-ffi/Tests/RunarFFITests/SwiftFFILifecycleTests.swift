@@ -1,17 +1,17 @@
-import XCTest
 import RunarFFI
+import XCTest
 
 /// Basic Swift FFI Test - Testing Core Functionality
 final class SwiftFFILifecycleTests: XCTestCase {
     func testBasicInitialization() {
         do {
             // Test mobile initialization
-            let mobileKeys = try KeysFFI.keysNew()
+            let mobileKeys = try KeysFFI()
             try mobileKeys.initializeAsMobile()
             print("✅ Mobile initialization successful")
 
             // Test node initialization
-            let nodeKeys = try KeysFFI.keysNew()
+            let nodeKeys = try KeysFFI()
             try nodeKeys.initializeAsNode()
             print("✅ Node initialization successful")
 
@@ -26,7 +26,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
 
     func testNodePublicKeyAfterInit() {
         do {
-            let nodeKeys = try KeysFFI.keysNew()
+            let nodeKeys = try KeysFFI()
             try nodeKeys.initializeAsNode()
 
             // Test getting public key immediately after init
@@ -44,7 +44,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
 
     func testNodeAgreementPublicKeyAfterInit() {
         do {
-            let nodeKeys = try KeysFFI.keysNew()
+            let nodeKeys = try KeysFFI()
             try nodeKeys.initializeAsNode()
 
             // Test getting agreement public key immediately after init
@@ -64,7 +64,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
     func testNodeOperationsAfterInit() {
         do {
             print("🔧 Creating KeysFFI handle...")
-            let nodeKeys = try KeysFFI.keysNew()
+            let nodeKeys = try KeysFFI()
             print("✅ KeysFFI handle created")
 
             print("🔧 Initializing as node...")
@@ -109,7 +109,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
 
         // Check if we can access the raw handle
         do {
-            let keys = try KeysFFI.keysNew()
+            let keys = try KeysFFI()
             let rawHandle = keys.rawHandle
             print("✅ FFI handle obtained: \(rawHandle != nil ? "valid" : "null")")
 

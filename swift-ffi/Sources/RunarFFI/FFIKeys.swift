@@ -2,96 +2,18 @@ import CRunarFFI
 import Foundation
 import os
 
-// MARK: - Type Definitions
-
-/// Node Info structure for FFI
-public struct RunarFFINodeInfo {
-    public let nodeId: String
-    public let publicKey: Data
-}
-
-/// Atomic wrapper for thread-safe access
-public final class Atomic<T> {
-    private var value: T
-    private let lock = NSLock()
-
-    public init(_ value: T) {
-        self.value = value
-    }
-
-    public func load() -> T {
-        lock.lock()
-        defer { lock.unlock() }
-        return value
-    }
-
-    public func store(_ newValue: T) {
-        lock.lock()
-        defer { lock.unlock() }
-        value = newValue
-    }
-}
-
-// MARK: - Protocols
-
-/// Mobile Key Manager - mirrors Rust MobileKeyManager
-public protocol MobileKeyManager {
-    func initializeUserRootKey() throws
-    func getUserPublicKey() throws -> Data
-    func processSetupToken(setupTokenCBOR: Data) throws -> Data
-    func registerDeviceKeystore(_ keystore: DeviceKeystore) throws
-    func getKeystoreState() throws -> Int32
-    func generateNetworkDataKey() throws -> String
-    func getNetworkPublicKey(_ networkId: String) throws -> Data
-    func createNetworkKeyMessage(networkId: String, nodeAgreementPk: Data) throws -> Data
-    func deriveUserProfileKey(label: String) throws -> Data
-    func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data
-    func decryptMessageFromNode(encryptedMessage: Data) throws -> Data
-    func decryptEnvelope(eedCbor: Data) throws -> Data
-    func installNetworkPublicKey(networkPublicKey: Data) throws
-}
-
-/// Node Key Manager - mirrors Rust NodeKeyManager
-public protocol NodeKeyManager {
-    func getPublicKey() throws -> Data
-    func getAgreementPublicKey() throws -> Data
-    func generateCSR() throws -> Data
-    func installCertificate(_ nodeCertificateMessageCBOR: Data) throws
-    func registerDeviceKeystore(_ keystore: DeviceKeystore) throws
-    func getKeystoreState() throws -> Int32
-    func installNetworkKey(_ nkmCbor: Data) throws
-    func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data
-    func encryptLocalData(_ data: Data) throws -> Data
-    func decryptLocalData(_ encrypted: Data) throws -> Data
-    func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data
-    func decryptEnvelope(eedCbor: Data) throws -> Data
-    func getNodeId() throws -> String
-}
-
-/// Label Resolver for key derivation
-public protocol LabelResolver {
-    func resolveLabel(_ label: String) throws -> String
-}
-
-/// Device Keystore abstraction
-public protocol DeviceKeystore {
-    func storeKey(_ key: Data, label: String) throws
-    func retrieveKey(label: String) throws -> Data?
-    func deleteKey(label: String) throws
-}
-
 /// Swift FFI Keys Manager - mirrors Rust KeysInner structure
 @available(macOS 11.0, *)
 public final class KeysFFI {
-    internal let logger: Logger
-    internal var mobileKeyManager: MobileKeyManager?
-    internal var nodeKeyManager: NodeKeyManager?
+    let logger: Logger
+    var mobileKeyManager: MobileKeyManager?
+    var nodeKeyManager: NodeKeyManager?
     private var labelResolver: LabelResolver?
     private var localNodeInfo: Atomic<RunarFFINodeInfo?>
     private var deviceKeystore: DeviceKeystore?
     private var persistenceDir: URL?
     private var autoPersist: Bool
-    internal var handle: UnsafeMutableRawPointer?
+    var handle: UnsafeMutableRawPointer?
 
     /// Get the raw FFI handle (for compatibility with other classes)
     public var rawHandle: UnsafeMutableRawPointer? {
@@ -118,15 +40,15 @@ public final class KeysFFI {
     }
 
     deinit {
-        if let h = handle {
-            rn_keys_free(h)
+        if let keysHandle = handle {
+            rn_keys_free(keysHandle)
         }
     }
 
     // MARK: - Initialization Functions
 
     public func initializeAsMobile() throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
         guard mobileKeyManager == nil else {
@@ -135,11 +57,11 @@ public final class KeysFFI {
 
         // Call the Rust FFI to initialize
         let (_, error) = withRnError { errPtr in
-            rn_keys_init_as_mobile(h, errPtr)
+            rn_keys_init_as_mobile(keysHandle, errPtr)
         }
         if let error = error { throw error }
 
-        let manager = MobileKeyManagerImpl(handle: h, logger: logger)
+        let manager = MobileKeyManagerImpl(handle: keysHandle, logger: logger)
         mobileKeyManager = manager
         nodeKeyManager = nil
 
@@ -147,7 +69,7 @@ public final class KeysFFI {
     }
 
     public func initializeAsNode() throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
         guard nodeKeyManager == nil else {
@@ -156,43 +78,41 @@ public final class KeysFFI {
 
         // Call the Rust FFI to initialize
         let (_, error) = withRnError { errPtr in
-            rn_keys_init_as_node(h, errPtr)
+            rn_keys_init_as_node(keysHandle, errPtr)
         }
         if let error = error { throw error }
 
-        let manager = NodeKeyManagerImpl(handle: h, logger: logger)
+        let manager = NodeKeyManagerImpl(handle: keysHandle, logger: logger)
         nodeKeyManager = manager
         mobileKeyManager = nil
 
         logger.info("Initialized as node key manager via FFI")
     }
 
-
-
-    internal func validateMobileManager() throws -> MobileKeyManager {
+    func validateMobileManager() throws -> MobileKeyManager {
         guard let manager = mobileKeyManager else {
             throw FFIError.notInitialized
         }
         return manager
     }
 
-    internal func validateNodeManager() throws -> NodeKeyManager {
+    func validateNodeManager() throws -> NodeKeyManager {
         guard let manager = nodeKeyManager else {
             throw FFIError.notInitialized
         }
         return manager
     }
 
-    // MARK: - Core FFI Functions (Direct Rust FFI calls)
+    // MARK: - Direct FFI Functions
 
-    /// Set label mapping from CBOR-encoded HashMap<String, LabelKeyInfo>
+    /// Set label mapping from CBOR buffer
     public func setLabelMapping(_ mappingCBOR: Data) throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         let result = mappingCBOR.withUnsafeBytes { raw in
-            rn_keys_set_label_mapping(h, raw.bindMemory(to: UInt8.self).baseAddress, mappingCBOR.count)
+            rn_keys_set_label_mapping(keysHandle, raw.bindMemory(to: UInt8.self).baseAddress, mappingCBOR.count)
         }
         if result != 0 {
             throw FFIError.operationFailed("Failed to set label mapping")
@@ -201,12 +121,12 @@ public final class KeysFFI {
 
     /// Set local NodeInfo from CBOR buffer
     public func setLocalNodeInfo(_ nodeInfoCBOR: Data) throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         let result = nodeInfoCBOR.withUnsafeBytes { raw in
-            rn_keys_set_local_node_info(h, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCBOR.count)
+            rn_keys_set_local_node_info(keysHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCBOR.count)
         }
         if result != 0 {
             throw FFIError.operationFailed("Failed to set local node info")
@@ -215,13 +135,13 @@ public final class KeysFFI {
 
     /// Set persistence directory
     public func setPersistenceDirectory(_ directory: URL) throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         let (_, error) = withRnError { errPtr in
             directory.path.withCString { cDir in
-                rn_keys_set_persistence_dir(h, cDir, errPtr)
+                rn_keys_set_persistence_dir(keysHandle, cDir, errPtr)
             }
         }
         if let error = error { throw error }
@@ -229,805 +149,74 @@ public final class KeysFFI {
 
     /// Enable auto persist
     public func enableAutoPersist(_ enabled: Bool) throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         let (_, error) = withRnError { errPtr in
-            rn_keys_enable_auto_persist(h, enabled, errPtr)
+            rn_keys_enable_auto_persist(keysHandle, enabled, errPtr)
         }
         if let error = error { throw error }
     }
 
     /// Wipe persistence
     public func wipePersistence() throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         let (_, error) = withRnError { errPtr in
-            rn_keys_wipe_persistence(h, errPtr)
+            rn_keys_wipe_persistence(keysHandle, errPtr)
         }
         if let error = error { throw error }
     }
 
     /// Get keystore capabilities
     public func getKeystoreCaps() throws -> RNAPIRnDeviceKeystoreCaps {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         var caps = RNAPIRnDeviceKeystoreCaps()
         let (_, error) = withRnError { errPtr in
-            rn_keys_get_keystore_caps(h, &caps, errPtr)
+            rn_keys_get_keystore_caps(keysHandle, &caps, errPtr)
         }
         if let error = error { throw error }
-        
+
         return caps
     }
 
     /// Flush state
     public func flushState() throws {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         let (_, error) = withRnError { errPtr in
-            rn_keys_flush_state(h, errPtr)
+            rn_keys_flush_state(keysHandle, errPtr)
         }
         if let error = error { throw error }
     }
 
     /// Ensure symmetric key exists
     public func ensureSymmetricKey(_ keyName: String) throws -> Data {
-        guard let h = handle else {
+        guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
-        
+
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
-        
+
         let (_, error) = withRnError { errPtr in
             keyName.withCString { cKeyName in
-                rn_keys_ensure_symmetric_key(h, cKeyName, &out, &outLen, errPtr)
+                rn_keys_ensure_symmetric_key(keysHandle, cKeyName, &out, &outLen, errPtr)
             }
         }
         if let error = error { throw error }
-        
-        guard let p = out else { return Data() }
-        let result = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return result
-    }
 
-    // MARK: - API Functions
-
-    /// Mobile: Initialize user root key
-    public func mobileInitializeUserRootKey() throws {
-        let manager = try validateMobileManager()
-        try manager.initializeUserRootKey()
-    }
-
-    /// Mobile: Get user public key
-    public func mobileGetUserPublicKey() throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.getUserPublicKey()
-    }
-
-    // REMOVED: mobileGenerateCSR() - This function does not exist in the Rust FFI API
-
-    /// Mobile: Process setup token
-    public func mobileProcessSetupToken(_ setupTokenCBOR: Data) throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.processSetupToken(setupTokenCBOR: setupTokenCBOR)
-    }
-
-    // REMOVED: mobileInstallCertificate() - This function does not exist in the Rust FFI API
-
-    /// Mobile: Register device keystore
-    public func mobileRegisterDeviceKeystore(_: DeviceKeystore) throws {
-        // This is now handled by the platform-specific registration functions above
-        // The DeviceKeystore protocol is kept for compatibility but actual registration
-        // goes through the FFI functions
-        logger.info("Device keystore registration handled by platform-specific functions")
-    }
-
-    /// Mobile: Set persistence directory
-    public func mobileSetPersistenceDirectory(_ directory: URL) throws {
-        try setPersistenceDirectory(directory)
-    }
-
-    /// Mobile: Enable auto persist
-    public func mobileEnableAutoPersist(_ enabled: Bool) throws {
-        try enableAutoPersist(enabled)
-    }
-
-    /// Mobile: Get keystore state
-    public func mobileGetKeystoreState() throws -> Int32 {
-        let manager = try validateMobileManager()
-        return try manager.getKeystoreState()
-    }
-
-    /// Mobile: Generate network data key
-    public func mobileGenerateNetworkDataKey() throws -> String {
-        let manager = try validateMobileManager()
-        return try manager.generateNetworkDataKey()
-    }
-
-    /// Mobile: Get network public key
-    public func mobileGetNetworkPublicKey(_ networkId: String) throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.getNetworkPublicKey(networkId)
-    }
-
-    /// Mobile: Create network key message
-    public func mobileCreateNetworkKeyMessage(networkId: String, nodeAgreementPk: Data) throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.createNetworkKeyMessage(networkId: networkId, nodeAgreementPk: nodeAgreementPk)
-    }
-
-    /// Mobile: Derive user profile key
-    public func mobileDeriveUserProfileKey(label: String) throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.deriveUserProfileKey(label: label)
-    }
-
-    /// Mobile: Encrypt with envelope
-    public func mobileEncryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.encryptWithEnvelope(data: data, networkId: networkId, profileKeys: profileKeys)
-    }
-
-
-
-    /// Node: Get public key
-    public func nodeGetPublicKey() throws -> Data {
-        let manager = try validateNodeManager()
-        return try manager.getPublicKey()
-    }
-
-    /// Node: Get agreement public key
-    public func nodeGetAgreementPublicKey() throws -> Data {
-        let manager = try validateNodeManager()
-        return try manager.getAgreementPublicKey()
-    }
-
-    /// Node: Generate CSR
-    public func nodeGenerateCSR() throws -> Data {
-        let manager = try validateNodeManager()
-        return try manager.generateCSR()
-    }
-
-    /// Node: Install certificate
-    public func nodeInstallCertificate(_ nodeCertificateMessageCBOR: Data) throws {
-        let manager = try validateNodeManager()
-        try manager.installCertificate(nodeCertificateMessageCBOR)
-    }
-
-    /// Node: Register device keystore
-    public func nodeRegisterDeviceKeystore(_: DeviceKeystore) throws {
-        // This is now handled by the platform-specific registration functions above
-        // The DeviceKeystore protocol is kept for compatibility but actual registration
-        // goes through the FFI functions
-        logger.info("Device keystore registration handled by platform-specific functions")
-    }
-
-    /// Node: Set persistence directory
-    public func nodeSetPersistenceDirectory(_ directory: URL) throws {
-        try setPersistenceDirectory(directory)
-    }
-
-    /// Node: Enable auto persist
-    public func nodeEnableAutoPersist(_ enabled: Bool) throws {
-        try enableAutoPersist(enabled)
-    }
-
-    /// Node: Get keystore state
-    public func nodeGetKeystoreState() throws -> Int32 {
-        let manager = try validateNodeManager()
-        return try manager.getKeystoreState()
-    }
-
-    /// Node: Install network key
-    public func nodeInstallNetworkKey(_ nkmCbor: Data) throws {
-        let manager = try validateNodeManager()
-        try manager.installNetworkKey(nkmCbor)
-    }
-
-    /// Node: Encrypt with envelope
-    public func nodeEncryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        let manager = try validateNodeManager()
-        return try manager.encryptWithEnvelope(data: data, networkId: networkId, profileKeys: profileKeys)
-    }
-
-    /// Node: Encrypt local data
-    public func nodeEncryptLocalData(_ data: Data) throws -> Data {
-        let manager = try validateNodeManager()
-        return try manager.encryptLocalData(data)
-    }
-
-    /// Node: Decrypt local data
-    public func nodeDecryptLocalData(_ encrypted: Data) throws -> Data {
-        let manager = try validateNodeManager()
-        return try manager.decryptLocalData(encrypted)
-    }
-
-
-
-    /// Create new keys handle (static function for compatibility)
-    public static func keysNew() throws -> KeysFFI {
-        return KeysFFI()
-    }
-
-
-
-
-}
-
-// MARK: - Manager Implementations
-
-/// Mobile Key Manager implementation using FFI
-@available(macOS 11.0, *)
-private final class MobileKeyManagerImpl: MobileKeyManager {
-    private let handle: UnsafeMutableRawPointer
-    private let logger: Logger
-
-    @available(macOS 11.0, *)
-    init(handle: UnsafeMutableRawPointer, logger: Logger) {
-        self.handle = handle
-        self.logger = logger
-    }
-
-    func initializeUserRootKey() throws {
-        let (_, err) = withRnError { errPtr in
-            rn_keys_mobile_initialize_user_root_key(handle, errPtr)
-        }
-        if let e = err { throw e }
-    }
-
-    func getUserPublicKey() throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_mobile_get_user_public_key(handle, &out, &outLen, errPtr)
-        }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
         return data
-    }
-
-
-
-    func decryptMessageFromNode(encryptedMessage: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-
-        let (_, err) = withRnError { errPtr in
-            encryptedMessage.withUnsafeBytes { msgRaw in
-                rn_keys_mobile_decrypt_message_from_node(
-                    handle,
-                    msgRaw.bindMemory(to: UInt8.self).baseAddress,
-                    encryptedMessage.count,
-                    &out,
-                    &outLen,
-                    errPtr
-                )
-            }
-        }
-        if let e = err { throw e }
-
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return data
-    }
-
-    func decryptEnvelope(eedCbor: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-
-        let (_, err) = withRnError { errPtr in
-            eedCbor.withUnsafeBytes { cborRaw in
-                rn_keys_mobile_decrypt_envelope(
-                    handle,
-                    cborRaw.bindMemory(to: UInt8.self).baseAddress,
-                    eedCbor.count,
-                    &out,
-                    &outLen,
-                    errPtr
-                )
-            }
-        }
-        if let e = err { throw e }
-
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return data
-    }
-
-    func installNetworkPublicKey(networkPublicKey: Data) throws {
-        let (_, err) = withRnError { errPtr in
-            networkPublicKey.withUnsafeBytes { pkRaw in
-                rn_keys_mobile_install_network_public_key(
-                    handle,
-                    pkRaw.bindMemory(to: UInt8.self).baseAddress,
-                    networkPublicKey.count,
-                    errPtr
-                )
-            }
-        }
-        if let e = err { throw e }
-    }
-
-    func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        // Prepare profile keys array
-        var profileKeysArray: [UnsafePointer<UInt8>?] = []
-        var profileLensArray: [Int] = []
-
-        if let keys = profileKeys {
-            for key in keys {
-                guard !key.isEmpty else {
-                    throw FFIError.nullArgument("Profile key cannot be empty")
-                }
-                key.withUnsafeBytes { raw in
-                    profileKeysArray.append(raw.bindMemory(to: UInt8.self).baseAddress)
-                }
-                profileLensArray.append(key.count)
-            }
-        }
-
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-
-        let result = data.withUnsafeBytes { raw in
-            if let networkId = networkId {
-                return networkId.withCString { cNid in
-                    profileKeysArray.withUnsafeBufferPointer { keysPtr in
-                        profileLensArray.withUnsafeBufferPointer { lensPtr in
-                            rn_keys_mobile_encrypt_with_envelope(
-                                handle,
-                                raw.bindMemory(to: UInt8.self).baseAddress,
-                                data.count,
-                                cNid,
-                                profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
-                                profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
-                                profileKeysArray.count,
-                                &out,
-                                &outLen,
-                                nil
-                            )
-                        }
-                    }
-                }
-            } else {
-                return profileKeysArray.withUnsafeBufferPointer { keysPtr in
-                    profileLensArray.withUnsafeBufferPointer { lensPtr in
-                        rn_keys_mobile_encrypt_with_envelope(
-                            handle,
-                            raw.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
-                            nil,
-                            profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
-                            profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
-                            profileKeysArray.count,
-                            &out,
-                            &outLen,
-                            nil
-                        )
-                    }
-                }
-            }
-        }
-
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to encrypt with envelope")
-        }
-        guard let p = out else { return Data() }
-        let cbor = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return cbor
-    }
-
-
-
-
-
-
-
-    // REMOVE these non-existent functions:
-    // func generateCSR() throws -> Data  // ❌ DOES NOT EXIST IN RUST FFI
-    // func installCertificate(_ nodeCertificateMessageCBOR: Data) throws  // ❌ DOES NOT EXIST IN RUST FFI
-
-    func processSetupToken(setupTokenCBOR: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let (_, err) = withRnError { errPtr in
-            setupTokenCBOR.withUnsafeBytes { raw in
-                let p = raw.bindMemory(to: UInt8.self).baseAddress
-                rn_keys_mobile_process_setup_token(handle, p, setupTokenCBOR.count, &out, &outLen, errPtr)
-            }
-        }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return data
-    }
-
-    // REMOVED: func installCertificate(_ nodeCertificateMessageCBOR: Data) throws
-    // This function does not exist in the Rust FFI API
-
-    func registerDeviceKeystore(_: DeviceKeystore) throws {
-        // Implementation depends on keystore type
-        logger.info("Registering device keystore")
-    }
-
-    func setPersistenceDirectory(_ directory: URL) throws {
-        let result = directory.path.withCString { cDir in
-            rn_keys_set_persistence_dir(handle, cDir, nil)
-        }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to set persistence directory")
-        }
-    }
-
-    func enableAutoPersist(_ enabled: Bool) throws {
-        let (_, err) = withRnError { errPtr in
-            rn_keys_enable_auto_persist(handle, enabled, errPtr)
-        }
-        if let e = err { throw e }
-    }
-
-    func getKeystoreState() throws -> Int32 {
-        var state: Int32 = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_mobile_get_keystore_state(handle, &state, errPtr)
-        }
-        if let e = err { throw e }
-        return state
-    }
-
-    func generateNetworkDataKey() throws -> String {
-        var nidCStr: UnsafeMutablePointer<CChar>?
-        var nidLen = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_mobile_generate_network_data_key(handle, &nidCStr, &nidLen, errPtr)
-        }
-        if let e = err { throw e }
-        defer { if let c = nidCStr { rn_string_free(c) } }
-        return nidCStr.map { String(cString: $0) } ?? ""
-    }
-
-    func getNetworkPublicKey(_ networkId: String) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let (_, err) = withRnError { errPtr in
-            networkId.withCString { cNid in
-                rn_keys_mobile_get_network_public_key(handle, cNid, &out, &outLen, errPtr)
-            }
-        }
-        if let e = err { throw e }
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return data
-    }
-
-    func createNetworkKeyMessage(networkId: String, nodeAgreementPk: Data) throws -> Data {
-        var outCbor: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let (_, err) = withRnError { errPtr in
-            networkId.withCString { nidC in
-                nodeAgreementPk.withUnsafeBytes { pkRaw in
-                    let pkPtr = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                    rn_keys_mobile_create_network_key_message(handle, nidC, pkPtr, nodeAgreementPk.count, &outCbor, &outLen, errPtr)
-                }
-            }
-        }
-        if let e = err { throw e }
-        guard let b = outCbor else { return Data() }
-        let data = Data(bytes: b, count: outLen)
-        rn_free(b, outLen)
-        return data
-    }
-
-    func deriveUserProfileKey(label: String) throws -> Data {
-        var outPk: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let (_, err) = withRnError { errPtr in
-            label.withCString { cLabel in
-                rn_keys_mobile_derive_user_profile_key(handle, cLabel, &outPk, &outLen, errPtr)
-            }
-        }
-        if let e = err { throw e }
-        guard let b = outPk else { return Data() }
-        let data = Data(bytes: b, count: outLen)
-        rn_free(b, outLen)
-        return data
-    }
-
-
-
-
-}
-
-/// Node Key Manager implementation using FFI
-@available(macOS 11.0, *)
-private final class NodeKeyManagerImpl: NodeKeyManager {
-    private let handle: UnsafeMutableRawPointer
-    private let logger: Logger
-
-    @available(macOS 11.0, *)
-    init(handle: UnsafeMutableRawPointer, logger: Logger) {
-        self.handle = handle
-        self.logger = logger
-    }
-
-    func getPublicKey() throws -> Data {
-        var buf: UnsafeMutablePointer<UInt8>?
-        var len = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_node_get_public_key(handle, &buf, &len, errPtr)
-        }
-        if let e = err { throw e }
-        guard let b = buf else { return Data() }
-        let data = Data(bytes: b, count: len)
-        rn_free(b, len)
-        return data
-    }
-
-    func getAgreementPublicKey() throws -> Data {
-        var buf: UnsafeMutablePointer<UInt8>?
-        var len = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_node_get_agreement_public_key(handle, &buf, &len, errPtr)
-        }
-        if let e = err { throw e }
-        guard let b = buf else { return Data() }
-        let data = Data(bytes: b, count: len)
-        rn_free(b, len)
-        return data
-    }
-
-    func generateCSR() throws -> Data {
-        var buf: UnsafeMutablePointer<UInt8>?
-        var len = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_node_generate_csr(handle, &buf, &len, errPtr)
-        }
-        if let e = err { throw e }
-        guard let b = buf else { return Data() }
-        let data = Data(bytes: b, count: len)
-        rn_free(b, len)
-        return data
-    }
-
-    func installCertificate(_ nodeCertificateMessageCBOR: Data) throws {
-        let (_, err) = withRnError { errPtr in
-            nodeCertificateMessageCBOR.withUnsafeBytes { raw in
-                let p = raw.bindMemory(to: UInt8.self).baseAddress
-                rn_keys_node_install_certificate(handle, p, nodeCertificateMessageCBOR.count, errPtr)
-            }
-        }
-        if let e = err { throw e }
-    }
-
-    func registerDeviceKeystore(_: DeviceKeystore) throws {
-        // Implementation depends on keystore type
-        logger.info("Registering device keystore")
-    }
-
-    func setPersistenceDirectory(_ directory: URL) throws {
-        let result = directory.path.withCString { cDir in
-            rn_keys_set_persistence_dir(handle, cDir, nil)
-        }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to set persistence directory")
-        }
-    }
-
-    func enableAutoPersist(_ enabled: Bool) throws {
-        let (_, err) = withRnError { errPtr in
-            rn_keys_enable_auto_persist(handle, enabled, errPtr)
-        }
-        if let e = err { throw e }
-    }
-
-    func getKeystoreState() throws -> Int32 {
-        var state: Int32 = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_node_get_keystore_state(handle, &state, errPtr)
-        }
-        if let e = err { throw e }
-        return state
-    }
-
-    func installNetworkKey(_ nkmCbor: Data) throws {
-        let (_, err) = withRnError { errPtr in
-            nkmCbor.withUnsafeBytes { raw in
-                let p = raw.bindMemory(to: UInt8.self).baseAddress
-                rn_keys_node_install_network_key(handle, p, nkmCbor.count, errPtr)
-            }
-        }
-        if let e = err { throw e }
-    }
-
-    func encryptLocalData(_ data: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        
-        let (_, error) = withRnError { errPtr in
-            data.withUnsafeBytes { raw in
-                rn_keys_encrypt_local_data(handle,
-                                           raw.bindMemory(to: UInt8.self).baseAddress,
-                                           data.count,
-                                           &out,
-                                           &outLen,
-                                           errPtr)
-            }
-        }
-        if let error = error { throw error }
-        
-        guard let p = out else { return Data() }
-        let cipher = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return cipher
-    }
-
-    func decryptLocalData(_ data: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        
-        let (_, error) = withRnError { errPtr in
-            data.withUnsafeBytes { raw in
-                rn_keys_decrypt_local_data(handle,
-                                           raw.bindMemory(to: UInt8.self).baseAddress,
-                                           data.count,
-                                           &out,
-                                           &outLen,
-                                           errPtr)
-                                           }
-        }
-        if let error = error { throw error }
-        
-        guard let p = out else { return Data() }
-        let plain = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return plain
-    }
-
-
-
-    func decryptEnvelope(eedCbor: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-
-        let (_, err) = withRnError { errPtr in
-            eedCbor.withUnsafeBytes { cborRaw in
-                rn_keys_node_decrypt_envelope(
-                    handle,
-                    cborRaw.bindMemory(to: UInt8.self).baseAddress,
-                    eedCbor.count,
-                    &out,
-                    &outLen,
-                    errPtr
-                )
-            }
-        }
-        if let e = err { throw e }
-
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return data
-    }
-
-    func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-
-        let (_, err) = withRnError { errPtr in
-            encryptedMessage.withUnsafeBytes { msgRaw in
-                rn_keys_decrypt_message_from_mobile(
-                    handle,
-                    msgRaw.bindMemory(to: UInt8.self).baseAddress,
-                    encryptedMessage.count,
-                    &out,
-                    &outLen,
-                    errPtr
-                )
-            }
-        }
-        if let e = err { throw e }
-
-        guard let p = out else { return Data() }
-        let data = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return data
-    }
-
-    func getNodeId() throws -> String {
-        var outStr: UnsafeMutablePointer<CChar>?
-        var outLen = 0
-
-        let (_, err) = withRnError { errPtr in
-            rn_keys_node_get_node_id(handle, &outStr, &outLen, errPtr)
-        }
-        if let e = err { throw e }
-
-        defer { if let s = outStr { rn_string_free(s) } }
-        return outStr.map { String(cString: $0) } ?? ""
-    }
-
-    func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        // Prepare profile keys array
-        var profileKeysArray: [UnsafePointer<UInt8>?] = []
-        var profileLensArray: [Int] = []
-
-        if let keys = profileKeys {
-            for key in keys {
-                guard !key.isEmpty else {
-                    throw FFIError.nullArgument("Profile key cannot be empty")
-                }
-                key.withUnsafeBytes { raw in
-                    profileKeysArray.append(raw.bindMemory(to: UInt8.self).baseAddress)
-                }
-                profileLensArray.append(key.count)
-            }
-        }
-
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-
-        let result = data.withUnsafeBytes { raw in
-            if let networkId = networkId {
-                return networkId.withCString { cNid in
-                    profileKeysArray.withUnsafeBufferPointer { keysPtr in
-                        profileLensArray.withUnsafeBufferPointer { lensPtr in
-                            rn_keys_node_encrypt_with_envelope(
-                                handle,
-                                raw.bindMemory(to: UInt8.self).baseAddress,
-                                data.count,
-                                cNid,
-                                profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
-                                profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
-                                profileKeysArray.count,
-                                &out,
-                                &outLen,
-                                nil
-                            )
-                        }
-                    }
-                }
-            } else {
-                return profileKeysArray.withUnsafeBufferPointer { keysPtr in
-                    profileLensArray.withUnsafeBufferPointer { lensPtr in
-                        rn_keys_node_encrypt_with_envelope(
-                            handle,
-                            raw.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
-                            nil,
-                            profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
-                            profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
-                            profileKeysArray.count,
-                            &out,
-                            &outLen,
-                            nil
-                        )
-                    }
-                }
-            }
-        }
-
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to encrypt with envelope")
-        }
-        guard let p = out else { return Data() }
-        let cbor = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return cbor
     }
 }

@@ -59,7 +59,7 @@ public enum TestFixtures {
         map[.utf8String("addresses")] = .array(addresses.map { .utf8String($0) })
         map[.utf8String("node_metadata")] = .map([
             .utf8String("services"): .array([]),
-            .utf8String("subscriptions"): .array([]),
+            .utf8String("subscriptions"): .array([])
         ])
         map[.utf8String("version")] = .unsignedInt(UInt64(max(0, version)))
         return Data(CBOR.map(map).encode())

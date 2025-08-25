@@ -1,25 +1,16 @@
-import Foundation
 import CRunarFFI
+import Foundation
 
 // MARK: - Additional Missing Functions Extension
 
 @available(macOS 11.0, *)
-extension KeysFFI {
-
+public extension KeysFFI {
     /// Mobile: Install network public key
-    public func mobileInstallNetworkPublicKey(networkPublicKey: Data) throws {
+    func mobileInstallNetworkPublicKey(networkPublicKey: Data) throws {
         let manager = try validateMobileManager()
         try manager.installNetworkPublicKey(networkPublicKey: networkPublicKey)
     }
-
-    /// Get node ID
-    public func nodeGetNodeId() throws -> String {
-        let manager = try validateNodeManager()
-        return try manager.getNodeId()
-    }
-
-    /// Encrypt data for a specific public key recipient
-    public func encryptForPublicKey(data: Data, recipientPublicKey: Data) throws -> Data {
+    func encryptForPublicKey(data: Data, recipientPublicKey: Data) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
@@ -52,7 +43,7 @@ extension KeysFFI {
     }
 
     /// Encrypt data for a specific network
-    public func encryptForNetwork(data: Data, networkId: String) throws -> Data {
+    func encryptForNetwork(data: Data, networkId: String) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
@@ -84,7 +75,7 @@ extension KeysFFI {
     }
 
     /// Decrypt network data
-    public func decryptNetworkData(eedCbor: Data) throws -> Data {
+    func decryptNetworkData(eedCbor: Data) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
@@ -113,7 +104,7 @@ extension KeysFFI {
     }
 
     /// Ensure symmetric key exists
-    public func ensureSymmetricKey(keyName: String) throws -> Data {
+    func ensureSymmetricKey(keyName: String) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }

@@ -1,5 +1,5 @@
-import Foundation
 import CRunarFFI
+import Foundation
 
 // MARK: - Apple-Specific Functions Extension
 
