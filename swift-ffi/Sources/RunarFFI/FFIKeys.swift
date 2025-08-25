@@ -38,9 +38,7 @@ public final class Atomic<T> {
 public protocol MobileKeyManager {
     func initializeUserRootKey() throws
     func getUserPublicKey() throws -> Data
-    func generateCSR() throws -> Data
     func processSetupToken(setupTokenCBOR: Data) throws -> Data
-    func installCertificate(_ nodeCertificateMessageCBOR: Data) throws
     func registerDeviceKeystore(_ keystore: DeviceKeystore) throws
     func setPersistenceDirectory(_ directory: URL) throws
     func enableAutoPersist(_ enabled: Bool) throws
@@ -52,6 +50,15 @@ public protocol MobileKeyManager {
     func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data
     func encryptLocalData(_ data: Data) throws -> Data
     func decryptLocalData(_ encrypted: Data) throws -> Data
+
+    // Add these missing functions
+    func decryptMessageFromNode(encryptedMessage: Data) throws -> Data
+    func decryptEnvelope(eedCbor: Data) throws -> Data
+    func installNetworkPublicKey(networkPublicKey: Data) throws
+
+    // REMOVE these non-existent functions:
+    // func generateCSR() throws -> Data  // ❌ DOES NOT EXIST IN RUST FFI
+    // func installCertificate(_ nodeCertificateMessageCBOR: Data) throws  // ❌ DOES NOT EXIST IN RUST FFI
 }
 
 /// Node Key Manager - mirrors Rust NodeKeyManager
@@ -68,6 +75,11 @@ public protocol NodeKeyManager {
     func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data
     func encryptLocalData(_ data: Data) throws -> Data
     func decryptLocalData(_ encrypted: Data) throws -> Data
+
+    // Add these missing functions
+    func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data
+    func decryptEnvelope(eedCbor: Data) throws -> Data
+    func getNodeId() throws -> String
 }
 
 /// Label Resolver for key derivation
@@ -157,6 +169,46 @@ public final class KeysFFI {
         logger.info("Initialized as node key manager")
     }
 
+    // MARK: - FFI Initialization Functions
+
+    /// Initialize FFI instance as mobile manager using Rust FFI
+        public func keysInitAsMobile() throws {
+        guard let keysHandle = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let (_, error) = withRnError { errPtr in
+            rn_keys_init_as_mobile(keysHandle, errPtr)
+        }
+        if let error = error { throw error }
+        
+        // Update internal state
+        let manager = MobileKeyManagerImpl(handle: keysHandle, logger: logger)
+        mobileKeyManager = manager
+        nodeKeyManager = nil
+        
+        logger.info("Initialized as mobile key manager via FFI")
+    }
+
+    /// Initialize FFI instance as node manager using Rust FFI
+        public func keysInitAsNode() throws {
+        guard let keysHandle = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        let (_, error) = withRnError { errPtr in
+            rn_keys_init_as_node(keysHandle, errPtr)
+        }
+        if let error = error { throw error }
+        
+        // Update internal state
+        let manager = NodeKeyManagerImpl(handle: keysHandle, logger: logger)
+        nodeKeyManager = manager
+        mobileKeyManager = nil
+        
+        logger.info("Initialized as node key manager via FFI")
+    }
+
     private func validateMobileManager() throws -> MobileKeyManager {
         guard let manager = mobileKeyManager else {
             throw FFIError.notInitialized
@@ -185,11 +237,7 @@ public final class KeysFFI {
         return try manager.getUserPublicKey()
     }
 
-    /// Mobile: Generate CSR
-    public func mobileGenerateCSR() throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.generateCSR()
-    }
+    // REMOVED: mobileGenerateCSR() - This function does not exist in the Rust FFI API
 
     /// Mobile: Process setup token
     public func mobileProcessSetupToken(_ setupTokenCBOR: Data) throws -> Data {
@@ -197,16 +245,14 @@ public final class KeysFFI {
         return try manager.processSetupToken(setupTokenCBOR: setupTokenCBOR)
     }
 
-    /// Mobile: Install certificate
-    public func mobileInstallCertificate(_ nodeCertificateMessageCBOR: Data) throws {
-        let manager = try validateMobileManager()
-        try manager.installCertificate(nodeCertificateMessageCBOR)
-    }
+    // REMOVED: mobileInstallCertificate() - This function does not exist in the Rust FFI API
 
     /// Mobile: Register device keystore
-    public func mobileRegisterDeviceKeystore(_ keystore: DeviceKeystore) throws {
-        let manager = try validateMobileManager()
-        try manager.registerDeviceKeystore(keystore)
+    public func mobileRegisterDeviceKeystore(_: DeviceKeystore) throws {
+        // This is now handled by the platform-specific registration functions above
+        // The DeviceKeystore protocol is kept for compatibility but actual registration
+        // goes through the FFI functions
+        logger.info("Device keystore registration handled by platform-specific functions")
     }
 
     /// Mobile: Set persistence directory
@@ -294,9 +340,11 @@ public final class KeysFFI {
     }
 
     /// Node: Register device keystore
-    public func nodeRegisterDeviceKeystore(_ keystore: DeviceKeystore) throws {
-        let manager = try validateNodeManager()
-        try manager.registerDeviceKeystore(keystore)
+    public func nodeRegisterDeviceKeystore(_: DeviceKeystore) throws {
+        // This is now handled by the platform-specific registration functions above
+        // The DeviceKeystore protocol is kept for compatibility but actual registration
+        // goes through the FFI functions
+        logger.info("Device keystore registration handled by platform-specific functions")
     }
 
     /// Node: Set persistence directory
@@ -371,6 +419,88 @@ public final class KeysFFI {
     public static func keysNew() throws -> KeysFFI {
         return KeysFFI()
     }
+
+    // MARK: - Message Encryption Functions
+
+    /// Encrypt a message for mobile using mobile's public key
+        public func encryptMessageForMobile(message: Data, mobilePublicKey: Data) throws -> Data {
+        guard let keysHandle = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+        
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        
+        let (_, error) = withRnError { errPtr in
+            message.withUnsafeBytes { msgRaw in
+                mobilePublicKey.withUnsafeBytes { pkRaw in
+                    rn_keys_encrypt_message_for_mobile(
+                        keysHandle,
+                        msgRaw.bindMemory(to: UInt8.self).baseAddress,
+                        message.count,
+                        pkRaw.bindMemory(to: UInt8.self).baseAddress,
+                        mobilePublicKey.count,
+                        &out,
+                        &outLen,
+                        errPtr
+                    )
+                }
+            }
+        }
+        if let error = error { throw error }
+        
+        guard let outputPtr = out else { return Data() }
+        let data = Data(bytes: outputPtr, count: outLen)
+        rn_free(outputPtr, outLen)
+        return data
+    }
+
+    /// Encrypt a message for node using node's agreement public key
+    public func encryptMessageForNode(message: Data, nodeAgreementPublicKey: Data) throws -> Data {
+        guard let h = handle else {
+            throw FFIError.invalidHandle("Keys handle not initialized")
+        }
+
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            message.withUnsafeBytes { msgRaw in
+                nodeAgreementPublicKey.withUnsafeBytes { pkRaw in
+                    rn_keys_encrypt_message_for_node(
+                        h,
+                        msgRaw.bindMemory(to: UInt8.self).baseAddress,
+                        message.count,
+                        pkRaw.bindMemory(to: UInt8.self).baseAddress,
+                        nodeAgreementPublicKey.count,
+                        &out,
+                        &outLen,
+                        errPtr
+                    )
+                }
+            }
+        }
+        if let e = err { throw e }
+
+        guard let p = out else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
+    }
+
+    /// Mobile: Decrypt message from node using mobile's agreement private key
+    public func mobileDecryptMessageFromNode(encryptedMessage: Data) throws -> Data {
+        let manager = try validateMobileManager()
+        return try manager.decryptMessageFromNode(encryptedMessage)
+    }
+
+    /// Node: Decrypt message from mobile using node's agreement private key
+    public func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data {
+        let manager = try validateNodeManager()
+        return try manager.decryptMessageFromMobile(encryptedMessage)
+    }
+
+
 }
 
 // MARK: - Manager Implementations
@@ -407,10 +537,71 @@ private final class MobileKeyManagerImpl: MobileKeyManager {
         return data
     }
 
-    func generateCSR() throws -> Data {
-        // Placeholder - this function may not exist in the current FFI
-        throw FFIError.operationFailed("Mobile CSR generation not implemented")
+    func decryptMessageFromNode(encryptedMessage: Data) throws -> Data {
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            encryptedMessage.withUnsafeBytes { msgRaw in
+                rn_keys_mobile_decrypt_message_from_node(
+                    handle,
+                    msgRaw.bindMemory(to: UInt8.self).baseAddress,
+                    encryptedMessage.count,
+                    &out,
+                    &outLen,
+                    errPtr
+                )
+            }
+        }
+        if let e = err { throw e }
+
+        guard let p = out else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
     }
+
+    func decryptEnvelope(eedCbor: Data) throws -> Data {
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            eedCbor.withUnsafeBytes { cborRaw in
+                rn_keys_mobile_decrypt_envelope(
+                    handle,
+                    cborRaw.bindMemory(to: UInt8.self).baseAddress,
+                    eedCbor.count,
+                    &out,
+                    &outLen,
+                    errPtr
+                )
+            }
+        }
+        if let e = err { throw e }
+
+        guard let p = out else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
+    }
+
+    func installNetworkPublicKey(networkPublicKey: Data) throws {
+        let (_, err) = withRnError { errPtr in
+            networkPublicKey.withUnsafeBytes { pkRaw in
+                rn_keys_mobile_install_network_public_key(
+                    handle,
+                    pkRaw.bindMemory(to: UInt8.self).baseAddress,
+                    networkPublicKey.count,
+                    errPtr
+                )
+            }
+        }
+        if let e = err { throw e }
+    }
+
+    // REMOVE these non-existent functions:
+    // func generateCSR() throws -> Data  // ❌ DOES NOT EXIST IN RUST FFI
+    // func installCertificate(_ nodeCertificateMessageCBOR: Data) throws  // ❌ DOES NOT EXIST IN RUST FFI
 
     func processSetupToken(setupTokenCBOR: Data) throws -> Data {
         var out: UnsafeMutablePointer<UInt8>?
@@ -428,12 +619,10 @@ private final class MobileKeyManagerImpl: MobileKeyManager {
         return data
     }
 
-    func installCertificate(_ nodeCertificateMessageCBOR: Data) throws {
-        // Placeholder - this function may not exist in the current FFI
-        throw FFIError.operationFailed("Mobile certificate installation not implemented")
-    }
+    // REMOVED: func installCertificate(_ nodeCertificateMessageCBOR: Data) throws
+    // This function does not exist in the Rust FFI API
 
-    func registerDeviceKeystore(_ keystore: DeviceKeystore) throws {
+    func registerDeviceKeystore(_: DeviceKeystore) throws {
         // Implementation depends on keystore type
         logger.info("Registering device keystore")
     }
@@ -693,7 +882,7 @@ private final class NodeKeyManagerImpl: NodeKeyManager {
         if let e = err { throw e }
     }
 
-    func registerDeviceKeystore(_ keystore: DeviceKeystore) throws {
+    func registerDeviceKeystore(_: DeviceKeystore) throws {
         // Implementation depends on keystore type
         logger.info("Registering device keystore")
     }
@@ -840,5 +1029,67 @@ private final class NodeKeyManagerImpl: NodeKeyManager {
         let plain = Data(bytes: p, count: outLen)
         rn_free(p, outLen)
         return plain
+    }
+
+    // Add these missing functions
+    func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data {
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            encryptedMessage.withUnsafeBytes { msgRaw in
+                rn_keys_decrypt_message_from_mobile(
+                    handle,
+                    msgRaw.bindMemory(to: UInt8.self).baseAddress,
+                    encryptedMessage.count,
+                    &out,
+                    &outLen,
+                    errPtr
+                )
+            }
+        }
+        if let e = err { throw e }
+
+        guard let p = out else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
+    }
+
+    func decryptEnvelope(eedCbor: Data) throws -> Data {
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            eedCbor.withUnsafeBytes { cborRaw in
+                rn_keys_node_decrypt_envelope(
+                    handle,
+                    cborRaw.bindMemory(to: UInt8.self).baseAddress,
+                    eedCbor.count,
+                    &out,
+                    &outLen,
+                    errPtr
+                )
+            }
+        }
+        if let e = err { throw e }
+
+        guard let p = out else { return Data() }
+        let data = Data(bytes: p, count: outLen)
+        rn_free(p, outLen)
+        return data
+    }
+
+    func getNodeId() throws -> String {
+        var outStr: UnsafeMutablePointer<CChar>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            rn_keys_node_get_node_id(handle, &outStr, &outLen, errPtr)
+        }
+        if let e = err { throw e }
+
+        defer { if let s = outStr { rn_string_free(s) } }
+        return outStr.map { String(cString: $0) } else { "" }
     }
 }
