@@ -1,6 +1,4 @@
 @testable import RunarFFI
-import RunarSerializer
-import SwiftCBOR
 import XCTest
 
 final class EnvelopeE2ETests: XCTestCase {
@@ -38,28 +36,34 @@ final class EnvelopeE2ETests: XCTestCase {
 
         // Get node agreement public key to create network key message
         var usedNetwork = false
+        var nodeKeys: KeysFFI?
         do {
             // Need to create a separate node instance to get agreement public key
-            let nodeKeys = try KeysFFI()
-            try nodeKeys.initializeAsNode()
-            let pk = try nodeKeys.nodeGetAgreementPublicKey()
+            nodeKeys = try KeysFFI()
+            try nodeKeys!.initializeAsNode()
+            let pk = try nodeKeys!.nodeGetAgreementPublicKey()
             let nkm = try keys.mobileCreateNetworkKeyMessage(networkId: nid, nodeAgreementPk: pk)
-            try nodeKeys.nodeInstallNetworkKey(nkm)
+            try nodeKeys!.nodeInstallNetworkKey(nkm)
             usedNetwork = true
         } catch {
             throw XCTSkip("Unable to get agreement public key; skipping network flow")
         }
 
-        // Encrypt/decrypt end-to-end via AnyValue serialization using FFI keystore
-        let store = FFIKeyStore(keys: keys)
+        // Encrypt/decrypt end-to-end via direct FFI calls (matching Rust FFI approach)
         let plaintext = Data("hello ffi".utf8)
-        if usedNetwork {
-            let ctx = SerializationContext(keystore: store, resolver: DefaultLabelResolver(labelToProfileId: [:]), networkId: nid)
-            let any = AnyValue.bytes(plaintext)
-            let serialized = try any.serialize(context: ctx)
-            let round = try AnyValue.deserialize(serialized, keystore: store)
-            let back: Data = try await round.asType()
-            XCTAssertEqual(back, plaintext)
+        if usedNetwork, let nodeKeys = nodeKeys {
+            // Use direct FFI calls like the Rust tests do
+            let encryptedData = try keys.mobileEncryptWithEnvelope(
+                data: plaintext,
+                networkId: nid,
+                profileKeys: nil
+            )
+            
+            // Decrypt using the node keys
+            let decryptedData = try nodeKeys.nodeDecryptEnvelope(eedCbor: encryptedData)
+            
+            XCTAssertEqual(decryptedData, plaintext, "Decrypted data should match original")
+            print("✅ Envelope encryption/decryption successful via direct FFI calls")
         }
 
         try FileManager.default.removeItem(atPath: tempDir)

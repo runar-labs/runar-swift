@@ -1,8 +1,28 @@
 @testable import RunarFFI
 import XCTest
 
+// MARK: - Hex Extension for Data
+extension Data {
+    init?(hex: String) {
+        let len = hex.count / 2
+        var data = Data(capacity: len)
+        var i = hex.startIndex
+        for _ in 0..<len {
+            let j = hex.index(i, offsetBy: 2)
+            let bytes = hex[i..<j]
+            if var num = UInt8(bytes, radix: 16) {
+                data.append(&num, count: 1)
+            } else {
+                return nil
+            }
+            i = j
+        }
+        self = data
+    }
+}
+
 /// Complete FFI Key Management Lifecycle Test
-/// 
+///
 /// This test implements the EXACT same end-to-end cryptographic flow as ffi_lifecycle_test.rs
 /// using the Swift FFI API. Every single step from the reference test is implemented here.
 final class SwiftFFILifecycleE2ETest: XCTestCase {
@@ -65,7 +85,11 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
         print("\n📱 MOBILE SIDE - Processing Node Setup Token")
         
         // Mobile decodes the QR code and decrypts the setup token.
-        let encryptedSetupTokenMobile = Data(setupTokenStr.utf8)
+        // FIXED: Use proper hex decoding instead of UTF8 conversion
+        guard let encryptedSetupTokenMobile = Data(hex: setupTokenStr) else {
+            XCTFail("Failed to decode hex string back to data")
+            return
+        }
         let decryptedSetupTokenBytes = try mobileKeys.mobileDecryptMessageFromNode(
             encryptedMessage: encryptedSetupTokenMobile
         )
