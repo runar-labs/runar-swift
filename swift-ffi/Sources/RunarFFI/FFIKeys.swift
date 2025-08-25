@@ -46,8 +46,6 @@ public protocol MobileKeyManager {
     func createNetworkKeyMessage(networkId: String, nodeAgreementPk: Data) throws -> Data
     func deriveUserProfileKey(label: String) throws -> Data
     func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data
-    func encryptLocalData(_ data: Data) throws -> Data
-    func decryptLocalData(_ encrypted: Data) throws -> Data
     func decryptMessageFromNode(encryptedMessage: Data) throws -> Data
     func decryptEnvelope(eedCbor: Data) throws -> Data
     func installNetworkPublicKey(networkPublicKey: Data) throws
@@ -380,17 +378,7 @@ public final class KeysFFI {
         return try manager.encryptWithEnvelope(data: data, networkId: networkId, profileKeys: profileKeys)
     }
 
-    /// Mobile: Encrypt local data
-    public func mobileEncryptLocalData(_ data: Data) throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.encryptLocalData(data)
-    }
 
-    /// Mobile: Decrypt local data
-    public func mobileDecryptLocalData(_ encrypted: Data) throws -> Data {
-        let manager = try validateMobileManager()
-        return try manager.decryptLocalData(encrypted)
-    }
 
     /// Node: Get public key
     public func nodeGetPublicKey() throws -> Data {
@@ -510,45 +498,7 @@ private final class MobileKeyManagerImpl: MobileKeyManager {
         return data
     }
 
-    func encryptLocalData(_ data: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let result = data.withUnsafeBytes { raw in
-            rn_keys_encrypt_local_data(handle,
-                                       raw.bindMemory(to: UInt8.self).baseAddress,
-                                       data.count,
-                                       &out,
-                                       &outLen,
-                                       nil)
-        }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to encrypt local data")
-        }
-        guard let p = out else { return Data() }
-        let cipher = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return cipher
-    }
 
-    func decryptLocalData(_ encrypted: Data) throws -> Data {
-        var out: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
-        let result = encrypted.withUnsafeBytes { raw in
-            rn_keys_decrypt_local_data(handle,
-                                       raw.bindMemory(to: UInt8.self).baseAddress,
-                                       encrypted.count,
-                                       &out,
-                                       &outLen,
-                                       nil)
-        }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to decrypt local data")
-        }
-        guard let p = out else { return Data() }
-        let plain = Data(bytes: p, count: outLen)
-        rn_free(p, outLen)
-        return plain
-    }
 
     func decryptMessageFromNode(encryptedMessage: Data) throws -> Data {
         var out: UnsafeMutablePointer<UInt8>?
@@ -908,37 +858,41 @@ private final class NodeKeyManagerImpl: NodeKeyManager {
     func encryptLocalData(_ data: Data) throws -> Data {
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
-        let result = data.withUnsafeBytes { raw in
-            rn_keys_encrypt_local_data(handle,
-                                       raw.bindMemory(to: UInt8.self).baseAddress,
-                                       data.count,
-                                       &out,
-                                       &outLen,
-                                       nil)
+        
+        let (_, error) = withRnError { errPtr in
+            data.withUnsafeBytes { raw in
+                rn_keys_encrypt_local_data(handle,
+                                           raw.bindMemory(to: UInt8.self).baseAddress,
+                                           data.count,
+                                           &out,
+                                           &outLen,
+                                           errPtr)
+            }
         }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to encrypt local data")
-        }
+        if let error = error { throw error }
+        
         guard let p = out else { return Data() }
         let cipher = Data(bytes: p, count: outLen)
         rn_free(p, outLen)
         return cipher
     }
 
-    func decryptLocalData(_ encrypted: Data) throws -> Data {
+    func decryptLocalData(_ data: Data) throws -> Data {
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
-        let result = encrypted.withUnsafeBytes { raw in
-            rn_keys_decrypt_local_data(handle,
-                                       raw.bindMemory(to: UInt8.self).baseAddress,
-                                       encrypted.count,
-                                       &out,
-                                       &outLen,
-                                       nil)
+        
+        let (_, error) = withRnError { errPtr in
+            data.withUnsafeBytes { raw in
+                rn_keys_decrypt_local_data(handle,
+                                           raw.bindMemory(to: UInt8.self).baseAddress,
+                                           data.count,
+                                           &out,
+                                           &outLen,
+                                           errPtr)
+                                           }
         }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to decrypt local data")
-        }
+        if let error = error { throw error }
+        
         guard let p = out else { return Data() }
         let plain = Data(bytes: p, count: outLen)
         rn_free(p, outLen)

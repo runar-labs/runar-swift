@@ -67,11 +67,11 @@ final class KeysTests: XCTestCase {
 
     func testLocalDataEncryptDecrypt() throws {
         let keys = try KeysFFI()
-        try keys.initializeAsMobile()
+        try keys.initializeAsNode()
         let plaintext = Data("secret bytes".utf8)
-        let cipher = try keys.mobileEncryptLocalData(plaintext)
+        let cipher = try keys.nodeEncryptLocalData(plaintext)
         XCTAssertNotEqual(cipher, plaintext)
-        let recovered = try keys.mobileDecryptLocalData(cipher)
+        let recovered = try keys.nodeDecryptLocalData(cipher)
         XCTAssertEqual(recovered, plaintext)
     }
 
@@ -96,7 +96,7 @@ final class KeysTests: XCTestCase {
         let userMobile = try KeysFFI()
         try userMobile.initializeAsMobile()
         try userMobile.mobileInitializeUserRootKey()
-        // mobileInstallNetworkPublicKey not implemented yet
+        try userMobile.mobileInstallNetworkPublicKey(networkPublicKey: networkPk)
 
         // Verify that the installed network public key can be retrieved by the userMobile keystore
         let retrieved = try userMobile.mobileGetNetworkPublicKey(networkId)
