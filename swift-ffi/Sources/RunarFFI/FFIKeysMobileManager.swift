@@ -264,9 +264,9 @@ class MobileKeyManagerImpl: MobileKeyManager {
     }
 
     private func performEnvelopeEncryption(_ params: EnvelopeEncryptionParams) throws -> Int32 {
-        return params.data.withUnsafeBytes { raw in
+        params.data.withUnsafeBytes { raw in
             if let networkId = params.networkId {
-                return networkId.withCString { cNid in
+                networkId.withCString { cNid in
                     params.profileKeysArray.withUnsafeBufferPointer { keysPtr in
                         params.profileLensArray.withUnsafeBufferPointer { lensPtr in
                             rn_keys_mobile_encrypt_with_envelope(
@@ -285,7 +285,7 @@ class MobileKeyManagerImpl: MobileKeyManager {
                     }
                 }
             } else {
-                return params.profileKeysArray.withUnsafeBufferPointer { keysPtr in
+                params.profileKeysArray.withUnsafeBufferPointer { keysPtr in
                     params.profileLensArray.withUnsafeBufferPointer { lensPtr in
                         rn_keys_mobile_encrypt_with_envelope(
                             handle,

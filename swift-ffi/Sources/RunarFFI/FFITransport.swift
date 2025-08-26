@@ -25,7 +25,7 @@ public final class FFITransport {
                 rn_transport_new_with_keys(keys.rawHandle, ptr, optionsCBOR.count, &out, errPtr)
             }
         }
-        if let error = error { throw error }
+        if let error { throw error }
         handle = out
     }
 
@@ -34,13 +34,13 @@ public final class FFITransport {
     public func start() throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, error) = withRnError { rn_transport_start(transportHandle, $0) }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     public func stop() throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, error) = withRnError { rn_transport_stop(transportHandle, $0) }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     public func localAddr() throws -> String {
@@ -48,7 +48,7 @@ public final class FFITransport {
         var cstr: UnsafeMutablePointer<CChar>?
         var len = 0
         let (_, error) = withRnError { rn_transport_local_addr(transportHandle, &cstr, &len, $0) }
-        if let error = error { throw error }
+        if let error { throw error }
         defer { if let cString = cstr { rn_string_free(cString) } }
         return cstr.map { String(cString: $0) } ?? ""
     }
@@ -61,20 +61,20 @@ public final class FFITransport {
                 rn_transport_connect_peer(transportHandle, ptr, peerInfoCBOR.count, errPtr)
             }
         }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     public func disconnectPeer(_ peerNodeId: String) throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, error) = withRnError { rn_transport_disconnect_peer(transportHandle, peerNodeId, $0) }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     public func isConnected(_ peerNodeId: String) throws -> Bool {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         var connected = false
         let (_, error) = withRnError { rn_transport_is_connected(transportHandle, peerNodeId, &connected, $0) }
-        if let error = error { throw error }
+        if let error { throw error }
         return connected
     }
 
@@ -86,7 +86,7 @@ public final class FFITransport {
                 rn_transport_update_local_node_info(transportHandle, ptr, nodeInfoCBOR.count, errPtr)
             }
         }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     // Note: mapping updates are pushed via keys before creating transport

@@ -102,13 +102,13 @@ class NodeKeyManagerImpl: NodeKeyManager {
         var outLen = 0
 
         let (_, err) = withRnError { errPtr in
-            if let networkId = networkId {
+            if let networkId {
                 networkId.withCString { networkIdPtr in
                     if let keys = profileKeys, !keys.isEmpty {
                         let profileKeysArray = keys.map {
                             $0.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress }
                         }
-                        let profileLensArray = keys.map { $0.count }
+                        let profileLensArray = keys.map(\.count)
                         profileKeysArray.withUnsafeBufferPointer { keysPtr in
                             profileLensArray.withUnsafeBufferPointer { lensPtr in
                                 rn_keys_node_encrypt_with_envelope(
@@ -145,7 +145,7 @@ class NodeKeyManagerImpl: NodeKeyManager {
                     let profileKeysArray = keys.map {
                         $0.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress }
                     }
-                    let profileLensArray = keys.map { $0.count }
+                    let profileLensArray = keys.map(\.count)
                     profileKeysArray.withUnsafeBufferPointer { keysPtr in
                         profileLensArray.withUnsafeBufferPointer { lensPtr in
                             rn_keys_node_encrypt_with_envelope(

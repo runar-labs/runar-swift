@@ -98,7 +98,7 @@ public final class FFIKeyStore: EnvelopeCrypto {
 
     // Helper function to perform the actual envelope encryption
     private func performEnvelopeEncryption(_ params: EnvelopeEncryptionParams) -> (Int32, FFIError?) {
-        return withRnError { errPtr -> Int32 in
+        withRnError { errPtr -> Int32 in
             var result: Int32 = 0
             params.data.withUnsafeBytes { dataRaw in
                 params.profileBuffers.pointers.withUnsafeBufferPointer { ptrsBuf in

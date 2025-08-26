@@ -17,11 +17,11 @@ public final class KeysFFI {
 
     /// Get the raw FFI handle (for compatibility with other classes)
     public var rawHandle: UnsafeMutableRawPointer? {
-        return handle
+        handle
     }
 
     public init(logger: Logger? = nil) {
-        if let logger = logger {
+        if let logger {
             self.logger = logger
         } else {
             self.logger = Logger(subsystem: "com.runar.ffi", category: "keys")
@@ -59,7 +59,7 @@ public final class KeysFFI {
         let (_, error) = withRnError { errPtr in
             rn_keys_init_as_mobile(keysHandle, errPtr)
         }
-        if let error = error { throw error }
+        if let error { throw error }
 
         let manager = MobileKeyManagerImpl(handle: keysHandle, logger: logger)
         mobileKeyManager = manager
@@ -80,7 +80,7 @@ public final class KeysFFI {
         let (_, error) = withRnError { errPtr in
             rn_keys_init_as_node(keysHandle, errPtr)
         }
-        if let error = error { throw error }
+        if let error { throw error }
 
         let manager = NodeKeyManagerImpl(handle: keysHandle, logger: logger)
         nodeKeyManager = manager
@@ -144,7 +144,7 @@ public final class KeysFFI {
                 rn_keys_set_persistence_dir(keysHandle, cDir, errPtr)
             }
         }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     /// Enable auto persist
@@ -156,7 +156,7 @@ public final class KeysFFI {
         let (_, error) = withRnError { errPtr in
             rn_keys_enable_auto_persist(keysHandle, enabled, errPtr)
         }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     /// Wipe persistence
@@ -168,7 +168,7 @@ public final class KeysFFI {
         let (_, error) = withRnError { errPtr in
             rn_keys_wipe_persistence(keysHandle, errPtr)
         }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     /// Get keystore capabilities
@@ -181,7 +181,7 @@ public final class KeysFFI {
         let (_, error) = withRnError { errPtr in
             rn_keys_get_keystore_caps(keysHandle, &caps, errPtr)
         }
-        if let error = error { throw error }
+        if let error { throw error }
 
         return caps
     }
@@ -195,7 +195,7 @@ public final class KeysFFI {
         let (_, error) = withRnError { errPtr in
             rn_keys_flush_state(keysHandle, errPtr)
         }
-        if let error = error { throw error }
+        if let error { throw error }
     }
 
     /// Ensure symmetric key exists
@@ -212,7 +212,7 @@ public final class KeysFFI {
                 rn_keys_ensure_symmetric_key(keysHandle, cKeyName, &out, &outLen, errPtr)
             }
         }
-        if let error = error { throw error }
+        if let error { throw error }
 
         guard let outPtr = out else { return Data() }
         let data = Data(bytes: outPtr, count: outLen)

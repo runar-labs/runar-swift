@@ -30,7 +30,7 @@ public extension KeysFFI {
                 }
             }
         }
-        if let error = error { throw error }
+        if let error { throw error }
 
         guard let outPtr = out else { return Data() }
         let result = Data(bytes: outPtr, count: outLen)
@@ -63,7 +63,7 @@ public extension KeysFFI {
                 }
             }
         }
-        if let error = error { throw error }
+        if let error { throw error }
 
         guard let outPtr = out else { return Data() }
         let result = Data(bytes: outPtr, count: outLen)

@@ -7,6 +7,7 @@ import RunarFFI
 
 /// Global type registry for serialization/deserialization
 /// Thread-safe registry matching Rust's global registries
+@unchecked Sendable
 public final class SerializerRegistry {
     public static let shared = SerializerRegistry()
 

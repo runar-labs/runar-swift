@@ -18,44 +18,44 @@ public enum FFIError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .nullArgument(msg):
-            return "Null argument: \(msg)"
+            "Null argument: \(msg)"
         case let .invalidHandle(msg):
-            return "Invalid handle: \(msg)"
+            "Invalid handle: \(msg)"
         case .notInitialized:
-            return "FFI instance not initialized"
+            "FFI instance not initialized"
         case let .wrongManagerType(msg):
-            return "Wrong manager type: \(msg)"
+            "Wrong manager type: \(msg)"
         case let .operationFailed(msg):
-            return "Operation failed: \(msg)"
+            "Operation failed: \(msg)"
         case let .serializationFailed(msg):
-            return "Serialization failed: \(msg)"
+            "Serialization failed: \(msg)"
         case let .keystoreFailed(msg):
-            return "Keystore operation failed: \(msg)"
+            "Keystore operation failed: \(msg)"
         case let .memoryAllocation(msg):
-            return "Memory allocation failed: \(msg)"
+            "Memory allocation failed: \(msg)"
         case let .lockError(msg):
-            return "Lock acquisition failed: \(msg)"
+            "Lock acquisition failed: \(msg)"
         case let .invalidUTF8(msg):
-            return "Invalid UTF-8 string: \(msg)"
+            "Invalid UTF-8 string: \(msg)"
         case let .invalidArgument(msg):
-            return "Invalid argument: \(msg)"
+            "Invalid argument: \(msg)"
         }
     }
 
     /// Error code constants - matching Rust error codes exactly
     public var errorCode: Int32 {
         switch self {
-        case .nullArgument: return 1
-        case .invalidHandle: return 2
-        case .notInitialized: return 3
-        case .wrongManagerType: return 4
-        case .operationFailed: return 5
-        case .serializationFailed: return 6
-        case .keystoreFailed: return 7
-        case .memoryAllocation: return 8
-        case .lockError: return 9
-        case .invalidUTF8: return 10
-        case .invalidArgument: return 11
+        case .nullArgument: 1
+        case .invalidHandle: 2
+        case .notInitialized: 3
+        case .wrongManagerType: 4
+        case .operationFailed: 5
+        case .serializationFailed: 6
+        case .keystoreFailed: 7
+        case .memoryAllocation: 8
+        case .lockError: 9
+        case .invalidUTF8: 10
+        case .invalidArgument: 11
         }
     }
 
