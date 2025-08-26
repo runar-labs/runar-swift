@@ -65,19 +65,24 @@ public enum FFIError: LocalizedError {
     }
 
     private static func errorFromCode(_ code: Int32, message: String) -> FFIError {
-        switch code {
-        case 1: return .nullArgument(message)
-        case 2: return .invalidHandle(message)
-        case 3: return .notInitialized
-        case 4: return .wrongManagerType(message)
-        case 5: return .operationFailed(message)
-        case 6: return .serializationFailed(message)
-        case 7: return .keystoreFailed(message)
-        case 8: return .memoryAllocation(message)
-        case 9: return .lockError(message)
-        case 10: return .invalidUTF8(message)
-        case 11: return .invalidArgument(message)
-        default: return .operationFailed("Unknown error code: \(code), message: \(message)")
+        let errorMap: [Int32: (String) -> FFIError] = [
+            1: { .nullArgument($0) },
+            2: { .invalidHandle($0) },
+            3: { _ in .notInitialized },
+            4: { .wrongManagerType($0) },
+            5: { .operationFailed($0) },
+            6: { .serializationFailed($0) },
+            7: { .keystoreFailed($0) },
+            8: { .memoryAllocation($0) },
+            9: { .lockError($0) },
+            10: { .invalidUTF8($0) },
+            11: { .invalidArgument($0) }
+        ]
+
+        if let errorConstructor = errorMap[code] {
+            return errorConstructor(message)
+        } else {
+            return .operationFailed("Unknown error code: \(code), message: \(message)")
         }
     }
 }

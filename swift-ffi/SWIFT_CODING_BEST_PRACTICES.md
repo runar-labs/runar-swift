@@ -435,12 +435,186 @@ Before submitting code for review, ensure:
 - Review and update this document as new patterns emerge
 - Share learnings with the team to improve overall code quality
 
+## Lessons Learned
+
+### 1. Unnecessary `try` Keywords
+```swift
+// ❌ BAD - Unnecessary try keyword
+let keys = try KeysFFI()  // KeysFFI() is not a throwing initializer
+
+// ✅ GOOD - Remove unnecessary try
+let keys = KeysFFI()
+```
+
+**Lesson**: Always verify if a function/initializer actually throws before using `try`. The Swift compiler will warn about unnecessary `try` keywords, which indicates poor error handling design.
+
+### 2. Helper Struct Trade-offs
+```swift
+// ❌ BAD - Helper structs can increase type body length
+struct FFIHelper {
+    // Helper methods that increase overall class line count
+}
+
+// ✅ GOOD - Sometimes inline helper functions are better
+private func helperFunction() {
+    // Inline helper logic
+}
+```
+
+**Lesson**: While helper structs can reduce function complexity, they can also increase type body length violations. Balance is key - use them only when they provide significant value.
+
+### 3. Compilation Errors from Over-Refactoring
+```swift
+// ❌ BAD - Over-refactoring can introduce compilation errors
+struct EnvelopeOutput {
+    let out: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>
+    let outLen: UnsafeMutablePointer<Int>
+}
+
+// This can cause 'inout' parameter issues and type inference problems
+
+// ✅ GOOD - Direct parameter passing when possible
+func performEnvelopeEncryption(
+    out: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
+    outLen: UnsafeMutablePointer<Int>
+)
+```
+
+**Lesson**: Over-engineering solutions can introduce new problems. Sometimes the simplest approach (direct parameter passing) is the most reliable.
+
+### 4. Type Mismatch in FFI Operations
+```swift
+// ❌ BAD - Incorrect type usage
+func handleTransportRequest(_ params: TransportRequestParams) {
+    let transportHandle: OpaquePointer = handle  // Wrong type!
+}
+
+// ✅ GOOD - Correct type usage
+func handleTransportRequest(_ params: TransportRequestParams) {
+    let transportHandle: UnsafeMutableRawPointer = handle  // Correct type
+}
+```
+
+**Lesson**: FFI operations require precise type matching. Always verify types match between Swift and C FFI signatures.
+
+### 5. Syntax Errors from Missing Braces
+```swift
+// ❌ BAD - Missing closing brace causes cascading errors
+func handlePayloadRequest(_ params: PayloadRequestParams) {
+    // Implementation...
+    // Missing } - causes compilation errors throughout the rest of the class
+}
+
+// ✅ GOOD - Always verify brace matching
+func handlePayloadRequest(_ params: PayloadRequestParams) {
+    // Implementation...
+}  // Proper closing brace
+```
+
+**Lesson**: Missing braces cause cascading compilation errors that can be confusing. Always verify syntax structure, especially after refactoring.
+
+### 6. Parameter Name Mismatches
+```swift
+// ❌ BAD - Parameter name mismatch
+struct Opts {
+    let openStreamTimeoutMs: UInt32  // Wrong name
+}
+
+// Function expects 'openStreamMs'
+let options = Opts(openStreamTimeoutMs: 5000)  // Compilation error
+
+// ✅ GOOD - Match parameter names exactly
+struct Opts {
+    let openStreamMs: UInt32  // Correct name
+}
+```
+
+**Lesson**: Always verify parameter names match exactly between struct definitions and function calls, especially when refactoring.
+
+### 7. Unused Variables in Tests
+```swift
+// ❌ BAD - Unused variables create warnings
+let setupToken = try nodeKeys.nodeGenerateSetupToken(userPublicKey: userPublicKey)
+// setupToken is never used
+
+// ✅ GOOD - Use underscore for intentionally unused values
+let _ = try nodeKeys.nodeGenerateSetupToken(userPublicKey: userPublicKey)
+```
+
+**Lesson**: Use underscore (`_`) for intentionally unused return values to avoid compiler warnings and make intent clear.
+
+### 8. Vertical Whitespace Management
+```swift
+// ❌ BAD - Too many empty lines
+func function1() {
+    // Implementation
+}
+
+
+func function2() {  // Too much vertical whitespace
+    // Implementation
+}
+
+// ✅ GOOD - Single empty line between functions
+func function1() {
+    // Implementation
+}
+
+func function2() {  // Single empty line
+    // Implementation
+}
+```
+
+**Lesson**: Maintain consistent vertical spacing - single empty lines between functions, no excessive whitespace.
+
+## Bad Practices to Avoid
+
+### 1. Over-Refactoring Without Testing
+- Don't create helper structs just to reduce function complexity without testing
+- Don't refactor multiple violations simultaneously - fix one at a time
+- Always run tests after each refactoring step
+
+### 2. Ignoring Compiler Warnings
+- Don't ignore "no calls to throwing functions occur within 'try' expression"
+- Don't ignore unused variable warnings
+- Address all warnings systematically
+
+### 3. Complex Parameter Structs
+- Don't create parameter structs that are only used in one place
+- Don't over-abstract simple parameter passing
+- Use parameter structs only when they provide clear value
+
+### 4. Inconsistent Error Handling
+- Don't mix different error handling patterns in the same file
+- Don't use single-letter variables for errors
+- Maintain consistent error handling throughout
+
+### 5. Memory Management Neglect
+- Don't forget to free FFI-allocated memory
+- Don't ignore memory leaks in tests
+- Always use `defer` for cleanup when appropriate
+
+### 6. Test Data Naming
+- Don't use unclear test data names
+- Don't use single letters for test variables
+- Use descriptive names that explain the test scenario
+
+### 7. Function Length Ignorance
+- Don't create functions longer than 50 lines
+- Don't mix multiple concerns in single functions
+- Break complex functions into smaller, focused functions
+
+### 8. Line Length Violations
+- Don't create lines longer than 120 characters
+- Don't ignore line length in function signatures
+- Break long lines appropriately for readability
+
 ## Progress Tracking
 
 ### Linting Violations Reduction
 - **Initial**: 119 violations (2 serious)
-- **Current**: 6 violations (0 serious)
-- **Reduction**: 95% improvement, 100% serious violations eliminated
+- **Current**: 7 violations (0 serious)
+- **Reduction**: 94% improvement, 100% serious violations eliminated
 
 ### Violations Fixed
 ✅ **Function Parameter Count**: Used parameter structs to group related parameters
@@ -449,110 +623,37 @@ Before submitting code for review, ensure:
 ✅ **Line Length**: Broke long lines into multiple lines
 ✅ **Trailing Whitespace**: Removed all trailing whitespace
 ✅ **Identifier Names**: Replaced single-letter variables with descriptive names
+✅ **Cyclomatic Complexity**: Refactored complex switch statements into helper functions
+✅ **Unnecessary try Keywords**: Removed try from non-throwing initializers
+✅ **File Length**: Successfully split large files into smaller, focused files
+✅ **Vertical Whitespace**: Fixed excessive empty lines
 
 ### Remaining Violations
-🔴 **Type Body Length**: Classes exceeding 250/350 line limits
-🔴 **File Length**: Files exceeding 400 line limits  
-🔴 **Function Body Length**: Functions exceeding 50 line limits
-🔴 **Cyclomatic Complexity**: Functions with complexity > 10
+🔴 **Type Body Length**: Classes exceeding 250/350 line limits (2 files)
+🔴 **Function Body Length**: Functions exceeding 50 line limits (1 function)
+🔴 **Line Length**: Lines exceeding 120 character limits (5 lines)
 
-### Lessons Learned
+### Key Insights
 ⚠️ **Helper Structs**: Adding helper structs to reduce function complexity can actually increase type body length
 ⚠️ **Trade-offs**: Sometimes fixing one violation introduces another - need to balance approaches
+⚠️ **Complex Refactoring**: Over-engineering solutions can introduce new compilation errors
 ✅ **Parameter Structs**: Using parameter structs for functions with many parameters is effective
 ✅ **Function Extraction**: Breaking long functions into smaller ones is effective
 ✅ **Line Breaking**: Breaking long lines and function signatures is effective
+✅ **File Splitting**: Moving large files into smaller, focused files is very effective
+✅ **Error Handling**: Consistent error handling patterns are crucial
+✅ **Memory Management**: Proper FFI memory management prevents crashes and leaks
+✅ **Testing**: Systematic testing after each change prevents regression
 
-## Linting Violation Fixes
+### Recent Lessons Learned
+⚠️ **Compilation Error Recovery**: When complex refactoring introduces compilation errors, sometimes it's better to revert to a simpler approach
+⚠️ **Protocol Conformance**: Removing methods required by protocols can break compilation - always verify protocol requirements
+✅ **File Organization**: Splitting large files into focused extensions is more effective than complex parameter structs
+✅ **Incremental Approach**: Fix one violation type at a time rather than attempting complex multi-issue refactoring
+✅ **Systematic Progress**: Focus on violations that can be fixed without introducing new compilation errors
 
-### 1. Function Parameter Count Violations
-```swift
-// ❌ BAD - Too many parameters
-func performEnvelopeEncryption(
-    data: Data,
-    networkId: String?,
-    profileBuffers: ProfileKeyBuffers,
-    profilePublicKeys: [Data],
-    outCbor: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
-    outLen: UnsafeMutablePointer<Int>
-) -> (Int32, FFIError?)
-
-// ✅ GOOD - Use parameter structs
-struct EnvelopeEncryptionParams {
-    let data: Data
-    let networkId: String?
-    let profileBuffers: ProfileKeyBuffers
-    let profilePublicKeys: [Data]
-    let outCbor: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>
-    let outLen: UnsafeMutablePointer<Int>
-}
-
-func performEnvelopeEncryption(_ params: EnvelopeEncryptionParams) -> (Int32, FFIError?)
-```
-
-### 2. Large Tuple Violations
-```swift
-// ❌ BAD - Tuple with more than 2 members
-func prepareProfileKeyBuffers(_ profilePublicKeys: [Data]) -> (
-    buffers: [UnsafeMutablePointer<UInt8>],
-    pointers: [UnsafePointer<UInt8>?],
-    lengths: [Int]
-)
-
-// ✅ GOOD - Use structs instead of tuples
-struct ProfileKeyBuffers {
-    let buffers: [UnsafeMutablePointer<UInt8>]
-    let pointers: [UnsafePointer<UInt8>?]
-    let lengths: [Int]
-}
-
-func prepareProfileKeyBuffers(_ profilePublicKeys: [Data]) -> ProfileKeyBuffers
-```
-
-### 3. Function Body Length Violations
-```swift
-// ❌ BAD - Function with 50+ lines
-func encryptWithEnvelopeCBOR(...) throws -> Data {
-    // 50+ lines of complex logic
-}
-
-// ✅ GOOD - Extract helper functions
-func encryptWithEnvelopeCBOR(...) throws -> Data {
-    let profileBuffers = prepareProfileKeyBuffers(profilePublicKeys)
-    let (_, err) = performEnvelopeEncryption(...)
-    // Cleanup and return
-}
-
-private func performEnvelopeEncryption(_ params: EnvelopeEncryptionParams) -> (Int32, FFIError?) {
-    // Complex FFI logic extracted here
-}
-```
-
-### 4. Trailing Whitespace
-```bash
-# Remove all trailing whitespace from Swift files
-find Sources/ -name "*.swift" -exec sed -i '' 's/[[:space:]]*$//' {} \;
-```
-
-### 5. Line Length Violations
-```swift
-// ❌ BAD - Long line
-if case let .unsignedInt(unsignedValue) = element, unsignedValue <= UInt64(UInt8.max) { out.append(UInt8(unsignedValue)) }
-
-// ✅ GOOD - Break into multiple lines
-if case let .unsignedInt(unsignedValue) = element,
-   unsignedValue <= UInt64(UInt8.max) {
-    out.append(UInt8(unsignedValue))
-}
-```
-
-## Conclusion
-
-Following these best practices will result in:
-- **Maintainable code** that's easy to understand and modify
-- **Consistent codebase** that follows established patterns
-- **Fewer bugs** through better error handling and memory management
-- **Easier testing** with well-organized test structures
-- **Better collaboration** through clear naming and documentation
-
-Remember: **Code is read much more often than it is written**. Write for the reader, not just for the compiler.
+### Final Status Summary
+🎯 **Goal**: 0 warnings and 0 serious violations
+📊 **Progress**: 94% complete (7 remaining vs 119 initial)
+🚀 **Achievement**: All serious violations eliminated, only minor style warnings remain
+💡 **Strategy**: Focus on remaining violations that can be addressed with simple formatting changes
