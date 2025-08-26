@@ -8,7 +8,12 @@ public struct EnvelopeEncryptedData: Sendable, Equatable, Codable {
     public let networkEncryptedKey: Data
     public let profileEncryptedKeys: [String: Data]
 
-    public init(encryptedData: Data, networkId: String?, networkEncryptedKey: Data, profileEncryptedKeys: [String: Data]) {
+    public init(
+        encryptedData: Data,
+        networkId: String?,
+        networkEncryptedKey: Data,
+        profileEncryptedKeys: [String: Data]
+    ) {
         self.encryptedData = encryptedData
         self.networkId = networkId
         self.networkEncryptedKey = networkEncryptedKey
@@ -30,12 +35,20 @@ public final class FFIKeyStore: EnvelopeCrypto {
     public init(keys: KeysFFI) { self.keys = keys }
 
     // EnvelopeCrypto
-    public func encryptWithEnvelope(data: Data, networkId: String?, profileIds: [String]) throws -> EnvelopeEncryptedData {
+    public func encryptWithEnvelope(
+        data: Data,
+        networkId: String?,
+        profileIds: [String]
+    ) throws -> EnvelopeEncryptedData {
         var derivedPKs: [Data] = []
         if !profileIds.isEmpty {
             derivedPKs = try profileIds.map { try keys.mobileDeriveUserProfileKey($0) }
         }
-        let cbor = try encryptWithEnvelopeCBOR(data: data, networkId: networkId, profilePublicKeys: derivedPKs)
+        let cbor = try encryptWithEnvelopeCBOR(
+            data: data,
+            networkId: networkId,
+            profilePublicKeys: derivedPKs
+        )
         return try decodeEnvelopeFromFFICBOR(cbor)
     }
 
@@ -49,10 +62,15 @@ public final class FFIKeyStore: EnvelopeCrypto {
         return try decryptEnvelopeCBOR(cbor)
     }
 
-    // Returns canonical CBOR (as produced by Rust) of the envelope encrypted data
-    private func encryptWithEnvelopeCBOR(data: Data, networkId: String?, profilePublicKeys: [Data]) throws -> Data {
-        var outCbor: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
+    // Helper struct for profile key buffers
+    private struct ProfileKeyBuffers {
+        let buffers: [UnsafeMutablePointer<UInt8>]
+        let pointers: [UnsafePointer<UInt8>?]
+        let lengths: [Int]
+    }
+
+    // Helper function to prepare profile key buffers
+    private func prepareProfileKeyBuffers(_ profilePublicKeys: [Data]) -> ProfileKeyBuffers {
         // Allocate C buffers to keep pointers valid during the call
         var pkRawBuffers: [UnsafeMutablePointer<UInt8>] = []
         pkRawBuffers.reserveCapacity(profilePublicKeys.count)
@@ -65,47 +83,89 @@ public final class FFIKeyStore: EnvelopeCrypto {
         let pkPtrs: [UnsafePointer<UInt8>?] = pkRawBuffers.map { UnsafePointer($0) }
         let pkLens: [Int] = profilePublicKeys.map(\.count)
 
-        let (_, err) = withRnError { errPtr -> Int32 in
+        return ProfileKeyBuffers(buffers: pkRawBuffers, pointers: pkPtrs, lengths: pkLens)
+    }
+
+    // Helper struct for envelope encryption parameters
+    private struct EnvelopeEncryptionParams {
+        let data: Data
+        let networkId: String?
+        let profileBuffers: ProfileKeyBuffers
+        let profilePublicKeys: [Data]
+        let outCbor: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>
+        let outLen: UnsafeMutablePointer<Int>
+    }
+
+    // Helper function to perform the actual envelope encryption
+    private func performEnvelopeEncryption(_ params: EnvelopeEncryptionParams) -> (Int32, FFIError?) {
+        return withRnError { errPtr -> Int32 in
             var result: Int32 = 0
-            data.withUnsafeBytes { dataRaw in
-                pkPtrs.withUnsafeBufferPointer { ptrsBuf in
-                    pkLens.withUnsafeBufferPointer { lensBuf in
-                        if let nid = networkId, !nid.isEmpty {
+            params.data.withUnsafeBytes { dataRaw in
+                params.profileBuffers.pointers.withUnsafeBufferPointer { ptrsBuf in
+                    params.profileBuffers.lengths.withUnsafeBufferPointer { lensBuf in
+                        if let nid = params.networkId, !nid.isEmpty {
                             nid.withCString { cstr in
-                                result = rn_keys_mobile_encrypt_with_envelope(keys.rawHandle,
-                                                                              dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                                                                              data.count,
-                                                                              cstr,
-                                                                              ptrsBuf.baseAddress,
-                                                                              lensBuf.baseAddress,
-                                                                              profilePublicKeys.count,
-                                                                              &outCbor,
-                                                                              &outLen,
-                                                                              errPtr)
+                                result = rn_keys_mobile_encrypt_with_envelope(
+                                    keys.rawHandle,
+                                    dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                    params.data.count,
+                                    cstr,
+                                    ptrsBuf.baseAddress,
+                                    lensBuf.baseAddress,
+                                    params.profilePublicKeys.count,
+                                    params.outCbor,
+                                    params.outLen,
+                                    errPtr
+                                )
                             }
                         } else {
-                            result = rn_keys_mobile_encrypt_with_envelope(keys.rawHandle,
-                                                                          dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                                                                          data.count,
-                                                                          nil,
-                                                                          ptrsBuf.baseAddress,
-                                                                          lensBuf.baseAddress,
-                                                                              profilePublicKeys.count,
-                                                                              &outCbor,
-                                                                              &outLen,
-                                                                              errPtr)
+                            result = rn_keys_mobile_encrypt_with_envelope(
+                                keys.rawHandle,
+                                dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                params.data.count,
+                                nil,
+                                ptrsBuf.baseAddress,
+                                lensBuf.baseAddress,
+                                params.profilePublicKeys.count,
+                                params.outCbor,
+                                params.outLen,
+                                errPtr
+                            )
                         }
                     }
                 }
             }
             return result
         }
+    }
+
+    // Returns canonical CBOR (as produced by Rust) of the envelope encrypted data
+    private func encryptWithEnvelopeCBOR(
+        data: Data,
+        networkId: String?,
+        profilePublicKeys: [Data]
+    ) throws -> Data {
+        var outCbor: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let profileBuffers = prepareProfileKeyBuffers(profilePublicKeys)
+
+        let (_, err) = performEnvelopeEncryption(EnvelopeEncryptionParams(
+            data: data,
+            networkId: networkId,
+            profileBuffers: profileBuffers,
+            profilePublicKeys: profilePublicKeys,
+            outCbor: &outCbor,
+            outLen: &outLen
+        ))
         // Free allocated buffers
-        for buffer in pkRawBuffers {
+        for buffer in profileBuffers.buffers {
             buffer.deallocate()
         }
         if let error = err { throw error }
-        guard let ptr = outCbor else { throw FFIError(code: -1, message: "encrypt_with_envelope returned null") }
+        guard let ptr = outCbor else {
+            throw FFIError(code: -1, message: "encrypt_with_envelope returned null")
+        }
         let eedCbor = Data(bytes: ptr, count: outLen)
         rn_free(ptr, outLen)
         return eedCbor
@@ -136,115 +196,28 @@ public final class FFIKeyStore: EnvelopeCrypto {
 
     private func decodeEnvelopeFromFFICBOR(_ data: Data) throws -> EnvelopeEncryptedData {
         let itemOpt = try CBORDecoder(input: [UInt8](data)).decodeItem()
-        guard let item = itemOpt, case let CBOR.map(map) = item else { throw FFIError(code: 2, message: "Invalid envelope CBOR") }
-        func bytes(_ key: String) -> Data {
-            if let value = map[CBOR.utf8String(key)] {
-                switch value {
-                case let .byteString(byteArray): return Data(byteArray)
-                case let .array(arr):
-                    var out: [UInt8] = []
-                    out.reserveCapacity(arr.count)
-                    for element in arr {
-                        if case let .unsignedInt(unsignedValue) = element, unsignedValue <= UInt64(UInt8.max) { out.append(UInt8(unsignedValue)) }
-                    }
-                    return Data(out)
-                default: return Data()
-                }
-            }
-            return Data()
+        guard let item = itemOpt, case let CBOR.map(map) = item else {
+            throw FFIError(code: 2, message: "Invalid envelope CBOR")
         }
-        func string(_ key: String) -> String {
-            if let value = map[CBOR.utf8String(key)] {
-                switch value {
-                case let .utf8String(str): return str
-                default: return ""
-                }
-            }
-            return ""
-        }
-        func unsignedInt(_ key: String) -> UInt64 {
-            if let value = map[CBOR.utf8String(key)] {
-                switch value {
-                case let .unsignedInt(unsignedValue): return unsignedValue
-                default: return 0
-                }
-            }
-            return 0
-        }
-        func array(_ key: String) -> [Data] {
-            if let value = map[CBOR.utf8String(key)] {
-                switch value {
-                case let .array(arr):
-                    var out: [Data] = []
-                    out.reserveCapacity(arr.count)
-                    for element in arr {
-                        if case let .byteString(byteArray) = element { out.append(Data(byteArray)) }
-                    }
-                    return out
-                default: return []
-                }
-            }
-            return []
-        }
-        func arrayOfStrings(_ key: String) -> [String] {
-            if let value = map[CBOR.utf8String(key)] {
-                switch value {
-                case let .array(arr):
-                    var out: [String] = []
-                    out.reserveCapacity(arr.count)
-                    for element in arr {
-                        if case let .utf8String(str) = element { out.append(str) }
-                    }
-                    return out
-                default: return []
-                }
-            }
-            return []
-        }
-        func map(_ key: String) -> [String: String] {
-            if let value = map[CBOR.utf8String(key)] {
-                switch value {
-                case let .map(mapValue):
-                    var out: [String: String] = [:]
-                    for (key, value) in mapValue {
-                        if case let .utf8String(keyStr) = key, case let .utf8String(valueStr) = value {
-                            out[keyStr] = valueStr
-                        }
-                    }
-                    return out
-                default: return [:]
-                }
-            }
-            return [:]
-        }
-        func mapOfStrings(_ key: String) -> [String: String] {
-            if let value = map[CBOR.utf8String(key)] {
-                switch value {
-                case let .map(mapValue):
-                    var out: [String: String] = [:]
-                    for (key, value) in mapValue {
-                        if case let .utf8String(keyStr) = key, case let .utf8String(valueStr) = value {
-                            out[keyStr] = valueStr
-                        }
-                    }
-                    return out
-                default: return [:]
-                }
-            }
-            return [:]
-        }
+
+        let decoder = CBORDecoderHelper(map: map)
+
         var profileMap: [String: Data] = [:]
-        if let pm = map[CBOR.utf8String("profile_encrypted_keys")], case let .map(m) = pm {
-            for (k, v) in m {
-                guard case let .utf8String(pid) = k else { continue }
-                switch v {
-                case let .byteString(b):
-                    profileMap[pid] = Data(b)
+        if let profileMapData = map[CBOR.utf8String("profile_encrypted_keys")],
+           case let .map(profileMapValue) = profileMapData {
+            for (key, value) in profileMapValue {
+                guard case let .utf8String(pid) = key else { continue }
+                switch value {
+                case let .byteString(byteArray):
+                    profileMap[pid] = Data(byteArray)
                 case let .array(arr):
                     var out: [UInt8] = []
                     out.reserveCapacity(arr.count)
-                    for e in arr {
-                        if case let .unsignedInt(u) = e, u <= UInt64(UInt8.max) { out.append(UInt8(u)) }
+                    for element in arr {
+                        if case let .unsignedInt(unsignedValue) = element,
+                           unsignedValue <= UInt64(UInt8.max) {
+                            out.append(UInt8(unsignedValue))
+                        }
                     }
                     profileMap[pid] = Data(out)
                 default:
@@ -253,27 +226,141 @@ public final class FFIKeyStore: EnvelopeCrypto {
             }
         }
         return EnvelopeEncryptedData(
-            encryptedData: bytes("encrypted_data"),
-            networkId: string("network_id"),
-            networkEncryptedKey: bytes("network_encrypted_key"),
+            encryptedData: decoder.bytes("encrypted_data"),
+            networkId: decoder.string("network_id"),
+            networkEncryptedKey: decoder.bytes("network_encrypted_key"),
             profileEncryptedKeys: profileMap
         )
     }
 
-    private func encodeEnvelopeToFFICBOR(_ e: EnvelopeEncryptedData) throws -> Data {
+    private func encodeEnvelopeToFFICBOR(_ envelope: EnvelopeEncryptedData) throws -> Data {
         var map: [CBOR: CBOR] = [:]
         // Encode bytes as arrays of unsigned ints to satisfy serde expectation of sequences
-        let encArr = [UInt8](e.encryptedData).map { CBOR.unsignedInt(UInt64($0)) }
+        let encArr = [UInt8](envelope.encryptedData).map { CBOR.unsignedInt(UInt64($0)) }
         map[.utf8String("encrypted_data")] = .array(encArr)
-        if let nid = e.networkId { map[.utf8String("network_id")] = .utf8String(nid) }
-        let keyArr = [UInt8](e.networkEncryptedKey).map { CBOR.unsignedInt(UInt64($0)) }
-        map[.utf8String("network_encrypted_key")] = .array(keyArr)
-        var pm: [CBOR: CBOR] = [:]
-        for (k, v) in e.profileEncryptedKeys {
-            let arr = [UInt8](v).map { CBOR.unsignedInt(UInt64($0)) }
-            pm[.utf8String(k)] = .array(arr)
+        if let nid = envelope.networkId {
+            map[.utf8String("network_id")] = .utf8String(nid)
         }
-        map[.utf8String("profile_encrypted_keys")] = .map(pm)
+        let keyArr = [UInt8](envelope.networkEncryptedKey).map { CBOR.unsignedInt(UInt64($0)) }
+        map[.utf8String("network_encrypted_key")] = .array(keyArr)
+        var profileMap: [CBOR: CBOR] = [:]
+        for (key, value) in envelope.profileEncryptedKeys {
+            let arr = [UInt8](value).map { CBOR.unsignedInt(UInt64($0)) }
+            profileMap[.utf8String(key)] = .array(arr)
+        }
+        map[.utf8String("profile_encrypted_keys")] = .map(profileMap)
         return Data(CBOR.map(map).encode())
+    }
+}
+
+// MARK: - CBOR Decoder Helper
+
+private struct CBORDecoderHelper {
+    let map: [CBOR: CBOR]
+
+    func bytes(_ key: String) -> Data {
+        if let value = map[CBOR.utf8String(key)] {
+            switch value {
+            case let .byteString(byteArray): return Data(byteArray)
+            case let .array(arr):
+                var out: [UInt8] = []
+                out.reserveCapacity(arr.count)
+                for element in arr {
+                    if case let .unsignedInt(unsignedValue) = element,
+                       unsignedValue <= UInt64(UInt8.max) {
+                        out.append(UInt8(unsignedValue))
+                    }
+                }
+                return Data(out)
+            default: return Data()
+            }
+        }
+        return Data()
+    }
+
+    func string(_ key: String) -> String {
+        if let value = map[CBOR.utf8String(key)] {
+            switch value {
+            case let .utf8String(str): return str
+            default: return ""
+            }
+        }
+        return ""
+    }
+
+    func unsignedInt(_ key: String) -> UInt64 {
+        if let value = map[CBOR.utf8String(key)] {
+            switch value {
+            case let .unsignedInt(unsignedValue): return unsignedValue
+            default: return 0
+            }
+        }
+        return 0
+    }
+
+    func array(_ key: String) -> [Data] {
+        if let value = map[CBOR.utf8String(key)] {
+            switch value {
+            case let .array(arr):
+                var out: [Data] = []
+                out.reserveCapacity(arr.count)
+                for element in arr {
+                    if case let .byteString(byteArray) = element { out.append(Data(byteArray)) }
+                }
+                return out
+            default: return []
+            }
+        }
+        return []
+    }
+
+    func arrayOfStrings(_ key: String) -> [String] {
+        if let value = map[CBOR.utf8String(key)] {
+            switch value {
+            case let .array(arr):
+                var out: [String] = []
+                out.reserveCapacity(arr.count)
+                for element in arr {
+                    if case let .utf8String(str) = element { out.append(str) }
+                }
+                return out
+            default: return []
+            }
+        }
+        return []
+    }
+
+    func map(_ key: String) -> [String: String] {
+        if let value = map[CBOR.utf8String(key)] {
+            switch value {
+            case let .map(mapValue):
+                var out: [String: String] = [:]
+                for (key, value) in mapValue {
+                    if case let .utf8String(keyStr) = key, case let .utf8String(valueStr) = value {
+                        out[keyStr] = valueStr
+                    }
+                }
+                return out
+            default: return [:]
+            }
+        }
+        return [:]
+    }
+
+    func mapOfStrings(_ key: String) -> [String: String] {
+        if let value = map[CBOR.utf8String(key)] {
+            switch value {
+            case let .map(mapValue):
+                var out: [String: String] = [:]
+                for (key, value) in mapValue {
+                    if case let .utf8String(keyStr) = key, case let .utf8String(valueStr) = value {
+                        out[keyStr] = valueStr
+                    }
+                }
+                return out
+            default: return [:]
+            }
+        }
+        return [:]
     }
 }

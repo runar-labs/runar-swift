@@ -61,19 +61,23 @@ public enum FFIError: LocalizedError {
 
     /// Legacy constructor for backwards compatibility
     public init(code: Int32, message: String) {
+        self = Self.errorFromCode(code, message: message)
+    }
+
+    private static func errorFromCode(_ code: Int32, message: String) -> FFIError {
         switch code {
-        case 1: self = .nullArgument(message)
-        case 2: self = .invalidHandle(message)
-        case 3: self = .notInitialized
-        case 4: self = .wrongManagerType(message)
-        case 5: self = .operationFailed(message)
-        case 6: self = .serializationFailed(message)
-        case 7: self = .keystoreFailed(message)
-        case 8: self = .memoryAllocation(message)
-        case 9: self = .lockError(message)
-        case 10: self = .invalidUTF8(message)
-        case 11: self = .invalidArgument(message)
-        default: self = .operationFailed("Unknown error code: \(code), message: \(message)")
+        case 1: return .nullArgument(message)
+        case 2: return .invalidHandle(message)
+        case 3: return .notInitialized
+        case 4: return .wrongManagerType(message)
+        case 5: return .operationFailed(message)
+        case 6: return .serializationFailed(message)
+        case 7: return .keystoreFailed(message)
+        case 8: return .memoryAllocation(message)
+        case 9: return .lockError(message)
+        case 10: return .invalidUTF8(message)
+        case 11: return .invalidArgument(message)
+        default: return .operationFailed("Unknown error code: \(code), message: \(message)")
         }
     }
 }

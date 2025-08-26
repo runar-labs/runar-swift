@@ -6,12 +6,12 @@ final class SwiftFFILifecycleTests: XCTestCase {
     func testBasicInitialization() {
         do {
             // Test mobile initialization
-            let mobileKeys = try KeysFFI()
+            let mobileKeys = KeysFFI()
             try mobileKeys.initializeAsMobile()
             print("✅ Mobile initialization successful")
 
             // Test node initialization
-            let nodeKeys = try KeysFFI()
+            let nodeKeys = KeysFFI()
             try nodeKeys.initializeAsNode()
             print("✅ Node initialization successful")
 
@@ -26,7 +26,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
 
     func testNodePublicKeyAfterInit() {
         do {
-            let nodeKeys = try KeysFFI()
+            let nodeKeys = KeysFFI()
             try nodeKeys.initializeAsNode()
 
             // Test getting public key immediately after init
@@ -44,7 +44,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
 
     func testNodeAgreementPublicKeyAfterInit() {
         do {
-            let nodeKeys = try KeysFFI()
+            let nodeKeys = KeysFFI()
             try nodeKeys.initializeAsNode()
 
             // Test getting agreement public key immediately after init
@@ -64,7 +64,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
     func testNodeOperationsAfterInit() {
         do {
             print("🔧 Creating KeysFFI handle...")
-            let nodeKeys = try KeysFFI()
+            let nodeKeys = KeysFFI()
             print("✅ KeysFFI handle created")
 
             print("🔧 Initializing as node...")
@@ -88,7 +88,8 @@ final class SwiftFFILifecycleTests: XCTestCase {
                 print("🔧 Testing CSR generation...")
                 let csr = try nodeKeys.nodeGenerateCSR()
                 print("✅ Node CSR generated: \(csr.count) bytes")
-            } catch {
+            }
+            catch {
                 print("❌ Node CSR generation failed: \(error)")
                 if let ffiError = error as? FFIError {
                     print("   Error code: \(ffiError.errorCode)")
@@ -109,7 +110,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
 
         // Check if we can access the raw handle
         do {
-            let keys = try KeysFFI()
+            let keys = KeysFFI()
             let rawHandle = keys.rawHandle
             print("✅ FFI handle obtained: \(rawHandle != nil ? "valid" : "null")")
 

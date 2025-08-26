@@ -6,7 +6,7 @@ final class KeysTests: XCTestCase {
         let tempDir = NSTemporaryDirectory() + "ffi_keys_test_\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
-        let keys = try KeysFFI()
+        let keys = KeysFFI()
         try keys.initializeAsNode()
         try keys.nodeSetPersistenceDirectory(URL(fileURLWithPath: tempDir))
         try keys.nodeEnableAutoPersist(true)
@@ -22,7 +22,7 @@ final class KeysTests: XCTestCase {
         state = try keys.nodeGetKeystoreState()
         XCTAssert(state == 0 || state == 1)
 
-        let keys2 = try KeysFFI()
+        let keys2 = KeysFFI()
         try keys2.initializeAsNode()
         try keys2.nodeSetPersistenceDirectory(URL(fileURLWithPath: tempDir))
         state = try keys2.nodeGetKeystoreState()
@@ -39,7 +39,7 @@ final class KeysTests: XCTestCase {
         let tempDir = NSTemporaryDirectory() + "ffi_mobile_test_\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
-        let keys = try KeysFFI()
+        let keys = KeysFFI()
         try keys.initializeAsMobile()
         try keys.mobileSetPersistenceDirectory(URL(fileURLWithPath: tempDir))
         try keys.mobileEnableAutoPersist(true)
@@ -52,7 +52,7 @@ final class KeysTests: XCTestCase {
         state = try keys.mobileGetKeystoreState()
         XCTAssert(state == 0 || state == 1)
 
-        let keys2 = try KeysFFI()
+        let keys2 = KeysFFI()
         try keys2.initializeAsMobile()
         try keys2.mobileSetPersistenceDirectory(URL(fileURLWithPath: tempDir))
         state = try keys2.mobileGetKeystoreState()
@@ -66,7 +66,7 @@ final class KeysTests: XCTestCase {
     }
 
     func testLocalDataEncryptDecrypt() throws {
-        let keys = try KeysFFI()
+        let keys = KeysFFI()
         try keys.initializeAsNode()
         let plaintext = Data("secret bytes".utf8)
         let cipher = try keys.nodeEncryptLocalData(plaintext)
@@ -77,11 +77,11 @@ final class KeysTests: XCTestCase {
 
     func testMobileInstallNetworkPublicKey() throws {
         // Create a CA and a node to obtain a network public key, then install in another mobile-only keystore
-        let certificateAuthority = try KeysFFI()
+        let certificateAuthority = KeysFFI()
         try certificateAuthority.initializeAsMobile()
         try certificateAuthority.mobileInitializeUserRootKey()
 
-        let node = try KeysFFI()
+        let node = KeysFFI()
         try node.initializeAsNode()
         let csr = try node.nodeGenerateCSR()
         let ncm = try certificateAuthority.mobileProcessSetupToken(csr)
@@ -93,7 +93,7 @@ final class KeysTests: XCTestCase {
         // Do not install network key on node in this test; we only validate mobile public key install
 
         // Create a separate mobile-only keys and install the network public key
-        let userMobile = try KeysFFI()
+        let userMobile = KeysFFI()
         try userMobile.initializeAsMobile()
         try userMobile.mobileInitializeUserRootKey()
         try userMobile.mobileInstallNetworkPublicKey(networkPublicKey: networkPublicKey)

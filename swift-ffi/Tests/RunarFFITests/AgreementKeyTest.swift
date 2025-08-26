@@ -3,7 +3,7 @@ import XCTest
 
 final class AgreementKeyTest: XCTestCase {
     func testGetAgreementPublicKey() throws {
-        let keys = try KeysFFI()
+        let keys = KeysFFI()
         try keys.initializeAsNode()
 
         // Test that we can get the agreement public key directly

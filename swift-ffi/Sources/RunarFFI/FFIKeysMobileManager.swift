@@ -216,14 +216,14 @@ class MobileKeyManagerImpl: MobileKeyManager {
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
 
-        let result = try performEnvelopeEncryption(
+        let result = try performEnvelopeEncryption(EnvelopeEncryptionParams(
             data: data,
             networkId: networkId,
             profileKeysArray: profileKeysArray,
             profileLensArray: profileLensArray,
             out: &out,
             outLen: &outLen
-        )
+        ))
 
         if result != 0 {
             throw FFIError.operationFailed("Failed to encrypt with envelope")
@@ -254,47 +254,49 @@ class MobileKeyManagerImpl: MobileKeyManager {
         return (profileKeysArray, profileLensArray)
     }
 
-    private func performEnvelopeEncryption(
-        data: Data,
-        networkId: String?,
-        profileKeysArray: [UnsafePointer<UInt8>?],
-        profileLensArray: [Int],
-        out: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
-        outLen: UnsafeMutablePointer<Int>
-    ) throws -> Int32 {
-        return data.withUnsafeBytes { raw in
-            if let networkId = networkId {
+    private struct EnvelopeEncryptionParams {
+        let data: Data
+        let networkId: String?
+        let profileKeysArray: [UnsafePointer<UInt8>?]
+        let profileLensArray: [Int]
+        let out: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>
+        let outLen: UnsafeMutablePointer<Int>
+    }
+
+    private func performEnvelopeEncryption(_ params: EnvelopeEncryptionParams) throws -> Int32 {
+        return params.data.withUnsafeBytes { raw in
+            if let networkId = params.networkId {
                 return networkId.withCString { cNid in
-                    profileKeysArray.withUnsafeBufferPointer { keysPtr in
-                        profileLensArray.withUnsafeBufferPointer { lensPtr in
+                    params.profileKeysArray.withUnsafeBufferPointer { keysPtr in
+                        params.profileLensArray.withUnsafeBufferPointer { lensPtr in
                             rn_keys_mobile_encrypt_with_envelope(
                                 handle,
                                 raw.bindMemory(to: UInt8.self).baseAddress,
-                                data.count,
+                                params.data.count,
                                 cNid,
-                                profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
-                                profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
-                                profileKeysArray.count,
-                                out,
-                                outLen,
+                                params.profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
+                                params.profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
+                                params.profileKeysArray.count,
+                                params.out,
+                                params.outLen,
                                 nil
                             )
                         }
                     }
                 }
             } else {
-                return profileKeysArray.withUnsafeBufferPointer { keysPtr in
-                    profileLensArray.withUnsafeBufferPointer { lensPtr in
+                return params.profileKeysArray.withUnsafeBufferPointer { keysPtr in
+                    params.profileLensArray.withUnsafeBufferPointer { lensPtr in
                         rn_keys_mobile_encrypt_with_envelope(
                             handle,
                             raw.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
+                            params.data.count,
                             nil,
-                            profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
-                            profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
-                            profileKeysArray.count,
-                            out,
-                            outLen,
+                            params.profileKeysArray.isEmpty ? nil : keysPtr.baseAddress,
+                            params.profileLensArray.isEmpty ? nil : lensPtr.baseAddress,
+                            params.profileKeysArray.count,
+                            params.out,
+                            params.outLen,
                             nil
                         )
                     }

@@ -3,7 +3,7 @@ import XCTest
 
 final class EnvelopeE2ETests: XCTestCase {
     func testGetAgreementPublicKey() throws {
-        let keys = try KeysFFI()
+        let keys = KeysFFI()
         try keys.initializeAsNode()
 
         // Test that we can get the agreement public key directly
@@ -23,7 +23,7 @@ final class EnvelopeE2ETests: XCTestCase {
         let tempDir = NSTemporaryDirectory() + "ffi_env_test_\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
 
-        let keys = try KeysFFI()
+        let keys = KeysFFI()
         try keys.initializeAsMobile()
         try keys.mobileSetPersistenceDirectory(URL(fileURLWithPath: tempDir))
         try keys.mobileEnableAutoPersist(true)
@@ -39,7 +39,7 @@ final class EnvelopeE2ETests: XCTestCase {
         var nodeKeys: KeysFFI?
         do {
             // Need to create a separate node instance to get agreement public key
-            nodeKeys = try KeysFFI()
+            nodeKeys = KeysFFI()
             try nodeKeys!.initializeAsNode()
             let publicKey = try nodeKeys!.nodeGetAgreementPublicKey()
             let nkm = try keys.mobileCreateNetworkKeyMessage(networkId: nid, nodeAgreementPk: publicKey)

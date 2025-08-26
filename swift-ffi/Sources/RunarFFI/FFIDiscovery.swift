@@ -32,7 +32,9 @@ public final class FFIDiscovery {
     }
 
     public func bindEvents(to transport: FFITransport) throws {
-        guard let discoveryHandle = handle, let transportHandle = transport.handle else { throw FFIError(code: -1, message: "handles freed") }
+        guard let discoveryHandle = handle, let transportHandle = transport.handle else {
+            throw FFIError(code: -1, message: "handles freed")
+        }
         let (_, err) = withRnError { rn_discovery_bind_events_to_transport(discoveryHandle, transportHandle, $0) }
         if let error = err { throw error }
     }

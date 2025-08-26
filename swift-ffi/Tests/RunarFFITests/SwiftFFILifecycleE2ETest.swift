@@ -39,7 +39,7 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
         // ==========================================
         // Phase 2: Node Setup
         // ==========================================
-        let (nodeKeys, setupToken, encryptedSetupToken) = try setupNodeSide(userPublicKey: userPublicKey)
+        let (nodeKeys, _, encryptedSetupToken) = try setupNodeSide(userPublicKey: userPublicKey)
 
         // ==========================================
         // Phase 3: Certificate Exchange
@@ -167,7 +167,7 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
     private func setupMobileSide() throws -> (KeysFFI, Data) {
         print("\n📱 MOBILE SIDE - First Time Setup")
 
-        let mobileKeys = try KeysFFI()
+        let mobileKeys = KeysFFI()
         try mobileKeys.initializeAsMobile()
 
         // 1 - (mobile side) - generate user master key
@@ -185,7 +185,7 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
     private func setupNodeSide(userPublicKey: Data) throws -> (KeysFFI, Data, String) {
         print("\n🖥️  NODE SIDE - Setup Mode")
 
-        let nodeKeys = try KeysFFI()
+        let nodeKeys = KeysFFI()
         try nodeKeys.initializeAsNode()
 
         // 2 - node side (setup mode) - generate its own TLS and Storage keypairs
