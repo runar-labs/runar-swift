@@ -105,22 +105,26 @@ class NodeKeyManagerImpl: NodeKeyManager {
             if let networkId = networkId {
                 networkId.withCString { networkIdPtr in
                     if let keys = profileKeys, !keys.isEmpty {
-                        let profileKeysArray = keys.compactMap {
+                        let profileKeysArray = keys.map {
                             $0.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress }
                         }
                         let profileLensArray = keys.map { $0.count }
-                        rn_keys_node_encrypt_with_envelope(
-                            handle,
-                            data.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress },
-                            data.count,
-                            networkIdPtr,
-                            profileKeysArray,
-                            profileLensArray,
-                            profileKeysArray.count,
-                            &out,
-                            &outLen,
-                            errPtr
-                        )
+                        profileKeysArray.withUnsafeBufferPointer { keysPtr in
+                            profileLensArray.withUnsafeBufferPointer { lensPtr in
+                                rn_keys_node_encrypt_with_envelope(
+                                    handle,
+                                    data.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress },
+                                    data.count,
+                                    networkIdPtr,
+                                    keysPtr.baseAddress,
+                                    lensPtr.baseAddress,
+                                    profileKeysArray.count,
+                                    &out,
+                                    &outLen,
+                                    errPtr
+                                )
+                            }
+                        }
                     } else {
                         rn_keys_node_encrypt_with_envelope(
                             handle,
@@ -138,22 +142,26 @@ class NodeKeyManagerImpl: NodeKeyManager {
                 }
             } else {
                 if let keys = profileKeys, !keys.isEmpty {
-                    let profileKeysArray = keys.compactMap {
+                    let profileKeysArray = keys.map {
                         $0.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress }
                     }
                     let profileLensArray = keys.map { $0.count }
-                    rn_keys_node_encrypt_with_envelope(
-                        handle,
-                        data.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress },
-                        data.count,
-                        nil,
-                        profileKeysArray,
-                        profileLensArray,
-                        profileKeysArray.count,
-                        &out,
-                        &outLen,
-                        errPtr
-                    )
+                    profileKeysArray.withUnsafeBufferPointer { keysPtr in
+                        profileLensArray.withUnsafeBufferPointer { lensPtr in
+                            rn_keys_node_encrypt_with_envelope(
+                                handle,
+                                data.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress },
+                                data.count,
+                                nil,
+                                keysPtr.baseAddress,
+                                lensPtr.baseAddress,
+                                profileKeysArray.count,
+                                &out,
+                                &outLen,
+                                errPtr
+                            )
+                        }
+                    }
                 } else {
                     rn_keys_node_encrypt_with_envelope(
                         handle,
@@ -247,46 +255,5 @@ class NodeKeyManagerImpl: NodeKeyManager {
         if let error = err { throw error }
         defer { if let outString = out { rn_string_free(outString) } }
         return out.map { String(cString: $0) } ?? ""
-    }
-
-    private struct EnvelopeEncryptionParams {
-        let data: Data
-        let networkId: String?
-        let profileKeysArray: [UnsafePointer<UInt8>?]
-        let profileLensArray: [Int]
-        let out: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>
-        let outLen: UnsafeMutablePointer<Int>
-    }
-
-    private func performEnvelopeEncryption(_ params: EnvelopeEncryptionParams) -> (Int32, FFIError?) {
-        return withRnError { errPtr in
-            if let networkId = params.networkId {
-                networkId.withCString { networkIdPtr in
-                    rn_keys_node_encrypt_with_envelope(
-                        handle,
-                        params.data.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress },
-                        params.data.count,
-                        networkIdPtr,
-                        params.profileKeysArray,
-                        params.profileLensArray,
-                        params.out,
-                        params.outLen,
-                        errPtr
-                    )
-                }
-            } else {
-                rn_keys_node_encrypt_with_envelope(
-                    handle,
-                    params.data.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress },
-                    params.data.count,
-                    nil,
-                    params.profileKeysArray,
-                    params.profileLensArray,
-                    params.out,
-                    params.outLen,
-                    errPtr
-                )
-            }
-        }
     }
 }

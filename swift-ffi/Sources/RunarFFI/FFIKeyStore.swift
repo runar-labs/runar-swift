@@ -204,7 +204,8 @@ public final class FFIKeyStore: EnvelopeCrypto {
 
         var profileMap: [String: Data] = [:]
         if let profileMapData = map[CBOR.utf8String("profile_encrypted_keys")],
-           case let .map(profileMapValue) = profileMapData {
+           case let .map(profileMapValue) = profileMapData
+        {
             for (key, value) in profileMapValue {
                 guard case let .utf8String(pid) = key else { continue }
                 switch value {
@@ -215,7 +216,8 @@ public final class FFIKeyStore: EnvelopeCrypto {
                     out.reserveCapacity(arr.count)
                     for element in arr {
                         if case let .unsignedInt(unsignedValue) = element,
-                           unsignedValue <= UInt64(UInt8.max) {
+                           unsignedValue <= UInt64(UInt8.max)
+                        {
                             out.append(UInt8(unsignedValue))
                         }
                     }
@@ -267,7 +269,8 @@ private struct CBORDecoderHelper {
                 out.reserveCapacity(arr.count)
                 for element in arr {
                     if case let .unsignedInt(unsignedValue) = element,
-                       unsignedValue <= UInt64(UInt8.max) {
+                       unsignedValue <= UInt64(UInt8.max)
+                    {
                         out.append(UInt8(unsignedValue))
                     }
                 }

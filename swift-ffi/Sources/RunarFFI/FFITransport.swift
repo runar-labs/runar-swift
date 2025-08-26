@@ -274,7 +274,7 @@ public final class FFITransport {
         let errPtr: UnsafeMutablePointer<RNAPIRnError>?
     }
 
-    private func handleTransportRequest(_ params: TransportRequestParams) {
+    private func handleTransportRequest(_: TransportRequestParams) {
         // This function is implemented in the FFITransport+RequestHandling extension
         // to keep the main file focused and under the line limit
     }

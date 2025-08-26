@@ -76,7 +76,7 @@ public enum FFIError: LocalizedError {
             8: { .memoryAllocation($0) },
             9: { .lockError($0) },
             10: { .invalidUTF8($0) },
-            11: { .invalidArgument($0) }
+            11: { .invalidArgument($0) },
         ]
 
         if let errorConstructor = errorMap[code] {
