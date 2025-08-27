@@ -150,14 +150,18 @@ public final class FFIKeyStore: EnvelopeCrypto {
 
         let profileBuffers = prepareProfileKeyBuffers(profilePublicKeys)
 
-        let (_, err) = performEnvelopeEncryption(EnvelopeEncryptionParams(
-            data: data,
-            networkId: networkId,
-            profileBuffers: profileBuffers,
-            profilePublicKeys: profilePublicKeys,
-            outCbor: &outCbor,
-            outLen: &outLen
-        ))
+        let (_, err) = withUnsafeMutablePointer(to: &outCbor) { outCborPtr in
+            withUnsafeMutablePointer(to: &outLen) { outLenPtr in
+                performEnvelopeEncryption(EnvelopeEncryptionParams(
+                    data: data,
+                    networkId: networkId,
+                    profileBuffers: profileBuffers,
+                    profilePublicKeys: profilePublicKeys,
+                    outCbor: outCborPtr,
+                    outLen: outLenPtr
+                ))
+            }
+        }
         // Free allocated buffers
         for buffer in profileBuffers.buffers {
             buffer.deallocate()

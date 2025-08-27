@@ -40,54 +40,44 @@ final class CBORTests: XCTestCase {
         XCTAssertGreaterThan(encoded.count, 0)
     }
 
-    func testAnyValueBinaryFormat() {
+    func testAnyValueBinaryFormat() async throws {
         let testString = "Test"
         let primitiveValue = AnyValue.primitive(testString)
 
-        do {
-            let serialized = try primitiveValue.serialize()
+        let serialized = try await primitiveValue.serialize()
 
-            // Verify binary format: [category][encrypted][type_name_len][type_name][cbor_data]
-            XCTAssertGreaterThanOrEqual(serialized.count, 4)
+        // Verify binary format: [category][encrypted][type_name_len][type_name][cbor_data]
+        XCTAssertGreaterThanOrEqual(serialized.count, 4)
 
-            let category = serialized[0]
-            XCTAssertEqual(category, ValueCategory.primitive.rawValue)
+        let category = serialized[0]
+        XCTAssertEqual(category, ValueCategory.primitive.rawValue)
 
-            let encrypted = serialized[1]
-            XCTAssertEqual(encrypted, 0x00) // Not encrypted
+        let encrypted = serialized[1]
+        XCTAssertEqual(encrypted, 0x00) // Not encrypted
 
-            let typeNameLen = serialized[2]
-            XCTAssertGreaterThan(typeNameLen, 0)
+        let typeNameLen = serialized[2]
+        XCTAssertGreaterThan(typeNameLen, 0)
 
-            // Verify type name
-            let typeNameData = serialized[3 ..< (3 + Int(typeNameLen))]
-            let typeName = String(data: Data(typeNameData), encoding: .utf8)!
-            XCTAssertEqual(typeName, "string")
+        // Verify type name
+        let typeNameData = serialized[3 ..< (3 + Int(typeNameLen))]
+        let typeName = String(data: Data(typeNameData), encoding: .utf8)!
+        XCTAssertEqual(typeName, "string")
 
-            // Verify CBOR data follows
-            let cborData = serialized[(3 + Int(typeNameLen))...]
-            XCTAssertGreaterThan(cborData.count, 0)
-
-        } catch {
-            XCTFail("Failed to serialize AnyValue: \(error)")
-        }
+        // Verify CBOR data follows
+        let cborData = serialized[(3 + Int(typeNameLen))...]
+        XCTAssertGreaterThan(cborData.count, 0)
     }
 
-    func testAnyValueDeserialization() async {
+    func testAnyValueDeserialization() async throws {
         let testData = "Test bytes".data(using: .utf8)!
         let bytesValue = AnyValue.bytes(testData)
 
-        do {
-            let serialized = try bytesValue.serialize()
-            let deserialized = try AnyValue.deserialize(serialized)
+        let serialized = try await bytesValue.serialize()
+        let deserialized = try AnyValue.deserialize(serialized)
 
-            XCTAssertEqual(deserialized.category, .bytes)
-            let retrievedData: Data = try await deserialized.asType()
-            XCTAssertEqual(retrievedData, testData)
-
-        } catch {
-            XCTFail("Failed to serialize/deserialize bytes: \(error)")
-        }
+        XCTAssertEqual(deserialized.category, .bytes)
+        let retrievedData: Data = try await deserialized.asType()
+        XCTAssertEqual(retrievedData, testData)
     }
 
     static let allTests = [

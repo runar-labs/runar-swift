@@ -3,7 +3,7 @@ import SwiftCBOR
 import XCTest
 
 final class BasicAnyValueTests: XCTestCase {
-    func testNullValue() {
+    func testNullValue() async throws {
         let nullValue = AnyValue.null()
 
         XCTAssertTrue(nullValue.isNull)
@@ -11,16 +11,12 @@ final class BasicAnyValueTests: XCTestCase {
         XCTAssertEqual(nullValue.typeName, "null")
 
         // Test serialization
-        do {
-            let serialized = try nullValue.serialize()
-            XCTAssertEqual(serialized.count, 1)
-            XCTAssertEqual(serialized[0], 0) // null category byte
-        } catch {
-            XCTFail("Failed to serialize null value: \(error)")
-        }
+        let serialized = try await nullValue.serialize()
+        XCTAssertEqual(serialized.count, 1)
+        XCTAssertEqual(serialized[0], 0) // null category byte
     }
 
-    func testPrimitiveString() async {
+    func testPrimitiveString() async throws {
         let testString = "Hello, World!"
         let primitiveValue = AnyValue.primitive(testString)
 
@@ -37,15 +33,11 @@ final class BasicAnyValueTests: XCTestCase {
         }
 
         // Test serialization
-        do {
-            let serialized = try primitiveValue.serialize()
-            XCTAssertFalse(serialized.isEmpty)
-        } catch {
-            XCTFail("Failed to serialize primitive value: \(error)")
-        }
+        let serialized = try await primitiveValue.serialize()
+        XCTAssertFalse(serialized.isEmpty)
     }
 
-    func testBytesValue() async {
+    func testBytesValue() async throws {
         let testData = "Test bytes".data(using: .utf8)!
         let bytesValue = AnyValue.bytes(testData)
 
@@ -62,18 +54,14 @@ final class BasicAnyValueTests: XCTestCase {
         }
 
         // Test serialization
-        do {
-            let serialized = try bytesValue.serialize()
-            // Format: [category][encrypted][type_name_len][type_name][data]
-            // For bytes: [5][0][5]["bytes"][actual_raw_data]
-            XCTAssertGreaterThan(serialized.count, testData.count)
-            let dataStart = 3 + 5 // category + encrypted + type_name_len + "bytes"
-            let actualData = serialized[dataStart...]
-            // Payload for bytes is raw
-            XCTAssertEqual(Data(actualData), testData)
-        } catch {
-            XCTFail("Failed to serialize bytes value: \(error)")
-        }
+        let serialized = try await bytesValue.serialize()
+        // Format: [category][encrypted][type_name_len][type_name][data]
+        // For bytes: [5][0][5]["bytes"][actual_raw_data]
+        XCTAssertGreaterThan(serialized.count, testData.count)
+        let dataStart = 3 + 5 // category + encrypted + type_name_len + "bytes"
+        let actualData = serialized[dataStart...]
+        // Payload for bytes is raw
+        XCTAssertEqual(Data(actualData), testData)
     }
 
     func testTypeMismatch() async {

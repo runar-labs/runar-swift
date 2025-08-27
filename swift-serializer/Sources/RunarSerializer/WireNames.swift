@@ -40,9 +40,9 @@ enum WireNames {
         if let primitive = primitiveWireName(elem) {
             return "list<\(primitive)>"
         }
-        // Use registry if available; fallback to Swift name
+        // Use new SerializationRegistry for wire name lookup
         let swiftName = String(describing: elem)
-        let wire = (try? awaitTypeNameRegistryLookup(swiftName: swiftName)) ?? swiftName
+        let wire = SerializationRegistry.shared.wireNameSync(for: swiftName) ?? swiftName
         return "list<\(wire)>"
     }
 
@@ -50,9 +50,9 @@ enum WireNames {
         if let primitive = primitiveWireName(elem) {
             return "map<string,\(primitive)>"
         }
-        // Use registry if available; fallback to Swift name
+        // Use new SerializationRegistry for wire name lookup
         let swiftName = String(describing: elem)
-        let wire = (try? awaitTypeNameRegistryLookup(swiftName: swiftName)) ?? swiftName
+        let wire = SerializationRegistry.shared.wireNameSync(for: swiftName) ?? swiftName
         return "map<string,\(wire)>"
     }
 }
@@ -71,30 +71,9 @@ enum WireNameParser {
     }
 }
 
-// Actor hop helper to look up wire name from registry synchronously (best-effort)
-func awaitTypeNameRegistryLookup(swiftName: String) throws -> String? {
-    var result: String?
-    let semaphore = DispatchSemaphore(value: 0)
-    Task {
-        result = await TypeNameRegistry.shared.lookupWireName(swiftTypeName: swiftName)
-        semaphore.signal()
-    }
-    _ = semaphore.wait(timeout: .now() + 0.05)
-    return result
-}
 
-func awaitTypeNameRegistryHasWireName(_ wire: String) -> Bool {
-    var result = false
-    let semaphore = DispatchSemaphore(value: 0)
-    Task {
-        let t = await TypeNameRegistry.shared.lookupSwiftTypeByWireName(wire)
-        let d = await TypeNameRegistry.shared.lookupDecoderByWireName(wire)
-        result = (t != nil) || (d != nil)
-        semaphore.signal()
-    }
-    _ = semaphore.wait(timeout: .now() + 0.05)
-    return result
-}
+//     return result
+// }
 
 // Minimal CBOR->Foundation JSON converter for json category
 func cborToFoundationJSON(_ cbor: CBOR) throws -> Any {

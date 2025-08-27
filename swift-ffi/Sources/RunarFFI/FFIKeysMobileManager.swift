@@ -216,14 +216,18 @@ class MobileKeyManagerImpl: MobileKeyManager {
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
 
-        let result = try performEnvelopeEncryption(EnvelopeEncryptionParams(
-            data: data,
-            networkId: networkId,
-            profileKeysArray: profileKeysArray,
-            profileLensArray: profileLensArray,
-            out: &out,
-            outLen: &outLen
-        ))
+        let result = try withUnsafeMutablePointer(to: &out) { outPtr in
+            try withUnsafeMutablePointer(to: &outLen) { outLenPtr in
+                try performEnvelopeEncryption(EnvelopeEncryptionParams(
+                    data: data,
+                    networkId: networkId,
+                    profileKeysArray: profileKeysArray,
+                    profileLensArray: profileLensArray,
+                    out: outPtr,
+                    outLen: outLenPtr
+                ))
+            }
+        }
 
         if result != 0 {
             throw FFIError.operationFailed("Failed to encrypt with envelope")

@@ -72,11 +72,11 @@ public struct PlainMacro: MemberMacro {
 
         return [
             """
-            /// Bootstrap to register wire name and decoder in TypeNameRegistry
+            /// Bootstrap to register wire name and decoder in SerializationRegistry
             private static let _runarPlainBootstrap: Void = {
                 Task {
-                    await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(raw: finalWireName)")
-                    await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(raw: finalWireName)") { data in
+                    await RunarSerializer.SerializationRegistry.shared.registerWireName(for: Self.self, wireName: "\(raw: finalWireName)")
+                    await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(raw: finalWireName)") { data in
                         let decoder = SwiftCBOR.CodableCBORDecoder()
                         return try decoder.decode(Self.self, from: data)
                     }

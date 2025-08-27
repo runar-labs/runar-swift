@@ -13,7 +13,7 @@ import SwiftSyntaxMacros
 /// - Nested `Encrypted<Struct>` struct containing plain fields + per-label encrypted envelopes
 /// - `encryptWithKeystore(_:_: )` on the plain struct
 /// - `decryptWithKeystore(_:)` on the encrypted struct
-/// - TypeNameRegistry registration (wire name + decoder) for the plain struct
+/// - SerializationRegistry registration (wire name + decoder) for the plain struct
 public struct EncryptedMacro: MemberMacro, PeerMacro {
     public static func expansion(
         of node: AttributeSyntax,
@@ -151,31 +151,31 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
         private static let _runarEncryptedBootstrap: Void = {
                 // Synchronous registrations (non-async)
-                RunarSerializer.SerializerRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(wireName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+                RunarSerializer.SerializationRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(wireName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
                         let enc = try value.encryptWithKeystore(keystore, resolver)
                         let encoder = SwiftCBOR.CodableCBOREncoder()
                         return try encoder.encode(enc)
                 }
                 // Also register encryptor under Swift type name to avoid races during bootstrap
-                RunarSerializer.SerializerRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(structName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+                RunarSerializer.SerializationRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(structName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
                         let enc = try value.encryptWithKeystore(keystore, resolver)
                         let encoder = SwiftCBOR.CodableCBOREncoder()
                         return try encoder.encode(enc)
                 }
-                RunarSerializer.SerializerRegistry.shared.registerDecryptor(for: Encrypted\(structName).self, wireName: "Encrypted_\(wireName)") { data, _ in
+                RunarSerializer.SerializationRegistry.shared.registerDecryptor(for: Encrypted\(structName).self, wireName: "Encrypted_\(wireName)") { data, _ in
                         try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
                 }
-                // Async TypeNameRegistry work
+                // Async SerializationRegistry work
                 Task {
-                        await RunarSerializer.TypeNameRegistry.shared.registerTypeName(Self.self, wireName: "\(wireName)")
-                        await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(wireName)") { data in
+                        await RunarSerializer.SerializationRegistry.shared.registerWireName(for: Self.self, wireName: "\(wireName)")
+                        await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(wireName)") { data in
                                 try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
                         }
-                        await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "\(structName)") { data in
+                        await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(structName)") { data in
                                 try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
                         }
                         // Also register decoder for encrypted wire name
-                        await RunarSerializer.TypeNameRegistry.shared.registerDecoder(for: "Encrypted_\(wireName)") { data in
+                        await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "Encrypted_\(wireName)") { data in
                                 try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
                         }
                 }

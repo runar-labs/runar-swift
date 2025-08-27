@@ -32,7 +32,7 @@ final class ComplexTypesTests: XCTestCase {
         let intValue = AnyValue.primitive(123)
         let list = AnyValue.list([stringValue, intValue])
 
-        let serialized = try! list.serialize()
+        let serialized = try! await list.serialize()
         let deserialized = try! AnyValue.deserialize(serialized)
 
         let retrievedList: [AnyValue] = try! await deserialized.asType()
@@ -48,7 +48,7 @@ final class ComplexTypesTests: XCTestCase {
     func testTypedListElementEncryption_noEncryptorFallsBack() async {
         // With no encryptor registered, listTyped encodes plain CBOR. We only assert header/category.
         let xs = AnyValue.listTyped(["a", "b"])
-        let data = try! xs.serialize()
+        let data = try! await xs.serialize()
         let v = try! AnyValue.deserialize(data)
         XCTAssertEqual(v.category, .list)
         XCTAssertEqual(v.typeName, "list<string>")
@@ -109,7 +109,7 @@ final class ComplexTypesTests: XCTestCase {
             "key2": AnyValue.primitive(456),
         ])
 
-        let serialized = try! map.serialize()
+        let serialized = try! await map.serialize()
         let deserialized = try! AnyValue.deserialize(serialized)
 
         let retrievedMap: [String: AnyValue] = try! await deserialized.asType()
@@ -181,7 +181,7 @@ final class ComplexTypesTests: XCTestCase {
         let jsonData = jsonString.data(using: .utf8)!
         let jsonValue = AnyValue.json(jsonData)
 
-        let serialized = try! jsonValue.serialize()
+        let serialized = try! await jsonValue.serialize()
         let deserialized = try! AnyValue.deserialize(serialized)
 
         // JSON re-serialization may reorder keys; compare objects instead of pretty string
@@ -343,6 +343,7 @@ final class ComplexTypesTests: XCTestCase {
 import XCTest
 
 final class CrossLangVectorsTests: XCTestCase {
+    @MainActor
     func testLoadRustVectors_primitivesAndContainers() async throws {
         let base = URL(fileURLWithPath: "/Users/rafael/dev/runar-swift/runar-rust/target/serializer-vectors")
         // primitives

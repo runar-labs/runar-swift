@@ -5,7 +5,7 @@ public extension AnyValue {
     func toJSONObject() async throws -> Any {
         if isNull { return NSNull() }
         // Prefer registry converter by wire name
-        if let converter = await TypeNameRegistry.shared.lookupJsonByWireName(typeName) {
+        if let converter = await SerializationRegistry.shared.jsonConverter(for: typeName) {
             return try await converter(self)
         }
         // Built-ins
