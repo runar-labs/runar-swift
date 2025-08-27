@@ -728,14 +728,20 @@ public final class AnyValue: Sendable {
             let foundationObject = try cborToFoundationJSON(cbor)
             if T.self == Data.self {
                 let data = try JSONSerialization.data(withJSONObject: foundationObject, options: [])
-                return data as! T
+                guard let casted = data as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast JSON data to \(T.self)")
+                }
+                return casted
             }
             if T.self == String.self {
                 let data = try JSONSerialization.data(withJSONObject: foundationObject, options: [])
                 guard let str = String(data: data, encoding: .utf8) else {
                     throw SerializerError.deserializationFailed("Failed to re-encode JSON to UTF-8 string")
                 }
-                return str as! T
+                guard let casted = str as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast JSON string to \(T.self)")
+                }
+                return casted
             }
             guard let casted = foundationObject as? T else {
                 throw SerializerError.typeMismatch("Cannot cast JSON object to \(T.self)")

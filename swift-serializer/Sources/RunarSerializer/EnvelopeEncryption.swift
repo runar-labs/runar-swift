@@ -60,15 +60,15 @@ public enum EnvelopeEncryption {
         var networkId: String?
         var networkEncryptedKey = Data()
         var profileEncryptedKeys: [String: Data] = [:]
-        for (k, v) in map {
-            guard case let .utf8String(key) = k else { continue }
-            switch key {
-            case "encryptedData": if case let .byteString(b) = v { encryptedData = Data(b) }
-            case "networkId": if case let .utf8String(s) = v { networkId = s }
-            case "networkEncryptedKey": if case let .byteString(b) = v { networkEncryptedKey = Data(b) }
-            case "profileEncryptedKeys": if case let .map(pm) = v {
-                    for (pk, pv) in pm {
-                        if case let .utf8String(pid) = pk, case let .byteString(b) = pv { profileEncryptedKeys[pid] = Data(b) }
+        for (key, value) in map {
+            guard case let .utf8String(keyString) = key else { continue }
+            switch keyString {
+            case "encryptedData": if case let .byteString(byteArray) = value { encryptedData = Data(byteArray) }
+            case "networkId": if case let .utf8String(stringValue) = value { networkId = stringValue }
+            case "networkEncryptedKey": if case let .byteString(byteArray) = value { networkEncryptedKey = Data(byteArray) }
+            case "profileEncryptedKeys": if case let .map(profileMap) = value {
+                    for (profileKey, profileValue) in profileMap {
+                        if case let .utf8String(profileId) = profileKey, case let .byteString(byteArray) = profileValue { profileEncryptedKeys[profileId] = Data(byteArray) }
                     }
                 }
             default: break

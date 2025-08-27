@@ -74,8 +74,8 @@ private extension [AnyValue] {
     func asyncMap<T>(_ transform: @escaping @MainActor (AnyValue) async throws -> T) async throws -> [T] {
         var results: [T] = []
         results.reserveCapacity(count)
-        for el in self {
-            try await results.append(transform(el))
+        for element in self {
+            try await results.append(transform(element))
         }
         return results
     }

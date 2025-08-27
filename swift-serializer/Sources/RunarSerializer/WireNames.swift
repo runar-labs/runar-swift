@@ -78,24 +78,24 @@ enum WireNameParser {
 func cborToFoundationJSON(_ cbor: CBOR) throws -> Any {
     switch cbor {
     case .null: return NSNull()
-    case let .boolean(b): return b
-    case let .unsignedInt(u): return NSNumber(value: u)
-    case let .negativeInt(n): return NSNumber(value: -Int64(n) - 1)
-    case let .utf8String(s): return s
-    case let .double(d): return d
-    case let .float(f): return Double(f)
-    case let .map(m):
+    case let .boolean(boolValue): return boolValue
+    case let .unsignedInt(unsignedValue): return NSNumber(value: unsignedValue)
+    case let .negativeInt(negativeValue): return NSNumber(value: -Int64(negativeValue) - 1)
+    case let .utf8String(stringValue): return stringValue
+    case let .double(doubleValue): return doubleValue
+    case let .float(floatValue): return Double(floatValue)
+    case let .map(mapEntries):
         var dict: [String: Any] = [:]
-        for (k, v) in m {
-            guard case let .utf8String(key) = k else { continue }
-            dict[key] = try cborToFoundationJSON(v)
+        for (key, value) in mapEntries {
+            guard case let .utf8String(keyString) = key else { continue }
+            dict[keyString] = try cborToFoundationJSON(value)
         }
         return dict
-    case let .array(arr):
-        return try arr.map { try cborToFoundationJSON($0) }
-    case let .byteString(b):
+    case let .array(arrayElements):
+        return try arrayElements.map { try cborToFoundationJSON($0) }
+    case let .byteString(byteArray):
         // For JSON conversion policy in Swift, bytes become base64 string
-        return Data(b).base64EncodedString()
+        return Data(byteArray).base64EncodedString()
     default:
         throw SerializerError.deserializationFailed("Unsupported CBOR token in JSON conversion: \(cbor)")
     }
