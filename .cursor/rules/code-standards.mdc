@@ -127,3 +127,238 @@ DO NOT FORGET TO SPECIFY THE FOLDER, otherwise the link will run in all files in
 swiftformat [files/directories]
 ```
 - **Must run**: after every features implementation
+
+# Swift Coding Standards & Best Practices
+
+## Code Quality Tools
+- **SwiftLint**: Enforce style conventions with `swiftlint lint Sources/ Tests/` (goal: zero violations)
+- **SwiftFormat**: Auto-format code with `swiftformat Sources/ Tests/` for consistent formatting
+- Run SwiftLint after implementing every feature
+- Address all SwiftLint violations before code review
+
+## Naming Conventions
+
+### Variables & Constants
+- Use descriptive names: `userPublicKey`, `networkId`, `certificateAuthority`, `transportHandle`, `payloadPtr`
+- Avoid single-letter variables: no `p`, `e`, `h`, `pk`, `ca`
+- Avoid abbreviations: no `nid`, `pk`, `ca`
+- Use context-aware names for FFI: `outPtr`, `outLen`, `errPtr`, `rawPtr`, `profileKeyPtr`, `networkKeyPtr`
+
+### Functions
+- Use clear, descriptive names: `setupMobileSide()`, `performCertificateExchange()`, `prepareProfileKeys()`
+- Avoid vague names: no `setup()`, `doCert()`, `prepKeys()`
+
+### Structs & Classes
+- Use PascalCase with clear meaning: `PeerInfo`, `NodeMetadata`, `MobileKeyManagerImpl`, `UnifiedKeyStoreManager`
+- Avoid abbreviations: no `PI`, `NM`, `MKM`, `UKSM`
+
+## Code Organization
+
+### File Structure
+- Group code with `// MARK:` comments: Core Properties, Initialization, Public Interface, Private Helpers
+- Keep related functionality together
+- Avoid mixing public and private methods randomly
+
+### Function Length
+- Keep functions under 50 lines
+- Break complex functions into smaller, focused helpers
+- Main functions should orchestrate flow, not contain all logic
+
+## Memory Management
+
+### FFI Memory Handling
+- Always free FFI-allocated memory with appropriate free functions (`rn_free()`, `rn_string_free()`)
+- Use `defer` statements for cleanup to ensure execution even with errors
+- Never leak FFI memory
+
+### Unsafe Operations
+- Use `withUnsafeBytes` for temporary memory access
+- Properly bind memory types: `raw.bindMemory(to: UInt8.self).baseAddress`
+
+## Error Handling
+
+### Consistent Patterns
+- Always use `withRnError` pattern for FFI operations:
+  ```swift
+  let (_, err) = withRnError { errPtr in
+      rn_function_call(handle, errPtr)
+  }
+  if let error = err { throw error }
+  ```
+- Avoid inconsistent error variable naming (`err` vs `error`)
+- Use descriptive error variable names consistently
+
+## Testing Best Practices
+
+### Test Organization
+- Create focused test methods, not monolithic tests
+- Use helper methods for test setup and phases
+- Structure tests with clear phases and descriptive names
+
+### Test Data
+- Use descriptive test data: `testData = Data("This is a test message...".utf8)`
+- Avoid unclear names: no `data = Data("test".utf8)`
+- Use full profile names: `personalProfileKey`, not `pk1`
+
+## Anti-Patterns to Avoid
+
+### Variables & Naming
+- No single-letter variables: `let p = out` → `let outPtr = out`
+- No abbreviated names: `let pk = publicKey` → `let publicKey = publicKey`
+- Consistent naming style across similar operations
+
+### Functions
+- No functions longer than 50 lines
+- No mixing multiple concerns in single functions
+- Break complex logic into smaller, focused functions
+
+### Error Handling
+- No unnecessary `try` keywords on non-throwing operations
+- No inconsistent error handling patterns
+- No single-letter error variables
+
+### Memory Management
+- No forgotten FFI memory cleanup
+- No missing `defer` statements for resource cleanup
+- No memory leaks in production code
+
+## Performance Considerations
+
+### Memory Allocation
+- Use `withUnsafeBytes` for temporary memory access
+- Always free FFI-allocated memory
+- Use `defer` for cleanup
+
+### String Operations
+- Use `withCString` for C string conversions
+- Avoid unnecessary string allocations in loops
+
+## Documentation
+
+### Code Comments
+- Use `///` for public API documentation
+- Include parameter descriptions and error conditions
+- Reference implementation alignment with Rust counterparts
+
+### Function Documentation
+- Document throws conditions and platform-specific behavior
+- Include implementation notes for complex operations
+
+## Code Review Requirements
+
+Before submitting code:
+- [ ] All SwiftLint violations resolved
+- [ ] Code follows naming conventions
+- [ ] Memory properly managed
+- [ ] Error handling consistent
+- [ ] Tests well-organized and descriptive
+- [ ] No single-letter variables
+- [ ] No abbreviated names
+- [ ] Code properly documented
+
+## FFI-Specific Rules
+
+### Type Safety
+- Match types exactly between Swift and C signatures
+- Use correct pointer types: `UnsafeMutableRawPointer`, not `OpaquePointer`
+- Verify parameter names match struct definitions
+
+### Resource Management
+- Always free FFI-allocated resources
+- Use `defer` for cleanup in the same scope
+- Handle both success and error cleanup paths
+
+### Error Propagation
+- Propagate FFI errors correctly through Swift error types
+- Maintain error context from Rust/C layers
+- No silent error swallowing
+
+## Testing Requirements
+
+### Real Implementations
+- Use actual implementations, never mocks
+- Complete coverage including edge cases
+- Integration tests required for FFI boundaries
+
+### Test Structure
+- Break complex tests into helper methods
+- Use descriptive variable names in tests
+- Test complete end-to-end flows
+- Verify memory management in tests
+
+## Compilation & Build
+
+### Syntax Integrity
+- Verify brace matching after refactoring
+- Address all compiler warnings
+- Fix syntax errors immediately
+
+### Incremental Changes
+- Make small, testable changes
+- Test after each refactoring step
+- Avoid over-refactoring that introduces compilation errors
+
+## File Organization
+
+### Size Limits
+- Keep files under reasonable size limits
+- Split large files into focused extensions
+- Use logical file naming
+
+### Import Organization
+- Group related imports
+- Remove unused imports
+- Maintain clean import sections
+
+## Development Workflow
+
+### Implementation Order
+1. Identify all dependencies
+2. Implement dependencies completely
+3. Implement main feature
+4. Align with Rust reference implementation
+5. Test with real implementations
+6. Code review for compliance
+
+### Quality Gates
+- No shortcuts or temporary solutions
+- Complete features fully or not at all
+- Production-ready code only
+- Zero tolerance for serious violations
+
+## Platform-Specific Considerations
+
+### iOS/macOS
+- Follow Apple Human Interface Guidelines
+- Implement proper security practices
+- Optimize for platform-specific performance
+- Use appropriate platform APIs
+
+### Security
+- Implement CryptoKit properly for encryption
+- Follow Security framework best practices
+- Handle sensitive data appropriately
+- Validate all inputs
+
+## Continuous Improvement
+
+- Run SwiftLint after every feature implementation
+- Use SwiftFormat for consistent formatting
+- Review and update rules as new patterns emerge
+- Share learnings to improve team standards
+
+## Critical Quality Metrics
+
+### Violations to Eliminate
+- Type body length violations (keep classes under 250-350 lines)
+- Function body length violations (keep under 50 lines)
+- Line length violations (keep under 120 characters)
+- Memory management issues
+- Inconsistent error handling
+
+### Success Criteria
+- Zero serious violations
+- Consistent code style
+- Proper memory management
+- Comprehensive test coverage
+- Clear documentation

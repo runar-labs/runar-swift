@@ -99,7 +99,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let \(label)Struct = \(subName)(\(subInitArgs))
             var \(label)Encrypted: RunarFFI.EnvelopeEncryptedData? = nil
             if let info = resolver.resolveLabel("\(label)") {
-            	let bytes = try SwiftCBOR.CodableCBOREncoder().encode(\(label)Struct)
+            	            let bytes = try SwiftCBOR.CodableCBOREncoder().encode(\(label)Struct)
             	\(label)Encrypted = try keystore.encryptWithEnvelope(data: bytes, networkId: info.networkId, profileIds: info.profileIds)
             }
             """

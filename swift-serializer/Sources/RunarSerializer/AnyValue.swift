@@ -103,22 +103,18 @@ private final class AnyValueBox: Sendable {
 }
 
 /// Main container type for zero-copy data handling
-/// 
-/// TEMPORARY: This class uses @unchecked Sendable because it contains mutable state
-/// (materializedValue and lazyData) that is protected by @MainActor isolation
-/// in the methods that access it. The mutable state is only accessed from
-/// @MainActor contexts, ensuring thread safety.
-/// 
-/// TODO: Redesign to be truly Sendable by making the class immutable and
-/// moving mutable operations to the caller's context, or by using proper
-/// actor isolation for the mutable state.
-public final class AnyValue: @unchecked Sendable {
+///
+/// This class is now truly Sendable with no mutable state.
+///
+/// The materializedValue cache has been removed to eliminate @unchecked Sendable.
+/// AnyValue is designed as a transfer container - extract values once and use
+/// concrete types for repeated access.
+public final class AnyValue: Sendable {
     private let box: AnyValueBox
     public let category: ValueCategory
 
-    // Lazy deserialization support
-    private var materializedValue: Any?
-    private var lazyData: LazyData?
+    // Lazy deserialization support (immutable)
+    private let lazyData: LazyData?
 
     /// Create a null value
     public static func null() -> AnyValue {
@@ -206,9 +202,7 @@ public final class AnyValue: @unchecked Sendable {
             serializeFn: serializeFn,
             asTypeFn: asTypeFn
         )
-        let any = AnyValue(box: box, category: .struct)
-        any.materializedValue = value
-        return any
+        return AnyValue(box: box, category: .struct)
     }
 
     /// Create a list value (array of AnyValue)
@@ -220,10 +214,10 @@ public final class AnyValue: @unchecked Sendable {
             for value in values {
                 let full = try await value.serialize(context: context)
                 let (cat, _, name, payload) = try Self.parseSerializedHeader(full)
-                            var map: [CBOR: CBOR] = [:]
-            map[.utf8String("category")] = .unsignedInt(UInt64(cat.rawValue))
-            map[.utf8String("typename")] = .utf8String(name)
-            map[.utf8String("value")] = .byteString([UInt8](payload))
+                var map: [CBOR: CBOR] = [:]
+                map[.utf8String("category")] = .unsignedInt(UInt64(cat.rawValue))
+                map[.utf8String("typename")] = .utf8String(name)
+                map[.utf8String("value")] = .byteString([UInt8](payload))
                 cborElements.append(.map(map))
             }
             return Data(CBOR.array(cborElements).encode())
@@ -410,6 +404,7 @@ public final class AnyValue: @unchecked Sendable {
 
         self.box = box
         self.category = category
+        lazyData = nil // ✅ Initialize lazyData as nil for null values
     }
 
     /// Get the type name of the contained value
@@ -444,7 +439,10 @@ public final class AnyValue: @unchecked Sendable {
         if let ctx = context {
             // Prefer registry encryptor for struct/plain types when available
             // TODO: Re-enable when SerializationRegistry is implemented
-            // if let encryptor = await SerializationRegistry.shared.encryptor(for: plainWireName), let value = materializedValue {
+            // Note: materializedValue cache has been removed, so encryption will need
+            // to get the value from the box or deserialize from lazyData
+            // if let encryptor = await SerializationRegistry.shared.encryptor(for: plainWireName) {
+            //     let value = try await getValueForEncryption()
             //     let payload = try encryptor(value, ctx.keystore, ctx.resolver)
             //     let isEncryptedByte: UInt8 = 0x00
             //     buf.append(isEncryptedByte)
@@ -455,7 +453,7 @@ public final class AnyValue: @unchecked Sendable {
             //     // Strict: no registry encryptor for struct -> error
             //     throw SerializerError.serializationFailed("No encryptor registered for wire name: \(plainWireName)")
             // }
-            
+
             // Temporary fallback: use plain serialization
             let bytes = try await box.serialize(context: nil)
             let isEncryptedByte: UInt8 = 0x00
@@ -479,14 +477,6 @@ public final class AnyValue: @unchecked Sendable {
     /// Get the value as a specific type
     @MainActor
     public func asType<T>(keystore: KeyStore? = nil) async throws -> T {
-        // First, try to get from materialized value
-        if let value = materializedValue {
-            if let result = value as? T {
-                return result
-            }
-            // Do not fail early; attempt box/lazy deserialization next
-        }
-
         // Try to get from box (for already loaded values)
         if let result = box.asType() as T? {
             return result
@@ -495,7 +485,6 @@ public final class AnyValue: @unchecked Sendable {
         // Try lazy deserialization
         if let lazyData {
             let value: T = try await deserializeLazyData(lazyData, to: T.self, keystore: keystore)
-            materializedValue = value
             return value
         }
 
@@ -519,7 +508,7 @@ public final class AnyValue: @unchecked Sendable {
             let envelopeData = try EnvelopeEncryption.deserializeFromCBOR(lazyData.data)
 
             // Decrypt using the keystore
-            guard let keystore = keystore else {
+            guard let keystore else {
                 throw SerializerError.deserializationFailed("No keystore provided for encrypted data")
             }
 
@@ -928,7 +917,7 @@ public final class AnyValue: @unchecked Sendable {
     }
 
     /// Deserialize from data
-    public static func deserialize(_ data: Data, keystore: KeyStore? = nil) throws -> AnyValue {
+    public static func deserialize(_ data: Data, keystore _: KeyStore? = nil) throws -> AnyValue {
         guard !data.isEmpty else {
             throw SerializerError.emptyData
         }
@@ -1157,7 +1146,7 @@ public extension PlainSerializable {
     }
 }
 
-        // (Removed legacy TypeRegistry; use SerializationRegistry instead)
+// (Removed legacy TypeRegistry; use SerializationRegistry instead)
 
 // MARK: - Encryption Types
 

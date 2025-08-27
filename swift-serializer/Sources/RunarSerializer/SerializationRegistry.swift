@@ -3,28 +3,34 @@ import Foundation
 /// Unified actor-based registry for all serialization functionality
 public actor SerializationRegistry {
     // MARK: - Wire Name Management
+
     private var swiftTypeToWireName: [String: String] = [:]
     private var wireNameToSwiftType: [String: Any.Type] = [:]
     private var encryptedWireByPlainWire: [String: String] = [:]
 
     // MARK: - Serialization Functions
+
     private var wireNameToDecryptor: [String: @Sendable (Data, EnvelopeCrypto) throws -> Any] = [:]
     private var wireNameToEncryptor: [String: @Sendable (Any, EnvelopeCrypto, LabelResolver) throws -> Data] = [:]
 
     // MARK: - Deserialization Functions
+
     private var wireNameToDecoder: [String: @Sendable (Data) throws -> Any] = [:]
 
     // MARK: - JSON Conversion
+
     private var wireNameToJsonConverter: [String: @Sendable @MainActor (AnyValue) async throws -> Any] = [:]
 
     // MARK: - Cached Lookups (for synchronous access)
+
     private nonisolated(unsafe) var wireNameCache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
-        cache.countLimit = 1000  // Reasonable limit
+        cache.countLimit = 1000 // Reasonable limit
         return cache
     }()
 
     // MARK: - Initialization
+
     public static let shared = SerializationRegistry()
 
     private init() {
@@ -35,7 +41,8 @@ public actor SerializationRegistry {
     }
 
     // MARK: - Wire Name Management
-    public func registerWireName<T>(for type: T.Type, wireName: String) {
+
+    public func registerWireName<T>(for _: T.Type, wireName: String) {
         let swiftName = String(describing: T.self)
         swiftTypeToWireName[swiftName] = wireName
         wireNameToSwiftType[wireName] = T.self
@@ -53,7 +60,7 @@ public actor SerializationRegistry {
     /// Synchronous wire name lookup for performance-critical code
     public nonisolated func wireNameSync(for swiftTypeName: String) -> String? {
         // Only check cache for synchronous access
-        return wireNameCache.object(forKey: NSString(string: swiftTypeName)) as String?
+        wireNameCache.object(forKey: NSString(string: swiftTypeName)) as String?
     }
 
     public func swiftType(for wireName: String) -> Any.Type? {
@@ -65,8 +72,9 @@ public actor SerializationRegistry {
     }
 
     // MARK: - Serialization Functions
+
     public func registerDecryptor<T: Decodable>(
-        for type: T.Type,
+        for _: T.Type,
         wireName: String? = nil,
         decryptor: @escaping @Sendable (Data, EnvelopeCrypto) throws -> T
     ) {
@@ -77,7 +85,7 @@ public actor SerializationRegistry {
     }
 
     public func registerEncryptor<T: Encodable>(
-        for type: T.Type,
+        for _: T.Type,
         wireName: String? = nil,
         targetEncryptedWireName: String? = nil,
         encryptor: @escaping @Sendable (T, EnvelopeCrypto, LabelResolver) throws -> Data
@@ -104,9 +112,10 @@ public actor SerializationRegistry {
     }
 
     // MARK: - Deserialization Functions
-    public func registerDecoder<T: Decodable>(
+
+    public func registerDecoder(
         for wireName: String,
-        decoder: @escaping @Sendable (Data) throws -> T
+        decoder: @escaping @Sendable (Data) throws -> some Decodable
     ) {
         wireNameToDecoder[wireName] = { data in
             try decoder(data)
@@ -118,6 +127,7 @@ public actor SerializationRegistry {
     }
 
     // MARK: - JSON Conversion
+
     public func registerJsonConverter(
         for wireName: String,
         converter: @escaping @Sendable @MainActor (AnyValue) async throws -> Any
@@ -130,6 +140,7 @@ public actor SerializationRegistry {
     }
 
     // MARK: - Setup Functions
+
     private func setupPrimitiveMappings() {
         registerWireName(for: String.self, wireName: "string")
         registerWireName(for: Bool.self, wireName: "bool")
@@ -155,6 +166,7 @@ public actor SerializationRegistry {
     }
 
     // MARK: - Registry Introspection
+
     public func allWireNames() -> [String] {
         Array(wireNameToSwiftType.keys)
     }
