@@ -1,23 +1,10 @@
 import Foundation
+import RunarFFI
 
 // MARK: - Encryption Types
 
-/// Information about a label's key mapping
-public struct LabelKeyInfo {
-    public let profileIds: [String]
-    public let networkId: String?
-
-    public init(profileIds: [String], networkId: String?) {
-        self.profileIds = profileIds
-        self.networkId = networkId
-    }
-}
-
-/// Protocol for resolving labels to key information
-public protocol LabelResolver {
-    /// Resolve a field label to key information
-    func resolveLabel(_ label: String) -> LabelKeyInfo?
-}
+// LabelResolver is now imported from RunarFFI
+// The serializer package uses RunarFFI.LabelResolver for consistency
 
 // MARK: - Default Values For Decryption Fallback
 
@@ -101,8 +88,22 @@ extension Dictionary: RunarDefault {
 
 // MARK: - LabelResolver convenience
 
-public extension LabelResolver {
-    func canResolve(_ label: String) -> Bool { resolveLabel(label) != nil }
+// Note: LabelResolver is now imported from RunarFFI
+// The convenience methods are no longer needed as the FFI protocol has a different signature
+
+// MARK: - LabelResolver Adapter for FFI Compatibility
+
+/// Adapter to convert FFI LabelResolver to the format expected by the serializer
+public struct LabelResolverAdapter: RunarFFI.LabelResolver {
+    private let resolver: RunarFFI.LabelResolver
+    
+    public init(_ resolver: RunarFFI.LabelResolver) {
+        self.resolver = resolver
+    }
+    
+    public func resolveLabel(_ label: String) throws -> String {
+        try resolver.resolveLabel(label)
+    }
 }
 
 // MARK: - Dynamic decrypt/encrypt interoperability for AnyValue

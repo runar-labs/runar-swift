@@ -82,9 +82,9 @@ public struct PlainMacro: MemberMacro {
             }
 
             /// Convert this struct to an AnyValue for serialization
-            public func toAnyValue() -> RunarSerializer.AnyValue {
-                // Trigger async registrations
-                Task { await Self._ensureRegistered() }
+            public func toAnyValue() async -> RunarSerializer.AnyValue {
+                // Await async registrations
+                await Self._ensureRegistered()
                 return RunarSerializer.AnyValue.struct(self)
             }
 

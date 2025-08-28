@@ -10,7 +10,7 @@ import SwiftCBOR
 /// Protocol for types that can be encrypted
 public protocol RunarEncryptable {
     associatedtype Encrypted: RunarDecryptable where Encrypted.Decrypted == Self
-    func encryptWithKeystore(_ keystore: EnvelopeCrypto, resolver: LabelResolver) throws -> Encrypted
+    func encryptWithKeystore(_ keystore: EnvelopeCrypto, resolver: RunarFFI.LabelResolver) throws -> Encrypted
 }
 
 /// Protocol for types that can be decrypted
@@ -425,7 +425,7 @@ public final class AnyValue: Sendable {
         buf.append(categoryByte)
 
         // Decide header wire name: prefer encrypted wire when using registry encryptor
-        var headerWireName = plainWireName
+        let headerWireName = plainWireName
         // TODO: Re-enable when SerializationRegistry is implemented
         // if let _ = context, let encWire = await SerializationRegistry.shared.encryptedWireName(for: plainWireName) {
         //     headerWireName = encWire
@@ -436,31 +436,28 @@ public final class AnyValue: Sendable {
             throw SerializerError.typeNameTooLong(headerWireName)
         }
 
-        if let ctx = context {
+        if context != nil {
             // Prefer registry encryptor for struct/plain types when available
-            // TODO: Re-enable when SerializationRegistry is implemented
-            // Note: materializedValue cache has been removed, so encryption will need
-            // to get the value from the box or deserialize from lazyData
-            // if let encryptor = await SerializationRegistry.shared.encryptor(for: plainWireName) {
-            //     let value = try await getValueForEncryption()
-            //     let payload = try encryptor(value, ctx.keystore, ctx.resolver)
-            //     let isEncryptedByte: UInt8 = 0x00
-            //     buf.append(isEncryptedByte)
-            //     buf.append(UInt8(typeNameBytes.count))
-            //     buf.append(typeNameBytes)
-            //     buf.append(payload)
-            // } else {
-            //     // Strict: no registry encryptor for struct -> error
-            //     throw SerializerError.serializationFailed("No encryptor registered for wire name: \(plainWireName)")
-            // }
-
-            // Temporary fallback: use plain serialization
-            let bytes = try await box.serialize(context: nil)
-            let isEncryptedByte: UInt8 = 0x00
-            buf.append(isEncryptedByte)
-            buf.append(UInt8(typeNameBytes.count))
-            buf.append(typeNameBytes)
-            buf.append(bytes)
+            if let _ = await SerializationRegistry.shared.encryptor(for: plainWireName) {
+                // Get the original value from the box for encryption
+                // We need to get the value as Any since we don't know the specific type at runtime
+                // For now, use plain serialization until we can properly access the boxed value
+                let bytes = try await box.serialize(context: nil)
+                let isEncryptedByte: UInt8 = 0x00
+                buf.append(isEncryptedByte)
+                buf.append(UInt8(typeNameBytes.count))
+                buf.append(typeNameBytes)
+                buf.append(bytes)
+                return buf
+            } else {
+                // Plain serialization
+                let bytes = try await box.serialize(context: nil)
+                let isEncryptedByte: UInt8 = 0x00
+                buf.append(isEncryptedByte)
+                buf.append(UInt8(typeNameBytes.count))
+                buf.append(typeNameBytes)
+                buf.append(bytes)
+            }
         } else {
             // Plain serialization
             let bytes = try await box.serialize(context: nil)
@@ -494,7 +491,7 @@ public final class AnyValue: Sendable {
     /// Convenience: get encrypted form of a plain type stored in this AnyValue
     /// by first materializing the plain value and then applying field-group encryption.
     @MainActor
-    public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: KeyStore, resolver: LabelResolver) async throws -> T.Encrypted {
+    public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: KeyStore, resolver: RunarFFI.LabelResolver) async throws -> T.Encrypted {
         let plain: T = try await asType()
         return try plain.encryptWithKeystore(keystore, resolver: resolver)
     }

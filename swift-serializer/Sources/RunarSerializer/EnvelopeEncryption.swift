@@ -3,18 +3,18 @@ import RunarFFI
 import SwiftCBOR
 
 /// Default label resolver that maps labels directly to profile IDs
-public struct DefaultLabelResolver: LabelResolver {
+public struct DefaultLabelResolver: RunarFFI.LabelResolver {
     private let labelToProfileId: [String: String]
 
     public init(labelToProfileId: [String: String]) {
         self.labelToProfileId = labelToProfileId
     }
 
-    public func resolveLabel(_ label: String) -> LabelKeyInfo? {
+    public func resolveLabel(_ label: String) throws -> String {
         guard let profileId = labelToProfileId[label] else {
-            return nil
+            throw SerializerError.encryptionFailed("No profile ID configured for label: \(label)")
         }
-        return LabelKeyInfo(profileIds: [profileId], networkId: nil)
+        return profileId
     }
 }
 

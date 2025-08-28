@@ -46,9 +46,14 @@ public struct KeyMappingConfig {
     }
 }
 
+/// Protocol for label resolution that matches serializer package needs
+public protocol TestLabelResolver {
+    func resolveLabel(_ label: String) -> LabelKeyInfo?
+}
+
 /// Configurable label resolver implementation for serializer package
-/// This implements the LabelResolver protocol that the serializer package expects
-public struct ConfigurableLabelResolver {
+/// This implements the TestLabelResolver protocol that can be used by tests
+public struct ConfigurableLabelResolver: TestLabelResolver {
     private let config: KeyMappingConfig
     
     public init(config: KeyMappingConfig) {

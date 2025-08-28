@@ -20,6 +20,7 @@ let package = Package(
         .package(path: "../swift-common"),
         .package(path: "../swift-ffi"),
         .package(path: "../swift-serializer-macros"),
+        .package(path: "../swift-test-utils"),
     ],
     targets: [
         .target(
@@ -37,6 +38,7 @@ let package = Package(
                 "RunarSerializer",
                 "SwiftCBOR",
                 .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
+                .product(name: "RunarTestUtils", package: "swift-test-utils"),
             ],
             path: "Tests/RunarSerializerTests"
         ),

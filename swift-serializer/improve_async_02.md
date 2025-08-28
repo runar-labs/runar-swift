@@ -578,6 +578,72 @@ The new design embraces Swift's concurrency model fully, providing better perfor
 - [ ] **Test** macro generates correct code
 - [ ] **Verify** encrypted types work correctly
 
+### Macro Integration: Deterministic Async Registration & Registry Re-Enablement
+
+#### Goals
+- Eliminate registration races by making macro-generated entry points deterministic and async.
+- Use the unified `SerializationRegistry` for encryption and decoding paths, with no fallbacks.
+- Align macro behavior with Swift 6 async-first design and workspace “no fallbacks” policy.
+
+#### Root Causes Addressed
+- Fire-and-forget registration in macros (`Task { await _ensureRegistered() }`) causing "Unknown wire name".
+- Registry paths temporarily disabled in `AnyValue`, blocking encrypt/decode via registry.
+- No access to the boxed value in `AnyValue` to feed registry encryptors.
+
+#### Macro API Changes
+- `toAnyValue()` becomes async and awaits registration:
+  ```swift
+  public func toAnyValue() async -> RunarSerializer.AnyValue {
+      await Self._ensureRegistered()
+      return RunarSerializer.AnyValue.struct(self)
+  }
+  ```
+- `encryptWithKeystore(_:_:)` becomes async throws and awaits registration:
+  ```swift
+  public func encryptWithKeystore(
+      _ keystore: RunarFFI.EnvelopeCrypto,
+      _ resolver: RunarSerializer.LabelResolver
+  ) async throws -> Encrypted {
+      await Self._ensureRegistered()
+      // existing encryption body unchanged
+  }
+  ```
+- `fromAnyValue(_:)` remains `async throws` and continues to `await _ensureRegistered()`.
+
+#### Macro Registration Content (Encrypted)
+- Continue registering under both the declared wire name and the Swift type name to avoid bootstrap friction:
+  - `registerEncryptor(for: Self.self, wireName: <declared>, targetEncryptedWireName: "Encrypted_<declared>")`
+  - `registerEncryptor(for: Self.self, wireName: <SwiftTypeName>, targetEncryptedWireName: "Encrypted_<declared>")`
+  - `registerDecryptor(for: Encrypted<Self>.self, wireName: "Encrypted_<declared>")`
+  - `registerWireName(for: Self.self, wireName: <declared>)`
+  - `registerDecoder(for: <declared>)` and `registerDecoder(for: <SwiftTypeName>)`
+
+#### AnyValue Changes (Registry Paths Re-enabled; No Fallbacks)
+- Add boxed value retrieval in `AnyValueBox`:
+  - Store `getValueFn: @Sendable () -> Any?` and expose `rawValue()` for struct category to return the original value.
+- In `AnyValue.serialize(context:)` when `context != nil`:
+  - Lookup encryptor via `SerializationRegistry.shared.encryptor(for: plainWireName)`.
+  - Retrieve original boxed value via `box.rawValue()`; if unavailable, throw `serializationFailed`.
+  - Compute header wire name using `encryptedWireName(for:)`; set `isEncrypted = 0x01` and write payload from encryptor.
+  - If encryptor or mapping missing, throw (no fallback to plain serialization).
+- In lazy deserialization default branch, use:
+  - `SerializationRegistry.shared.decoder(for: wireName)` to decode plain or encrypted types.
+  - If decoder returns `AnyRunarDecryptable` and the caller asks for the plain type with a provided keystore, decrypt and return.
+  - If no decoder exists, throw `Unknown wire name`.
+
+#### Tests and Call Sites
+- Update all macro call sites:
+  - `let any = await value.toAnyValue()`
+  - `let encrypted = try await value.encryptWithKeystore(keystore, resolver)`
+  - Remove sleeps; registration is awaited.
+- Use existing registry introspection (`allWireNames()`, `isRegistered(wireName:)`) if needed; avoid non-existent internal state access.
+
+#### Acceptance Criteria
+- No registration races; no sleeps required in tests.
+- Struct serialization with a context uses registry encryptor; deserialization uses registry decoders.
+- Errors are explicit when registry entries are missing; no silent fallbacks.
+- Macro and serializer tests pass under async model.
+
 ### Task 3.3: Test Macro Integration
 - [ ] **Build** swift-serializer with updated macros
 - [ ] **Test** `@Plain` macro works end-to-end

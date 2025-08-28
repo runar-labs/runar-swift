@@ -6,7 +6,7 @@ import XCTest
 
 /// Simple working test that demonstrates the macro functionality
 final class SimpleWorkingTest: XCTestCase {
-    func testPlainMacroWorks() {
+    func testPlainMacroWorks() async throws {
         @Plain
         struct SimpleStruct: Codable {
             let id: String
@@ -16,7 +16,7 @@ final class SimpleWorkingTest: XCTestCase {
         let instance = SimpleStruct(id: "test", value: 42)
 
         // Test that generated methods exist and work
-        let anyValue = instance.toAnyValue()
+        let anyValue = await instance.toAnyValue()
         XCTAssertNotNil(anyValue)
         // Test that serialization works without checking the specific format
 
@@ -28,7 +28,7 @@ final class SimpleWorkingTest: XCTestCase {
         print("✅ @Plain macro preserves field access")
     }
 
-    func testPlainMacroWithNameWorks() {
+    func testPlainMacroWithNameWorks() async throws {
         @Plain(name: "custom_struct")
         struct CustomStruct: Codable {
             let data: String
@@ -37,7 +37,7 @@ final class SimpleWorkingTest: XCTestCase {
         let instance = CustomStruct(data: "test_data")
 
         // Test that generated methods exist and work
-        let anyValue = instance.toAnyValue()
+        let anyValue = await instance.toAnyValue()
         XCTAssertNotNil(anyValue)
         // Test that serialization works without checking the specific format
 
@@ -47,7 +47,7 @@ final class SimpleWorkingTest: XCTestCase {
         print("✅ @Plain macro with name parameter works")
     }
 
-    func testEncryptedMacroWorks() {
+    func testEncryptedMacroWorks() async throws {
         @Encrypted(name: "test.profile")
         struct TestProfile: Codable {
             let id: String
@@ -57,7 +57,7 @@ final class SimpleWorkingTest: XCTestCase {
         let profile = TestProfile(id: "123", name: "Test User")
 
         // Test that toAnyValue() method exists and works
-        let anyValue = profile.toAnyValue()
+        let anyValue = await profile.toAnyValue()
         XCTAssertNotNil(anyValue)
         // Test that serialization works without checking the specific format
 

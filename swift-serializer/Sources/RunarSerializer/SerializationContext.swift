@@ -9,11 +9,11 @@ public typealias KeyStore = RunarFFI.EnvelopeCrypto
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto
-    public let resolver: LabelResolver
+    public let resolver: RunarFFI.LabelResolver
     public let networkId: String
     public let profilePublicKey: Data?
 
-    public init(keystore: EnvelopeCrypto, resolver: LabelResolver, networkId: String, profilePublicKey: Data? = nil) {
+    public init(keystore: EnvelopeCrypto, resolver: RunarFFI.LabelResolver, networkId: String, profilePublicKey: Data? = nil) {
         self.keystore = keystore
         self.resolver = resolver
         self.networkId = networkId
