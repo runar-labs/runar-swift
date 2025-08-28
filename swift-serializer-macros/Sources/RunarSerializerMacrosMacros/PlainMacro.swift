@@ -72,26 +72,26 @@ public struct PlainMacro: MemberMacro {
 
         return [
             """
-            /// Bootstrap to register wire name and decoder in SerializationRegistry
-            private static let _runarPlainBootstrap: Void = {
-                Task {
-                    await RunarSerializer.SerializationRegistry.shared.registerWireName(for: Self.self, wireName: "\(raw: finalWireName)")
-                    await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(raw: finalWireName)") { data in
-                        let decoder = SwiftCBOR.CodableCBORDecoder()
-                        return try decoder.decode(Self.self, from: data)
-                    }
+            /// Simple async registration - no static state
+            private static func _ensureRegistered() async {
+                await RunarSerializer.SerializationRegistry.shared.registerWireName(for: Self.self, wireName: "\(raw: finalWireName)")
+                await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(raw: finalWireName)") { data in
+                    let decoder = SwiftCBOR.CodableCBORDecoder()
+                    return try decoder.decode(Self.self, from: data)
                 }
-            }()
+            }
 
             /// Convert this struct to an AnyValue for serialization
             public func toAnyValue() -> RunarSerializer.AnyValue {
-                _ = Self._runarPlainBootstrap
+                // Trigger async registrations
+                Task { await Self._ensureRegistered() }
                 return RunarSerializer.AnyValue.struct(self)
             }
 
             /// Create this struct from AnyValue
             public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> \(raw: structName) {
-                _ = Self._runarPlainBootstrap
+                // Trigger async registrations
+                await Self._ensureRegistered()
                 return try await anyValue.asType()
             }
             """,
