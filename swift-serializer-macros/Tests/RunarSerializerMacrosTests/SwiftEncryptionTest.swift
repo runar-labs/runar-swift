@@ -270,4 +270,48 @@ final class SwiftEncryptionTest: XCTestCase {
         XCTAssertEqual(userDecrypted.privateData, profile.privateData)
         XCTAssertEqual(userDecrypted.name, String.runarDefaultValue)
     }
+
+    func buildTestContext() throws -> TestContext {
+        // This mimics Rust's proper setup where one mobile key store is used to setup the network and nodes
+        // and the user has its own mobile key store with its keys, but does not have access to the network private keys
+        
+        // Build mobile network master (CA)
+        let mobileNetworkMaster = try MobileKeyManagerImpl()
+        let networkId = try mobileNetworkMaster.generateNetworkDataKey()
+        let networkPub = try mobileNetworkMaster.getNetworkPublicKey(networkId)
+        
+        // Build user mobile with only profile keys and installed network public key (no private)
+        let userMobile = try MobileKeyManagerImpl()
+        try userMobile.initializeUserRootKey()
+        let profilePk = try userMobile.deriveUserProfileKey(label: "user")
+        // Install only the network public key, not the network private key
+        // so this user mobile can encrypt for the network, but not decrypt
+        try userMobile.installNetworkPublicKey(networkPublicKey: networkPub)
+        
+        // Build node and install certificate
+        let nodeKeys = try NodeKeyManagerImpl()
+        let csr = try nodeKeys.generateCSR()
+        let ncm = try mobileNetworkMaster.createNetworkKeyMessage(networkId: networkId, nodeAgreementPk: csr)
+        try nodeKeys.installCertificate(nodeCertificateMessageCBOR: ncm)
+        
+        // Create network id and install node network key
+        let nodeAgreementPk = try nodeKeys.getAgreementPublicKey()
+        let nkm = try mobileNetworkMaster.createNetworkKeyMessage(networkId: networkId, nodeAgreementPk: nodeAgreementPk)
+        try nodeKeys.installNetworkKey(nkmCbor: nkm)
+        
+        let userMobileKs = userMobile as EnvelopeCrypto
+        let nodeKs = nodeKeys as EnvelopeCrypto
+        
+        // Resolver mapping exactly like Rust
+        let resolver = ConfigurableLabelResolver(config: KeyMappingConfig(
+            labelMappings: [
+                "user": LabelKeyInfo(profileIds: [profilePk], networkId: nil),
+                "system": LabelKeyInfo(profileIds: [profilePk], networkId: networkId),
+                "system_only": LabelKeyInfo(profileIds: [], networkId: networkId), // system only has no profile ids
+                "search": LabelKeyInfo(profileIds: [profilePk], networkId: networkId)
+            ]
+        ))
+        
+        return (userMobileKs, nodeKs, resolver, networkId, profilePk)
+    }
 }
