@@ -44,7 +44,7 @@ public extension KeysFFI {
     }
 
     /// Encrypt data for a specific network
-    func encryptForNetwork(data: Data, networkId: String) throws -> Data {
+    func encryptForNetwork(data: Data, networkPublicKey: Data) throws -> Data {
         guard let keysHandle = handle else {
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
@@ -54,12 +54,13 @@ public extension KeysFFI {
 
         let (_, error) = withRnError { errPtr in
             data.withUnsafeBytes { dataRaw in
-                networkId.withCString { cNetworkId in
+                networkPublicKey.withUnsafeBytes { networkRaw in
                     rn_keys_encrypt_for_network(
                         keysHandle,
                         dataRaw.bindMemory(to: UInt8.self).baseAddress,
                         data.count,
-                        cNetworkId,
+                        networkRaw.bindMemory(to: UInt8.self).baseAddress,
+                        networkPublicKey.count,
                         &out,
                         &outLen,
                         errPtr

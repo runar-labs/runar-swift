@@ -644,6 +644,174 @@ The new design embraces Swift's concurrency model fully, providing better perfor
 - Errors are explicit when registry entries are missing; no silent fallbacks.
 - Macro and serializer tests pass under async model.
 
+### Field-Level Labels and Label-Based Encryption (Parity with Rust)
+
+This section specifies the complete Swift design for field-level labels using a `@runar(label)` attribute on individual fields and struct-level `@Encrypted` macro, mirroring the Rust implementation in `runar-serializer-macros` while aligning with Swift 6 async-first design and our unified `SerializationRegistry`.
+
+#### Goals
+- Support per-field encryption labels identical to Rust: `user`, `system`, `search`, `system_only`.
+- Generate an encrypted companion struct that carries plaintext fields and per-label encrypted envelopes.
+- Implement deterministic label ordering and stable encoding.
+- Integrate with `SerializationRegistry` for encryption/decryption and JSON conversion without fallbacks.
+- Preserve partial-decryption semantics: absent keys yield default values for affected fields (domain-expected, not an error).
+
+#### Rust Behavior (source-of-truth summary)
+Based on `runar-rust/runar-serializer-macros/src/lib.rs`:
+- Fields annotated with `#[runar(label)]` are grouped by label; unannotated fields remain plaintext.
+- Label order: `system` first, `user` second, others sorted lexicographically (stable order).
+- For each label group, the macro synthesizes a sub-struct `StructName{CamelLabel}Fields` with the group's fields and derives `Serialize/Deserialize`.
+- The encrypted companion struct `EncryptedStructName` contains:
+  - All plaintext fields (copied from the original struct), and
+  - One optional field per label group: `{label}_encrypted: Option<EncryptedLabelGroup>`.
+- `encrypt_with_keystore` on the plain struct:
+  - If resolver can resolve a label, encode the label sub-struct to CBOR and encrypt to `EncryptedLabelGroup` via `EnvelopeCrypto`, else set `None`.
+- `decrypt_with_keystore` on the encrypted struct:
+  - For each present `{label}_encrypted`, attempt decrypt+CBOR-decode to the sub-struct and assign its fields to the output; if decrypt fails (e.g., keys absent), leave defaults.
+- Registration occurs at startup: decryptor, encryptor, wire name, JSON converter.
+
+#### Swift API Surface
+
+1) Field marker attribute (pass-through)
+- Provide a no-op field attribute macro parsed by `@Encrypted`:
+  - Syntax: `@runar(system)`, `@runar(user)`, `@runar(search)`, `@runar(system_only)`.
+  - Multiple labels may be provided on a single field (same as Rust); each label gets its own group membership.
+  - The attribute itself does not generate code; it only marks fields for the `@Encrypted` macro to process.
+
+2) Label domain type
+- Define a Swift enum for internal parsing clarity:
+  - `enum RunarLabel: String { case system, user, search, system_only }`
+  - CamelCase mapping for sub-struct naming: `system -> System`, `system_only -> SystemOnly`, etc.
+
+3) Macro usage
+- Plain struct example:
+  - `@Encrypted(name: "package.Profile")` at the type level.
+  - Per-field: `@runar(system)`, `@runar(user)`, `@runar(search)`, `@runar(system_only)`.
+
+4) Macro synthesis (Swift)
+- Sub-structs per label:
+  - `struct ProfileSystemFields: Codable { ... }`
+  - `struct ProfileUserFields: Codable { ... }`, etc.
+- Encrypted companion struct:
+  - `public struct EncryptedProfile: Codable {`
+    - Plaintext fields copied verbatim.
+    - One optional envelope per label: `public let system_encrypted: EnvelopeEncryptedData?`, etc.
+  - Deterministic member order: plaintext first, then label-encrypted fields in the deterministic label order below.
+
+5) Deterministic label order
+- Ordering identical to Rust:
+  - Priority: `system` (0), `user` (1), others (2) with lexicographic tie-breaker.
+  - Ensures stable ordering for binary layout and registration.
+
+6) Generated methods
+- On plain struct:
+  - `public func encryptWithKeystore(_ keystore: EnvelopeCrypto, _ resolver: LabelResolver) async throws -> EncryptedProfile`
+    - For each label L in order:
+      - If `resolver.canResolve("L")` is true: build the `Profile{CamelL}Fields` sub-struct from the corresponding fields; encode to CBOR deterministically; call `keystore.encryptWithEnvelope(...)` to produce `EnvelopeEncryptedData`, assign to `{L}_encrypted`.
+      - Else: set `{L}_encrypted = nil`.
+    - Plaintext fields are copied as-is.
+- On encrypted companion struct:
+  - `public func decryptWithKeystore(_ keystore: EnvelopeCrypto) throws -> Profile`
+    - Initialize a `Profile` with plaintext fields and default values for all labeled fields.
+    - For each label L: if `{L}_encrypted` is present, attempt `keystore.decryptEnvelope(...)` and CBOR-decode into `Profile{CamelL}Fields`; on success, assign decoded fields into the output instance. If decrypt fails due to missing keys, leave defaults (expected, not a global error).
+
+7) Registry registration (single actor)
+- All registrations are performed against `SerializationRegistry` only, awaited deterministically:
+  - Wire name for the plain struct under both the declared wire name and the Swift type name (bootstrap convenience).
+  - Decoder for the plain struct (both names).
+  - Encryptor for the plain struct that drives label grouping and envelope encryption via the provided `LabelResolver` and `EnvelopeCrypto`.
+  - Decryptor for the encrypted companion struct.
+  - JSON converter for the plain struct.
+- All macro entry points (`toAnyValue()`, `encryptWithKeystore`, `fromAnyValue`) must call `await Self._ensureRegistered()` first to eliminate races.
+
+8) Serialization integration (registry-first; no fallbacks)
+- `AnyValue.serialize(context:)` with non-nil `SerializationContext`:
+  - Lookup plain wire name and encryptor via `SerializationRegistry`.
+  - Retrieve boxed raw value for the struct; if unavailable, throw `serializationFailed`.
+  - Compute encrypted header wire name via `encryptedWireName(for:)` and set `isEncrypted = 0x01`.
+  - Append encryptor-produced payload. If encryptor or mapping is missing, throw (no fallback to plain serialization).
+- Deserialization uses `SerializationRegistry.decoder(for:)`. If an encrypted type is decoded while the caller expects a plain type and provides a keystore, perform decrypt and return the plain type value.
+
+9) LabelResolver and Crypto contracts
+- Resolver capabilities (Rust parity):
+  - `func canResolve(_ label: String) -> Bool`
+  - `func resolveLabel(_ label: String) throws -> LabelKeyInfo`
+  - `struct LabelKeyInfo { let profilePublicKeys: [Data]; let networkId: String? }`
+- Envelope crypto (FFI-backed):
+  - `func encryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]) async throws -> EnvelopeEncryptedData`
+  - `func decryptEnvelope(_ data: EnvelopeEncryptedData) throws -> Data` (or equivalent signature as provided by FFI).
+- Notes:
+  - The current Swift FFI `LabelResolver` returning a `String` must be extended to return `LabelKeyInfo` and expose `canResolve`. Tests can adapt via `swift-test-utils` which already defines `KeyMappingConfig` and `ConfigurableLabelResolver` with the required semantics.
+
+10) Access control semantics (deterministic)
+- Encryption:
+  - If a label cannot be resolved at encrypt time, the corresponding `{label}_encrypted` is `nil` (not produced).
+- Decryption:
+  - Missing keys or failed decrypt for a given label group results in leaving the output fields for that group at their defaults. This is an expected domain outcome (e.g., `system_only` when using a mobile keystore), not a global error.
+  - Malformed envelopes or CBOR decode errors must result in `decryptionFailed` with context.
+
+11) Encoding format
+- Label sub-structs are encoded with `SwiftCBOR` using canonical CBOR options to guarantee deterministic bytes.
+- The top-level serialized form remains `[category][encrypted][type_name_len][type_name][payload]` as already specified.
+
+12) Concurrency model
+- All macro-generated registration and registry access is `async` and awaited.
+- `SerializationRegistry` remains the single actor; cache-backed `wireNameSync(for:)` is used in hot-path synchronous lookups only.
+- Crypto calls that may do I/O remain `async`.
+
+13) Error handling
+- Strict: missing registry entries or boxed values -> error.
+- Expected partial access: per-label decrypt failures due to missing keys are contained and do not fail the whole operation.
+- All thrown errors must be typed (`SerializerError`) with actionable messages.
+
+14) Testing strategy (parity-driven)
+- Use `swift-test-utils` to construct:
+  - CA (network master), Node, and Mobile keystores
+  - `ConfigurableLabelResolver` with mappings for `user`, `system`, `system_only`, `search`
+- Tests to cover:
+  - Correct generation of sub-structs and encrypted companion struct
+  - Encryption paths per label, including “not resolved” leading to `nil`
+  - Decryption paths with Mobile vs Node keystore (partial access verified)
+  - `AnyValue` integration: registry-based encryption on serialize; registry-based decoding + decrypt on deserialize
+  - Deterministic label order and stable CBOR payloads
+
+15) Migration notes
+- Update `RunarFFI.LabelResolver` protocol to expose `canResolve` and return `LabelKeyInfo` (or provide an adapter layer) to match Rust semantics.
+- Ensure `EnvelopeCrypto` exposes envelope encrypt/decrypt APIs taking `networkId` and multiple `profileKeys`.
+- Remove any remaining fallbacks in `AnyValue` once boxed raw value access is fully implemented.
+
+16) Acceptance criteria
+- Field annotations with `@runar(label)` are correctly parsed and grouped.
+- The encrypted companion struct and sub-structs are generated with deterministic names and order.
+- End-to-end flows for both Mobile and Node keystores match Rust behavior: partial access enforced by label cryptography.
+- All operations integrate with `SerializationRegistry` without dual registration or fallback paths.
+
+#### Macro roles and interaction model (Swift 6 viability)
+
+This subsection clarifies exactly how `@runar(label)` interacts with `@Encrypted` using Swift 6 macro capabilities and recommended practices.
+
+- Attribute definitions (declarations in the macros package):
+  - `@Encrypted` remains an attached macro implemented via `MemberMacro` and `PeerMacro` (as today). It can inspect the full `StructDeclSyntax`, including member attributes, and generate peer types and members.
+  - `@runar` is declared as an attached macro applicable to stored property declarations (let/var) and behaves as a marker attribute. Its expansion intentionally returns no peers/members (no generated code); its purpose is to make the attribute name valid in user code and to carry label metadata in the syntax tree.
+
+- Attachment points and roles:
+  - `@Encrypted` attaches to struct declarations only.
+  - `@runar` attaches to stored properties inside those structs. Using a marker attribute on properties is supported; the macro can legally produce no output while still allowing the attribute to be present and be visible to other macros during expansion.
+
+- Expansion flow (compile-time):
+  1) The compiler parses the struct and its fields; properties may carry `@runar(...)` attributes.
+  2) During `@Encrypted` expansion, the macro receives the `StructDeclSyntax` node and inspects each member’s `attributes` collection. For attributes named `runar`, it parses the identifier arguments (e.g., `system`, `user`, `search`, `system_only`).
+  3) `@Encrypted` computes groups, generates sub-structs, the encrypted companion struct, and async entrypoints (`toAnyValue()`, `encryptWithKeystore`, `decryptWithKeystore`) following the design above.
+  4) `@Encrypted` also generates a private `static func _ensureRegistered() async` and makes all public entrypoints `await` it, ensuring deterministic single-actor registration with `SerializationRegistry` (no static initializers or global side effects at compile-time).
+
+- Registration and side-effects (runtime only):
+  - Swift macro best practice avoids compile-time side effects. We do not rely on Rust-like `#[ctor]` semantics. Instead, the macro generates code that performs registration at runtime in a controlled manner, awaited by public API calls (async-first, actor-safe). This pattern is already used in our macros and remains compliant with Swift 6.
+
+- Error containment:
+  - The attribute macro `@runar` does not validate label names itself (no expansion). Validation is performed by `@Encrypted` during expansion and, if necessary, by runtime logic (e.g., resolver `canResolve`). Invalid labels surface as macro diagnostics or runtime errors with clear messages.
+
+- Viability and references:
+  - The above relies on documented Swift 6 macro roles and the ability for an attached macro to examine attribute syntax on members via SwiftSyntax. Using a marker attribute that produces no code is a supported pattern; parsing of field attributes by another macro is standard practice. Deteministic async registration and single-actor interaction conform to Swift concurrency guidance.
+
 ### Task 3.3: Test Macro Integration
 - [ ] **Build** swift-serializer with updated macros
 - [ ] **Test** `@Plain` macro works end-to-end

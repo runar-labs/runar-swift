@@ -52,7 +52,7 @@ public enum FFIError: LocalizedError {
         case .operationFailed: 5
         case .serializationFailed: 6
         case .keystoreFailed: 7
-        case .memoryAllocation: 8
+        case .memoryAllocation: 12
         case .lockError: 9
         case .invalidUTF8: 10
         case .invalidArgument: 11
@@ -73,7 +73,7 @@ public enum FFIError: LocalizedError {
             5: { .operationFailed($0) },
             6: { .serializationFailed($0) },
             7: { .keystoreFailed($0) },
-            8: { .memoryAllocation($0) },
+            12: { .memoryAllocation($0) },
             9: { .lockError($0) },
             10: { .invalidUTF8($0) },
             11: { .invalidArgument($0) },

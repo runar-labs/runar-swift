@@ -98,9 +98,10 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let line = """
             let \(label)Struct = \(subName)(\(subInitArgs))
             var \(label)Encrypted: RunarFFI.EnvelopeEncryptedData? = nil
-            if let profileId = try? resolver.resolveLabel("\(label)") {
-            	            let bytes = try SwiftCBOR.CodableCBOREncoder().encode(\(label)Struct)
-            	\(label)Encrypted = try keystore.encryptWithEnvelope(data: bytes, networkId: nil, profileIds: [profileId])
+            if resolver.canResolve("\(label)") {
+                let keyInfo = try resolver.resolveLabel("\(label)")
+                let bytes = try SwiftCBOR.CodableCBOREncoder().encode(\(label)Struct)
+                \(label)Encrypted = try keystore.encryptWithEnvelope(data: bytes, networkId: keyInfo.networkId, profileIds: keyInfo.profileIds)
             }
             """
             encryptGroupLines.append(line)
@@ -293,9 +294,19 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         }
         let arr = Array(set)
         return arr.sorted { a, b in
-            func rank(_ l: String) -> Int { (l == "system") ? 0 : (l == "user" ? 1 : 2) }
-            if rank(a) == rank(b) { return a < b }
-            return rank(a) < rank(b)
+            // Use RunarLabel priority for deterministic ordering (matches Rust)
+            func rank(_ l: String) -> Int {
+                switch l {
+                case "system": return 0
+                case "user": return 1
+                case "search", "system_only": return 2
+                default: return 3
+                }
+            }
+            let rankA = rank(a)
+            let rankB = rank(b)
+            if rankA == rankB { return a < b } // Lexicographic tie-breaker
+            return rankA < rankB
         }
     }
 

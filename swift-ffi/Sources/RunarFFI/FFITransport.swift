@@ -127,27 +127,9 @@ public final class FFITransport {
     ) throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
-            if payload.isEmpty {
-                var zero: UInt8 = 0
-                let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
-                let destCString = (destPeerId ?? "").withCString { strdup($0) }
-                defer { if let destString = destCString { free(destString) } }
-                rn_transport_publish(transportHandle, path, correlationId, zeroPtr, 0, destCString, errPtr)
-            } else {
-                payload.withUnsafeBytes { rawBuf in
-                    let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                    let destCString = (destPeerId ?? "").withCString { strdup($0) }
-                    defer { if let destString = destCString { free(destString) } }
-                    rn_transport_publish(
-                        transportHandle,
-                        path,
-                        correlationId,
-                        payloadPtr,
-                        payload.count,
-                        destCString,
-                        errPtr
-                    )
-                }
+            payload.withUnsafeBytes { rawBuf in
+                let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_transport_publish(transportHandle, payloadPtr, payload.count, errPtr)
             }
         }
         if let error = err { throw error }
@@ -156,99 +138,15 @@ public final class FFITransport {
     public func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
-            if responsePayload.isEmpty {
-                performEmptyPayloadCompleteRequest(
-                    requestId: requestId,
-                    transportHandle: transportHandle,
-                    profilePublicKey: profilePublicKey,
-                    errPtr: errPtr
-                )
-            } else {
-                performPayloadCompleteRequest(
-                    requestId: requestId,
-                    responsePayload: responsePayload,
-                    transportHandle: transportHandle,
-                    profilePublicKey: profilePublicKey,
-                    errPtr: errPtr
-                )
+            responsePayload.withUnsafeBytes { rawBuf in
+                let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
+                rn_transport_complete_request(transportHandle, payloadPtr, responsePayload.count, errPtr)
             }
         }
         if let error = err { throw error }
     }
 
-    private func performEmptyPayloadCompleteRequest(
-        requestId: String,
-        transportHandle: UnsafeMutableRawPointer,
-        profilePublicKey: Data?,
-        errPtr: UnsafeMutablePointer<RNAPIRnError>
-    ) {
-        var zero: UInt8 = 0
-        let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
 
-        if let profileKey = profilePublicKey {
-            profileKey.withUnsafeBytes { pkRaw in
-                let profileKeyPtr = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                rn_transport_complete_request(
-                    transportHandle,
-                    requestId,
-                    zeroPtr,
-                    0,
-                    profileKeyPtr,
-                    profileKey.count,
-                    errPtr
-                )
-            }
-        } else {
-            rn_transport_complete_request(
-                transportHandle,
-                requestId,
-                zeroPtr,
-                0,
-                zeroPtr,
-                0,
-                errPtr
-            )
-        }
-    }
-
-    private func performPayloadCompleteRequest(
-        requestId: String,
-        responsePayload: Data,
-        transportHandle: UnsafeMutableRawPointer,
-        profilePublicKey: Data?,
-        errPtr: UnsafeMutablePointer<RNAPIRnError>
-    ) {
-        responsePayload.withUnsafeBytes { rawBuf in
-            let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
-
-            if let profileKey = profilePublicKey {
-                profileKey.withUnsafeBytes { pkRaw in
-                    let profileKeyPtr = pkRaw.bindMemory(to: UInt8.self).baseAddress
-                    rn_transport_complete_request(
-                        transportHandle,
-                        requestId,
-                        payloadPtr,
-                        responsePayload.count,
-                        profileKeyPtr,
-                        profileKey.count,
-                        errPtr
-                    )
-                }
-            } else {
-                var zero: UInt8 = 0
-                let zeroPtr: UnsafePointer<UInt8>? = withUnsafePointer(to: &zero) { $0 }
-                rn_transport_complete_request(
-                    transportHandle,
-                    requestId,
-                    payloadPtr,
-                    responsePayload.count,
-                    zeroPtr,
-                    0,
-                    errPtr
-                )
-            }
-        }
-    }
 
     public func pollEvent() throws -> Data? {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }

@@ -37,9 +37,7 @@ public enum TestFixtures {
         let ncm = try certificateAuthority.mobileProcessSetupToken(csr)
         try node.nodeInstallCertificate(ncm)
         // Install an empty label mapping and a placeholder NodeInfo; SwiftNode will update addresses after start
-        let emptyMapping = CBOR.map([:])
-        let mappingCBOR = Data(emptyMapping.encode())
-        try node.setLabelMapping(mappingCBOR)
+        // Note: setLabelMapping function removed as it doesn't exist in Rust FFI
         // Proper initial NodeInfo using real public key and configured network id
         // Address uses bind 0 (updated after start)
         let placeholderInfo = try nodeInfo(
@@ -128,9 +126,7 @@ public enum TestFixtures {
             let csr = try node.nodeGenerateCSR()
             let ncm = try certificateAuthority.mobileProcessSetupToken(csr)
             try node.nodeInstallCertificate(ncm)
-            // empty resolver mapping
-            let emptyMapping = CBOR.map([:])
-            try node.setLabelMapping(Data(emptyMapping.encode()))
+            // Note: setLabelMapping function removed as it doesn't exist in Rust FFI
             // set NodeInfo with provided bind address
             let publicKey = try node.nodeGetPublicKey()
             let info = nodeInfo(

@@ -38,8 +38,14 @@ final class EncryptionIntegrationTests: XCTestCase {
             self.testResolver = testResolver
         }
         
-        func resolveLabel(_ label: String) -> RunarSerializer.LabelKeyInfo? {
-            guard let testInfo = testResolver.resolveLabel(label) else { return nil }
+        func canResolve(_ label: String) -> Bool {
+            return testResolver.resolveLabel(label) != nil
+        }
+        
+        func resolveLabel(_ label: String) throws -> RunarSerializer.LabelKeyInfo {
+            guard let testInfo = testResolver.resolveLabel(label) else {
+                throw SerializerError.encryptionFailed("No mapping for label: \(label)")
+            }
             return RunarSerializer.LabelKeyInfo(
                 profileIds: testInfo.profileIds.map { $0.base64EncodedString() },
                 networkId: testInfo.networkId

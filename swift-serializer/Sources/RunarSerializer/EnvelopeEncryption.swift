@@ -3,6 +3,7 @@ import RunarFFI
 import SwiftCBOR
 
 /// Default label resolver that maps labels directly to profile IDs
+/// This is a compatibility layer for existing code
 public struct DefaultLabelResolver: RunarFFI.LabelResolver {
     private let labelToProfileId: [String: String]
 

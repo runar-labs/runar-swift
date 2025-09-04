@@ -9,7 +9,7 @@ public typealias KeyStore = RunarFFI.EnvelopeCrypto
 
 public struct SerializationContext {
     public let keystore: EnvelopeCrypto
-    public let resolver: RunarFFI.LabelResolver
+    public let resolver: RunarFFI.LabelResolver  // Use the FFI protocol as intended
     public let networkId: String
     public let profilePublicKey: Data?
 

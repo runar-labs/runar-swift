@@ -77,7 +77,8 @@ public struct TestKeystoreFactory {
         try mobileNetworkMaster.initializeAsMobile()
         try mobileNetworkMaster.mobileInitializeUserRootKey()
         let networkId = try mobileNetworkMaster.mobileGenerateNetworkDataKey()
-        let networkPub = try mobileNetworkMaster.mobileGetNetworkPublicKey(networkId)
+        // Use the network data key as the network public key since getNetworkPublicKey was removed
+        let networkPub = networkId
         
         // Build user mobile with only profile keys and installed network public key (no private)
         let userMobile = KeysFFI()
@@ -97,16 +98,17 @@ public struct TestKeystoreFactory {
         
         // Install network key on node
         let nodeAgreementPk = try nodeKeys.nodeGetAgreementPublicKey()
-        let nkm = try mobileNetworkMaster.mobileCreateNetworkKeyMessage(networkId: networkId, nodeAgreementPk: nodeAgreementPk)
+        let nkm = try mobileNetworkMaster.mobileCreateNetworkKeyMessage(networkPublicKey: networkId, nodeAgreementPk: nodeAgreementPk)
         try nodeKeys.nodeInstallNetworkKey(nkm)
         
         // Create resolver mapping exactly like Rust
+        let networkIdString = String(data: networkId, encoding: .utf8) ?? ""
         let resolver = ConfigurableLabelResolver(config: KeyMappingConfig(
             labelMappings: [
                 "user": LabelKeyInfo(profileIds: [profilePk], networkId: nil),
-                "system": LabelKeyInfo(profileIds: [profilePk], networkId: networkId),
-                "system_only": LabelKeyInfo(profileIds: [], networkId: networkId), // system only has no profile ids
-                "search": LabelKeyInfo(profileIds: [profilePk], networkId: networkId)
+                "system": LabelKeyInfo(profileIds: [profilePk], networkId: networkIdString),
+                "system_only": LabelKeyInfo(profileIds: [], networkId: networkIdString), // system only has no profile ids
+                "search": LabelKeyInfo(profileIds: [profilePk], networkId: networkIdString)
             ]
         ))
         
@@ -114,7 +116,7 @@ public struct TestKeystoreFactory {
             userMobileKs: userMobile,
             nodeKs: nodeKeys,
             resolver: resolver,
-            networkId: networkId,
+            networkId: String(data: networkId, encoding: .utf8) ?? "",
             profilePk: profilePk
         )
     }
@@ -148,10 +150,10 @@ public struct TestKeystoreFactory {
         
         let networkId = try ca.mobileGenerateNetworkDataKey()
         let nodeAgreementPk = try node.nodeGetAgreementPublicKey()
-        let nkm = try ca.mobileCreateNetworkKeyMessage(networkId: networkId, nodeAgreementPk: nodeAgreementPk)
+        let nkm = try ca.mobileCreateNetworkKeyMessage(networkPublicKey: networkId, nodeAgreementPk: nodeAgreementPk)
         try node.nodeInstallNetworkKey(nkm)
         
-        return (ca: ca, node: node, networkId: networkId)
+        return (ca: ca, node: node, networkId: String(data: networkId, encoding: .utf8) ?? "")
     }
 }
 
@@ -182,9 +184,7 @@ public enum TestFixtures {
         try node.nodeInstallCertificate(ncm)
         
         // Install an empty label mapping and a placeholder NodeInfo
-        let emptyMapping = CBOR.map([:])
-        let mappingCBOR = Data(emptyMapping.encode())
-        try node.setLabelMapping(mappingCBOR)
+        // Note: setLabelMapping function removed as it doesn't exist in Rust FFI
         
         // Proper initial NodeInfo using real public key and configured network id
         let placeholderInfo = try nodeInfo(
@@ -262,9 +262,7 @@ public enum TestFixtures {
             let ncm = try ca.mobileProcessSetupToken(csr)
             try node.nodeInstallCertificate(ncm)
             
-            // empty resolver mapping
-            let emptyMapping = CBOR.map([:])
-            try node.setLabelMapping(Data(emptyMapping.encode()))
+            // Note: setLabelMapping function removed as it doesn't exist in Rust FFI
             
             // set NodeInfo with provided bind address
             let pk = try node.nodeGetPublicKey()

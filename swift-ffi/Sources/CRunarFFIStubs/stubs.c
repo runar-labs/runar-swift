@@ -11,10 +11,6 @@ __attribute__((used)) static void __ensure_linkage_symbols_present(void) {
     (void)rn_keys_node_generate_csr;
     (void)rn_keys_mobile_process_setup_token;
     (void)rn_keys_node_install_certificate;
-    (void)rn_keys_node_export_state;
-    (void)rn_keys_node_import_state;
-    (void)rn_keys_mobile_export_state;
-    (void)rn_keys_mobile_import_state;
     (void)rn_transport_new_with_keys;
     (void)rn_transport_free;
     (void)rn_transport_start;

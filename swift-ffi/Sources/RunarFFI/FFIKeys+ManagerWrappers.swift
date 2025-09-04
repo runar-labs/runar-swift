@@ -18,7 +18,7 @@ public extension KeysFFI {
         try validateMobileManager().processSetupToken(setupTokenCBOR: setupTokenCBOR)
     }
 
-    func mobileRegisterDeviceKeystore(_ keystore: DeviceKeystore) throws {
+    func mobileRegisterDeviceKeystore(_ keystore: DeviceKeystoreType) throws {
         try validateMobileManager().registerDeviceKeystore(keystore)
     }
 
@@ -26,24 +26,21 @@ public extension KeysFFI {
         try validateMobileManager().getKeystoreState()
     }
 
-    func mobileGenerateNetworkDataKey() throws -> String {
+    func mobileGenerateNetworkDataKey() throws -> Data {
         try validateMobileManager().generateNetworkDataKey()
     }
 
-    func mobileGetNetworkPublicKey(_ networkId: String) throws -> Data {
-        try validateMobileManager().getNetworkPublicKey(networkId)
-    }
 
-    func mobileCreateNetworkKeyMessage(networkId: String, nodeAgreementPk: Data) throws -> Data {
-        try validateMobileManager().createNetworkKeyMessage(networkId: networkId, nodeAgreementPk: nodeAgreementPk)
+    func mobileCreateNetworkKeyMessage(networkPublicKey: Data, nodeAgreementPk: Data) throws -> Data {
+        try validateMobileManager().createNetworkKeyMessage(networkPublicKey: networkPublicKey, nodeAgreementPk: nodeAgreementPk)
     }
 
     func mobileDeriveUserProfileKey(_ label: String) throws -> Data {
         try validateMobileManager().deriveUserProfileKey(label: label)
     }
 
-    func mobileEncryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        try validateMobileManager().encryptWithEnvelope(data: data, networkId: networkId, profileKeys: profileKeys)
+    func mobileEncryptWithEnvelope(data: Data, networkPublicKey: Data?, profileKeys: [Data]?) throws -> Data {
+        try validateMobileManager().encryptWithEnvelope(data: data, networkPublicKey: networkPublicKey, profileKeys: profileKeys)
     }
 
     func mobileDecryptMessageFromNode(_ encryptedMessage: Data) throws -> Data {
@@ -76,7 +73,7 @@ public extension KeysFFI {
         try validateNodeManager().installCertificate(nodeCertificateMessageCBOR)
     }
 
-    func nodeRegisterDeviceKeystore(_ keystore: DeviceKeystore) throws {
+    func nodeRegisterDeviceKeystore(_ keystore: DeviceKeystoreType) throws {
         try validateNodeManager().registerDeviceKeystore(keystore)
     }
 
@@ -88,8 +85,8 @@ public extension KeysFFI {
         try validateNodeManager().installNetworkKey(nkmCbor)
     }
 
-    func nodeEncryptWithEnvelope(data: Data, networkId: String?, profileKeys: [Data]?) throws -> Data {
-        try validateNodeManager().encryptWithEnvelope(data: data, networkId: networkId, profileKeys: profileKeys)
+    func nodeEncryptWithEnvelope(data: Data, networkPublicKey: Data?, profileKeys: [Data]?) throws -> Data {
+        try validateNodeManager().encryptWithEnvelope(data: data, networkPublicKey: networkPublicKey, profileKeys: profileKeys)
     }
 
     func nodeEncryptLocalData(_ data: Data) throws -> Data {

@@ -3,8 +3,48 @@ import RunarFFI
 
 // MARK: - Encryption Types
 
+// Enhanced label resolver protocol for field-level encryption
+public struct LabelKeyInfo {
+    public let profileIds: [String]
+    public let networkId: String?
+    
+    public init(profileIds: [String], networkId: String?) {
+        self.profileIds = profileIds
+        self.networkId = networkId
+    }
+}
+
+// MARK: - Standard Encryption Labels
+
+/// Standard encryption labels for field-level access control
+/// These match the Rust implementation exactly
+public enum RunarLabel: String, CaseIterable {
+    case system = "system"
+    case user = "user"
+    case search = "search"
+    case systemOnly = "system_only"
+    
+    /// Convert label to CamelCase for sub-struct naming
+    public var camelCase: String {
+        switch self {
+        case .system: return "System"
+        case .user: return "User"
+        case .search: return "Search"
+        case .systemOnly: return "SystemOnly"
+        }
+    }
+    
+    /// Priority for deterministic ordering (matches Rust)
+    public var priority: Int {
+        switch self {
+        case .system: return 0
+        case .user: return 1
+        case .search, .systemOnly: return 2
+        }
+    }
+}
+
 // LabelResolver is now imported from RunarFFI
-// The serializer package uses RunarFFI.LabelResolver for consistency
 
 // MARK: - Default Values For Decryption Fallback
 

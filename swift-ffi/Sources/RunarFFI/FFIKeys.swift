@@ -24,7 +24,7 @@ public final class KeysFFI {
         if let logger {
             self.logger = logger
         } else {
-            self.logger = Logger(subsystem: "com.runar.ffi", category: "keys")
+            self.logger = SimpleLogger()
         }
         localNodeInfo = Atomic<RunarFFINodeInfo?>(nil)
         autoPersist = false
@@ -105,18 +105,20 @@ public final class KeysFFI {
 
     // MARK: - Direct FFI Functions
 
-    /// Set label mapping from CBOR buffer
-    public func setLabelMapping(_ mappingCBOR: Data) throws {
-        guard let keysHandle = handle else {
-            throw FFIError.invalidHandle("Keys handle not initialized")
+    /// Get the last error message from the FFI
+    public func getLastError() -> String {
+        var buffer = [CChar](repeating: 0, count: 1024)
+        let result = rn_last_error(&buffer, buffer.count)
+        if result == 0 {
+            let nullTerminatedBuffer = buffer.prefix(while: { $0 != 0 })
+            return String(cString: Array(nullTerminatedBuffer) + [0])
         }
+        return "Failed to retrieve error message"
+    }
 
-        let result = mappingCBOR.withUnsafeBytes { raw in
-            rn_keys_set_label_mapping(keysHandle, raw.bindMemory(to: UInt8.self).baseAddress, mappingCBOR.count)
-        }
-        if result != 0 {
-            throw FFIError.operationFailed("Failed to set label mapping")
-        }
+    /// Set the log level for the FFI
+    public func setLogLevel(_ level: Int32) {
+        rn_set_log_level(level)
     }
 
     /// Set local NodeInfo from CBOR buffer
