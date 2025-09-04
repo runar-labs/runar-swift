@@ -42,7 +42,7 @@ final class EnvelopeE2ETests: XCTestCase {
             nodeKeys = KeysFFI()
             try nodeKeys!.initializeAsNode()
             let publicKey = try nodeKeys!.nodeGetAgreementPublicKey()
-            let nkm = try keys.mobileCreateNetworkKeyMessage(networkId: nid, nodeAgreementPk: publicKey)
+            let nkm = try keys.mobileCreateNetworkKeyMessage(networkPublicKey: nid, nodeAgreementPk: publicKey)
             try nodeKeys!.nodeInstallNetworkKey(nkm)
             usedNetwork = true
         } catch {
@@ -51,11 +51,11 @@ final class EnvelopeE2ETests: XCTestCase {
 
         // Encrypt/decrypt end-to-end via direct FFI calls (matching Rust FFI approach)
         let plaintext = Data("hello ffi".utf8)
-        if usedNetwork, let nodeKeys = nodeKeys {
+        if usedNetwork, let nodeKeys {
             // Use direct FFI calls like the Rust tests do
             let encryptedData = try keys.mobileEncryptWithEnvelope(
                 data: plaintext,
-                networkId: nid,
+                networkPublicKey: nid,
                 profileKeys: nil
             )
 

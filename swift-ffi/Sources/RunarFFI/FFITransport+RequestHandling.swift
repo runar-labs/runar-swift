@@ -5,11 +5,11 @@ import Foundation
 
 // MARK: - Transport Request Handling
 
-extension FFITransport {
+public extension FFITransport {
     /// Send a request with CBOR payload
-    public func request(requestCBOR: Data) throws {
-        guard let transportHandle = handle else { 
-            throw FFIError.invalidHandle("Transport handle not initialized") 
+    func request(requestCBOR: Data) throws {
+        guard let transportHandle = handle else {
+            throw FFIError.invalidHandle("Transport handle not initialized")
         }
 
         let (_, err) = withRnError { errPtr in

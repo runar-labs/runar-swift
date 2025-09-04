@@ -13,7 +13,7 @@ public struct EnvelopeEncryptedData {
     public let data: Data
     public let networkPublicKey: Data?
     public let profileKeys: [Data]
-    
+
     public init(data: Data, networkPublicKey: Data? = nil, profileKeys: [Data] = []) {
         self.data = data
         self.networkPublicKey = networkPublicKey

@@ -30,7 +30,6 @@ public extension KeysFFI {
         try validateMobileManager().generateNetworkDataKey()
     }
 
-
     func mobileCreateNetworkKeyMessage(networkPublicKey: Data, nodeAgreementPk: Data) throws -> Data {
         try validateMobileManager().createNetworkKeyMessage(networkPublicKey: networkPublicKey, nodeAgreementPk: nodeAgreementPk)
     }

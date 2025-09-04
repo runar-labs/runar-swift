@@ -88,8 +88,7 @@ final class SwiftFFILifecycleTests: XCTestCase {
                 print("🔧 Testing CSR generation...")
                 let csr = try nodeKeys.nodeGenerateCSR()
                 print("✅ Node CSR generated: \(csr.count) bytes")
-            }
-            catch {
+            } catch {
                 print("❌ Node CSR generation failed: \(error)")
                 if let ffiError = error as? FFIError {
                     print("   Error code: \(ffiError.errorCode)")

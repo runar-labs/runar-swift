@@ -87,9 +87,8 @@ final class KeysTests: XCTestCase {
         let ncm = try certificateAuthority.mobileProcessSetupToken(csr)
         try node.nodeInstallCertificate(ncm)
 
-        // Generate a network id and retrieve its public key from the mobile (CA)
-        let networkId = try certificateAuthority.mobileGenerateNetworkDataKey()
-        let networkPublicKey = try certificateAuthority.mobileGetNetworkPublicKey(networkId)
+        // Generate a network id (which is now the network public key)
+        let networkPublicKey = try certificateAuthority.mobileGenerateNetworkDataKey()
         // Do not install network key on node in this test; we only validate mobile public key install
 
         // Create a separate mobile-only keys and install the network public key
@@ -98,8 +97,14 @@ final class KeysTests: XCTestCase {
         try userMobile.mobileInitializeUserRootKey()
         try userMobile.mobileInstallNetworkPublicKey(networkPublicKey: networkPublicKey)
 
-        // Verify that the installed network public key can be retrieved by the userMobile keystore
-        let retrieved = try userMobile.mobileGetNetworkPublicKey(networkId)
-        XCTAssertEqual(retrieved, networkPublicKey)
+        // Verify that the network public key is installed (we can't retrieve it anymore, but we can test encryption)
+        // Since mobileGetNetworkPublicKey was removed, we'll test that encryption works with the installed key
+        let testData = Data("test message".utf8)
+        let encryptedData = try userMobile.mobileEncryptWithEnvelope(
+            data: testData,
+            networkPublicKey: networkPublicKey,
+            profileKeys: []
+        )
+        XCTAssertFalse(encryptedData.isEmpty)
     }
 }

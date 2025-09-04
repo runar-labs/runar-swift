@@ -9,7 +9,6 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
         .package(path: "../swift-test-utils"),
-        .package(path: "../swift-serializer"),
     ],
     targets: [
         .target(
@@ -21,7 +20,7 @@ let package = Package(
         ),
         .target(
             name: "RunarFFI",
-            dependencies: ["CRunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR")],
+            dependencies: ["CRunarFFI"],
             swiftSettings: [],
             linkerSettings: [
                 .linkedLibrary("runar_ffi"),
@@ -30,7 +29,7 @@ let package = Package(
         ),
         .testTarget(
             name: "RunarFFITests",
-            dependencies: ["RunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR"), .product(name: "RunarTestUtils", package: "swift-test-utils"), .product(name: "RunarSerializer", package: "swift-serializer")]
+            dependencies: ["RunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR"), .product(name: "RunarTestUtils", package: "swift-test-utils")]
         ),
     ]
 )

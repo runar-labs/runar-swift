@@ -120,10 +120,10 @@ public final class FFITransport {
     }
 
     public func publish(
-        path: String,
-        correlationId: String,
+        path _: String,
+        correlationId _: String,
         payload: Data,
-        destPeerId: String?
+        destPeerId _: String?
     ) throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
@@ -135,7 +135,7 @@ public final class FFITransport {
         if let error = err { throw error }
     }
 
-    public func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) throws {
+    public func completeRequest(requestId _: String, responsePayload: Data, profilePublicKey _: Data?) throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
             responsePayload.withUnsafeBytes { rawBuf in
@@ -145,8 +145,6 @@ public final class FFITransport {
         }
         if let error = err { throw error }
     }
-
-
 
     public func pollEvent() throws -> Data? {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }

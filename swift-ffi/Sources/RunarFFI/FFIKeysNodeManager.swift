@@ -71,22 +71,26 @@ class NodeKeyManagerImpl: NodeKeyManager {
 
     func registerDeviceKeystore(_ keystore: DeviceKeystoreType) throws {
         switch keystore {
-        case .apple(let label):
+        case let .apple(label):
             let (_, err) = withRnError { errPtr in
                 label.withCString { cLabel in
                     rn_keys_register_apple_device_keystore(handle, cLabel, errPtr)
                 }
             }
             if let error = err { throw error }
-        case .linux(let service, let account):
-            let (_, err) = withRnError { errPtr in
-                service.withCString { cService in
-                    account.withCString { cAccount in
-                        rn_keys_register_linux_device_keystore(handle, cService, cAccount, errPtr)
+        case let .linux(service, account):
+            #if os(Linux)
+                let (_, err) = withRnError { errPtr in
+                    service.withCString { cService in
+                        account.withCString { cAccount in
+                            rn_keys_register_linux_device_keystore(handle, cService, cAccount, errPtr)
+                        }
                     }
                 }
-            }
-            if let error = err { throw error }
+                if let error = err { throw error }
+            #else
+                throw FFIError(code: -1, message: "Linux keystore not supported on this platform")
+            #endif
         }
     }
 
@@ -297,21 +301,21 @@ class NodeKeyManagerImpl: NodeKeyManager {
         outLen: inout Int,
         errPtr: UnsafeMutablePointer<RNAPIRnError>
     ) {
-        if let profileKeys = profileKeys, !profileKeys.isEmpty {
+        if let profileKeys, !profileKeys.isEmpty {
             // Prepare profile key arrays
             var profileKeysArray: [UnsafePointer<UInt8>?] = []
             var profileLensArray: [Int] = []
-            
+
             for key in profileKeys {
                 key.withUnsafeBytes { keyRaw in
                     profileKeysArray.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
                 }
                 profileLensArray.append(key.count)
             }
-            
+
             profileKeysArray.withUnsafeBufferPointer { keysPtr in
                 profileLensArray.withUnsafeBufferPointer { lensPtr in
-                    if let networkKey = networkKey, let networkRaw = networkRaw {
+                    if let networkKey, let networkRaw {
                         rn_keys_node_encrypt_with_envelope(
                             handle,
                             dataRaw.bindMemory(to: UInt8.self).baseAddress,
@@ -344,7 +348,7 @@ class NodeKeyManagerImpl: NodeKeyManager {
             }
         } else {
             // No profile keys
-            if let networkKey = networkKey, let networkRaw = networkRaw {
+            if let networkKey, let networkRaw {
                 rn_keys_node_encrypt_with_envelope(
                     handle,
                     dataRaw.bindMemory(to: UInt8.self).baseAddress,

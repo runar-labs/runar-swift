@@ -24,6 +24,8 @@ __attribute__((used)) static void __ensure_linkage_symbols_present(void) {
     (void)rn_transport_complete_request;
     (void)rn_transport_stop;
     (void)rn_transport_local_addr;
+    (void)rn_keys_register_apple_device_keystore;
+    (void)rn_keys_register_linux_device_keystore;
 }
 
 

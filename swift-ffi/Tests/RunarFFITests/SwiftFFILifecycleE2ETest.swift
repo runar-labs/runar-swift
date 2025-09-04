@@ -60,7 +60,7 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
 
         // 3.2 Mobile creates network key message
         let networkKeyMessage = try mobileKeys.mobileCreateNetworkKeyMessage(
-            networkId: networkId,
+            networkPublicKey: networkId,
             nodeAgreementPk: nodeAgreementPublicKey
         )
         print("   ✅ Network key message created: \(networkKeyMessage.count) bytes")
@@ -86,7 +86,7 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
         // 5.1 Mobile encrypts with envelope
         let encryptedData = try mobileKeys.mobileEncryptWithEnvelope(
             data: testData,
-            networkId: networkId,
+            networkPublicKey: networkId,
             profileKeys: [personalProfileKey, workProfileKey]
         )
 
