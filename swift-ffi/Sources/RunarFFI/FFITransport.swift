@@ -119,28 +119,23 @@ public final class FFITransport {
         if let error = err { throw error }
     }
 
-    public func publish(
-        path _: String,
-        correlationId _: String,
-        payload: Data,
-        destPeerId _: String?
-    ) throws {
+    public func publish(publishCBOR: Data) throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
-            payload.withUnsafeBytes { rawBuf in
+            publishCBOR.withUnsafeBytes { rawBuf in
                 let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_transport_publish(transportHandle, payloadPtr, payload.count, errPtr)
+                rn_transport_publish(transportHandle, payloadPtr, publishCBOR.count, errPtr)
             }
         }
         if let error = err { throw error }
     }
 
-    public func completeRequest(requestId _: String, responsePayload: Data, profilePublicKey _: Data?) throws {
+    public func completeRequest(completeCBOR: Data) throws {
         guard let transportHandle = handle else { throw FFIError(code: -1, message: "transport freed") }
         let (_, err) = withRnError { errPtr in
-            responsePayload.withUnsafeBytes { rawBuf in
+            completeCBOR.withUnsafeBytes { rawBuf in
                 let payloadPtr = rawBuf.bindMemory(to: UInt8.self).baseAddress
-                rn_transport_complete_request(transportHandle, payloadPtr, responsePayload.count, errPtr)
+                rn_transport_complete_request(transportHandle, payloadPtr, completeCBOR.count, errPtr)
             }
         }
         if let error = err { throw error }

@@ -131,7 +131,8 @@ public final class KeysFFI {
             rn_keys_set_local_node_info(keysHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCBOR.count)
         }
         if result != 0 {
-            throw FFIError.operationFailed("Failed to set local node info")
+            let errorMessage = getLastError()
+            throw FFIError.operationFailed("Failed to set local node info (error code: \(result), message: \(errorMessage))")
         }
     }
 
