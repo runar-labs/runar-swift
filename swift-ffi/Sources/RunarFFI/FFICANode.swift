@@ -64,14 +64,57 @@ public class CANode {
 
     // MARK: - CA Node Configuration
 
-    /// Install issuing CA
+    /// Complete CA Node setup with internal private key management (SECURE)
+    /// This function handles all CA creation and configuration internally in Rust
     /// - Parameters:
-    ///   - issuingCaKey: DER-encoded issuing CA private key
-    ///   - issuingCaCert: DER-encoded issuing CA certificate
-    ///   - rootCaCert: DER-encoded root CA certificate
-    ///   - eaPublicKeys: CBOR-encoded enrollment authority public keys
+    ///   - rootCaSubject: Root CA subject name
+    ///   - issuingCaSubject: Issuing CA subject name
+    ///   - validityDays: Certificate validity period in days
+    ///   - issuingCaSerial: Serial number for issuing CA
+    ///   - eaPublicKeys: EA public keys (CBOR-encoded)
     ///   - networkId: Network identifier
     /// - Throws: FFIError if the operation fails
+    public func setupComplete(
+        rootCaSubject: String,
+        issuingCaSubject: String,
+        validityDays: UInt32,
+        issuingCaSerial: UInt64,
+        eaPublicKeys: Data,
+        networkId: String
+    ) throws {
+        let (_, err) = withRnError { errPtr in
+            rootCaSubject.withCString { cRootSubject in
+                issuingCaSubject.withCString { cIssuingSubject in
+                    eaPublicKeys.withUnsafeBytes { eaRaw in
+                        networkId.withCString { cNetworkId in
+                            rn_keys_ca_node_setup_complete(
+                                handle,
+                                cRootSubject,
+                                cIssuingSubject,
+                                validityDays,
+                                issuingCaSerial,
+                                eaRaw.bindMemory(to: UInt8.self).baseAddress,
+                                eaPublicKeys.count,
+                                cNetworkId,
+                                errPtr
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if let error = err { throw error }
+    }
+
+    /// Install issuing CA in CA Node (DEPRECATED - Use setupComplete instead)
+    /// - Parameters:
+    ///   - issuingCaKey: Issuing CA private key (CBOR-encoded)
+    ///   - issuingCaCert: Issuing CA certificate (DER-encoded)
+    ///   - rootCaCert: Root CA certificate (DER-encoded)
+    ///   - eaPublicKeys: EA public keys (CBOR-encoded)
+    ///   - networkId: Network identifier
+    /// - Throws: FFIError if the operation fails
+    @available(*, deprecated, message: "Use setupComplete() instead. This function has been removed for security reasons.")
     public func installIssuingCA(
         issuingCaKey: Data,
         issuingCaCert: Data,
@@ -79,32 +122,7 @@ public class CANode {
         eaPublicKeys: Data,
         networkId: String
     ) throws {
-        let (_, err) = withRnError { errPtr in
-            issuingCaKey.withUnsafeBytes { keyRaw in
-                issuingCaCert.withUnsafeBytes { certRaw in
-                    rootCaCert.withUnsafeBytes { rootRaw in
-                        eaPublicKeys.withUnsafeBytes { eaRaw in
-                            networkId.withCString { cNetworkId in
-                                rn_keys_ca_node_install_issuing_ca(
-                                    handle,
-                                    keyRaw.bindMemory(to: UInt8.self).baseAddress,
-                                    issuingCaKey.count,
-                                    certRaw.bindMemory(to: UInt8.self).baseAddress,
-                                    issuingCaCert.count,
-                                    rootRaw.bindMemory(to: UInt8.self).baseAddress,
-                                    rootCaCert.count,
-                                    eaRaw.bindMemory(to: UInt8.self).baseAddress,
-                                    eaPublicKeys.count,
-                                    cNetworkId,
-                                    errPtr
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if let error = err { throw error }
+        throw FFIError.operationFailed("This function has been removed for security reasons. Use setupComplete() instead.")
     }
 
     /// Configure enrollment authority

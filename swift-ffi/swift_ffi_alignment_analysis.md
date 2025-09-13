@@ -1,5 +1,163 @@
 # Swift FFI Alignment Analysis - Complete 100% Alignment Required
 
+## 🚨 CRITICAL ARCHITECTURAL PRINCIPLES
+
+### **ZERO CRYPTO IN SWIFT - ALL VIA FFI INTERFACE**
+
+**PRINCIPLE 1: NO DIRECT CRYPTO OPERATIONS IN SWIFT**
+- ❌ **PROHIBITED**: Swift generating keys, certificates, or performing crypto operations directly
+- ❌ **PROHIBITED**: Swift using CryptoKit, Security framework, or any native crypto libraries
+- ❌ **PROHIBITED**: Swift creating X.509 certificates, ECDSA keys, or any cryptographic material
+- ✅ **REQUIRED**: All crypto operations MUST go through the Rust FFI interface
+
+**PRINCIPLE 2: FFI-FIRST APPROACH**
+- ✅ **REQUIRED**: If functionality is missing, STOP and request FFI extension
+- ✅ **REQUIRED**: All key generation, certificate creation, and crypto operations use Rust FFI
+- ✅ **REQUIRED**: Swift only orchestrates and consumes FFI results
+- ✅ **REQUIRED**: Test utilities must use FFI APIs, not native Swift crypto
+
+**PRINCIPLE 3: ARCHITECTURAL BOUNDARIES**
+- **Rust Side**: All cryptographic operations, key generation, certificate management
+- **Swift Side**: FFI interface, data marshaling, business logic, UI orchestration
+- **FFI Interface**: The ONLY communication channel between Swift and Rust
+
+**PRINCIPLE 4: IMPLEMENTATION ENFORCEMENT**
+- If any Swift code performs direct crypto operations, it MUST be refactored to use FFI
+- If FFI APIs are missing for required functionality, development MUST STOP
+- All test utilities MUST use FFI APIs, not native Swift implementations
+- No exceptions, no workarounds, no temporary solutions
+
+## 🚨 CRITICAL VIOLATIONS FOUND
+
+### **VIOLATION 1: Swift Certificate Generation**
+**Location**: `swift-ffi/Sources/RunarFFI/FFICertificateTestUtils.swift`
+**Violation**: Swift generating X.509 certificates using CryptoKit and Security framework
+**Impact**: Bypasses Rust FFI, creates architectural inconsistency
+**Fix Required**: Use `rn_keys_ca_create_root_ca()` and `rn_keys_ca_create_issuing_ca()` FFI APIs
+
+### **VIOLATION 2: Swift Key Generation**
+**Location**: `swift-ffi/Sources/RunarFFI/FFICertificateTestUtils.swift`
+**Violation**: Swift generating ECDSA keys using SecKey APIs
+**Impact**: Bypasses Rust FFI, creates format mismatches
+**Fix Required**: Use Rust FFI key generation APIs
+
+### **VIOLATION 3: Swift CBOR Encoding**
+**Location**: `swift-ffi/Sources/RunarFFI/FFICertificateTestUtils.swift`
+**Violation**: Swift encoding keys to CBOR format
+**Impact**: Format mismatches with Rust expectations
+**Fix Required**: Use Rust FFI APIs that return properly formatted data
+
+### **CORRECT ARCHITECTURE**
+```swift
+// ❌ WRONG: Swift generating crypto material
+let certificate = try createX509Certificate(...)
+let key = try generateECKeyPair(...)
+
+// ✅ CORRECT: Using Rust FFI
+let rootCA = try CertificateManager.createRootCA(subject: "CN=Test Root CA")
+let issuingCA = try CertificateManager.createIssuingCA(rootCA: rootCA, ...)
+let certificate = try CertificateManager.getCertificateDer(ca: issuingCA)
+```
+
+## 🚨 SECURE ARCHITECTURE IMPLEMENTED
+
+### **NEW SECURE FFI API: Complete CA Setup**
+**Solution**: The Rust FFI has been updated with a secure architecture that eliminates private key exposure.
+
+**New Secure FFI APIs**:
+- ✅ `rn_keys_ca_node_setup_complete()` - **NEW SECURE API** - Complete CA setup without private key exposure
+- ✅ `rn_keys_ca_create_ea_key_pair()` - **NEW SECURE API** - Create EA key pair (private key stays internal)
+- ✅ `rn_keys_ca_get_ea_public_key()` - **NEW SECURE API** - Get EA public key only
+- ✅ `rn_keys_ca_generate_enrollment_token()` - **NEW SECURE API** - Generate tokens using internal private key
+- ✅ `rn_keys_ca_free_ea_key_pair()` - **NEW SECURE API** - Free EA key pair
+
+**REMOVED INSECURE APIs**:
+- ❌ `rn_keys_ca_node_install_issuing_ca()` - **REMOVED** - Exposed private keys
+- ❌ `rn_keys_ca_create_root_ca()` - **REMOVED** - Exposed private keys  
+- ❌ `rn_keys_ca_create_issuing_ca()` - **REMOVED** - Exposed private keys
+- ❌ `rn_keys_ca_get_private_key()` - **REMOVED** - Never needed with secure architecture
+
+**New Secure API Signature**:
+```c
+/**
+ * Complete CA Node setup with internal private key management
+ * No private keys cross the FFI boundary
+ */
+int32_t rn_keys_ca_node_setup_complete(
+    void *ca_node,
+    const char *root_ca_subject,           // "CN=Root CA,O=Company,C=US"
+    const char *issuing_ca_subject,        // "CN=Issuing CA,O=Company,C=US"
+    uint32_t validity_days,                // Certificate validity period
+    uint64_t issuing_ca_serial,           // Serial number for issuing CA
+    const uint8_t *ea_public_keys,        // EA public keys (CBOR)
+    size_t ea_keys_len,
+    const char *network_id,
+    struct RNAPIRnError *err
+);
+```
+
+**Security Benefits**:
+- ✅ No private keys cross FFI boundary
+- ✅ All cryptographic operations in Rust layer
+- ✅ Swift only manages handles and public data
+- ✅ Follows security best practices
+
+**Impact**: Complete CA setup in single secure function call
+**Action Required**: Update Swift FFI to use new secure APIs
+
+## 🔒 **SECURE ARCHITECTURE IMPLEMENTATION PLAN**
+
+### **Phase 1: Remove Insecure Swift Code**
+1. **Remove Swift Crypto Violations**:
+   - Delete `FFICertificateTestUtils.swift` - contains Swift-side crypto operations
+   - Remove all Swift certificate generation code
+   - Remove all Swift key generation code
+   - Remove all Swift CBOR encoding of private keys
+
+2. **Update E2E Test**:
+   - Replace `create_ca_certificate_chain()` approach with `rn_keys_ca_node_setup_complete()`
+   - Use `rn_keys_ca_create_ea_key_pair()` for EA key management
+   - Remove all private key exposure from Swift code
+
+### **Phase 2: Implement New Secure FFI Functions**
+1. **CA Node Setup**:
+   - Implement `rn_keys_ca_node_setup_complete()` wrapper
+   - Implement `rn_keys_ca_node_new()` wrapper
+   - Implement `rn_keys_ca_node_free()` wrapper
+
+2. **EA Key Management**:
+   - Implement `rn_keys_ca_create_ea_key_pair()` wrapper
+   - Implement `rn_keys_ca_get_ea_public_key()` wrapper
+   - Implement `rn_keys_ca_generate_enrollment_token()` wrapper
+   - Implement `rn_keys_ca_free_ea_key_pair()` wrapper
+
+3. **CA Server/Client**:
+   - Implement all CA server functions
+   - Implement all CA client functions
+   - Implement all request handling functions
+
+### **Phase 3: Update All Tests**
+1. **E2E Test Update**:
+   - Use new secure APIs exclusively
+   - Remove all private key handling
+   - Verify complete CA workflow works
+
+2. **Unit Test Update**:
+   - Update all CA-related tests
+   - Remove tests that use insecure APIs
+   - Add tests for new secure APIs
+
+### **Phase 4: Validation**
+1. **Security Validation**:
+   - Verify no private keys cross FFI boundary
+   - Verify all crypto operations in Rust layer
+   - Verify Swift only manages handles and public data
+
+2. **Functionality Validation**:
+   - Verify all tests pass
+   - Verify E2E test works completely
+   - Verify no regressions
+
 ## Executive Summary
 
 This document provides a comprehensive analysis of the current Swift FFI implementation against the latest Rust FFI version (post v2 cleanup). The analysis reveals **MASSIVE GAPS** in functionality with **120 Rust FFI functions** vs **~50 Swift implementations**, requiring **COMPLETE REFACTORING** for 100% alignment.
@@ -140,7 +298,7 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 | `rn_discovery_shutdown()` | ✅ | Implemented |
 | `rn_discovery_update_local_peer_info()` | ✅ | Implemented |
 
-## 2. NEW CA NODE FUNCTIONS - COMPLETELY MISSING (18 functions)
+## 2. NEW CA NODE FUNCTIONS - COMPLETELY MISSING (17 functions)
 
 ### 2.1 CA Node Core Functions (4 functions)
 | Function | Status | Swift Implementation |
@@ -156,11 +314,14 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 | `rn_keys_ca_node_add_admin_ski()` | ❌ | **MISSING** |
 | `rn_keys_ca_node_revoke_token()` | ❌ | **MISSING** |
 
-### 2.3 CA Node Configuration Functions (2 functions)
+### 2.3 CA Node Configuration Functions (1 function)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
-| `rn_keys_ca_node_install_issuing_ca()` | ❌ | **MISSING** |
-| `rn_keys_ca_node_configure_enrollment_authority()` | ❌ | **MISSING** |
+| `rn_keys_ca_node_setup_complete()` | ❌ | **MISSING - NEW SECURE API** |
+
+**REMOVED INSECURE FUNCTIONS**:
+- ❌ `rn_keys_ca_node_install_issuing_ca()` - **REMOVED** - Exposed private keys
+- ❌ `rn_keys_ca_node_configure_enrollment_authority()` - **REMOVED** - Integrated into setup_complete
 
 ### 2.4 CA Node Request Handling Functions (6 functions)
 | Function | Status | Swift Implementation |
@@ -216,20 +377,22 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 |----------|--------|---------------------|
 | `rn_transport_ca_client_get_crl()` | ❌ | **MISSING** |
 
-## 5. NEW CERTIFICATE MANAGEMENT FUNCTIONS - COMPLETELY MISSING (8 functions)
+## 5. NEW EA KEY MANAGEMENT FUNCTIONS - COMPLETELY MISSING (4 functions)
 
-### 5.1 CA Certificate Creation Functions (4 functions)
+### 5.1 EA Key Management Functions (4 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
-| `rn_keys_ca_create_root_ca()` | ❌ | **MISSING** |
-| `rn_keys_ca_create_issuing_ca()` | ❌ | **MISSING** |
-| `rn_keys_ca_get_certificate_der()` | ❌ | **MISSING** |
-| `rn_keys_ca_get_certificate_subject()` | ❌ | **MISSING** |
+| `rn_keys_ca_create_ea_key_pair()` | ❌ | **MISSING - NEW SECURE API** |
+| `rn_keys_ca_get_ea_public_key()` | ❌ | **MISSING - NEW SECURE API** |
+| `rn_keys_ca_generate_enrollment_token()` | ❌ | **MISSING - NEW SECURE API** |
+| `rn_keys_ca_free_ea_key_pair()` | ❌ | **MISSING - NEW SECURE API** |
 
-### 5.2 CA Certificate Management Functions (1 function)
-| Function | Status | Swift Implementation |
-|----------|--------|---------------------|
-| `rn_keys_ca_free()` | ❌ | **MISSING** |
+**REMOVED INSECURE FUNCTIONS**:
+- ❌ `rn_keys_ca_create_root_ca()` - **REMOVED** - Exposed private keys
+- ❌ `rn_keys_ca_create_issuing_ca()` - **REMOVED** - Exposed private keys
+- ❌ `rn_keys_ca_get_certificate_der()` - **REMOVED** - Not needed with secure architecture
+- ❌ `rn_keys_ca_get_certificate_subject()` - **REMOVED** - Not needed with secure architecture
+- ❌ `rn_keys_ca_free()` - **REMOVED** - Not needed with secure architecture
 
 ### 5.3 Certificate Utility Functions (3 functions)
 | Function | Status | Swift Implementation |
@@ -318,10 +481,10 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 - **Coverage**: ~42%
 
 ### 9.2 Missing Function Categories
-1. **CA Node Functions**: 18 functions (100% missing)
+1. **CA Node Functions**: 17 functions (100% missing) - **UPDATED: Removed insecure functions**
 2. **CA Server Functions**: 7 functions (100% missing)
 3. **CA Client Functions**: 7 functions (100% missing)
-4. **Certificate Management**: 8 functions (100% missing)
+4. **EA Key Management Functions**: 4 functions (100% missing) - **NEW: Secure EA key management**
 5. **Enrollment Token Functions**: 2 functions (100% missing)
 6. **Node Key Manager Functions**: 11 functions (100% missing)
 7. **Node Profile Functions**: 3 functions (100% missing)
@@ -368,10 +531,11 @@ The Swift FFI cannot convert CA responses to certificate messages (functions exi
 ### 11.1 Immediate Actions Required (CRITICAL)
 
 #### 11.1.1 Complete CA Infrastructure Implementation
-1. **CA Node Functions** (18 functions)
+1. **CA Node Functions** (17 functions) - **UPDATED: Secure architecture**
    - Implement all CA node creation, configuration, and management
    - Add all request handling functions (enroll, renew, revoke, chain, status, CRL)
    - Add admin management functions
+   - **NEW**: Implement `rn_keys_ca_node_setup_complete()` - secure CA setup
 
 2. **CA Server Functions** (7 functions)
    - Implement CA server creation and management
@@ -382,10 +546,12 @@ The Swift FFI cannot convert CA responses to certificate messages (functions exi
    - Implement CA client creation with configuration
    - Add all client operation functions (enroll, renew, revoke, chain, status, CRL)
 
-#### 11.1.2 Certificate Management Implementation
-1. **Certificate Creation** (4 functions)
-   - Implement Root CA and Issuing CA creation
-   - Add certificate access functions
+#### 11.1.2 EA Key Management Implementation - **NEW SECURE APPROACH**
+1. **EA Key Management** (4 functions) - **NEW: Secure EA key management**
+   - Implement `rn_keys_ca_create_ea_key_pair()` - create EA key pair (private key stays internal)
+   - Implement `rn_keys_ca_get_ea_public_key()` - get EA public key only
+   - Implement `rn_keys_ca_generate_enrollment_token()` - generate tokens using internal private key
+   - Implement `rn_keys_ca_free_ea_key_pair()` - free EA key pair
 
 2. **Certificate Utilities** (3 functions)
    - Implement SKI extraction and serial number retrieval
@@ -496,18 +662,22 @@ The Swift FFI cannot convert CA responses to certificate messages (functions exi
 
 The Swift FFI implementation is **SEVERELY OUTDATED** and missing **~58% of the Rust FFI functionality**. The most critical gaps are:
 
-1. **Complete CA Infrastructure Missing** (32 functions)
+1. **Complete CA Infrastructure Missing** (31 functions) - **UPDATED: Secure architecture implemented**
 2. **Node Key Manager Functions Missing** (11 functions)
-3. **Certificate Management Missing** (8 functions)
+3. **EA Key Management Missing** (4 functions) - **NEW: Secure EA key management**
 4. **Enrollment Token System Missing** (2 functions)
 5. **Mobile Response Conversion Missing** (2 functions - exist in Rust, missing in Swift)
 6. **Error Code Coverage Incomplete** (6 missing codes)
 7. **Data Structure Coverage Incomplete** (7 missing structures)
 
-**IMMEDIATE ACTION REQUIRED**: Complete refactoring and implementation of all missing functionality to achieve 100% alignment with the latest Rust FFI.
+**SECURITY IMPROVEMENT**: The Rust FFI has been updated with a **SECURE ARCHITECTURE** that eliminates private key exposure through the FFI boundary. All cryptographic operations now stay within the Rust layer.
+
+**IMMEDIATE ACTION REQUIRED**: Complete refactoring and implementation of all missing functionality to achieve 100% alignment with the latest **SECURE** Rust FFI.
 
 **ESTIMATED EFFORT**: 6-8 weeks of focused development to achieve complete alignment.
 
 **RISK LEVEL**: **CRITICAL** - Current Swift FFI cannot support the full CA workflow or modern Node Key Manager functionality.
 
-This analysis provides the complete roadmap for achieving 100% Swift FFI alignment with the latest Rust FFI implementation.
+**SECURITY STATUS**: **IMPROVED** - New secure architecture eliminates private key exposure vulnerabilities.
+
+This analysis provides the complete roadmap for achieving 100% Swift FFI alignment with the latest **SECURE** Rust FFI implementation.
