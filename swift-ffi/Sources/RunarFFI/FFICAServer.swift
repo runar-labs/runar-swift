@@ -1,5 +1,6 @@
 import CRunarFFI
 import Foundation
+import SwiftCBOR
 
 // MARK: - CA Server Implementation
 
@@ -36,7 +37,7 @@ public class CAServer {
         var out: UnsafeMutableRawPointer?
 
         // Convert config to CBOR
-        let configData = try JSONEncoder().encode(config)
+        let configData = try CodableCBOREncoder().encode(config)
 
         let (_, err) = withRnError { errPtr in
             configData.withUnsafeBytes { raw in

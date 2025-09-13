@@ -117,4 +117,32 @@ public extension KeysFFI {
     func nodeEnableAutoPersist(_ enabled: Bool) throws {
         try enableAutoPersist(enabled)
     }
+
+    // MARK: - Convenience Methods for E2E Tests
+
+    /// Generate CSR (convenience method for E2E tests)
+    func generateCSR() throws -> Data {
+        try nodeGenerateCSR()
+    }
+
+    /// Install certificate (convenience method for E2E tests)
+    func installCertificate(certificateMessage: Data) throws {
+        try nodeInstallCertificate(certificateMessage)
+    }
+
+    /// From enroll response (convenience method for E2E tests)
+    func fromEnrollResponse(enrollResponse: Data) throws -> Data {
+        guard let mobileManager = try validateMobileManager() as? MobileKeyManagerImpl else {
+            throw FFIError.wrongManagerType("Mobile manager is not MobileKeyManagerImpl")
+        }
+        return try mobileManager.fromEnrollResponse(enrollResponse)
+    }
+
+    /// From renew response (convenience method for E2E tests)
+    func fromRenewResponse(renewResponse: Data) throws -> Data {
+        guard let mobileManager = try validateMobileManager() as? MobileKeyManagerImpl else {
+            throw FFIError.wrongManagerType("Mobile manager is not MobileKeyManagerImpl")
+        }
+        return try mobileManager.fromRenewResponse(renewResponse)
+    }
 }

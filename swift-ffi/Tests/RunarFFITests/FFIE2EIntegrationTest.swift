@@ -145,11 +145,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     }
     
     /// Test the full CA Node infrastructure using FFI API with REAL QUIC mTLS connections
-    /// NOTE: This test is currently disabled as the CA infrastructure classes are not yet implemented
     func testFFIFullTransportE2EQuicMtls() throws {
-        // TODO: Enable this test once CA infrastructure classes are implemented
-        throw XCTSkip("CA infrastructure classes not yet implemented")
-        /*
         print("\n🚀 Starting FFI Full-transport E2E QUIC mTLS test")
 
         // ==========================================
@@ -158,7 +154,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🏗️  PHASE 1: Setup")
 
         // Create test logger
-        let loggerPtr = createTestLogger()
+        let testLogger = logger ?? SimpleLogger()
 
         // Initialize as node
         guard let keysFFI = keysFFI else {
@@ -182,8 +178,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🏗️  PHASE 2: CA Node and Server")
 
         // Create CA Node
-        let caNode = try FFICANode.create(logger: loggerPtr)
-        defer { FFICANode.free(caNode) }
+        let caNode = try CANode.create(logger: testLogger)
 
         // Create Root CA and Issuing CA certificates with proper chain
         let certificateChain = try createCaCertificateChain()
@@ -213,29 +208,24 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Install issuing CA in CA Node
         let networkId = "test_network"
-        try FFICANode.installIssuingCA(
-            caNode: caNode,
-            issuingKeyCbor: issuingKeyCbor,
-            issuingCertDer: issuingCertDer,
+        try caNode.installIssuingCA(
+            issuingCaKey: issuingKeyCbor,
+            issuingCaCert: issuingCertDer,
             rootCaCert: rootCaCert,
-            eaPublicKeysCbor: eaPublicKeysCbor,
+            eaPublicKeys: eaPublicKeysCbor,
             networkId: networkId
         )
 
         // Configure enrollment authority
-        try FFICANode.configureEnrollmentAuthority(
-            caNode: caNode,
-            eaPublicKeysCbor: eaPublicKeysCbor
-        )
+        try caNode.configureEnrollmentAuthority(eaPublicKeysCbor)
 
         print("   ✅ CA Node configured with issuing CA and enrollment authority")
 
         // Create shared CA Node reference for server usage AFTER configuring the CA Node
-        let sharedCaNode = try FFICANode.createShared(caNode: caNode)
-        defer { FFICANode.freeShared(sharedCaNode) }
+        let sharedCaNode = try caNode.createShared()
 
-        // Create CA Server config CBOR
-        let customConfig = CustomCaServerConfig(
+        // Create CA Server config
+        let serverConfig = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
             networkId: "test_network",
@@ -243,25 +233,22 @@ final class FFIE2EIntegrationTest: XCTestCase {
             rateLimitPerHour: 30
         )
 
-        let serverConfig = try CodableCBOREncoder().encode(customConfig)
-
         // Create CA Server using shared CA Node reference
-        let caServer = try FFICAServer.create(
+        let caServer = try CAServer.create(
             config: serverConfig,
             sharedCaNode: sharedCaNode,
-            logger: loggerPtr
+            logger: testLogger
         )
-        defer { FFICAServer.free(caServer) }
 
         // Start CA Server
-        try FFICAServer.start(caServer: caServer)
+        try caServer.start()
 
         // Wait a moment for server to fully start
         Thread.sleep(forTimeInterval: 0.1)
 
         // Get server addresses
-        let bootstrapAddr = try FFICAServer.getBootstrapAddress(caServer: caServer)
-        let authenticatedAddr = try FFICAServer.getAuthenticatedAddress(caServer: caServer)
+        let bootstrapAddr = try caServer.getBootstrapAddr()
+        let authenticatedAddr = try caServer.getAuthenticatedAddr()
 
         print("   ✅ CA Server started with addresses")
         print("      Bootstrap: \(bootstrapAddr)")
@@ -307,25 +294,20 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("      Root CA cert: \(rootCaCert.count) bytes")
         print("      Issuing CA cert: \(issuingCertDer.count) bytes")
 
-        // Create configuration CBOR
-        let config = CaClientConfigAll(
+        // Create configuration
+        let config = CaClientConfig(
             bootstrapServer: bootstrapAddr,
             authenticatedServer: authenticatedAddr,
             networkId: "test_network",
             requestTimeoutSeconds: 30,
-            maxRetries: 3,
-            rootCaDer: rootCaCert, // Required, not optional
-            issuingCaDer: issuingCertDer // Required, not optional
+            maxRetries: 3
         )
 
-        let configCbor = try CodableCBOREncoder().encode(config)
-
-        let caClient = try FFICAClient.createWithConfig(
-            config: configCbor,
-            keysHandle: keysFFI.nodeKeysHandle,
-            logger: loggerPtr
+        let caClient = try CAClient.createWithConfig(
+            config: config,
+            nodeKeys: keysFFI.handle!,
+            logger: testLogger
         )
-        defer { FFICAClient.free(caClient) }
 
         print("   ✅ CA Client created with all configuration for REAL QUIC mTLS")
 
@@ -335,10 +317,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("      Request size: \(enrollRequest.count) bytes")
         print("      CSR size: \(setupToken.count) bytes")
 
-        let enrollResponse = try FFICAClient.enroll(
-            caClient: caClient,
-            bootstrapAddress: bootstrapAddr,
-            enrollRequest: enrollRequest
+        let enrollResponse = try caClient.enroll(
+            bootstrapAddr: bootstrapAddr,
+            request: enrollRequest
         )
 
         print("   ✅ Enrollment successful (\(enrollResponse.count) bytes response)")
@@ -368,10 +349,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let renewRequest = Data("test-renew-request".utf8)
 
         // Renew via CA Client (authenticated endpoint)
-        let renewResponse = try FFICAClient.renew(
-            caClient: caClient,
-            authenticatedAddress: authenticatedAddr,
-            renewRequest: renewRequest
+        let renewResponse = try caClient.renew(
+            authenticatedAddr: authenticatedAddr,
+            request: renewRequest
         )
 
         print("   ✅ Certificate renewal successful (\(renewResponse.count) bytes response)")
@@ -397,12 +377,13 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("   📋 Client certificate SKI: \(clientSki)")
 
         // Add client SKI to shared CA Node (which is what the server actually uses)
-        try FFICANode.addAdminSki(caNode: sharedCaNode, adminSki: clientSki)
+        // Note: sharedCaNode is a raw pointer, we need to use the original caNode
+        try caNode.addAdminSki(clientSki)
 
         // Also configure admin SKIs on the server
         let adminSkis = [clientSki]
         let adminSkisCbor = try CodableCBOREncoder().encode(adminSkis)
-        try FFICAServer.configureAdminSkis(caServer: caServer, adminSkis: adminSkisCbor)
+        try caServer.configureAdminSkis(adminSkisCbor)
 
         print("   ✅ Admin SKI configured for revocation: \(clientSki)")
 
@@ -420,16 +401,15 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let revokeRequestCbor = try CodableCBOREncoder().encode(revokeRequest)
 
         // Revoke certificate via client (mTLS)
-        let revokeResponse = try FFICAClient.revoke(
-            caClient: caClient,
-            authenticatedAddress: authenticatedAddr,
-            revokeRequest: revokeRequestCbor
+        let revokeResponse = try caClient.revoke(
+            authenticatedAddr: authenticatedAddr,
+            request: revokeRequestCbor
         )
 
         print("   ✅ Certificate revoked successfully")
 
         // Generate CRL-lite
-        let crl = try FFICANode.handleCrl(caNode: caNode, networkId: networkId)
+        let crl = try caNode.handleCrl(networkId: networkId)
         print("   ✅ CRL-lite generated successfully")
 
         // ==========================================
@@ -438,17 +418,15 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n📊 PHASE 6: Status and Chain via REAL QUIC mTLS")
 
         // Get CA Status
-        let statusResponse = try FFICAClient.getStatus(
-            caClient: caClient,
-            authenticatedAddress: authenticatedAddr,
+        let statusResponse = try caClient.getStatus(
+            authenticatedAddr: authenticatedAddr,
             networkId: networkId
         )
         print("   ✅ CA Status retrieved via REAL QUIC mTLS (\(statusResponse.count) bytes)")
 
         // Get Certificate Chain
-        let chainResponse = try FFICAClient.getChain(
-            caClient: caClient,
-            bootstrapAddress: bootstrapAddr,
+        let chainResponse = try caClient.getChain(
+            bootstrapAddr: bootstrapAddr,
             networkId: networkId
         )
         print("   ✅ Certificate chain retrieved via REAL QUIC mTLS (\(chainResponse.count) bytes)")
@@ -470,12 +448,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let personalProfileId = try keysFFI.getCompactId(publicKey: personalProfileKey)
 
         // Create envelope with profile keys
-        let envelopeData = try keysFFI.encryptWithEnvelope(
+        let envelopeData = try keysFFI.nodeEncryptWithEnvelope(
             data: testData,
-            networkId: nil,
             networkPublicKey: nil,
-            profileKeys: [personalProfileKey],
-            profileLens: [personalProfileKey.count]
+            profileKeys: [personalProfileKey]
         )
 
         print("   ✅ Data encrypted with profile key envelope (\(envelopeData.count) bytes)")
@@ -500,10 +476,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
             let testEnrollRequest = Data("test-enroll-request-\(i)".utf8)
 
             do {
-                _ = try FFICAClient.enroll(
-                    caClient: caClient,
-                    bootstrapAddress: bootstrapAddr,
-                    enrollRequest: testEnrollRequest
+                _ = try caClient.enroll(
+                    bootstrapAddr: bootstrapAddr,
+                    request: testEnrollRequest
                 )
                 print("   ⚠️  Rate limit check \(i) unexpectedly passed (rate limiting may not be working)")
             } catch {
@@ -520,7 +495,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🔒 PHASE 9: Token Revocation via REAL QUIC mTLS")
 
         // Revoke the enrollment token
-        try FFICANode.revokeToken(caNode: caNode, tokenId: "test_token_001")
+        try caNode.revokeToken("test_token_001")
         print("   ✅ Enrollment token revoked via REAL QUIC mTLS")
 
         // Try to use revoked token (should fail)
@@ -528,10 +503,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let revokedRequest = Data("test-revoked-request".utf8)
 
         do {
-            _ = try FFICAClient.enroll(
-                caClient: caClient,
-                bootstrapAddress: bootstrapAddr,
-                enrollRequest: revokedRequest
+            _ = try caClient.enroll(
+                bootstrapAddr: bootstrapAddr,
+                request: revokedRequest
             )
             XCTFail("Revoked token should be rejected")
         } catch {
@@ -548,10 +522,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let invalidRequest = Data("test-invalid-request".utf8)
 
         do {
-            _ = try FFICAClient.enroll(
-                caClient: caClient,
-                bootstrapAddress: bootstrapAddr,
-                enrollRequest: invalidRequest
+            _ = try caClient.enroll(
+                bootstrapAddr: bootstrapAddr,
+                request: invalidRequest
             )
             XCTFail("Invalid token should be rejected")
         } catch {
@@ -566,10 +539,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let unauthorizedRenew = Data("test-unauthorized-renew".utf8)
 
         do {
-            _ = try FFICAClient.renew(
-                caClient: caClient,
-                authenticatedAddress: authenticatedAddr,
-                renewRequest: unauthorizedRenew
+            _ = try caClient.renew(
+                authenticatedAddr: authenticatedAddr,
+                request: unauthorizedRenew
             )
             XCTFail("Unauthorized renewal should be rejected")
         } catch {
@@ -582,7 +554,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🧹 CLEANUP: Freeing all resources")
 
         // Stop CA Server
-        try FFICAServer.stop(caServer: caServer)
+        try caServer.stop()
 
         print("   ✅ All resources freed successfully")
 
@@ -609,7 +581,6 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("   • Rate limiting: ✅")
         print("   • CRL-lite: ✅")
         print("   • REAL QUIC mTLS: ✅")
-        */
     }
 }
 
