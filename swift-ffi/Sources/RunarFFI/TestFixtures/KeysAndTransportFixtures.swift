@@ -5,8 +5,13 @@ import SwiftCBOR
 public enum FixturesError: Error { case generic(String) }
 
 public struct PeerInfo: Codable {
-    public let publicKey: Data
+    public let public_key: [UInt8]
     public let addresses: [String]
+    
+    public init(public_key: [UInt8], addresses: [String]) {
+        self.public_key = public_key
+        self.addresses = addresses
+    }
 }
 
 public struct Empty: Codable {}
@@ -16,11 +21,36 @@ public struct NodeMetadata: Codable {
 }
 
 public struct NodeInfo: Codable {
-    public var nodePublicKey: Data
-    public var networkIds: [String]
+    public var node_public_key: [UInt8]
+    public var network_ids: [String]
     public var addresses: [String]
-    public var nodeMetadata: NodeMetadata
+    public var node_metadata: NodeMetadata
     public var version: Int64
+    
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case node_public_key
+        case network_ids
+        case addresses
+        case node_metadata
+        case version
+    }
+    
+    public init(node_public_key: [UInt8], network_ids: [String], addresses: [String], node_metadata: NodeMetadata, version: Int64) {
+        self.node_public_key = node_public_key
+        self.network_ids = network_ids
+        self.addresses = addresses
+        self.node_metadata = node_metadata
+        self.version = version
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(node_public_key, forKey: .node_public_key)
+        try container.encode(network_ids, forKey: .network_ids)
+        try container.encode(addresses, forKey: .addresses)
+        try container.encode(node_metadata, forKey: .node_metadata)
+        try container.encode(version, forKey: .version)
+    }
 }
 
 @available(macOS 11.0, *)

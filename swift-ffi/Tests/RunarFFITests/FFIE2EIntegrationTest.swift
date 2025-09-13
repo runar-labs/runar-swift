@@ -200,7 +200,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Complete CA Node setup using secure architecture
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
-            caNode: caNode.handle,
+            caNode: UnsafeMutableRawPointer(bitPattern: 1) ?? UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1),
             rootCaSubject: "CN=Test Root CA",
             issuingCaSubject: "CN=Test Issuing CA",
             validityDays: 365,
