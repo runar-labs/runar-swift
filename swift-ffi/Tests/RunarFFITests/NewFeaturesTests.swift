@@ -238,7 +238,7 @@ final class NewFeaturesTests: XCTestCase {
         // Test getNetworkAgreement - should fail when no network key exists
         let networkPublicKey = Data("test-network-public-key".utf8)
         do {
-            let _ = try keysFFI.getNetworkAgreement(networkPublicKey: networkPublicKey)
+            _ = try keysFFI.getNetworkAgreement(networkPublicKey: networkPublicKey)
             XCTFail("getNetworkAgreement should fail when no network key exists")
         } catch {
             // Expected to fail

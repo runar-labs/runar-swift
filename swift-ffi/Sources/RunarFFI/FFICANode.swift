@@ -66,35 +66,22 @@ public class CANode {
 
     /// Complete CA Node setup with internal private key management (SECURE)
     /// This function handles all CA creation and configuration internally in Rust
-    /// - Parameters:
-    ///   - rootCaSubject: Root CA subject name
-    ///   - issuingCaSubject: Issuing CA subject name
-    ///   - validityDays: Certificate validity period in days
-    ///   - issuingCaSerial: Serial number for issuing CA
-    ///   - eaPublicKeys: EA public keys (CBOR-encoded)
-    ///   - networkId: Network identifier
+    /// - Parameter params: CA Node setup parameters
     /// - Throws: FFIError if the operation fails
-    public func setupComplete(
-        rootCaSubject: String,
-        issuingCaSubject: String,
-        validityDays: UInt32,
-        issuingCaSerial: UInt64,
-        eaPublicKeys: Data,
-        networkId: String
-    ) throws {
+    public func setupComplete(params: CANodeManager.CANodeSetupParams) throws {
         let (_, err) = withRnError { errPtr in
-            rootCaSubject.withCString { cRootSubject in
-                issuingCaSubject.withCString { cIssuingSubject in
-                    eaPublicKeys.withUnsafeBytes { eaRaw in
-                        networkId.withCString { cNetworkId in
+            params.rootCaSubject.withCString { cRootSubject in
+                params.issuingCaSubject.withCString { cIssuingSubject in
+                    params.eaPublicKeys.withUnsafeBytes { eaRaw in
+                        params.networkId.withCString { cNetworkId in
                             rn_keys_ca_node_setup_complete(
                                 handle,
                                 cRootSubject,
                                 cIssuingSubject,
-                                validityDays,
-                                issuingCaSerial,
+                                params.validityDays,
+                                params.issuingCaSerial,
                                 eaRaw.bindMemory(to: UInt8.self).baseAddress,
-                                eaPublicKeys.count,
+                                params.eaPublicKeys.count,
                                 cNetworkId,
                                 errPtr
                             )
@@ -116,11 +103,11 @@ public class CANode {
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated, message: "Use setupComplete() instead. This function has been removed for security reasons.")
     public func installIssuingCA(
-        issuingCaKey: Data,
-        issuingCaCert: Data,
-        rootCaCert: Data,
-        eaPublicKeys: Data,
-        networkId: String
+        issuingCaKey _: Data,
+        issuingCaCert _: Data,
+        rootCaCert _: Data,
+        eaPublicKeys _: Data,
+        networkId _: String
     ) throws {
         throw FFIError.operationFailed("This function has been removed for security reasons. Use setupComplete() instead.")
     }

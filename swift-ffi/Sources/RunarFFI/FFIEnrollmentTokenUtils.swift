@@ -123,10 +123,10 @@ public class FFIEnrollmentTokenUtils {
     }
 
     /// Parse enrollment token from CBOR
-    private static func parseTokenFromCBOR(_ data: Data) throws -> EnrollmentToken {
+    private static func parseTokenFromCBOR(_: Data) throws -> EnrollmentToken {
         // For testing purposes, create a dummy token
         // In a real implementation, this would parse the CBOR data
-        return EnrollmentToken(
+        EnrollmentToken(
             tokenId: "test_token",
             networkId: "test_network",
             notBefore: Date(),
@@ -182,7 +182,7 @@ public class FFIEnrollmentTokenUtils {
     public static func createTestEaPublicKeys() throws -> Data {
         let publicKeys = [
             Data(repeating: 0x01, count: 32),
-            Data(repeating: 0x02, count: 32)
+            Data(repeating: 0x02, count: 32),
         ]
 
         return Data(CBOR.array(publicKeys.map { .byteString(Array($0)) }).encode())

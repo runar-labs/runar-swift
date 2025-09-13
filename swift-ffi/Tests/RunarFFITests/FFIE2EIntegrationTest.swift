@@ -90,7 +90,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     /// Create test EA public keys data
     func createTestEaPublicKeys() throws -> Data {
         // Create real EA public keys using enrollment token utilities
-        return try FFIEnrollmentTokenUtils.createTestEaPublicKeys()
+        try FFIEnrollmentTokenUtils.createTestEaPublicKeys()
     }
 
     /// Create EA key pair using secure architecture
@@ -103,7 +103,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     /// Create enrollment token
     func createEnrollmentToken(networkId: String, tokenId: String) throws -> Data {
         // Create real enrollment token using enrollment token utilities
-        return try FFIEnrollmentTokenUtils.createTestEnrollmentToken(
+        try FFIEnrollmentTokenUtils.createTestEnrollmentToken(
             networkId: networkId,
             tokenId: tokenId
         )
@@ -130,24 +130,24 @@ final class FFIE2EIntegrationTest: XCTestCase {
     /// Test basic EA key functionality using secure architecture
     func testBasicEaKeyFunctionality() throws {
         print("\n🚀 Starting basic EA key functionality test")
-        
+
         // Test EA key pair creation
         let eaKeyHandle = try createEaKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Test EA public key retrieval
         let eaKeyManager = EAKeyManager(logger: logger ?? SimpleLogger())
         let publicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved: \(publicKey.count) bytes")
-        
+
         // Test enrollment token creation
         let enrollmentToken = try createEnrollmentToken(networkId: "test_network", tokenId: "test_token_001")
         print("   ✅ Enrollment token created: \(enrollmentToken.count) bytes")
-        
+
         print("\n🎉 Basic EA key functionality test completed successfully!")
     }
-    
+
     /// Test the full CA Node infrastructure using FFI API with REAL QUIC mTLS connections
     func testFFIFullTransportE2EQuicMtls() throws {
         print("\n🚀 Starting FFI Full-transport E2E QUIC mTLS test")
@@ -161,14 +161,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let testLogger = logger ?? SimpleLogger()
 
         // Initialize as node
-        guard let keysFFI = keysFFI else {
+        guard let keysFFI else {
             XCTFail("KeysFFI not initialized")
             return
         }
         try keysFFI.initializeAsNode()
 
         // Initialize as mobile
-        guard let mobileKeysFFI = mobileKeysFFI else {
+        guard let mobileKeysFFI else {
             XCTFail("MobileKeysFFI not initialized")
             return
         }
@@ -187,11 +187,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Create EA key pair using secure architecture
         let eaKeyHandle = try createEaKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
-        
+
         // Get EA public key
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
-        
+
         // Create EA public keys array for CA setup
         let eaPublicKeys = [eaPublicKey]
         let eaPublicKeysCbor = try CodableCBOREncoder().encode(eaPublicKeys)
@@ -199,7 +199,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Complete CA Node setup using secure architecture
         let networkId = "test_network"
-        try caNode.setupComplete(
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.handle,
             rootCaSubject: "CN=Test Root CA",
             issuingCaSubject: "CN=Test Issuing CA",
             validityDays: 365,
@@ -207,6 +208,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
             eaPublicKeys: eaPublicKeysCbor,
             networkId: networkId
         )
+        try caNode.setupComplete(params: setupParams)
 
         // Configure enrollment authority
         try caNode.configureEnrollmentAuthority(eaPublicKeysCbor)
@@ -434,7 +436,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let workProfileKey = try keysFFI.deriveUserProfileKey(label: "work")
 
         print("   ✅ Profile keys derived: personal (\(personalProfileKey.count) bytes), " +
-              "work (\(workProfileKey.count) bytes)")
+            "work (\(workProfileKey.count) bytes)")
 
         // Test profile key encryption/decryption
         let testData = Data("Hello, encrypted world!".utf8)
@@ -584,9 +586,9 @@ extension Data {
         let len = hexString.count / 2
         var data = Data(capacity: len)
         var i = hexString.startIndex
-        for _ in 0..<len {
+        for _ in 0 ..< len {
             let j = hexString.index(i, offsetBy: 2)
-            let bytes = hexString[i..<j]
+            let bytes = hexString[i ..< j]
             if var num = UInt8(bytes, radix: 16) {
                 data.append(&num, count: 1)
             } else {
@@ -597,4 +599,3 @@ extension Data {
         self = data
     }
 }
-

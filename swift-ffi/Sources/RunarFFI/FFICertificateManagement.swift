@@ -13,39 +13,53 @@ public class CANodeManager {
 
     // MARK: - CA Node Setup (Secure Architecture)
 
+    /// Parameters for CA Node setup
+    public struct CANodeSetupParams {
+        public let caNode: UnsafeMutableRawPointer
+        public let rootCaSubject: String
+        public let issuingCaSubject: String
+        public let validityDays: UInt32
+        public let issuingCaSerial: UInt64
+        public let eaPublicKeys: Data
+        public let networkId: String
+
+        public init(
+            caNode: UnsafeMutableRawPointer,
+            rootCaSubject: String,
+            issuingCaSubject: String,
+            validityDays: UInt32,
+            issuingCaSerial: UInt64,
+            eaPublicKeys: Data,
+            networkId: String
+        ) {
+            self.caNode = caNode
+            self.rootCaSubject = rootCaSubject
+            self.issuingCaSubject = issuingCaSubject
+            self.validityDays = validityDays
+            self.issuingCaSerial = issuingCaSerial
+            self.eaPublicKeys = eaPublicKeys
+            self.networkId = networkId
+        }
+    }
+
     /// Complete CA Node setup with internal private key management
     /// This function handles all CA creation and configuration internally in Rust
-    /// - Parameters:
-    ///   - caNode: CA Node handle
-    ///   - rootCaSubject: Root CA subject name
-    ///   - issuingCaSubject: Issuing CA subject name
-    ///   - validityDays: Certificate validity period in days
-    ///   - issuingCaSerial: Serial number for issuing CA
-    ///   - eaPublicKeys: EA public keys (CBOR-encoded)
-    ///   - networkId: Network identifier
+    /// - Parameter params: CA Node setup parameters
     /// - Throws: FFIError if the operation fails
-    public func setupComplete(
-        caNode: UnsafeMutableRawPointer,
-        rootCaSubject: String,
-        issuingCaSubject: String,
-        validityDays: UInt32,
-        issuingCaSerial: UInt64,
-        eaPublicKeys: Data,
-        networkId: String
-    ) throws {
+    public func setupComplete(params: CANodeSetupParams) throws {
         let (_, err) = withRnError { errPtr in
-            rootCaSubject.withCString { cRootSubject in
-                issuingCaSubject.withCString { cIssuingSubject in
-                    eaPublicKeys.withUnsafeBytes { eaRaw in
-                        networkId.withCString { cNetworkId in
+            params.rootCaSubject.withCString { cRootSubject in
+                params.issuingCaSubject.withCString { cIssuingSubject in
+                    params.eaPublicKeys.withUnsafeBytes { eaRaw in
+                        params.networkId.withCString { cNetworkId in
                             rn_keys_ca_node_setup_complete(
-                                caNode,
+                                params.caNode,
                                 cRootSubject,
                                 cIssuingSubject,
-                                validityDays,
-                                issuingCaSerial,
+                                params.validityDays,
+                                params.issuingCaSerial,
                                 eaRaw.bindMemory(to: UInt8.self).baseAddress,
-                                eaPublicKeys.count,
+                                params.eaPublicKeys.count,
                                 cNetworkId,
                                 errPtr
                             )
@@ -105,50 +119,65 @@ public class EAKeyManager {
         return data
     }
 
+    /// Parameters for enrollment token generation
+    public struct EnrollmentTokenParams {
+        public let eaKeyHandle: UnsafeMutableRawPointer
+        public let tokenId: String
+        public let networkId: String
+        public let subject: String
+        public let validFrom: UInt64
+        public let validUntil: UInt64
+        public let nonce: Data
+        public let capabilities: [String]
+
+        public init(
+            eaKeyHandle: UnsafeMutableRawPointer,
+            tokenId: String,
+            networkId: String,
+            subject: String,
+            validFrom: UInt64,
+            validUntil: UInt64,
+            nonce: Data,
+            capabilities: [String]
+        ) {
+            self.eaKeyHandle = eaKeyHandle
+            self.tokenId = tokenId
+            self.networkId = networkId
+            self.subject = subject
+            self.validFrom = validFrom
+            self.validUntil = validUntil
+            self.nonce = nonce
+            self.capabilities = capabilities
+        }
+    }
+
     /// Generate enrollment token (uses internal private key)
-    /// - Parameters:
-    ///   - eaKeyHandle: EA key handle
-    ///   - tokenId: Token identifier
-    ///   - networkId: Network identifier
-    ///   - subject: Certificate subject
-    ///   - validFrom: Token validity start time (Unix timestamp)
-    ///   - validUntil: Token validity end time (Unix timestamp)
-    ///   - nonce: Random nonce
-    ///   - capabilities: Token capabilities
+    /// - Parameter params: Enrollment token generation parameters
     /// - Returns: CBOR-encoded enrollment token
     /// - Throws: FFIError if the operation fails
-    public func generateEnrollmentToken(
-        eaKeyHandle: UnsafeMutableRawPointer,
-        tokenId: String,
-        networkId: String,
-        subject: String,
-        validFrom: UInt64,
-        validUntil: UInt64,
-        nonce: Data,
-        capabilities: [String]
-    ) throws -> Data {
+    public func generateEnrollmentToken(params: EnrollmentTokenParams) throws -> Data {
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
 
         let (_, err) = withRnError { errPtr in
-            tokenId.withCString { cTokenId in
-                networkId.withCString { cNetworkId in
-                    subject.withCString { cSubject in
-                        nonce.withUnsafeBytes { nonceRaw in
+            params.tokenId.withCString { cTokenId in
+                params.networkId.withCString { cNetworkId in
+                    params.subject.withCString { cSubject in
+                        params.nonce.withUnsafeBytes { nonceRaw in
                             // For now, use empty capabilities array - this will be implemented when the FFI function is available
                             let emptyCapabilities: [UnsafePointer<CChar>?] = []
-                            
+
                             rn_keys_ca_generate_enrollment_token(
-                                eaKeyHandle,
+                                params.eaKeyHandle,
                                 cTokenId,
                                 cNetworkId,
                                 cSubject,
-                                validFrom,
-                                validUntil,
+                                params.validFrom,
+                                params.validUntil,
                                 nonceRaw.bindMemory(to: UInt8.self).baseAddress,
-                                nonce.count,
+                                params.nonce.count,
                                 emptyCapabilities,
-                                capabilities.count,
+                                params.capabilities.count,
                                 &out,
                                 &outLen,
                                 errPtr
@@ -236,7 +265,7 @@ public class CertificateManager {
     /// - Returns: CA handle for further operations
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated, message: "Use CANodeManager.setupComplete() instead")
-    public func createRootCA(subject: String) throws -> UnsafeMutableRawPointer {
+    public func createRootCA(subject _: String) throws -> UnsafeMutableRawPointer {
         throw FFIError.operationFailed("This function has been removed. Use CANodeManager.setupComplete() instead.")
     }
 
@@ -250,10 +279,10 @@ public class CertificateManager {
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated, message: "Use CANodeManager.setupComplete() instead")
     public func createIssuingCA(
-        rootCA: UnsafeMutableRawPointer,
-        subject: String,
-        validityDays: UInt32,
-        serial: UInt64
+        rootCA _: UnsafeMutableRawPointer,
+        subject _: String,
+        validityDays _: UInt32,
+        serial _: UInt64
     ) throws -> UnsafeMutableRawPointer {
         throw FFIError.operationFailed("This function has been removed. Use CANodeManager.setupComplete() instead.")
     }
@@ -263,7 +292,7 @@ public class CertificateManager {
     /// - Returns: DER-encoded certificate
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated, message: "Use CANodeManager.setupComplete() instead")
-    public func getCertificateDer(_ caHandle: UnsafeMutableRawPointer) throws -> Data {
+    public func getCertificateDer(_: UnsafeMutableRawPointer) throws -> Data {
         throw FFIError.operationFailed("This function has been removed. Use CANodeManager.setupComplete() instead.")
     }
 
@@ -272,14 +301,14 @@ public class CertificateManager {
     /// - Returns: Certificate subject string
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated, message: "Use CANodeManager.setupComplete() instead")
-    public func getCertificateSubject(_ caHandle: UnsafeMutableRawPointer) throws -> String {
+    public func getCertificateSubject(_: UnsafeMutableRawPointer) throws -> String {
         throw FFIError.operationFailed("This function has been removed. Use CANodeManager.setupComplete() instead.")
     }
 
     /// Free CA resources
     /// - Parameter caHandle: CA handle to free
     @available(*, deprecated, message: "Use CANodeManager.setupComplete() instead")
-    public static func free(_ caHandle: UnsafeMutableRawPointer) {
+    public static func free(_: UnsafeMutableRawPointer) {
         // No-op for deprecated function
     }
 
@@ -353,7 +382,7 @@ public class EnrollmentTokenManager {
     /// - Returns: CBOR-encoded enrollment token
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated, message: "Use EAKeyManager.generateEnrollmentToken() instead")
-    public func generateToken(params: EnrollmentTokenParams) throws -> Data {
+    public func generateToken(params _: EnrollmentTokenParams) throws -> Data {
         throw FFIError.operationFailed("This function has been removed. Use EAKeyManager.generateEnrollmentToken() instead.")
     }
 
@@ -364,7 +393,7 @@ public class EnrollmentTokenManager {
     /// - Returns: true if token is valid, false otherwise
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated, message: "Use EAKeyManager.generateEnrollmentToken() instead")
-    public func validateToken(_ token: Data, eaPublicKey: Data) throws -> Bool {
+    public func validateToken(_: Data, eaPublicKey _: Data) throws -> Bool {
         throw FFIError.operationFailed("This function has been removed. Use EAKeyManager.generateEnrollmentToken() instead.")
     }
 }
