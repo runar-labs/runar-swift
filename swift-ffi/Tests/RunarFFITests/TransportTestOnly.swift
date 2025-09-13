@@ -164,7 +164,7 @@ final class TransportTestOnly: XCTestCase {
 
         // Get compact ID for peer A (matching Rust test)
         print("🆔 DEBUG: Getting compact ID for peer A")
-        let peerIdA = try keysA.getCompactId(publicKey: publicKeyA)
+        let peerIdA = try keysA.nodeKeyManager?.getCompactId(publicKey: publicKeyA) ?? ""
         print("🆔 DEBUG: Peer ID A: \(peerIdA)")
         
         // Send request from B to A (matching Rust test)

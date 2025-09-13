@@ -291,18 +291,37 @@ public class CertificateManager {
     /// - Parameter caHandle: CA handle
     /// - Returns: DER-encoded certificate
     /// - Throws: FFIError if the operation fails
-    @available(*, deprecated, message: "Use CANodeManager.setupComplete() instead")
-    public func getCertificateDer(_: UnsafeMutableRawPointer) throws -> Data {
-        throw FFIError.operationFailed("This function has been removed. Use CANodeManager.setupComplete() instead.")
+    public func getCertificateDer(_ caHandle: UnsafeMutableRawPointer) throws -> Data {
+        var outCert: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            rn_keys_ca_get_certificate_der(caHandle, &outCert, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+
+        guard let certPtr = outCert else { return Data() }
+        let data = Data(bytes: certPtr, count: outLen)
+        rn_free(certPtr, outLen)
+        return data
     }
 
     /// Get CA certificate subject
     /// - Parameter caHandle: CA handle
     /// - Returns: Certificate subject string
     /// - Throws: FFIError if the operation fails
-    @available(*, deprecated, message: "Use CANodeManager.setupComplete() instead")
-    public func getCertificateSubject(_: UnsafeMutableRawPointer) throws -> String {
-        throw FFIError.operationFailed("This function has been removed. Use CANodeManager.setupComplete() instead.")
+    public func getCertificateSubject(_ caHandle: UnsafeMutableRawPointer) throws -> String {
+        var outSubject: UnsafeMutablePointer<CChar>?
+
+        let (_, err) = withRnError { errPtr in
+            rn_keys_ca_get_certificate_subject(caHandle, &outSubject, errPtr)
+        }
+        if let error = err { throw error }
+
+        guard let subjectPtr = outSubject else { return "" }
+        let subject = String(cString: subjectPtr)
+        rn_string_free(subjectPtr)
+        return subject
     }
 
     /// Free CA resources

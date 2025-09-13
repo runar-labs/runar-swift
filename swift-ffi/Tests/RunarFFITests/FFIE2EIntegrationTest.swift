@@ -200,7 +200,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Complete CA Node setup using secure architecture
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
-            caNode: UnsafeMutableRawPointer(bitPattern: 1) ?? UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1),
+            caNode: try caNode.createShared(),
             rootCaSubject: "CN=Test Root CA",
             issuingCaSubject: "CN=Test Issuing CA",
             validityDays: 365,
@@ -330,7 +330,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("   ✅ Certificate installed and validated")
 
         // QUIC Cert Config Validation
-        let quicConfig = try keysFFI.getQuicCertificateConfig()
+        let quicConfig = try keysFFI.nodeGetQuicCertificateConfig()
         print("   ✅ QUIC certificate config validated (\(quicConfig.count) bytes)")
 
         // ==========================================
@@ -367,7 +367,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🚫 PHASE 5: Certificate Revocation + CRL-lite via REAL QUIC mTLS")
 
         // Extract SKI from the client's certificate for admin authorization
-        let clientCertDer = try keysFFI.getNodeCertificate()
+        let clientCertDer = try keysFFI.nodeGetNodeCertificate()
 
         // Extract SKI from client certificate using secure utilities
         let certUtilities = CertificateUtilities(logger: logger ?? SimpleLogger())
@@ -435,15 +435,15 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🔑 PHASE 7: Profile Key Functionality via REAL QUIC mTLS")
 
         // Derive profile keys
-        let personalProfileKey = try keysFFI.deriveUserProfileKey(label: "personal")
-        let workProfileKey = try keysFFI.deriveUserProfileKey(label: "work")
+        let personalProfileKey = try keysFFI.nodeDeriveUserProfileKey("personal")
+        let workProfileKey = try keysFFI.nodeDeriveUserProfileKey("work")
 
         print("   ✅ Profile keys derived: personal (\(personalProfileKey.count) bytes), " +
             "work (\(workProfileKey.count) bytes)")
 
         // Test profile key encryption/decryption
         let testData = Data("Hello, encrypted world!".utf8)
-        let personalProfileId = try keysFFI.getCompactId(publicKey: personalProfileKey)
+        let personalProfileId = try keysFFI.nodeGetCompactId(publicKey: personalProfileKey)
 
         // Create envelope with profile keys
         let envelopeData = try keysFFI.nodeEncryptWithEnvelope(
@@ -455,7 +455,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("   ✅ Data encrypted with profile key envelope (\(envelopeData.count) bytes)")
 
         // Decrypt with profile key
-        let decryptedData = try keysFFI.decryptWithProfile(
+        let decryptedData = try keysFFI.nodeDecryptWithProfile(
             envelopeData: envelopeData,
             profileId: personalProfileId
         )

@@ -87,7 +87,7 @@ public struct TestKeystoreFactory {
         let profilePk = try userMobile.mobileDeriveUserProfileKey("user")
         // Install only the network public key, not the network private key
         // so this user mobile can encrypt for the network, but not decrypt
-        try userMobile.mobileInstallNetworkPublicKey(networkPublicKey: networkPub)
+        try userMobile.mobileInstallNetworkPublicKey(networkPub)
         
         // Build node and install certificate
         let nodeKeys = KeysFFI()

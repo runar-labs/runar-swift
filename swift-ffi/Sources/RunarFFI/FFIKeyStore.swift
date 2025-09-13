@@ -74,7 +74,7 @@ public class FFIKeyStore: EnvelopeCrypto {
     public func encryptWithEnvelope(
         data: Data,
         networkPublicKey: Data?,
-        profileKeys: [Data]
+        profileKeys: [Data]?
     ) throws -> Data {
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
@@ -148,19 +148,19 @@ public class FFIKeyStore: EnvelopeCrypto {
         let data: Data
         let networkKey: Data?
         let networkRaw: UnsafeRawBufferPointer?
-        let profileKeys: [Data]
+        let profileKeys: [Data]?
         var out: UnsafeMutablePointer<UInt8>?
         var outLen: Int
         let errPtr: UnsafeMutablePointer<RNAPIRnError>
     }
 
     private func performEnvelopeEncryption(params: inout EnvelopeEncryptionParams) {
-        if !params.profileKeys.isEmpty {
+        if let profileKeys = params.profileKeys, !profileKeys.isEmpty {
             // Prepare profile key arrays
             var profileKeysArray: [UnsafePointer<UInt8>?] = []
             var profileLensArray: [Int] = []
 
-            for key in params.profileKeys {
+            for key in profileKeys {
                 key.withUnsafeBytes { keyRaw in
                     profileKeysArray.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
                 }

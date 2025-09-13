@@ -335,4 +335,40 @@ public class CANode {
         rn_free(outPtr, outLen)
         return data
     }
+
+    /// Get root CA certificate from CA node
+    /// - Returns: DER-encoded root CA certificate
+    /// - Throws: FFIError if the operation fails
+    public func getRootCaCertificate() throws -> Data {
+        var certificate: UnsafeMutablePointer<UInt8>?
+        var certificateLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            rn_keys_ca_node_get_root_ca_certificate(handle, &certificate, &certificateLen, errPtr)
+        }
+        if let error = err { throw error }
+
+        guard let certPtr = certificate else { return Data() }
+        let data = Data(bytes: certPtr, count: certificateLen)
+        rn_free(certPtr, certificateLen)
+        return data
+    }
+
+    /// Get issuing CA certificate from CA node
+    /// - Returns: DER-encoded issuing CA certificate
+    /// - Throws: FFIError if the operation fails
+    public func getIssuingCaCertificate() throws -> Data {
+        var certificate: UnsafeMutablePointer<UInt8>?
+        var certificateLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            rn_keys_ca_node_get_issuing_ca_certificate(handle, &certificate, &certificateLen, errPtr)
+        }
+        if let error = err { throw error }
+
+        guard let certPtr = certificate else { return Data() }
+        let data = Data(bytes: certPtr, count: certificateLen)
+        rn_free(certPtr, certificateLen)
+        return data
+    }
 }

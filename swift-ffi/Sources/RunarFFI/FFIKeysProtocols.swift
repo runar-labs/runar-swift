@@ -23,7 +23,7 @@ public struct EnvelopeEncryptedData {
 
 /// Envelope crypto protocol for encryption/decryption
 public protocol EnvelopeCrypto {
-    func encryptWithEnvelope(data: Data, networkPublicKey: Data?, profileKeys: [Data]) throws -> Data
+    func encryptWithEnvelope(data: Data, networkPublicKey: Data?, profileKeys: [Data]?) throws -> Data
     func decryptEnvelope(eedCbor: Data) throws -> Data
 }
 
