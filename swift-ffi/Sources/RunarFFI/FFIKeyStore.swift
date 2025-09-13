@@ -83,28 +83,34 @@ public class FFIKeyStore: EnvelopeCrypto {
             data.withUnsafeBytes { dataRaw in
                 if let networkKey = networkPublicKey {
                     networkKey.withUnsafeBytes { networkRaw in
-                        self.performEnvelopeEncryption(
+                        var params = EnvelopeEncryptionParams(
                             dataRaw: dataRaw,
                             data: data,
                             networkKey: networkKey,
                             networkRaw: networkRaw,
                             profileKeys: profileKeys,
-                            out: &out,
-                            outLen: &outLen,
+                            out: out,
+                            outLen: outLen,
                             errPtr: errPtr
                         )
+                        self.performEnvelopeEncryption(params: &params)
+                        out = params.out
+                        outLen = params.outLen
                     }
                 } else {
-                    self.performEnvelopeEncryption(
+                    var params = EnvelopeEncryptionParams(
                         dataRaw: dataRaw,
                         data: data,
                         networkKey: nil,
                         networkRaw: nil,
                         profileKeys: profileKeys,
-                        out: &out,
-                        outLen: &outLen,
+                        out: out,
+                        outLen: outLen,
                         errPtr: errPtr
                     )
+                    self.performEnvelopeEncryption(params: &params)
+                    out = params.out
+                    outLen = params.outLen
                 }
             }
         }
@@ -136,22 +142,25 @@ public class FFIKeyStore: EnvelopeCrypto {
 
     // MARK: - Private Helper Methods
 
-    private func performEnvelopeEncryption(
-        dataRaw: UnsafeRawBufferPointer,
-        data: Data,
-        networkKey: Data?,
-        networkRaw: UnsafeRawBufferPointer?,
-        profileKeys: [Data],
-        out: inout UnsafeMutablePointer<UInt8>?,
-        outLen: inout Int,
-        errPtr: UnsafeMutablePointer<RNAPIRnError>
-    ) {
-        if !profileKeys.isEmpty {
+    /// Parameters for envelope encryption
+    private struct EnvelopeEncryptionParams {
+        let dataRaw: UnsafeRawBufferPointer
+        let data: Data
+        let networkKey: Data?
+        let networkRaw: UnsafeRawBufferPointer?
+        let profileKeys: [Data]
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen: Int
+        let errPtr: UnsafeMutablePointer<RNAPIRnError>
+    }
+
+    private func performEnvelopeEncryption(params: inout EnvelopeEncryptionParams) {
+        if !params.profileKeys.isEmpty {
             // Prepare profile key arrays
             var profileKeysArray: [UnsafePointer<UInt8>?] = []
             var profileLensArray: [Int] = []
 
-            for key in profileKeys {
+            for key in params.profileKeys {
                 key.withUnsafeBytes { keyRaw in
                     profileKeysArray.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
                 }
@@ -160,66 +169,66 @@ public class FFIKeyStore: EnvelopeCrypto {
 
             profileKeysArray.withUnsafeBufferPointer { keysPtr in
                 profileLensArray.withUnsafeBufferPointer { lensPtr in
-                    if let networkKey, let networkRaw {
+                    if let networkKey = params.networkKey, let networkRaw = params.networkRaw {
                         rn_keys_mobile_encrypt_with_envelope(
                             keys.rawHandle,
-                            dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
+                            params.dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                            params.data.count,
                             networkRaw.bindMemory(to: UInt8.self).baseAddress,
                             networkKey.count,
                             keysPtr.baseAddress,
                             lensPtr.baseAddress,
                             profileKeysArray.count,
-                            &out,
-                            &outLen,
-                            errPtr
+                            &params.out,
+                            &params.outLen,
+                            params.errPtr
                         )
                     } else {
                         rn_keys_mobile_encrypt_with_envelope(
                             keys.rawHandle,
-                            dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
+                            params.dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                            params.data.count,
                             nil,
                             0,
                             keysPtr.baseAddress,
                             lensPtr.baseAddress,
                             profileKeysArray.count,
-                            &out,
-                            &outLen,
-                            errPtr
+                            &params.out,
+                            &params.outLen,
+                            params.errPtr
                         )
                     }
                 }
             }
         } else {
             // No profile keys
-            if let networkKey, let networkRaw {
+            if let networkKey = params.networkKey, let networkRaw = params.networkRaw {
                 rn_keys_mobile_encrypt_with_envelope(
                     keys.rawHandle,
-                    dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                    data.count,
+                    params.dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                    params.data.count,
                     networkRaw.bindMemory(to: UInt8.self).baseAddress,
                     networkKey.count,
                     nil,
                     nil,
                     0,
-                    &out,
-                    &outLen,
-                    errPtr
+                    &params.out,
+                    &params.outLen,
+                    params.errPtr
                 )
             } else {
                 rn_keys_mobile_encrypt_with_envelope(
                     keys.rawHandle,
-                    dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                    data.count,
+                    params.dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                    params.data.count,
                     nil,
                     0,
                     nil,
                     nil,
                     0,
-                    &out,
-                    &outLen,
-                    errPtr
+                    &params.out,
+                    &params.outLen,
+                    params.errPtr
                 )
             }
         }

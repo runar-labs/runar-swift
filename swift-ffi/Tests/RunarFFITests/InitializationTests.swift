@@ -149,7 +149,7 @@ final class InitializationTests: XCTestCase {
             FFIError.memoryAllocation("").errorCode,
             FFIError.lockError("").errorCode,
             FFIError.invalidUTF8("").errorCode,
-            FFIError.invalidArgument("").errorCode,
+            FFIError.invalidArgument("").errorCode
         ]
 
         XCTAssertEqual(errorCodes.count, 11, "All error codes should be unique")

@@ -297,9 +297,12 @@ final class FFIE2EIntegrationTest: XCTestCase {
             maxRetries: 3
         )
 
+        guard let nodeKeysHandle = keysFFI.handle else {
+            throw FFIError.operationFailed("KeysFFI handle is nil")
+        }
         let caClient = try CAClient.createWithConfig(
             config: config,
-            nodeKeys: keysFFI.handle!,
+            nodeKeys: nodeKeysHandle,
             logger: testLogger
         )
 

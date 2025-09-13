@@ -167,7 +167,7 @@ public enum FFIError: LocalizedError {
             1014: { .profileKeyEncryptionFailed($0) },
             1015: { .profileKeyDecryptionFailed($0) },
             1016: { .caClientConfigurationFailed($0) },
-            1017: { .crlGenerationFailed($0) },
+            1017: { .crlGenerationFailed($0) }
         ]
 
         if let errorConstructor = errorMap[code] {
