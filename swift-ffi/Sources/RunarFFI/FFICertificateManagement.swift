@@ -369,7 +369,6 @@ public struct EnrollmentTokenParams {
 }
 
 @available(macOS 11.0, *)
-@available(*, deprecated, message: "Use EAKeyManager instead")
 public class EnrollmentTokenManager {
     private let logger: Logger
 
@@ -378,22 +377,93 @@ public class EnrollmentTokenManager {
     }
 
     /// Generate enrollment token
-    /// - Parameter params: Token generation parameters
+    /// - Parameters:
+    ///   - eaKey: EA public key data
+    ///   - tokenId: Unique token identifier
+    ///   - networkId: Network identifier
+    ///   - subject: Token subject
+    ///   - notBefore: Token validity start time (Unix timestamp)
+    ///   - expiresAt: Token expiration time (Unix timestamp)
+    ///   - nonce: Random nonce data
+    ///   - permissions: Token permissions data
     /// - Returns: CBOR-encoded enrollment token
     /// - Throws: FFIError if the operation fails
-    @available(*, deprecated, message: "Use EAKeyManager.generateEnrollmentToken() instead")
-    public func generateToken(params _: EnrollmentTokenParams) throws -> Data {
-        throw FFIError.operationFailed("This function has been removed. Use EAKeyManager.generateEnrollmentToken() instead.")
+    public func generateToken(
+        eaKey: Data,
+        tokenId: String,
+        networkId: String,
+        subject: String,
+        notBefore: UInt64,
+        expiresAt: UInt64,
+        nonce: Data,
+        permissions: Data
+    ) throws -> Data {
+        var out: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+
+        let (_, err) = withRnError { errPtr in
+            eaKey.withUnsafeBytes { eaKeyRaw in
+                nonce.withUnsafeBytes { nonceRaw in
+                    permissions.withUnsafeBytes { permissionsRaw in
+                        tokenId.withCString { cTokenId in
+                            networkId.withCString { cNetworkId in
+                                subject.withCString { cSubject in
+                                    rn_keys_enrollment_token_generate(
+                                        eaKeyRaw.bindMemory(to: UInt8.self).baseAddress,
+                                        eaKey.count,
+                                        cTokenId,
+                                        cNetworkId,
+                                        cSubject,
+                                        notBefore,
+                                        expiresAt,
+                                        nonceRaw.bindMemory(to: UInt8.self).baseAddress,
+                                        nonce.count,
+                                        permissionsRaw.bindMemory(to: UInt8.self).baseAddress,
+                                        permissions.count,
+                                        &out,
+                                        &outLen,
+                                        errPtr
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let error = err { throw error }
+
+        guard let outPtr = out else { return Data() }
+        let data = Data(bytes: outPtr, count: outLen)
+        rn_free(outPtr, outLen)
+        return data
     }
 
     /// Validate enrollment token
     /// - Parameters:
     ///   - token: CBOR-encoded enrollment token
-    ///   - eaPublicKey: Enrollment Authority public key (DER-encoded)
+    ///   - eaPublicKey: EA public key for validation
     /// - Returns: true if token is valid, false otherwise
     /// - Throws: FFIError if the operation fails
-    @available(*, deprecated, message: "Use EAKeyManager.generateEnrollmentToken() instead")
-    public func validateToken(_: Data, eaPublicKey _: Data) throws -> Bool {
-        throw FFIError.operationFailed("This function has been removed. Use EAKeyManager.generateEnrollmentToken() instead.")
+    public func validateToken(token: Data, eaPublicKey: Data) throws -> Bool {
+        var outValid: Int32 = 0
+
+        let (_, err) = withRnError { errPtr in
+            token.withUnsafeBytes { tokenRaw in
+                eaPublicKey.withUnsafeBytes { keyRaw in
+                    rn_keys_enrollment_token_validate(
+                        tokenRaw.bindMemory(to: UInt8.self).baseAddress,
+                        token.count,
+                        keyRaw.bindMemory(to: UInt8.self).baseAddress,
+                        eaPublicKey.count,
+                        &outValid,
+                        errPtr
+                    )
+                }
+            }
+        }
+        if let error = err { throw error }
+
+        return outValid != 0
     }
 }

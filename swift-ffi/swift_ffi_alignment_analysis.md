@@ -1,6 +1,6 @@
 # Swift FFI Alignment Analysis - Complete 100% Alignment Required
 
-## 🚨 CRITICAL ARCHITECTURAL PRINCIPLES
+runar-rust/runar-ffi/tests/ffi_transport_test.rs## 🚨 CRITICAL ARCHITECTURAL PRINCIPLES
 
 ### **ZERO CRYPTO IN SWIFT - ALL VIA FFI INTERFACE**
 
@@ -213,22 +213,22 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 | `rn_keys_node_get_certificate_status()` | ❌ | **MISSING** |
 | `rn_keys_node_get_certificate_serial()` | ❌ | **MISSING** |
 | `rn_keys_node_validate_peer_certificate()` | ❌ | **MISSING** |
-| `rn_keys_node_install_network_key()` | ❌ | **MISSING** |
+| `rn_keys_node_install_network_key()` | ✅ | **IMPLEMENTED** |
 
 ### 1.4 Node Network Functions (4 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
-| `rn_keys_node_get_network_agreement()` | ❌ | **MISSING** |
-| `rn_keys_node_has_network_private_key()` | ❌ | **MISSING** |
-| `rn_keys_node_derive_user_profile_key()` | ❌ | **MISSING** |
-| `rn_keys_node_decrypt_with_profile()` | ❌ | **MISSING** |
+| `rn_keys_node_get_network_agreement()` | ✅ | **IMPLEMENTED** |
+| `rn_keys_node_has_network_private_key()` | ✅ | **IMPLEMENTED** |
+| `rn_keys_node_derive_user_profile_key()` | ✅ | **IMPLEMENTED** |
+| `rn_keys_node_decrypt_with_profile()` | ✅ | **IMPLEMENTED** |
 
 ### 1.5 Node Profile Functions (3 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
-| `rn_keys_node_install_profile_public_key()` | ❌ | **MISSING** |
-| `rn_keys_node_get_profile_public_key_by_label()` | ❌ | **MISSING** |
-| `rn_keys_get_compact_id()` | ❌ | **MISSING** |
+| `rn_keys_node_install_profile_public_key()` | ✅ | **IMPLEMENTED** |
+| `rn_keys_node_get_profile_public_key_by_label()` | ✅ | **IMPLEMENTED** |
+| `rn_keys_get_compact_id()` | ✅ | **IMPLEMENTED** |
 
 ### 1.6 Mobile Key Manager Functions (8 functions)
 | Function | Status | Swift Implementation |

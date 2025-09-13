@@ -80,6 +80,50 @@ public protocol NodeKeyManager {
     func decryptMessageFromMobile(encryptedMessage: Data) throws -> Data
     func decryptEnvelope(eedCbor: Data) throws -> Data
     func getNodeId() throws -> String
+
+    // MARK: - New Node Key Manager Functions
+
+    /// Check if NodeKeyManager has keys
+    func hasKeys() throws -> Bool
+
+    /// Generate keys for NodeKeyManager
+    func generateKeys() throws
+
+    /// Get QUIC certificate configuration
+    func getQuicCertificateConfig() throws -> Data
+
+    /// Get node certificate
+    func getNodeCertificate() throws -> Data
+
+    /// Get certificate status
+    func getCertificateStatus() throws -> Int32
+
+    /// Get certificate serial number
+    func getCertificateSerial() throws -> String
+
+    /// Validate peer certificate
+    func validatePeerCertificate(_ peerCert: Data) throws
+
+    /// Get network agreement
+    func getNetworkAgreement(networkPublicKey: Data) throws -> Data
+
+    /// Check if node has network private key
+    func hasNetworkPrivateKey(networkPublicKey: Data) throws -> Bool
+
+    /// Derive user profile key
+    func deriveUserProfileKey(label: String) throws -> Data
+
+    /// Decrypt envelope data using profile key
+    func decryptWithProfile(envelopeData: Data, profileId: String) throws -> Data
+
+    /// Install profile public key
+    func installProfilePublicKey(_ publicKey: Data) throws
+
+    /// Get profile public key by label
+    func getProfilePublicKeyByLabel(label: String) throws -> (publicKey: Data, hasKey: Bool)
+
+    /// Get compact ID for public key
+    func getCompactId(publicKey: Data) throws -> String
 }
 
 /// Label Resolver for key derivation

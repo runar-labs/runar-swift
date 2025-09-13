@@ -100,6 +100,78 @@ public extension KeysFFI {
         try validateNodeManager().getNodeId()
     }
 
+    // MARK: - New Node Key Manager Functions
+
+    /// Check if NodeKeyManager has keys
+    func nodeHasKeys() throws -> Bool {
+        try validateNodeManager().hasKeys()
+    }
+
+    /// Generate keys for NodeKeyManager
+    func nodeGenerateKeys() throws {
+        try validateNodeManager().generateKeys()
+    }
+
+    /// Get QUIC certificate configuration
+    func nodeGetQuicCertificateConfig() throws -> Data {
+        try validateNodeManager().getQuicCertificateConfig()
+    }
+
+    /// Get node certificate
+    func nodeGetNodeCertificate() throws -> Data {
+        try validateNodeManager().getNodeCertificate()
+    }
+
+    /// Get certificate status
+    func nodeGetCertificateStatus() throws -> Int32 {
+        try validateNodeManager().getCertificateStatus()
+    }
+
+    /// Get certificate serial number
+    func nodeGetCertificateSerial() throws -> String {
+        try validateNodeManager().getCertificateSerial()
+    }
+
+    /// Validate peer certificate
+    func nodeValidatePeerCertificate(_ peerCert: Data) throws {
+        try validateNodeManager().validatePeerCertificate(peerCert)
+    }
+
+    /// Get network agreement
+    func nodeGetNetworkAgreement(networkPublicKey: Data) throws -> Data {
+        try validateNodeManager().getNetworkAgreement(networkPublicKey: networkPublicKey)
+    }
+
+    /// Check if node has network private key
+    func nodeHasNetworkPrivateKey(networkPublicKey: Data) throws -> Bool {
+        try validateNodeManager().hasNetworkPrivateKey(networkPublicKey: networkPublicKey)
+    }
+
+    /// Derive user profile key
+    func nodeDeriveUserProfileKey(_ label: String) throws -> Data {
+        try validateNodeManager().deriveUserProfileKey(label: label)
+    }
+
+    /// Decrypt envelope data using profile key
+    func nodeDecryptWithProfile(envelopeData: Data, profileId: String) throws -> Data {
+        try validateNodeManager().decryptWithProfile(envelopeData: envelopeData, profileId: profileId)
+    }
+
+    /// Install profile public key
+    func nodeInstallProfilePublicKey(_ publicKey: Data) throws {
+        try validateNodeManager().installProfilePublicKey(publicKey)
+    }
+
+    /// Get profile public key by label
+    func nodeGetProfilePublicKeyByLabel(_ label: String) throws -> (publicKey: Data, hasKey: Bool) {
+        try validateNodeManager().getProfilePublicKeyByLabel(label: label)
+    }
+
+    /// Get compact ID for public key
+    func nodeGetCompactId(publicKey: Data) throws -> String {
+        try validateNodeManager().getCompactId(publicKey: publicKey)
+    }
+
     // MARK: - Convenience Functions
 
     func mobileSetPersistenceDirectory(_ directory: URL) throws {

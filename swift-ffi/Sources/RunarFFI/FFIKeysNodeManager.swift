@@ -286,6 +286,8 @@ class NodeKeyManagerImpl: NodeKeyManager {
         return out.map { String(cString: $0) } ?? ""
     }
 
+    // MARK: - Additional Node Key Manager Functions
+
     // MARK: - Private Helper Methods
 
     /// Parameters for node envelope encryption
