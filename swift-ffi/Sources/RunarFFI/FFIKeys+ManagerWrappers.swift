@@ -22,10 +22,6 @@ public extension KeysFFI {
         try validateMobileManager().registerDeviceKeystore(keystore)
     }
 
-    func mobileGetKeystoreState() throws -> Int32 {
-        try validateMobileManager().getKeystoreState()
-    }
-
     func mobileGenerateNetworkDataKey() throws -> Data {
         try validateMobileManager().generateNetworkDataKey()
     }
@@ -74,10 +70,6 @@ public extension KeysFFI {
 
     func nodeRegisterDeviceKeystore(_ keystore: DeviceKeystoreType) throws {
         try validateNodeManager().registerDeviceKeystore(keystore)
-    }
-
-    func nodeGetKeystoreState() throws -> Int32 {
-        try validateNodeManager().getKeystoreState()
     }
 
     func nodeInstallNetworkKey(_ nkmCbor: Data) throws {

@@ -71,13 +71,13 @@ final class SwiftFFILifecycleTests: XCTestCase {
             try nodeKeys.initializeAsNode()
             print("✅ Node initialized successfully")
 
-            // Test keystore state
+            // Test basic functionality
             do {
-                print("🔧 Testing keystore state...")
-                let state = try nodeKeys.nodeGetKeystoreState()
-                print("✅ Node keystore state: \(state)")
+                print("🔧 Testing node functionality...")
+                let publicKey = try nodeKeys.nodeGetPublicKey()
+                print("✅ Node public key: \(publicKey.count) bytes")
             } catch {
-                print("❌ Node keystore state failed: \(error)")
+                print("❌ Node functionality failed: \(error)")
                 if let ffiError = error as? FFIError {
                     print("   Error code: \(ffiError.errorCode)")
                 }

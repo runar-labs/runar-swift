@@ -122,9 +122,9 @@ final class SwiftFFILifecycleE2ETest: XCTestCase {
         print("\n💾 STATE SERIALIZATION AND RESTORATION TESTING")
 
         // Test 2: Get QUIC certificates from HYDRATED node (after serialization/deserialization)
-        // In FFI, we test that the certificate was installed successfully by checking node state
-        let nodeState = try nodeKeys.nodeGetKeystoreState()
-        print("   ✅ Node keystore state: \(nodeState)")
+        // In FFI, we test that the certificate was installed successfully by checking node functionality
+        let nodePublicKey = try nodeKeys.nodeGetPublicKey()
+        print("   ✅ Node public key: \(nodePublicKey.count) bytes")
 
         // Additional local storage test
         let fileData2 = Data("This is secret file content to test after hydration.".utf8)

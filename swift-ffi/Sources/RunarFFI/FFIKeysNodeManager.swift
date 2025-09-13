@@ -5,7 +5,7 @@ import Foundation
 
 @available(macOS 11.0, *)
 class NodeKeyManagerImpl: NodeKeyManager {
-    private let handle: UnsafeMutableRawPointer
+    let handle: UnsafeMutableRawPointer
     private let logger: Logger
 
     init(handle: UnsafeMutableRawPointer, logger: Logger) {
@@ -92,15 +92,6 @@ class NodeKeyManagerImpl: NodeKeyManager {
                 throw FFIError(code: -1, message: "Linux keystore not supported on this platform")
             #endif
         }
-    }
-
-    func getKeystoreState() throws -> Int32 {
-        var state: Int32 = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_node_get_keystore_state(handle, &state, errPtr)
-        }
-        if let error = err { throw error }
-        return state
     }
 
     func installNetworkKey(_ nkmCbor: Data) throws {
@@ -279,9 +270,9 @@ class NodeKeyManagerImpl: NodeKeyManager {
 
     func getNodeId() throws -> String {
         var out: UnsafeMutablePointer<CChar>?
-        var outLen = 0
+        var outLen32: Int32 = 0
         let (_, err) = withRnError { errPtr in
-            rn_keys_node_get_node_id(handle, &out, &outLen, errPtr)
+            rn_keys_node_get_node_id(handle, &out, &outLen32, errPtr)
         }
         if let error = err { throw error }
 

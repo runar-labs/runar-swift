@@ -26,7 +26,7 @@ public struct SimpleLogger: Logger {
 
 @available(macOS 11.0, *)
 class MobileKeyManagerImpl: MobileKeyManager {
-    private let handle: UnsafeMutableRawPointer
+    let handle: UnsafeMutableRawPointer
     private let logger: Logger
 
     init(handle: UnsafeMutableRawPointer, logger: Logger) {
@@ -98,15 +98,6 @@ class MobileKeyManagerImpl: MobileKeyManager {
                 throw FFIError(code: -1, message: "Linux keystore not supported on this platform")
             #endif
         }
-    }
-
-    func getKeystoreState() throws -> Int32 {
-        var state: Int32 = 0
-        let (_, err) = withRnError { errPtr in
-            rn_keys_mobile_get_keystore_state(handle, &state, errPtr)
-        }
-        if let error = err { throw error }
-        return state
     }
 
     func generateNetworkDataKey() throws -> Data {

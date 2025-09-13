@@ -57,7 +57,6 @@ public protocol MobileKeyManager {
     func getUserPublicKey() throws -> Data
     func processSetupToken(setupTokenCBOR: Data) throws -> Data
     func registerDeviceKeystore(_ keystore: DeviceKeystoreType) throws
-    func getKeystoreState() throws -> Int32
     func generateNetworkDataKey() throws -> Data
     func createNetworkKeyMessage(networkPublicKey: Data, nodeAgreementPk: Data) throws -> Data
     func deriveUserProfileKey(label: String) throws -> Data
@@ -74,7 +73,6 @@ public protocol NodeKeyManager {
     func generateCSR() throws -> Data
     func installCertificate(_ nodeCertificateMessageCBOR: Data) throws
     func registerDeviceKeystore(_ keystore: DeviceKeystoreType) throws
-    func getKeystoreState() throws -> Int32
     func installNetworkKey(_ nkmCbor: Data) throws
     func encryptWithEnvelope(data: Data, networkPublicKey: Data?, profileKeys: [Data]?) throws -> Data
     func encryptLocalData(_ data: Data) throws -> Data
