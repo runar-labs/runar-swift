@@ -806,11 +806,27 @@ final class FFIE2EIntegrationTest: XCTestCase {
         var tokenCborLen: Int = 0
         let (tokenResult, tokenError) = withRnError { errPtr in
             // Create properly null-terminated C strings for capabilities (EXACTLY like Rust)
-            let capabilitiesCStrings = capabilities.map { $0.withCString { $0 } }
+            // Keep the C strings alive for the duration of the FFI call
+            let capabilitiesCStrings = capabilities.map { capability in
+                capability.withCString { cString in
+                    // Allocate memory and copy the string to keep it alive
+                    let length = strlen(cString) + 1
+                    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
+                    buffer.initialize(from: cString, count: length)
+                    return buffer
+                }
+            }
+            defer {
+                // Clean up the allocated strings
+                for cString in capabilitiesCStrings {
+                    cString.deallocate()
+                }
+            }
+            
             let capabilitiesPtrsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>.allocate(capacity: capabilities.count)
             defer { capabilitiesPtrsBuffer.deallocate() }
             for (index, ptr) in capabilitiesCStrings.enumerated() {
-                capabilitiesPtrsBuffer[index] = ptr
+                capabilitiesPtrsBuffer[index] = UnsafePointer(ptr)
             }
             
             return rn_keys_ca_generate_enrollment_token(
@@ -836,14 +852,23 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let enrollmentTokenCbor = Data(bytes: tokenCborRaw, count: tokenCborLen)
         print("   ✅ Enrollment token created using secure FFI (private key stays internal)")
         
+        // Debug: Print raw CBOR data from FFI
+        print("   🔍 Debug: Raw enrollment token CBOR from FFI: \(enrollmentTokenCbor.count) bytes")
+        print("   🔍 Debug: First 50 bytes of raw CBOR: \(Array(enrollmentTokenCbor.prefix(50)))")
+        
         // Deserialize enrollment token CBOR into struct (EXACTLY like Rust)
         // Use the correct EnrollmentToken structure with body field
         let enrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
         print("   ✅ Enrollment token deserialized into struct")
         
         // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
+        print("   🔍 Debug: SetupToken CBOR size: \(setupTokenCbor.count) bytes")
         let setupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
         let csrDerFromToken = setupTokenStruct.csr_der
+        print("   🔍 Debug: CSR extracted from SetupToken: \(csrDerFromToken.count) bytes")
+        print("   🔍 Debug: SetupToken node_id: \(setupTokenStruct.node_id)")
+        print("   🔍 Debug: SetupToken node_public_key: \(setupTokenStruct.node_public_key.count) bytes")
+        print("   🔍 Debug: SetupToken node_agreement_public_key: \(setupTokenStruct.node_agreement_public_key.count) bytes")
         
         // Build CsrEnrollRequest CBOR using struct approach (EXACTLY like Rust)
         // Use the correct structure with snake_case field names
@@ -864,6 +889,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("     - csr_der: \(enrollRequestStruct.csr_der.count) bytes")
         print("     - enrollment_token.body.token_id: \(enrollRequestStruct.enrollment_token.body.token_id)")
         print("     - enrollment_token.body.network_id: \(enrollRequestStruct.enrollment_token.body.network_id)")
+        print("     - enrollment_token.body.subject_hint: \(enrollRequestStruct.enrollment_token.body.subject_hint ?? "nil")")
+        print("     - enrollment_token.body.not_before: \(enrollRequestStruct.enrollment_token.body.not_before)")
+        print("     - enrollment_token.body.expires_at: \(enrollRequestStruct.enrollment_token.body.expires_at)")
+        print("     - enrollment_token.body.nonce: \(enrollRequestStruct.enrollment_token.body.nonce.count) bytes")
+        print("     - enrollment_token.body.permissions: \(enrollRequestStruct.enrollment_token.body.permissions)")
         print("     - enrollment_token.signature: \(enrollRequestStruct.enrollment_token.signature.count) bytes")
         print("     - enrollment_token.signer_id: \(enrollRequestStruct.enrollment_token.signer_id)")
         

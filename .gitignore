@@ -65,3 +65,4 @@ swift-keys-v1/
 runar-rust
 target/serializer-vectors-swift/*.bin
 swift-serializer/target/
+swift-ffi/target/
