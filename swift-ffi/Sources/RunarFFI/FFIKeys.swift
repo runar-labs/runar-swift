@@ -132,7 +132,8 @@ public final class KeysFFI {
         }
         if result != 0 {
             let errorMessage = getLastError()
-            throw FFIError.operationFailed("Failed to set local node info (error code: \(result), message: \(errorMessage))")
+            throw FFIError.operationFailed(
+                "Failed to set local node info (error code: \(result), message: \(errorMessage))")
         }
     }
 
@@ -318,5 +319,29 @@ public final class KeysFFI {
         let result = Data(bytes: outPtr, count: outLen)
         rn_free(outPtr, outLen)
         return result
+    }
+
+    // MARK: - Logger Management Functions
+
+    /// Set the global logger level
+    /// - Parameter level: Log level (0=Error, 1=Warn, 2=Info, 3=Debug, 4=Trace)
+    /// - Throws: FFIError if the operation fails
+    public static func setLoggerLevel(_ level: Int32) throws {
+        let (_, err) = withRnError { errPtr in
+            rn_set_logger_level(level, errPtr)
+        }
+        if let error = err { throw error }
+    }
+
+    /// Set the node ID on the global logger
+    /// - Parameter nodeId: Node identifier string
+    /// - Throws: FFIError if the operation fails
+    public static func setLoggerNodeId(_ nodeId: String) throws {
+        let (_, err) = withRnError { errPtr in
+            nodeId.withCString { cNodeId in
+                rn_set_logger_node_id(cNodeId, errPtr)
+            }
+        }
+        if let error = err { throw error }
     }
 }

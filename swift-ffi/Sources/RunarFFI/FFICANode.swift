@@ -7,6 +7,10 @@ import Foundation
 public class CANode {
     private let handle: UnsafeMutableRawPointer
     private let logger: Logger
+    /// Get the internal handle for direct FFI calls
+    public var ffiHandle: UnsafeMutableRawPointer {
+        return handle
+    }
 
     init(handle: UnsafeMutableRawPointer, logger: Logger) {
         self.handle = handle
@@ -20,14 +24,13 @@ public class CANode {
     // MARK: - CA Node Management
 
     /// Create new CA Node
-    /// - Parameter logger: Logger instance
     /// - Returns: New CA Node instance
     /// - Throws: FFIError if the operation fails
-    public static func create(logger: Logger) throws -> CANode {
+    public static func create() throws -> CANode {
         var out: UnsafeMutableRawPointer?
 
         let (_, err) = withRnError { errPtr in
-            rn_keys_ca_node_new(UnsafeMutableRawPointer(bitPattern: 1), &out, errPtr)
+            rn_keys_ca_node_new(&out, errPtr)
         }
         if let error = err { throw error }
 
@@ -35,7 +38,7 @@ public class CANode {
             throw FFIError.operationFailed("Failed to create CA Node handle")
         }
 
-        return CANode(handle: caNodeHandle, logger: logger)
+        return CANode(handle: caNodeHandle, logger: SimpleLogger())
     }
 
     /// Create shared CA Node reference for server usage
@@ -101,7 +104,8 @@ public class CANode {
     ///   - eaPublicKeys: EA public keys (CBOR-encoded)
     ///   - networkId: Network identifier
     /// - Throws: FFIError if the operation fails
-    @available(*, deprecated, message: "Use setupComplete() instead. This function has been removed for security reasons.")
+    @available(*, deprecated,
+                message: "Use setupComplete() instead. This function has been removed for security reasons.")
     public func installIssuingCA(
         issuingCaKey _: Data,
         issuingCaCert _: Data,
@@ -109,7 +113,8 @@ public class CANode {
         eaPublicKeys _: Data,
         networkId _: String
     ) throws {
-        throw FFIError.operationFailed("This function has been removed for security reasons. Use setupComplete() instead.")
+        throw FFIError.operationFailed(
+            "This function has been removed for security reasons. Use setupComplete() instead.")
     }
 
     /// Configure enrollment authority

@@ -164,9 +164,9 @@ public class EAKeyManager {
                 params.networkId.withCString { cNetworkId in
                     params.subject.withCString { cSubject in
                         params.nonce.withUnsafeBytes { nonceRaw in
-                            // For now, use empty capabilities array - this will be implemented when the FFI function is available
-                            let emptyCapabilities: [UnsafePointer<CChar>?] = []
-
+                            // Convert capabilities to C string array
+                            let capabilitiesCstr: [UnsafePointer<CChar>?] = params.capabilities.map { $0.withCString { $0 } }
+                            
                             rn_keys_ca_generate_enrollment_token(
                                 params.eaKeyHandle,
                                 cTokenId,
@@ -176,7 +176,7 @@ public class EAKeyManager {
                                 params.validUntil,
                                 nonceRaw.bindMemory(to: UInt8.self).baseAddress,
                                 params.nonce.count,
-                                emptyCapabilities,
+                                capabilitiesCstr,
                                 params.capabilities.count,
                                 &out,
                                 &outLen,

@@ -275,7 +275,60 @@ int32_t rn_keys_ca_node_setup_complete(
 
 ## Executive Summary
 
-This document provides a comprehensive analysis of the current Swift FFI implementation against the latest Rust FFI version (post v2 cleanup). The analysis reveals **EXCELLENT COVERAGE** with **84 Rust FFI functions** vs **~80 Swift implementations**, achieving **~95% alignment** with only minor cleanup needed.
+This document provides a comprehensive analysis of the current Swift FFI implementation against the latest Rust FFI version (post v2 cleanup and logger refactor). The analysis reveals **EXCELLENT COVERAGE** with **84 Rust FFI functions** vs **~80 Swift implementations**, achieving **~95% alignment** with only minor cleanup needed.
+
+## 🚨 CRITICAL LOGGER REFACTOR UPDATE (2024-12-13)
+
+### **MAJOR ARCHITECTURAL CHANGE: LOGGER PARAMETERS REMOVED**
+
+**CRITICAL CHANGE**: The Rust FFI has undergone a major logger refactor that **REMOVES ALL LOGGER PARAMETERS** from FFI functions and implements a **global hierarchical logger system**. This is a **BREAKING CHANGE** that requires **FULL SWIFT REFACTOR**.
+
+### **Functions Updated (Logger Parameters Removed)**
+**The following functions previously had `logger: *mut c_void` parameters that have been REMOVED:**
+- `rn_keys_ca_node_new` - **REMOVED** `logger: *mut c_void` parameter
+- `rn_transport_ca_server_new` - **REMOVED** `logger: *mut c_void` parameter  
+- `rn_transport_ca_client_new_with_config` - **REMOVED** `logger: *mut c_void` parameter
+
+### **New Logger Management Functions (ADDED)**
+- `rn_set_logger_node_id(node_id_cstr, err) -> i32` - **NEW** - Set node ID on root logger
+- `rn_set_logger_level(level_i32, err) -> i32` - **NEW** - Set global log level
+
+### **New Error Codes (ADDED)**
+- `RN_ERROR_LOGGER_ALREADY_INITIALIZED` (1020)
+- `RN_ERROR_LOGGER_NODE_ID_ALREADY_SET` (1021)
+- `RN_ERROR_LOGGER_INVALID_NODE_ID` (1022)
+- `RN_ERROR_LOGGER_INVALID_LEVEL` (1023)
+
+### **Impact on Swift Implementation**
+**BREAKING CHANGES REQUIRED:**
+1. **Remove logger parameters** from all Swift FFI function calls
+2. **Add new logger management functions** to Swift FFI
+3. **Update all CA Node/Server/Client creation** to not pass logger parameters
+4. **Add new error codes** to Swift error handling
+5. **Update all tests** to use new logger management approach
+
+### **New Usage Pattern**
+```swift
+// OLD (BROKEN - will cause segfaults):
+let caNode = try CANode.create(logger: logger, ...)
+
+// NEW (CORRECT):
+// 1. Set logger level (optional)
+try FFIKeys.setLoggerLevel(4) // Debug level
+
+// 2. Set node ID (optional)
+try FFIKeys.setLoggerNodeId("node-123")
+
+// 3. Create objects (no logger parameters)
+let caNode = try CANode.create(...)
+let server = try CAServer.create(config: config, sharedCANode: caNode, ...)
+let client = try CAClient.create(config: config, nodeKeys: nodeKeys, ...)
+```
+
+### **Swift Implementation Status**
+- ❌ **NOT UPDATED** - Swift still uses old logger parameter approach
+- ❌ **WILL SEGFAULT** - Passing dummy logger pointers causes crashes
+- ✅ **REQUIRED** - Full refactor to match Rust logger refactor
 
 ## Analysis Methodology
 
@@ -288,13 +341,15 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 
 ## 1. Rust FFI Complete Function Inventory
 
-### 1.1 Core Infrastructure Functions (11 functions)
+### 1.1 Core Infrastructure Functions (13 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
 | `rn_free()` | ✅ | Implemented |
 | `rn_string_free()` | ✅ | Implemented |
 | `rn_last_error()` | ✅ | Implemented |
-| `rn_set_log_level()` | ✅ | Implemented |
+| `rn_set_log_level()` | ✅ | Implemented (DEPRECATED) |
+| `rn_set_logger_level()` | ❌ | **MISSING** - New logger management function |
+| `rn_set_logger_node_id()` | ❌ | **MISSING** - New logger management function |
 | `rn_keys_new()` | ✅ | Implemented |
 | `rn_keys_free()` | ✅ | Implemented |
 | `rn_keys_init_as_mobile()` | ✅ | Implemented |
@@ -313,7 +368,13 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 | `rn_keys_register_apple_device_keystore()` | ✅ | Implemented |
 | `rn_keys_register_linux_device_keystore()` | ✅ | Implemented |
 
-### 1.3 Node Key Manager Functions (16 functions)
+### 1.3 Logger Management Functions (2 functions) - **NEW LOGGER REFACTOR**
+| Function | Status | Swift Implementation |
+|----------|--------|---------------------|
+| `rn_set_logger_level()` | ❌ | **MISSING** - New logger management function |
+| `rn_set_logger_node_id()` | ❌ | **MISSING** - New logger management function |
+
+### 1.4 Node Key Manager Functions (16 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
 | `rn_keys_node_get_public_key()` | ✅ | **IMPLEMENTED** - `FFIKeysNodeManager.swift:18` |
@@ -418,7 +479,7 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 ### 2.1 CA Node Core Functions (4 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
-| `rn_keys_ca_node_new()` | ✅ | **IMPLEMENTED** - `FFICANode.swift:26` |
+| `rn_keys_ca_node_new()` | ❌ | **NEEDS UPDATE** - `FFICANode.swift:26` - Remove logger parameter |
 | `rn_keys_ca_node_free()` | ✅ | **IMPLEMENTED** - `FFICANode.swift:17` |
 | `rn_keys_ca_node_create_shared()` | ✅ | **IMPLEMENTED** - `FFICANode.swift:44` |
 | `rn_keys_ca_node_free_shared()` | ✅ | **IMPLEMENTED** - `FFICANode.swift:61` |
@@ -458,7 +519,7 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 ### 3.1 CA Server Core Functions (2 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
-| `rn_transport_ca_server_new()` | ✅ | **IMPLEMENTED** - `FFICAServer.swift:44` |
+| `rn_transport_ca_server_new()` | ❌ | **NEEDS UPDATE** - `FFICAServer.swift:44` - Remove logger parameter |
 | `rn_transport_ca_server_free()` | ✅ | **IMPLEMENTED** - `FFICAServer.swift:20` |
 
 ### 3.2 CA Server Management Functions (5 functions)
@@ -475,7 +536,7 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 ### 4.1 CA Client Core Functions (2 functions)
 | Function | Status | Swift Implementation |
 |----------|--------|---------------------|
-| `rn_transport_ca_client_new_with_config()` | ✅ | **IMPLEMENTED** - `FFICAClient.swift:44` |
+| `rn_transport_ca_client_new_with_config()` | ❌ | **NEEDS UPDATE** - `FFICAClient.swift:44` - Remove logger parameter |
 | `rn_transport_ca_client_free()` | ✅ | **IMPLEMENTED** - `FFICAClient.swift:20` |
 
 ### 4.2 CA Client Operations Functions (5 functions)
@@ -590,12 +651,29 @@ This document provides a comprehensive analysis of the current Swift FFI impleme
 ## 9. CRITICAL GAPS ANALYSIS
 
 ### 9.1 Function Coverage Summary
-- **Total Rust FFI Functions**: 84 (core functions)
+- **Total Rust FFI Functions**: 86 (core functions + logger refactor)
 - **Implemented in Swift**: ~80
-- **Missing in Swift**: ~4
-- **Coverage**: ~95%
+- **Missing in Swift**: ~6 (including 2 new logger functions)
+- **Coverage**: ~93% (decreased due to logger refactor)
 
-### 9.2 Implemented Function Categories
+### 9.2 Logger Refactor Impact
+**CRITICAL BREAKING CHANGES REQUIRED:**
+1. **Remove logger parameters** from 3 functions:
+   - `rn_keys_ca_node_new()` - Remove `logger: *mut c_void` parameter
+   - `rn_transport_ca_server_new()` - Remove `logger: *mut c_void` parameter
+   - `rn_transport_ca_client_new_with_config()` - Remove `logger: *mut c_void` parameter
+
+2. **Add new logger management functions** (2 functions):
+   - `rn_set_logger_level()` - **MISSING** - Set global log level
+   - `rn_set_logger_node_id()` - **MISSING** - Set node ID on root logger
+
+3. **Add new error codes** (4 error codes):
+   - `RN_ERROR_LOGGER_ALREADY_INITIALIZED` (1020)
+   - `RN_ERROR_LOGGER_NODE_ID_ALREADY_SET` (1021)
+   - `RN_ERROR_LOGGER_INVALID_NODE_ID` (1022)
+   - `RN_ERROR_LOGGER_INVALID_LEVEL` (1023)
+
+### 9.3 Implemented Function Categories
 1. **CA Node Functions**: 7 functions (100% implemented) - **UPDATED: Secure architecture**
 2. **CA Server Functions**: 7 functions (100% implemented)
 3. **CA Client Functions**: 8 functions (100% implemented)
@@ -837,17 +915,162 @@ grep -r "func.*encrypt\|func.*decrypt\|func.*generate\|func.*create" Sources/Run
 - **Current**: ~93.75% (30/32 tests passing)
 - **Gap**: ~2 test failures to resolve
 
-## 16. CONCLUSION
+## 16. LOGGER REFACTOR IMPLEMENTATION PLAN
 
-The Swift FFI implementation is **EXCELLENT** and achieves **~95% alignment** with the Rust FFI functionality. The implementation status is:
+### 16.1 Phase 1: Add New Logger Management Functions
+**Priority: CRITICAL - Must be done first**
+
+1. **Add to `FFIKeys.swift`**:
+   ```swift
+   public static func setLoggerLevel(_ level: Int32) throws {
+       let (_, err) = withRnError { errPtr in
+           rn_set_logger_level(level, errPtr)
+       }
+       if let error = err { throw error }
+   }
+   
+   public static func setLoggerNodeId(_ nodeId: String) throws {
+       let (_, err) = withRnError { errPtr in
+           nodeId.withCString { cNodeId in
+               rn_set_logger_node_id(cNodeId, errPtr)
+           }
+       }
+       if let error = err { throw error }
+   }
+   ```
+
+2. **Add to `FFIErrors.swift`**:
+   ```swift
+   public static let loggerAlreadyInitialized = 1020
+   public static let loggerNodeIdAlreadySet = 1021
+   public static let loggerInvalidNodeId = 1022
+   public static let loggerInvalidLevel = 1023
+   ```
+
+### 16.2 Phase 2: Update CA Node Creation
+**Priority: CRITICAL - Fixes segfaults**
+
+1. **Update `FFICANode.swift`**:
+   ```swift
+   // OLD (BROKEN):
+   public static func create(logger: Logger) throws -> CANode {
+       var caNode: UnsafeMutableRawPointer?
+       let (_, err) = withRnError { errPtr in
+           rn_keys_ca_node_new(logger, &caNode, errPtr)
+       }
+   }
+   
+   // NEW (CORRECT):
+   public static func create() throws -> CANode {
+       var caNode: UnsafeMutableRawPointer?
+       let (_, err) = withRnError { errPtr in
+           rn_keys_ca_node_new(&caNode, errPtr)
+       }
+   }
+   ```
+
+### 16.3 Phase 3: Update CA Server Creation
+**Priority: CRITICAL - Fixes segfaults**
+
+1. **Update `FFICAServer.swift`**:
+   ```swift
+   // OLD (BROKEN):
+   public static func create(config: Data, sharedCANode: CANode, logger: Logger) throws -> CAServer {
+       let (_, err) = withRnError { errPtr in
+           config.withUnsafeBytes { raw in
+               rn_transport_ca_server_new(raw.bindMemory(to: UInt8.self).baseAddress, config.count, sharedCANode.ffiHandle, logger, &server, errPtr)
+           }
+       }
+   }
+   
+   // NEW (CORRECT):
+   public static func create(config: Data, sharedCANode: CANode) throws -> CAServer {
+       let (_, err) = withRnError { errPtr in
+           config.withUnsafeBytes { raw in
+               rn_transport_ca_server_new(raw.bindMemory(to: UInt8.self).baseAddress, config.count, sharedCANode.ffiHandle, &server, errPtr)
+           }
+       }
+   }
+   ```
+
+### 16.4 Phase 4: Update CA Client Creation
+**Priority: CRITICAL - Fixes segfaults**
+
+1. **Update `FFICAClient.swift`**:
+   ```swift
+   // OLD (BROKEN):
+   public static func create(config: Data, nodeKeys: KeysFFI, logger: Logger) throws -> CAClient {
+       let (_, err) = withRnError { errPtr in
+           config.withUnsafeBytes { raw in
+               rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, config.count, nodeKeys.handle, logger, &client, errPtr)
+           }
+       }
+   }
+   
+   // NEW (CORRECT):
+   public static func create(config: Data, nodeKeys: KeysFFI) throws -> CAClient {
+       let (_, err) = withRnError { errPtr in
+           config.withUnsafeBytes { raw in
+               rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, config.count, nodeKeys.handle, &client, errPtr)
+           }
+       }
+   }
+   ```
+
+### 16.5 Phase 5: Update All Tests
+**Priority: HIGH - Ensures functionality**
+
+1. **Update E2E Test**:
+   ```swift
+   // OLD (BROKEN):
+   let caNode = try CANode.create(logger: logger)
+   let server = try CAServer.create(config: config, sharedCANode: caNode, logger: logger)
+   let client = try CAClient.create(config: config, nodeKeys: nodeKeys, logger: logger)
+   
+   // NEW (CORRECT):
+   // 1. Set logger level (optional)
+   try FFIKeys.setLoggerLevel(4) // Debug level
+   
+   // 2. Set node ID (optional)
+   try FFIKeys.setLoggerNodeId("node-123")
+   
+   // 3. Create objects (no logger parameters)
+   let caNode = try CANode.create()
+   let server = try CAServer.create(config: config, sharedCANode: caNode)
+   let client = try CAClient.create(config: config, nodeKeys: nodeKeys)
+   ```
+
+## 17. CONCLUSION
+
+The Swift FFI implementation is **EXCELLENT** and achieves **~93% alignment** with the Rust FFI functionality (decreased due to logger refactor). The implementation status is:
 
 1. **Complete CA Infrastructure Implemented** (31 functions) - **UPDATED: Secure architecture implemented**
 2. **Node Key Manager Functions Implemented** (16 functions)
 3. **EA Key Management Implemented** (4 functions) - **NEW: Secure EA key management**
 4. **Enrollment Token System Implemented** (2 functions)
 5. **Mobile Response Conversion Implemented** (2 functions)
-6. **Error Code Coverage Complete** (17/17 codes implemented)
+6. **Error Code Coverage Complete** (17/17 codes implemented) - **NEEDS UPDATE: Add 4 new logger error codes**
 7. **Data Structure Coverage Complete** (8/8 structures implemented)
+
+### 17.1 Critical Logger Refactor Required
+**BREAKING CHANGES:**
+1. **Remove logger parameters** from 3 functions (CA Node, CA Server, CA Client creation)
+2. **Add new logger management functions** (2 functions) - **MISSING**
+3. **Add new error codes** (4 error codes) - **MISSING**
+4. **Update all tests** to use new logger approach
+
+### 17.2 Next Steps
+1. **Implement logger refactor** (CRITICAL - fixes segfaults)
+2. **Add missing logger functions** (2 functions)
+3. **Update all CA creation calls** (3 functions)
+4. **Update all tests** to use new logger approach
+5. **Validate complete CA workflow** with new logger system
+
+### 17.3 Risk Assessment
+- **Risk Level**: **MEDIUM** - Logger refactor requires breaking changes
+- **Effort Required**: **2-3 weeks** for logger refactor + remaining functions
+- **Dependencies**: Logger refactor must be completed first
+- **Testing**: All tests need updating for new logger approach
 
 **SECURITY IMPROVEMENT**: The Rust FFI has been updated with a **SECURE ARCHITECTURE** that eliminates private key exposure through the FFI boundary. All cryptographic operations now stay within the Rust layer.
 

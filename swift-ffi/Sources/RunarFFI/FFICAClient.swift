@@ -26,13 +26,11 @@ public class CAClient {
     /// - Parameters:
     ///   - config: CA Client configuration
     ///   - nodeKeys: Node keys handle
-    ///   - logger: Logger instance
     /// - Returns: New CA Client instance
     /// - Throws: FFIError if the operation fails
     public static func createWithConfig(
         config: CaClientConfig,
-        nodeKeys: UnsafeMutableRawPointer,
-        logger: Logger
+        nodeKeys: UnsafeMutableRawPointer
     ) throws -> CAClient {
         var out: UnsafeMutableRawPointer?
 
@@ -45,7 +43,6 @@ public class CAClient {
                     raw.bindMemory(to: UInt8.self).baseAddress,
                     configData.count,
                     nodeKeys,
-                    UnsafeMutableRawPointer(bitPattern: 1),
                     &out,
                     errPtr
                 )
@@ -57,7 +54,7 @@ public class CAClient {
             throw FFIError.operationFailed("Failed to create CA Client handle")
         }
 
-        return CAClient(handle: clientHandle, logger: logger, nodeKeys: nodeKeys)
+        return CAClient(handle: clientHandle, logger: SimpleLogger(), nodeKeys: nodeKeys)
     }
 
     // MARK: - CA Client Operations

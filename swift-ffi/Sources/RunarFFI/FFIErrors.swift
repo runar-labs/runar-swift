@@ -34,6 +34,12 @@ public enum FFIError: LocalizedError {
     case caClientConfigurationFailed(String)
     case crlGenerationFailed(String)
 
+    // Logger-specific error codes
+    case loggerAlreadyInitialized(String)
+    case loggerNodeIdAlreadySet(String)
+    case loggerInvalidNodeId(String)
+    case loggerInvalidLevel(String)
+
     public var errorDescription: String? {
         switch self {
         case let .nullArgument(msg):
@@ -93,6 +99,15 @@ public enum FFIError: LocalizedError {
             "CA Client configuration failed: \(msg)"
         case let .crlGenerationFailed(msg):
             "CRL generation failed: \(msg)"
+        // Logger-specific error descriptions
+        case let .loggerAlreadyInitialized(msg):
+            "Logger already initialized: \(msg)"
+        case let .loggerNodeIdAlreadySet(msg):
+            "Logger node ID already set: \(msg)"
+        case let .loggerInvalidNodeId(msg):
+            "Invalid logger node ID: \(msg)"
+        case let .loggerInvalidLevel(msg):
+            "Invalid logger level: \(msg)"
         }
     }
 
@@ -128,6 +143,11 @@ public enum FFIError: LocalizedError {
         case .profileKeyDecryptionFailed: 1015
         case .caClientConfigurationFailed: 1016
         case .crlGenerationFailed: 1017
+        // Logger-specific error codes
+        case .loggerAlreadyInitialized: 1020
+        case .loggerNodeIdAlreadySet: 1021
+        case .loggerInvalidNodeId: 1022
+        case .loggerInvalidLevel: 1023
         }
     }
 
@@ -167,7 +187,13 @@ public enum FFIError: LocalizedError {
             1014: { .profileKeyEncryptionFailed($0) },
             1015: { .profileKeyDecryptionFailed($0) },
             1016: { .caClientConfigurationFailed($0) },
-            1017: { .crlGenerationFailed($0) }
+            1017: { .crlGenerationFailed($0) },
+
+            // Logger-specific error codes
+            1020: { .loggerAlreadyInitialized($0) },
+            1021: { .loggerNodeIdAlreadySet($0) },
+            1022: { .loggerInvalidNodeId($0) },
+            1023: { .loggerInvalidLevel($0) }
         ]
 
         if let errorConstructor = errorMap[code] {

@@ -11,7 +11,7 @@ public class CAServer {
     private var bootstrapAddr: String?
     private var authenticatedAddr: String?
 
-    init(handle: UnsafeMutableRawPointer, logger: Logger) {
+    public init(handle: UnsafeMutableRawPointer, logger: Logger) {
         self.handle = handle
         self.logger = logger
     }
@@ -26,13 +26,11 @@ public class CAServer {
     /// - Parameters:
     ///   - config: CA Server configuration
     ///   - sharedCaNode: Shared CA Node handle
-    ///   - logger: Logger instance
     /// - Returns: New CA Server instance
     /// - Throws: FFIError if the operation fails
     public static func create(
         config: CaServerConfig,
-        sharedCaNode: UnsafeMutableRawPointer,
-        logger: Logger
+        sharedCaNode: UnsafeMutableRawPointer
     ) throws -> CAServer {
         var out: UnsafeMutableRawPointer?
 
@@ -45,7 +43,6 @@ public class CAServer {
                     raw.bindMemory(to: UInt8.self).baseAddress,
                     configData.count,
                     sharedCaNode,
-                    UnsafeMutableRawPointer(bitPattern: 1),
                     &out,
                     errPtr
                 )
@@ -57,7 +54,7 @@ public class CAServer {
             throw FFIError.operationFailed("Failed to create CA Server handle")
         }
 
-        return CAServer(handle: serverHandle, logger: logger)
+        return CAServer(handle: serverHandle, logger: SimpleLogger())
     }
 
     /// Configure admin SKIs
