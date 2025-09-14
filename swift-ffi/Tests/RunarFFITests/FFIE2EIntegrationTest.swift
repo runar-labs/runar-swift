@@ -70,68 +70,68 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
     // MARK: - Test Data Structures
 
-    /// CA Client Configuration with all options (CBOR-serialized)
+    /// CA Client Configuration with all options (CBOR-serialized) - EXACTLY matching Rust
     struct CaClientConfigAll: Codable {
-        let bootstrapServer: String
-        let authenticatedServer: String
-        let networkId: String
-        let requestTimeoutSeconds: UInt32
-        let maxRetries: UInt32
-        let rootCaDer: Data // Required, not optional
-        let issuingCaDer: Data // Required, not optional
+        let bootstrap_server: String
+        let authenticated_server: String
+        let network_id: String
+        let request_timeout_seconds: UInt32
+        let max_retries: UInt32
+        let root_ca_der: Data // Required, not optional
+        let issuing_ca_der: Data // Required, not optional
         
-        enum CodingKeys: String, CodingKey {
-            case bootstrapServer = "bootstrap_server"
-            case authenticatedServer = "authenticated_server"
-            case networkId = "network_id"
-            case requestTimeoutSeconds = "request_timeout_seconds"
-            case maxRetries = "max_retries"
-            case rootCaDer = "root_ca_der"
-            case issuingCaDer = "issuing_ca_der"
-        }
-        
-        init(bootstrapServer: String, authenticatedServer: String, networkId: String, requestTimeoutSeconds: UInt32, maxRetries: UInt32, rootCaDer: Data, issuingCaDer: Data) {
-            self.bootstrapServer = bootstrapServer
-            self.authenticatedServer = authenticatedServer
-            self.networkId = networkId
-            self.requestTimeoutSeconds = requestTimeoutSeconds
-            self.maxRetries = maxRetries
-            self.rootCaDer = rootCaDer
-            self.issuingCaDer = issuingCaDer
+        init(bootstrap_server: String, authenticated_server: String, network_id: String, request_timeout_seconds: UInt32, max_retries: UInt32, root_ca_der: Data, issuing_ca_der: Data) {
+            self.bootstrap_server = bootstrap_server
+            self.authenticated_server = authenticated_server
+            self.network_id = network_id
+            self.request_timeout_seconds = request_timeout_seconds
+            self.max_retries = max_retries
+            self.root_ca_der = root_ca_der
+            self.issuing_ca_der = issuing_ca_der
         }
         
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             
-            bootstrapServer = try container.decode(String.self, forKey: .bootstrapServer)
-            authenticatedServer = try container.decode(String.self, forKey: .authenticatedServer)
-            networkId = try container.decode(String.self, forKey: .networkId)
-            requestTimeoutSeconds = try container.decode(UInt32.self, forKey: .requestTimeoutSeconds)
-            maxRetries = try container.decode(UInt32.self, forKey: .maxRetries)
+            bootstrap_server = try container.decode(String.self, forKey: .bootstrap_server)
+            authenticated_server = try container.decode(String.self, forKey: .authenticated_server)
+            network_id = try container.decode(String.self, forKey: .network_id)
+            request_timeout_seconds = try container.decode(UInt32.self, forKey: .request_timeout_seconds)
+            max_retries = try container.decode(UInt32.self, forKey: .max_retries)
             
             // Handle Data fields as CBOR bytes (matching Rust serde_bytes)
-            if let rootCaDerBytes = try? container.decode([UInt8].self, forKey: .rootCaDer) {
-                rootCaDer = Data(rootCaDerBytes)
+            if let rootCaDerBytes = try? container.decode([UInt8].self, forKey: .root_ca_der) {
+                root_ca_der = Data(rootCaDerBytes)
             } else {
-                rootCaDer = try container.decode(Data.self, forKey: .rootCaDer)
+                root_ca_der = try container.decode(Data.self, forKey: .root_ca_der)
             }
             
-            if let issuingCaDerBytes = try? container.decode([UInt8].self, forKey: .issuingCaDer) {
-                issuingCaDer = Data(issuingCaDerBytes)
+            if let issuingCaDerBytes = try? container.decode([UInt8].self, forKey: .issuing_ca_der) {
+                issuing_ca_der = Data(issuingCaDerBytes)
             } else {
-                issuingCaDer = try container.decode(Data.self, forKey: .issuingCaDer)
+                issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
             }
         }
         
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(bootstrapServer, forKey: .bootstrapServer)
-            try container.encode(authenticatedServer, forKey: .authenticatedServer)
-            try container.encode(networkId, forKey: .networkId)
-            try container.encode(requestTimeoutSeconds, forKey: .requestTimeoutSeconds)
-            try container.encode(maxRetries, forKey: .maxRetries)
-            try container.encode(Array(rootCaDer), forKey: .rootCaDer)
-            try container.encode(Array(issuingCaDer), forKey: .issuingCaDer)
+            try container.encode(bootstrap_server, forKey: .bootstrap_server)
+            try container.encode(authenticated_server, forKey: .authenticated_server)
+            try container.encode(network_id, forKey: .network_id)
+            try container.encode(request_timeout_seconds, forKey: .request_timeout_seconds)
+            try container.encode(max_retries, forKey: .max_retries)
+            try container.encode(Array(root_ca_der), forKey: .root_ca_der)
+            try container.encode(Array(issuing_ca_der), forKey: .issuing_ca_der)
+        }
+        
+        enum CodingKeys: String, CodingKey {
+            case bootstrap_server
+            case authenticated_server
+            case network_id
+            case request_timeout_seconds
+            case max_retries
+            case root_ca_der
+            case issuing_ca_der
         }
     }
 
@@ -144,10 +144,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let rate_limit_per_hour: UInt32
     }
 
-    /// Revoke Request
+    /// Revoke Request - EXACTLY matching Rust
     struct RevokeRequest: Codable {
-        let networkId: String
-        let certificateSerial: Data // Convert hex string to bytes
+        let network_id: String
+        let certificate_serial: Data // Convert hex string to bytes
         let reason: String
     }
 
@@ -557,9 +557,17 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // but we ensure proper logger setup
         let testLogger = createTestLogger()
         
+        // Set log level to TRACE for detailed debugging
+        try FFILogger.setLoggerLevel(5) // TRACE level
+        print("   🔧 Set log level to TRACE for detailed debugging")
+        
         // Initialize rustls crypto provider
         // Note: Swift uses system crypto, but we ensure proper initialization
         print("   🔧 Initializing crypto provider...")
+        
+        // Set log level to TRACE for detailed debugging
+        try FFILogger.setLoggerLevel(5) // TRACE level
+        print("   🔧 Set log level to TRACE for detailed debugging")
         
         // Create keys handles using raw FFI calls (EXACTLY like Rust)
         var nodeKeysHandle: UnsafeMutableRawPointer?
@@ -833,31 +841,24 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let enrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
         print("   ✅ Enrollment token deserialized into struct")
         
+        // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
+        let setupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
+        let csrDerFromToken = setupTokenStruct.csr_der
+        
         // Build CsrEnrollRequest CBOR using struct approach (EXACTLY like Rust)
         // Use the correct structure with snake_case field names
         let enrollRequestStruct = CsrEnrollRequest(
             network_id: networkId,
-            csr_der: csrDer,
+            csr_der: csrDerFromToken,
             enrollment_token: enrollmentTokenStruct
         )
         
         // Encode the CsrEnrollRequest as CBOR payload (EXACTLY like Rust)
-        let cborPayload = try CodableCBOREncoder().encode(enrollRequestStruct)
+        // The FFI function handles the binary protocol internally
+        let enrollRequest = try CodableCBOREncoder().encode(enrollRequestStruct)
         
-        // Create binary protocol message with header (EXACTLY like Rust)
-        // Header: 8 bytes [message_type u32][payload_len u32]
-        let messageType: UInt32 = 0x0001 // CsrEnrollRequest
-        let payloadLen = UInt32(cborPayload.count)
-        
-        var enrollRequest = Data()
-        enrollRequest.append(Data(bytes: withUnsafeBytes(of: messageType.bigEndian) { Data($0) }))
-        enrollRequest.append(Data(bytes: withUnsafeBytes(of: payloadLen.bigEndian) { Data($0) }))
-        enrollRequest.append(cborPayload)
-        
-        // Debug: Print the binary protocol structure to understand what we're sending
-        print("   🔍 Debug: Binary protocol message size: \(enrollRequest.count) bytes")
-        print("   🔍 Debug: Message type: 0x\(String(format: "%04x", messageType)) (CsrEnrollRequest)")
-        print("   🔍 Debug: Payload length: \(payloadLen) bytes")
+        // Debug: Print the CBOR structure to understand what we're sending
+        print("   🔍 Debug: Enrollment request CBOR size: \(enrollRequest.count) bytes")
         print("   🔍 Debug: Enrollment request structure:")
         print("     - network_id: \(enrollRequestStruct.network_id)")
         print("     - csr_der: \(enrollRequestStruct.csr_der.count) bytes")
@@ -900,13 +901,13 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Create configuration CBOR (EXACTLY like Rust)
         let config = CaClientConfigAll(
-            bootstrapServer: bootstrapAddr,
-            authenticatedServer: authenticatedAddr,
-            networkId: "test_network",
-            requestTimeoutSeconds: 30,
-            maxRetries: 3,
-            rootCaDer: rootCaCert,
-            issuingCaDer: issuingCertDer
+            bootstrap_server: bootstrapAddr,
+            authenticated_server: authenticatedAddr,
+            network_id: "test_network",
+            request_timeout_seconds: 30,
+            max_retries: 3,
+            root_ca_der: rootCaCert,
+            issuing_ca_der: issuingCertDer
         )
         
         let configCbor = try CodableCBOREncoder().encode(config)
@@ -1189,8 +1190,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Create RevokeRequest (EXACTLY like Rust)
         let revokeRequest = RevokeRequest(
-            networkId: "test_network",
-            certificateSerial: Data(hexString: certSerial) ?? Data(),
+            network_id: "test_network",
+            certificate_serial: Data(hexString: certSerial) ?? Data(),
             reason: "testing"
         )
 
@@ -1421,21 +1422,20 @@ final class FFIE2EIntegrationTest: XCTestCase {
             // Use the same enrollment token for all requests (rate limiting is per token_id)
             // Deserialize enrollment token and create request struct (EXACTLY like Rust)
             let enrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
+            
+            // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
+            let testSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
+            let testCsrDerFromToken = testSetupTokenStruct.csr_der
+            
             let testEnrollRequestStruct = CsrEnrollRequest(
                 network_id: "test_network",
-                csr_der: testSetupTokenCbor, // Use the raw CBOR data directly
+                csr_der: testCsrDerFromToken,
                 enrollment_token: enrollmentTokenStruct
             )
             
-            // Create binary protocol message with header (EXACTLY like Rust)
-            let testCborPayload = try CodableCBOREncoder().encode(testEnrollRequestStruct)
-            let testMessageType: UInt32 = 0x0001 // CsrEnrollRequest
-            let testPayloadLen = UInt32(testCborPayload.count)
-            
-            var testEnrollRequest = Data()
-            testEnrollRequest.append(Data(bytes: withUnsafeBytes(of: testMessageType.bigEndian) { Data($0) }))
-            testEnrollRequest.append(Data(bytes: withUnsafeBytes(of: testPayloadLen.bigEndian) { Data($0) }))
-            testEnrollRequest.append(testCborPayload)
+            // Encode the CsrEnrollRequest as CBOR payload (EXACTLY like Rust)
+            // The FFI function handles the binary protocol internally
+            let testEnrollRequest = try CodableCBOREncoder().encode(testEnrollRequestStruct)
             
             var testResponsePtr: UnsafeMutablePointer<UInt8>?
             var testResponseLen: Int = 0
@@ -1495,9 +1495,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let testSetupTokenCbor = Data(bytes: testSetupTokenRaw, count: testSetupTokenLen)
         // Deserialize enrollment token and create request struct (EXACTLY like Rust)
         let revokedEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
+        
+        // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
+        let revokedSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
+        let revokedCsrDerFromToken = revokedSetupTokenStruct.csr_der
+        
         let revokedRequestStruct = CsrEnrollRequest(
             network_id: "test_network",
-            csr_der: testSetupTokenCbor, // Use the raw CBOR data directly
+            csr_der: revokedCsrDerFromToken,
             enrollment_token: revokedEnrollmentTokenStruct
         )
         let revokedRequestCbor = try CodableCBOREncoder().encode(revokedRequestStruct)
@@ -1553,9 +1558,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let invalidTokenCbor = Data(bytes: invalidTokenCborRaw, count: invalidTokenCborLen)
         // Deserialize invalid enrollment token and create request struct (EXACTLY like Rust)
         let invalidEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: invalidTokenCbor)
+        
+        // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
+        let invalidSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
+        let invalidCsrDerFromToken = invalidSetupTokenStruct.csr_der
+        
         let invalidRequestStruct = CsrEnrollRequest(
             network_id: "test_network",
-            csr_der: testSetupTokenCbor, // Use the raw CBOR data directly
+            csr_der: invalidCsrDerFromToken,
             enrollment_token: invalidEnrollmentTokenStruct
         )
         let invalidRequestCbor = try CodableCBOREncoder().encode(invalidRequestStruct)
@@ -1697,24 +1707,24 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
 // MARK: - Data Structures for CBOR Serialization
 
-/// CsrEnrollRequest structure matching Rust implementation
+/// CsrEnrollRequest structure matching Rust implementation exactly
     struct CsrEnrollRequest: Codable {
         let network_id: String
-        let csr_der: Data
+        let csr_der: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
         let enrollment_token: EnrollmentToken
     }
 
-/// RenewRequest structure matching Rust implementation
+/// RenewRequest structure matching Rust implementation exactly
 struct RenewRequest: Codable {
     let network_id: String
-    let csr_der: Data
+    let csr_der: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
 }
 
 /// SetupToken structure matching Rust implementation exactly
 struct SetupToken: Codable {
-    let node_public_key: Data
-    let node_agreement_public_key: Data
-    let csr_der: Data
+    let node_public_key: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
+    let node_agreement_public_key: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
+    let csr_der: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
     let node_id: String
     
     enum CodingKeys: String, CodingKey {
@@ -1727,33 +1737,17 @@ struct SetupToken: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        // Handle Data fields as CBOR bytes (matching Rust serde_bytes)
-        if let nodePublicKeyBytes = try? container.decode([UInt8].self, forKey: .node_public_key) {
-            node_public_key = Data(nodePublicKeyBytes)
-        } else {
-            node_public_key = try container.decode(Data.self, forKey: .node_public_key)
-        }
-        
-        if let nodeAgreementKeyBytes = try? container.decode([UInt8].self, forKey: .node_agreement_public_key) {
-            node_agreement_public_key = Data(nodeAgreementKeyBytes)
-        } else {
-            node_agreement_public_key = try container.decode(Data.self, forKey: .node_agreement_public_key)
-        }
-        
-        if let csrDerBytes = try? container.decode([UInt8].self, forKey: .csr_der) {
-            csr_der = Data(csrDerBytes)
-        } else {
-            csr_der = try container.decode(Data.self, forKey: .csr_der)
-        }
-        
+        node_public_key = try container.decode([UInt8].self, forKey: .node_public_key)
+        node_agreement_public_key = try container.decode([UInt8].self, forKey: .node_agreement_public_key)
+        csr_der = try container.decode([UInt8].self, forKey: .csr_der)
         node_id = try container.decode(String.self, forKey: .node_id)
     }
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(Array(node_public_key), forKey: .node_public_key)
-        try container.encode(Array(node_agreement_public_key), forKey: .node_agreement_public_key)
-        try container.encode(Array(csr_der), forKey: .csr_der)
+        try container.encode(node_public_key, forKey: .node_public_key)
+        try container.encode(node_agreement_public_key, forKey: .node_agreement_public_key)
+        try container.encode(csr_der, forKey: .csr_der)
         try container.encode(node_id, forKey: .node_id)
     }
 }
@@ -1765,7 +1759,7 @@ struct EnrollmentTokenBody: Codable {
     let subject_hint: String?
     let not_before: UInt64
     let expires_at: UInt64
-    let nonce: Data
+    let nonce: [UInt8] // Rust uses [u8; 16], Swift uses [UInt8]
     let permissions: [String]
     
     enum CodingKeys: String, CodingKey {
@@ -1786,14 +1780,8 @@ struct EnrollmentTokenBody: Codable {
         subject_hint = try container.decodeIfPresent(String.self, forKey: .subject_hint)
         not_before = try container.decode(UInt64.self, forKey: .not_before)
         expires_at = try container.decode(UInt64.self, forKey: .expires_at)
+        nonce = try container.decode([UInt8].self, forKey: .nonce)
         permissions = try container.decode([String].self, forKey: .permissions)
-        
-        // Handle Data fields as CBOR bytes (matching Rust serde_bytes)
-        if let nonceBytes = try? container.decode([UInt8].self, forKey: .nonce) {
-            nonce = Data(nonceBytes)
-        } else {
-            nonce = try container.decode(Data.self, forKey: .nonce)
-        }
     }
     
     func encode(to encoder: Encoder) throws {
@@ -1803,7 +1791,7 @@ struct EnrollmentTokenBody: Codable {
         try container.encodeIfPresent(subject_hint, forKey: .subject_hint)
         try container.encode(not_before, forKey: .not_before)
         try container.encode(expires_at, forKey: .expires_at)
-        try container.encode(Array(nonce), forKey: .nonce)
+        try container.encode(nonce, forKey: .nonce)
         try container.encode(permissions, forKey: .permissions)
     }
 }
@@ -1811,7 +1799,7 @@ struct EnrollmentTokenBody: Codable {
 /// EnrollmentToken structure matching Rust implementation exactly
 struct EnrollmentToken: Codable {
     let body: EnrollmentTokenBody
-    let signature: Data
+    let signature: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
     let signer_id: String
     
     enum CodingKeys: String, CodingKey {
@@ -1824,20 +1812,14 @@ struct EnrollmentToken: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
         body = try container.decode(EnrollmentTokenBody.self, forKey: .body)
+        signature = try container.decode([UInt8].self, forKey: .signature)
         signer_id = try container.decode(String.self, forKey: .signer_id)
-        
-        // Handle Data fields as CBOR bytes (matching Rust serde_bytes)
-        if let signatureBytes = try? container.decode([UInt8].self, forKey: .signature) {
-            signature = Data(signatureBytes)
-        } else {
-            signature = try container.decode(Data.self, forKey: .signature)
-        }
     }
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(body, forKey: .body)
-        try container.encode(Array(signature), forKey: .signature)
+        try container.encode(signature, forKey: .signature)
         try container.encode(signer_id, forKey: .signer_id)
     }
 }

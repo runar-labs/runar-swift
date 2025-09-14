@@ -116,10 +116,6 @@ public final class KeysFFI {
         return "Failed to retrieve error message"
     }
 
-    /// Set the log level for the FFI
-    public func setLogLevel(_ level: Int32) {
-        rn_set_log_level(level)
-    }
 
     /// Set local NodeInfo from CBOR buffer
     public func setLocalNodeInfo(_ nodeInfoCBOR: Data) throws {
@@ -321,27 +317,4 @@ public final class KeysFFI {
         return result
     }
 
-    // MARK: - Logger Management Functions
-
-    /// Set the global logger level
-    /// - Parameter level: Log level (0=Error, 1=Warn, 2=Info, 3=Debug, 4=Trace)
-    /// - Throws: FFIError if the operation fails
-    public static func setLoggerLevel(_ level: Int32) throws {
-        let (_, err) = withRnError { errPtr in
-            rn_set_logger_level(level, errPtr)
-        }
-        if let error = err { throw error }
-    }
-
-    /// Set the node ID on the global logger
-    /// - Parameter nodeId: Node identifier string
-    /// - Throws: FFIError if the operation fails
-    public static func setLoggerNodeId(_ nodeId: String) throws {
-        let (_, err) = withRnError { errPtr in
-            nodeId.withCString { cNodeId in
-                rn_set_logger_node_id(cNodeId, errPtr)
-            }
-        }
-        if let error = err { throw error }
-    }
 }

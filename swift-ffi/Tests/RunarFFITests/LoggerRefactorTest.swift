@@ -6,21 +6,21 @@ final class LoggerRefactorTest: XCTestCase {
     
     func testLoggerLevelSetting() throws {
         // Test setting logger level to Debug (4)
-        XCTAssertNoThrow(try KeysFFI.setLoggerLevel(4))
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(4))
         
         // Test setting logger level to Info (2)
-        XCTAssertNoThrow(try KeysFFI.setLoggerLevel(2))
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(2))
         
         // Test setting logger level to Error (0)
-        XCTAssertNoThrow(try KeysFFI.setLoggerLevel(0))
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(0))
     }
     
     func testLoggerNodeIdSetting() throws {
         // Test setting node ID
-        XCTAssertNoThrow(try KeysFFI.setLoggerNodeId("test-node-123"))
+        XCTAssertNoThrow(try FFILogger.setLoggerNodeId("test-node-123"))
         
         // Test setting another node ID
-        XCTAssertNoThrow(try KeysFFI.setLoggerNodeId("another-node-456"))
+        XCTAssertNoThrow(try FFILogger.setLoggerNodeId("another-node-456"))
     }
     
     func testCANodeCreationWithoutLogger() throws {
@@ -49,12 +49,12 @@ final class LoggerRefactorTest: XCTestCase {
     
     func testLoggerFunctionsWork() throws {
         // Test that logger functions can be called without errors
-        XCTAssertNoThrow(try KeysFFI.setLoggerLevel(2)) // Info level
-        XCTAssertNoThrow(try KeysFFI.setLoggerNodeId("test-node-123"))
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(2)) // Info level
+        XCTAssertNoThrow(try FFILogger.setLoggerNodeId("test-node-123"))
         
         // Test that we can call them multiple times
-        XCTAssertNoThrow(try KeysFFI.setLoggerLevel(4)) // Debug level
-        XCTAssertNoThrow(try KeysFFI.setLoggerNodeId("another-node-456"))
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(4)) // Debug level
+        XCTAssertNoThrow(try FFILogger.setLoggerNodeId("another-node-456"))
     }
     
     func testLoggerErrorCodes() {
