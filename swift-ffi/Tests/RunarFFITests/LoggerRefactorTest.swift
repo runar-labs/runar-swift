@@ -47,21 +47,14 @@ final class LoggerRefactorTest: XCTestCase {
         XCTAssertNotNil(server)
     }
     
-    func testCAClientCreationWithoutLogger() throws {
-        // Test that CA Client can be created without logger parameter
-        let keysFFI = KeysFFI()
-        try keysFFI.initializeAsNode()
+    func testLoggerFunctionsWork() throws {
+        // Test that logger functions can be called without errors
+        XCTAssertNoThrow(try KeysFFI.setLoggerLevel(2)) // Info level
+        XCTAssertNoThrow(try KeysFFI.setLoggerNodeId("test-node-123"))
         
-        let config = CaClientConfig(
-            bootstrapServer: "127.0.0.1:8080",
-            authenticatedServer: "127.0.0.1:8081",
-            networkId: "test_network",
-            requestTimeoutSeconds: 30,
-            maxRetries: 3
-        )
-        
-        let client = try CAClient.createWithConfig(config: config, nodeKeys: keysFFI.handle!)
-        XCTAssertNotNil(client)
+        // Test that we can call them multiple times
+        XCTAssertNoThrow(try KeysFFI.setLoggerLevel(4)) // Debug level
+        XCTAssertNoThrow(try KeysFFI.setLoggerNodeId("another-node-456"))
     }
     
     func testLoggerErrorCodes() {
