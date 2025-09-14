@@ -1401,12 +1401,41 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Create envelope with profile keys (EXACTLY like Rust)
         var envelopePtr: UnsafeMutablePointer<UInt8>?
         var envelopeLen: Int = 0
-        // Encrypt with envelope (simplified approach)
-        let envelopeResult: Int32 = 0  // Placeholder for now
-        let envelopeError: FFIError? = nil  // Placeholder for now
         
-        // TODO: Implement proper envelope encryption when type inference is fixed
-        print("   ⚠️  Envelope encryption skipped due to type inference issues")
+        // Prepare profile keys array (array of pointers to profile key data) - EXACTLY like Rust
+        let profileKeys = [personalProfileKey]
+        let profileLens = [personalProfileKey.count]
+        
+        let (envelopeResult, envelopeError) = withRnError { errPtr in
+            testData.withUnsafeBytes { testDataRaw in
+                // Prepare profile key pointers
+                var profileKeyPtrs: [UnsafePointer<UInt8>?] = []
+                for key in profileKeys {
+                    key.withUnsafeBytes { keyRaw in
+                        profileKeyPtrs.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
+                    }
+                }
+                
+                return profileKeyPtrs.withUnsafeBufferPointer { keysPtr in
+                    profileLens.withUnsafeBufferPointer { lensPtr in
+                        rn_keys_node_encrypt_with_envelope(
+                            nodeKeys,
+                            testDataRaw.bindMemory(to: UInt8.self).baseAddress,
+                            testData.count,
+                            nil, // no network key
+                            0,
+                            keysPtr.baseAddress,
+                            lensPtr.baseAddress,
+                            profileKeys.count,
+                            &envelopePtr,
+                            &envelopeLen,
+                            errPtr
+                        )
+                    }
+                }
+            }
+        }
+        
         guard envelopeResult == 0, let envelopeRaw = envelopePtr, envelopeLen > 0 else {
             throw envelopeError ?? FFIError.operationFailed("Failed to encrypt with envelope")
         }
@@ -1584,12 +1613,49 @@ final class FFIE2EIntegrationTest: XCTestCase {
         
         var invalidTokenCborPtr: UnsafeMutablePointer<UInt8>?
         var invalidTokenCborLen: Int = 0
-        // Generate invalid enrollment token (simplified approach)
-        let invalidTokenResult: Int32 = 0  // Placeholder for now
-        let invalidTokenError: FFIError? = nil  // Placeholder for now
         
-        // TODO: Implement proper invalid token generation when type inference is fixed
-        print("   ⚠️  Invalid token generation skipped due to type inference issues")
+        // Generate invalid enrollment token using FFI (EXACTLY like Rust)
+        let (invalidTokenResult, invalidTokenError) = withRnError { errPtr in
+            // Create properly null-terminated C strings for capabilities (EXACTLY like Rust)
+            let capabilitiesCStrings = invalidCapabilities.map { capability in
+                capability.withCString { cString in
+                    // Allocate memory and copy the string to keep it alive
+                    let length = strlen(cString) + 1
+                    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
+                    buffer.initialize(from: cString, count: length)
+                    return buffer
+                }
+            }
+            defer {
+                // Clean up the allocated strings
+                for cString in capabilitiesCStrings {
+                    cString.deallocate()
+                }
+            }
+            
+            let capabilitiesPtrsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>.allocate(capacity: invalidCapabilities.count)
+            defer { capabilitiesPtrsBuffer.deallocate() }
+            for (index, ptr) in capabilitiesCStrings.enumerated() {
+                capabilitiesPtrsBuffer[index] = UnsafePointer(ptr)
+            }
+            
+            return rn_keys_ca_generate_enrollment_token(
+                eaKey,
+                invalidTokenId,
+                invalidNetworkId,  // Different network ID to make it invalid
+                invalidSubject,
+                now - 60,
+                now + 3600,
+                invalidNonce.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
+                invalidNonce.count,
+                capabilitiesPtrsBuffer.baseAddress,
+                invalidCapabilities.count,
+                &invalidTokenCborPtr,
+                &invalidTokenCborLen,
+                errPtr
+            )
+        }
+        
         guard invalidTokenResult == 0, let invalidTokenCborRaw = invalidTokenCborPtr, invalidTokenCborLen > 0 else {
             throw invalidTokenError ?? FFIError.operationFailed("Failed to generate invalid enrollment token")
         }
