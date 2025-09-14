@@ -147,7 +147,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     /// Revoke Request - EXACTLY matching Rust
     struct RevokeRequest: Codable {
         let network_id: String
-        let certificate_serial: Data // Convert hex string to bytes
+        let certificate_serial: [UInt8] // Convert hex string to bytes (CBOR sequence, not byte string)
         let reason: String
     }
 
@@ -1221,11 +1221,20 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Create RevokeRequest (EXACTLY like Rust)
         let revokeRequest = RevokeRequest(
             network_id: "test_network",
-            certificate_serial: Data(hexString: certSerial) ?? Data(),
+            certificate_serial: Array(Data(hexString: certSerial) ?? Data()),
             reason: "testing"
         )
 
         let revokeRequestCbor = try CodableCBOREncoder().encode(revokeRequest)
+        
+        // Debug: Print revocation request details
+        print("   🔍 Debug: Revocation request structure:")
+        print("     - network_id: \(revokeRequest.network_id)")
+        print("     - certificate_serial: \(revokeRequest.certificate_serial.count) bytes")
+        print("     - certificate_serial hex: \(revokeRequest.certificate_serial.map { String(format: "%02x", $0) }.joined())")
+        print("     - reason: \(revokeRequest.reason)")
+        print("   🔍 Debug: Revocation request CBOR size: \(revokeRequestCbor.count) bytes")
+        print("   🔍 Debug: First 50 bytes of revocation CBOR: \(Array(revokeRequestCbor.prefix(50)))")
 
         // Revoke certificate via client (mTLS) (EXACTLY like Rust)
         var revokeResponsePtr: UnsafeMutablePointer<UInt8>?
