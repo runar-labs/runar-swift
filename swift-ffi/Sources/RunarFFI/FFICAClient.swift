@@ -29,7 +29,7 @@ public class CAClient {
     /// - Returns: New CA Client instance
     /// - Throws: FFIError if the operation fails
     public static func createWithConfig(
-        config: CaClientConfig,
+        config: CaClientConfigAll,
         nodeKeys: UnsafeMutableRawPointer
     ) throws -> CAClient {
         var out: UnsafeMutableRawPointer?

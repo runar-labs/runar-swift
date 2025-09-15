@@ -780,15 +780,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let configCbor = try CodableCBOREncoder().encode(config)
         
         // Create CA Client using high-level Swift FFI API
-        let caClientConfig = CaClientConfig(
-            bootstrapServer: config.bootstrap_server,
-            authenticatedServer: config.authenticated_server,
-            networkId: config.network_id,
-            requestTimeoutSeconds: config.request_timeout_seconds,
-            maxRetries: config.max_retries
-        )
         let caClient = try CAClient.createWithConfig(
-            config: caClientConfig,
+            config: config,
             nodeKeys: nodeKeys.rawHandle!
         )
         print("   ✅ CA Client created with all configuration for REAL QUIC mTLS")
@@ -948,28 +941,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("   🔍 Debug: First 50 bytes of revocation CBOR: \(Array(revokeRequestCbor.prefix(50)))")
 
         // Revoke certificate via client (mTLS) (EXACTLY like Rust)
-        var revokeResponsePtr: UnsafeMutablePointer<UInt8>?
-        var revokeResponseLen: Int = 0
-        let (revokeResult, revokeError) = withRnError { errPtr in
-            authenticatedAddr.withCString { cAuthAddr in
-                revokeRequestCbor.withUnsafeBytes { raw in
-                    rn_transport_ca_client_revoke(
-                        caClient,
-                        cAuthAddr,
-                        raw.bindMemory(to: UInt8.self).baseAddress,
-                        revokeRequestCbor.count,
-                        &revokeResponsePtr,
-                        &revokeResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        guard revokeResult == 0, let revokeResponseRaw = revokeResponsePtr, revokeResponseLen > 0 else {
-            throw revokeError ?? FFIError.operationFailed("Failed to revoke certificate")
-        }
-        
-        let revokeResponse = Data(bytes: revokeResponseRaw, count: revokeResponseLen)
+        // Revoke certificate using high-level Swift FFI API
+        let revokeResponse = try caClient.revoke(
+            authenticatedAddr: authenticatedAddr,
+            request: revokeRequestCbor
+        )
         print("   ✅ Certificate revoked successfully")
 
         // Generate CRL-lite (EXACTLY like Rust)
@@ -995,52 +971,19 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n📊 PHASE 6: Status and Chain via REAL QUIC mTLS")
 
         // Get CA Status (EXACTLY like Rust)
-        var statusResponsePtr: UnsafeMutablePointer<UInt8>?
-        var statusResponseLen: Int = 0
-        let (statusResult, statusError) = withRnError { errPtr in
-            authenticatedAddr.withCString { cAuthAddr in
-                networkId.withCString { cNetworkId in
-                    rn_transport_ca_client_get_status(
-                        caClient,
-                        cAuthAddr,
-                        cNetworkId,
-                        &statusResponsePtr,
-                        &statusResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        guard statusResult == 0, let statusResponseRaw = statusResponsePtr, statusResponseLen > 0 else {
-            throw statusError ?? FFIError.operationFailed("Failed to get CA status")
-        }
+        // Get certificate status using high-level Swift FFI API
+        let statusResponse = try caClient.getStatus(
+            authenticatedAddr: authenticatedAddr,
+            networkId: networkId
+        )
+        print("   ✅ CA Status retrieved via REAL QUIC mTLS (\(statusResponse.count) bytes)")
         
-        let statusResponse = Data(bytes: statusResponseRaw, count: statusResponseLen)
-        print("   ✅ CA Status retrieved via REAL QUIC mTLS (\(statusResponseLen) bytes)")
-        
-        // Get Certificate Chain (EXACTLY like Rust)
-        var chainResponsePtr: UnsafeMutablePointer<UInt8>?
-        var chainResponseLen: Int = 0
-        let (chainResult, chainError) = withRnError { errPtr in
-            bootstrapAddr.withCString { cBootstrapAddr in
-                networkId.withCString { cNetworkId in
-                    rn_transport_ca_client_get_chain(
-                        caClient,
-                        cBootstrapAddr,
-                        cNetworkId,
-                        &chainResponsePtr,
-                        &chainResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        guard chainResult == 0, let chainResponseRaw = chainResponsePtr, chainResponseLen > 0 else {
-            throw chainError ?? FFIError.operationFailed("Failed to get certificate chain")
-        }
-        
-        let chainResponse = Data(bytes: chainResponseRaw, count: chainResponseLen)
-        print("   ✅ Certificate chain retrieved via REAL QUIC mTLS (\(chainResponseLen) bytes)")
+        // Get Certificate Chain using high-level Swift FFI API
+        let chainResponse = try caClient.getChain(
+            bootstrapAddr: bootstrapAddr,
+            networkId: networkId
+        )
+        print("   ✅ Certificate chain retrieved via REAL QUIC mTLS (\(chainResponse.count) bytes)")
 
         // ==========================================
         // Phase 7: Profile Key Functionality via REAL QUIC mTLS
@@ -1051,43 +994,13 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let personalLabel = "personal"
         let workLabel = "work"
         
-        var personalProfileKeyPtr: UnsafeMutablePointer<UInt8>?
-        var personalProfileKeyLen: Int = 0
-        let (personalResult, personalError) = withRnError { errPtr in
-            personalLabel.withCString { cLabel in
-                rn_keys_node_derive_user_profile_key(
-                    nodeKeys,
-                    cLabel,
-                    &personalProfileKeyPtr,
-                    &personalProfileKeyLen,
-                    errPtr
-                )
-            }
-        }
-        guard personalResult == 0, let personalProfileKeyRaw = personalProfileKeyPtr, personalProfileKeyLen > 0 else {
-            throw personalError ?? FFIError.operationFailed("Failed to derive personal profile key")
-        }
-        let personalProfileKey = Data(bytes: personalProfileKeyRaw, count: personalProfileKeyLen)
+        // Derive personal profile key using high-level Swift FFI API
+        let personalProfileKey = try nodeKeys.deriveUserProfileKey(label: personalLabel)
         
-        var workProfileKeyPtr: UnsafeMutablePointer<UInt8>?
-        var workProfileKeyLen: Int = 0
-        let (workResult, workError) = withRnError { errPtr in
-            workLabel.withCString { cLabel in
-                rn_keys_node_derive_user_profile_key(
-                    nodeKeys,
-                    cLabel,
-                    &workProfileKeyPtr,
-                    &workProfileKeyLen,
-                    errPtr
-                )
-            }
-        }
-        guard workResult == 0, let workProfileKeyRaw = workProfileKeyPtr, workProfileKeyLen > 0 else {
-            throw workError ?? FFIError.operationFailed("Failed to derive work profile key")
-        }
-        let workProfileKey = Data(bytes: workProfileKeyRaw, count: workProfileKeyLen)
+        // Derive work profile key using high-level Swift FFI API
+        let workProfileKey = try nodeKeys.deriveUserProfileKey(label: workLabel)
         
-        print("   ✅ Profile keys derived: personal (\(personalProfileKeyLen) bytes), work (\(workProfileKeyLen) bytes)")
+        print("   ✅ Profile keys derived: personal (\(personalProfileKey.count) bytes), work (\(workProfileKey.count) bytes)")
         
         // Test profile key encryption/decryption (EXACTLY like Rust)
         let testData = Data("Hello, encrypted world!".utf8)
@@ -1109,74 +1022,18 @@ final class FFIE2EIntegrationTest: XCTestCase {
         }
         let personalProfileId = String(cString: personalProfileIdRaw)
         
-        // Create envelope with profile keys (EXACTLY like Rust)
-        var envelopePtr: UnsafeMutablePointer<UInt8>?
-        var envelopeLen: Int = 0
+        // Create envelope with profile keys using high-level Swift FFI API
+        let envelope = try nodeKeys.encryptWithEnvelope(
+            data: testData,
+            profileKeys: [personalProfileKey]
+        )
+        print("   ✅ Data encrypted with profile key envelope (\(envelope.count) bytes)")
         
-        // Prepare profile keys array (array of pointers to profile key data) - EXACTLY like Rust
-        let profileKeys = [personalProfileKey]
-        let profileLens = [personalProfileKey.count]
-        
-        let (envelopeResult, envelopeError) = withRnError { errPtr in
-            testData.withUnsafeBytes { testDataRaw in
-                // Prepare profile key pointers
-                var profileKeyPtrs: [UnsafePointer<UInt8>?] = []
-                for key in profileKeys {
-                    key.withUnsafeBytes { keyRaw in
-                        profileKeyPtrs.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
-                    }
-                }
-                
-                return profileKeyPtrs.withUnsafeBufferPointer { keysPtr in
-                    profileLens.withUnsafeBufferPointer { lensPtr in
-                        rn_keys_node_encrypt_with_envelope(
-                            nodeKeys,
-                            testDataRaw.bindMemory(to: UInt8.self).baseAddress,
-                            testData.count,
-                            nil, // no network key
-                            0,
-                            keysPtr.baseAddress,
-                            lensPtr.baseAddress,
-                            profileKeys.count,
-                            &envelopePtr,
-                            &envelopeLen,
-                            errPtr
-                        )
-                    }
-                }
-            }
-        }
-        
-        guard envelopeResult == 0, let envelopeRaw = envelopePtr, envelopeLen > 0 else {
-            throw envelopeError ?? FFIError.operationFailed("Failed to encrypt with envelope")
-        }
-        
-        let envelope = Data(bytes: envelopeRaw, count: envelopeLen)
-        print("   ✅ Data encrypted with profile key envelope (\(envelopeLen) bytes)")
-        
-        // Decrypt with profile key (EXACTLY like Rust)
-        var decryptedDataPtr: UnsafeMutablePointer<UInt8>?
-        var decryptedDataLen: Int = 0
-        let (decryptResult, decryptError) = withRnError { errPtr in
-            envelope.withUnsafeBytes { envelopeRaw in
-                personalProfileId.withCString { cProfileId in
-                    rn_keys_node_decrypt_with_profile(
-                        nodeKeys,
-                        envelopeRaw.bindMemory(to: UInt8.self).baseAddress,
-                        envelope.count,
-                        cProfileId,
-                        &decryptedDataPtr,
-                        &decryptedDataLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        guard decryptResult == 0, let decryptedDataRaw = decryptedDataPtr, decryptedDataLen > 0 else {
-            throw decryptError ?? FFIError.operationFailed("Failed to decrypt with profile")
-        }
-        
-        let decryptedData = Data(bytes: decryptedDataRaw, count: decryptedDataLen)
+        // Decrypt with profile key using high-level Swift FFI API
+        let decryptedData = try nodeKeys.decryptWithProfile(
+            envelopeData: envelope,
+            profileId: personalProfileId
+        )
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
         print("   ✅ Profile key encryption/decryption working correctly")
 
@@ -1187,16 +1044,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Test rate limiting with multiple enrollment requests using the same token (EXACTLY like Rust)
         for i in 1...3 {
-            var testSetupTokenPtr: UnsafeMutablePointer<UInt8>?
-            var testSetupTokenLen: Int = 0
-            let (testCsrResult, testCsrError) = withRnError { errPtr in
-                rn_keys_node_generate_csr(nodeKeys, &testSetupTokenPtr, &testSetupTokenLen, errPtr)
-            }
-            guard testCsrResult == 0, let testSetupTokenRaw = testSetupTokenPtr, testSetupTokenLen > 0 else {
-                throw testCsrError ?? FFIError.operationFailed("Failed to generate test CSR for rate limiting")
-            }
-            
-            let testSetupTokenCbor = Data(bytes: testSetupTokenRaw, count: testSetupTokenLen)
+            // Generate test CSR using high-level Swift FFI API
+            let testSetupTokenCbor = try nodeKeys.generateCSR()
             
             // Use the same enrollment token for all requests (rate limiting is per token_id)
             // Deserialize enrollment token and create request struct (EXACTLY like Rust)
@@ -1216,28 +1065,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
             // The FFI function handles the binary protocol internally
             let testEnrollRequest = try CodableCBOREncoder().encode(testEnrollRequestStruct)
             
-            var testResponsePtr: UnsafeMutablePointer<UInt8>?
-            var testResponseLen: Int = 0
-            let (testResult, testError) = withRnError { errPtr in
-                bootstrapAddr.withCString { cBootstrapAddr in
-                    testEnrollRequest.withUnsafeBytes { raw in
-                        rn_transport_ca_client_enroll(
-                            caClient,
-                            cBootstrapAddr,
-                            raw.bindMemory(to: UInt8.self).baseAddress,
-                            testEnrollRequest.count,
-                            &testResponsePtr,
-                            &testResponseLen,
-                            errPtr
-                        )
-                    }
-                }
-            }
-            
-            // All requests in this phase should be rate limited because we're using the same token
-            if testResult == 0 {
+            // Try to enroll using high-level Swift FFI API (should be rate limited)
+            do {
+                let _ = try caClient.enroll(
+                    bootstrapAddr: bootstrapAddr,
+                    request: testEnrollRequest
+                )
                 print("   ⚠️  Rate limit check \(i) unexpectedly passed (rate limiting may not be working)")
-            } else {
+            } catch {
                 print("   ✅ Rate limit check \(i) correctly rejected (rate limiting working)")
             }
 
@@ -1262,16 +1097,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("   ✅ Enrollment token revoked via REAL QUIC mTLS")
 
         // Try to use revoked token (should fail) (EXACTLY like Rust)
-        var testSetupTokenPtr: UnsafeMutablePointer<UInt8>?
-        var testSetupTokenLen: Int = 0
-        let (testCsrResult, testCsrError) = withRnError { errPtr in
-            rn_keys_node_generate_csr(nodeKeys, &testSetupTokenPtr, &testSetupTokenLen, errPtr)
-        }
-        guard testCsrResult == 0, let testSetupTokenRaw = testSetupTokenPtr, testSetupTokenLen > 0 else {
-            throw testCsrError ?? FFIError.operationFailed("Failed to generate test CSR for revoked token test")
-        }
-        
-        let testSetupTokenCbor = Data(bytes: testSetupTokenRaw, count: testSetupTokenLen)
+        // Generate test CSR using high-level Swift FFI API
+        let testSetupTokenCbor = try nodeKeys.generateCSR()
         // Deserialize enrollment token and create request struct (EXACTLY like Rust)
         let revokedEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
         
@@ -1286,27 +1113,16 @@ final class FFIE2EIntegrationTest: XCTestCase {
         )
         let revokedRequestCbor = try CodableCBOREncoder().encode(revokedRequestStruct)
         
-        var revokedResponsePtr: UnsafeMutablePointer<UInt8>?
-        var revokedResponseLen: Int = 0
-        let (revokedResult, revokedError) = withRnError { errPtr in
-            bootstrapAddr.withCString { cBootstrapAddr in
-                revokedRequestCbor.withUnsafeBytes { raw in
-                    rn_transport_ca_client_enroll(
-                        caClient,
-                        cBootstrapAddr,
-                        raw.bindMemory(to: UInt8.self).baseAddress,
-                        revokedRequestCbor.count,
-                        &revokedResponsePtr,
-                        &revokedResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        
-        guard revokedResult != 0 else {
+        // Try to enroll with revoked token using high-level Swift FFI API (should fail)
+        do {
+            let _ = try caClient.enroll(
+                bootstrapAddr: bootstrapAddr,
+                request: revokedRequestCbor
+            )
             XCTFail("Revoked token should be rejected")
             return
+        } catch {
+            // Expected to fail
         }
         print("   ✅ Revoked token correctly rejected via REAL QUIC mTLS")
 
@@ -1349,27 +1165,16 @@ final class FFIE2EIntegrationTest: XCTestCase {
         )
         let invalidRequestCbor = try CodableCBOREncoder().encode(invalidRequestStruct)
         
-        var invalidResponsePtr: UnsafeMutablePointer<UInt8>?
-        var invalidResponseLen: Int = 0
-        let (invalidResult, invalidError) = withRnError { errPtr in
-            bootstrapAddr.withCString { cBootstrapAddr in
-                invalidRequestCbor.withUnsafeBytes { raw in
-                    rn_transport_ca_client_enroll(
-                        caClient,
-                        cBootstrapAddr,
-                        raw.bindMemory(to: UInt8.self).baseAddress,
-                        invalidRequestCbor.count,
-                        &invalidResponsePtr,
-                        &invalidResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        
-        guard invalidResult != 0 else {
+        // Try to enroll with invalid token using high-level Swift FFI API (should fail)
+        do {
+            let _ = try caClient.enroll(
+                bootstrapAddr: bootstrapAddr,
+                request: invalidRequestCbor
+            )
             XCTFail("Invalid token should be rejected")
             return
+        } catch {
+            // Expected to fail
         }
             print("   ✅ Invalid enrollment token rejected via REAL QUIC mTLS")
         
@@ -1409,27 +1214,16 @@ final class FFIE2EIntegrationTest: XCTestCase {
         
         let unauthorizedRenewCbor = try CodableCBOREncoder().encode(unauthorizedRenew)
         
-        var unauthorizedResponsePtr: UnsafeMutablePointer<UInt8>?
-        var unauthorizedResponseLen: Int = 0
-        let (unauthorizedRenewResult, unauthorizedRenewError) = withRnError { errPtr in
-            authenticatedAddr.withCString { cAuthAddr in
-                unauthorizedRenewCbor.withUnsafeBytes { raw in
-                    rn_transport_ca_client_renew(
-                        caClient,
-                        cAuthAddr,
-                        raw.bindMemory(to: UInt8.self).baseAddress,
-                        unauthorizedRenewCbor.count,
-                        &unauthorizedResponsePtr,
-                        &unauthorizedResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        
-        guard unauthorizedRenewResult != 0 else {
+        // Try to renew using high-level Swift FFI API (should fail)
+        do {
+            let _ = try caClient.renew(
+                authenticatedAddr: authenticatedAddr,
+                request: unauthorizedRenewCbor
+            )
             XCTFail("Unauthorized renewal should be rejected")
             return
+        } catch {
+            // Expected to fail
         }
         print("   ✅ Unauthorized renewal rejected via REAL QUIC mTLS")
 
@@ -1447,14 +1241,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         }
         
         // Free all resources (EXACTLY like Rust)
-        rn_keys_ca_free_ea_key_pair(eaKey)
-        rn_transport_ca_server_free(caServer)
-        rn_transport_ca_client_free(caClient)
-        rn_keys_free(nodeKeys)
-        rn_keys_free(mobileKeys)
-        rn_keys_ca_node_free_shared(sharedCaNode)
-        rn_keys_ca_node_free(caNode)
-        rn_keys_free(unauthorizedKeys)
+        // Cleanup - Swift FFI package handles memory management automatically
+        // No manual cleanup needed for high-level Swift FFI objects
 
         print("   ✅ All resources freed successfully")
 
