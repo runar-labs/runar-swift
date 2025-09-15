@@ -310,6 +310,19 @@ public struct SetupToken: Codable {
     }
 }
 
+/// EnrollmentToken structure matching Rust implementation exactly (nested structure with body)
+public struct EnrollmentToken: Codable {
+    public let body: EnrollmentTokenBody
+    public let signature: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
+    public let signer_id: String
+    
+    enum CodingKeys: String, CodingKey {
+        case body
+        case signature
+        case signer_id
+    }
+}
+
 /// EnrollmentTokenBody structure matching Rust implementation exactly
 public struct EnrollmentTokenBody: Codable {
     public let token_id: String
@@ -328,57 +341,6 @@ public struct EnrollmentTokenBody: Codable {
         case expires_at
         case nonce
         case permissions
-    }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        
-        token_id = try container.decode(String.self, forKey: .token_id)
-        network_id = try container.decode(String.self, forKey: .network_id)
-        subject_hint = try container.decodeIfPresent(String.self, forKey: .subject_hint)
-        not_before = try container.decode(UInt64.self, forKey: .not_before)
-        expires_at = try container.decode(UInt64.self, forKey: .expires_at)
-        nonce = try container.decode([UInt8].self, forKey: .nonce)
-        permissions = try container.decode([String].self, forKey: .permissions)
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(token_id, forKey: .token_id)
-        try container.encode(network_id, forKey: .network_id)
-        try container.encodeIfPresent(subject_hint, forKey: .subject_hint)
-        try container.encode(not_before, forKey: .not_before)
-        try container.encode(expires_at, forKey: .expires_at)
-        try container.encode(nonce, forKey: .nonce)
-        try container.encode(permissions, forKey: .permissions)
-    }
-}
-
-/// EnrollmentToken structure matching Rust implementation exactly
-public struct EnrollmentToken: Codable {
-    public let body: EnrollmentTokenBody
-    public let signature: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
-    public let signer_id: String
-    
-    enum CodingKeys: String, CodingKey {
-        case body
-        case signature
-        case signer_id
-    }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        
-        body = try container.decode(EnrollmentTokenBody.self, forKey: .body)
-        signature = try container.decode([UInt8].self, forKey: .signature)
-        signer_id = try container.decode(String.self, forKey: .signer_id)
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(body, forKey: .body)
-        try container.encode(signature, forKey: .signature)
-        try container.encode(signer_id, forKey: .signer_id)
     }
 }
 

@@ -9,6 +9,10 @@ public class CAClient {
     private let handle: UnsafeMutableRawPointer
     private let logger: Logger
     private let nodeKeys: UnsafeMutableRawPointer
+    
+    public var rawHandle: UnsafeMutableRawPointer {
+        return handle
+    }
 
     init(handle: UnsafeMutableRawPointer, logger: Logger, nodeKeys: UnsafeMutableRawPointer) {
         self.handle = handle

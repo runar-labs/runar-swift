@@ -20,7 +20,7 @@ public final class KeysFFI {
         handle
     }
 
-    public init(logger: Logger? = nil) {
+    public init(logger: Logger? = nil) throws {
         if let logger {
             self.logger = logger
         } else {
@@ -31,12 +31,13 @@ public final class KeysFFI {
 
         // Initialize the underlying FFI handle
         var out: UnsafeMutableRawPointer?
-        let result = rn_keys_new(&out, nil)
-        if result == 0 {
-            handle = out
-        } else {
-            print("Failed to create keys handle")
+        let (result, error) = withRnError { errPtr in
+            rn_keys_new(&out, errPtr)
         }
+        guard result == 0, let keysHandle = out else {
+            throw error ?? FFIError.operationFailed("Failed to create keys handle")
+        }
+        handle = keysHandle
     }
 
     deinit {
@@ -372,6 +373,15 @@ public final class KeysFFI {
         let result = Data(bytes: outPtr, count: outLen)
         rn_free(outPtr, outLen)
         return result
+    }
+
+    /// Get compact ID for a public key
+    /// - Parameter publicKey: Public key data
+    /// - Returns: Compact ID string
+    /// - Throws: FFIError if the operation fails
+    public func getCompactId(publicKey: Data) throws -> String {
+        let manager = try validateNodeManager()
+        return try manager.getCompactId(publicKey: publicKey)
     }
 
     /// Decrypt network data
