@@ -164,8 +164,22 @@ public class EAKeyManager {
                 params.networkId.withCString { cNetworkId in
                     params.subject.withCString { cSubject in
                         params.nonce.withUnsafeBytes { nonceRaw in
-                            // Convert capabilities to C string array
-                            let capabilitiesCstr: [UnsafePointer<CChar>?] = params.capabilities.map { $0.withCString { $0 } }
+                            // Convert capabilities to C string array with proper lifetime management
+                            let capabilitiesCStrings = params.capabilities.map { capability in
+                                capability.withCString { cString in
+                                    let length = strlen(cString) + 1
+                                    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
+                                    buffer.initialize(from: cString, count: length)
+                                    return buffer
+                                }
+                            }
+                            defer {
+                                for cString in capabilitiesCStrings {
+                                    cString.deallocate()
+                                }
+                            }
+                            
+                            let capabilitiesPtrs = capabilitiesCStrings.map { UnsafePointer<CChar>($0) as UnsafePointer<CChar>? }
                             
                             rn_keys_ca_generate_enrollment_token(
                                 params.eaKeyHandle,
@@ -176,7 +190,7 @@ public class EAKeyManager {
                                 params.validUntil,
                                 nonceRaw.bindMemory(to: UInt8.self).baseAddress,
                                 params.nonce.count,
-                                capabilitiesCstr,
+                                capabilitiesPtrs,
                                 params.capabilities.count,
                                 &out,
                                 &outLen,

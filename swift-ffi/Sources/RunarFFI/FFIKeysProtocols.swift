@@ -63,6 +63,8 @@ public protocol MobileKeyManager {
     func encryptWithEnvelope(data: Data, networkPublicKey: Data?, profileKeys: [Data]?) throws -> Data
     func decryptMessageFromNode(encryptedMessage: Data) throws -> Data
     func decryptEnvelope(eedCbor: Data) throws -> Data
+    func fromEnrollResponse(_ response: Data) throws -> Data
+    func fromRenewResponse(_ response: Data) throws -> Data
     func installNetworkPublicKey(networkPublicKey: Data) throws
 }
 

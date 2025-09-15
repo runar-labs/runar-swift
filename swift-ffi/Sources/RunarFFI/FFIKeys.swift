@@ -103,6 +103,92 @@ public final class KeysFFI {
         return manager
     }
 
+    // MARK: - Public Node Key Manager Delegation Methods
+
+    /// Generate CSR (Certificate Signing Request)
+    /// - Returns: CBOR-encoded SetupToken containing CSR
+    /// - Throws: FFIError if the operation fails
+    public func generateCSR() throws -> Data {
+        let manager = try validateNodeManager()
+        return try manager.generateCSR()
+    }
+
+    /// Install certificate from enrollment/renewal response
+    /// - Parameter nodeCertificateMessageCBOR: CBOR-encoded certificate message
+    /// - Throws: FFIError if the operation fails
+    public func installCertificate(_ nodeCertificateMessageCBOR: Data) throws {
+        let manager = try validateNodeManager()
+        try manager.installCertificate(nodeCertificateMessageCBOR)
+    }
+
+    /// Get node certificate
+    /// - Returns: DER-encoded certificate
+    /// - Throws: FFIError if the operation fails
+    public func getNodeCertificate() throws -> Data {
+        let manager = try validateNodeManager()
+        return try manager.getNodeCertificate()
+    }
+
+    /// Derive user profile key
+    /// - Parameter label: Profile key label
+    /// - Returns: Public key data
+    /// - Throws: FFIError if the operation fails
+    public func deriveUserProfileKey(label: String) throws -> Data {
+        let manager = try validateNodeManager()
+        return try manager.deriveUserProfileKey(label: label)
+    }
+
+    /// Encrypt data with envelope encryption
+    /// - Parameters:
+    ///   - data: Data to encrypt
+    ///   - networkPublicKey: Network public key (optional)
+    ///   - profileKeys: Array of profile keys (optional)
+    /// - Returns: Encrypted envelope data
+    /// - Throws: FFIError if the operation fails
+    public func encryptWithEnvelope(data: Data, networkPublicKey: Data? = nil, profileKeys: [Data]? = nil) throws -> Data {
+        let manager = try validateNodeManager()
+        return try manager.encryptWithEnvelope(data: data, networkPublicKey: networkPublicKey, profileKeys: profileKeys)
+    }
+
+    /// Decrypt envelope data using profile key
+    /// - Parameters:
+    ///   - envelopeData: Encrypted envelope data
+    ///   - profileId: Profile ID for decryption
+    /// - Returns: Decrypted data
+    /// - Throws: FFIError if the operation fails
+    public func decryptWithProfile(envelopeData: Data, profileId: String) throws -> Data {
+        let manager = try validateNodeManager()
+        return try manager.decryptWithProfile(envelopeData: envelopeData, profileId: profileId)
+    }
+
+    /// Get QUIC certificate configuration
+    /// - Returns: QUIC certificate configuration data
+    /// - Throws: FFIError if the operation fails
+    public func getQuicCertificateConfig() throws -> Data {
+        let manager = try validateNodeManager()
+        return try manager.getQuicCertificateConfig()
+    }
+
+    // MARK: - Public Mobile Key Manager Delegation Methods
+
+    /// Convert enrollment response to certificate message
+    /// - Parameter response: Enrollment response data
+    /// - Returns: Certificate message data
+    /// - Throws: FFIError if the operation fails
+    public func fromEnrollResponse(_ response: Data) throws -> Data {
+        let manager = try validateMobileManager()
+        return try manager.fromEnrollResponse(response)
+    }
+
+    /// Convert renewal response to certificate message
+    /// - Parameter response: Renewal response data
+    /// - Returns: Certificate message data
+    /// - Throws: FFIError if the operation fails
+    public func fromRenewResponse(_ response: Data) throws -> Data {
+        let manager = try validateMobileManager()
+        return try manager.fromRenewResponse(response)
+    }
+
     // MARK: - Direct FFI Functions
 
     /// Get the last error message from the FFI

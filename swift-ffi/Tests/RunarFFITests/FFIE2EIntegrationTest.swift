@@ -478,44 +478,16 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Note: Swift uses system crypto, but we ensure proper initialization
         print("   🔧 Initializing crypto provider...")
         
-        // Create keys handles using raw FFI calls (EXACTLY like Rust)
-        var nodeKeysHandle: UnsafeMutableRawPointer?
-        var mobileKeysHandle: UnsafeMutableRawPointer?
-        
-        // Create node keys
-        let (nodeResult, nodeError) = withRnError { errPtr in
-            rn_keys_new(&nodeKeysHandle, errPtr)
-        }
-        guard nodeResult == 0, let nodeKeys = nodeKeysHandle else {
-            throw nodeError ?? FFIError.operationFailed("Failed to create node keys handle")
-        }
-        print("   ✅ Node keys handle created")
-        
-        // Create mobile keys
-        let (mobileResult, mobileError) = withRnError { errPtr in
-            rn_keys_new(&mobileKeysHandle, errPtr)
-        }
-        guard mobileResult == 0, let mobileKeys = mobileKeysHandle else {
-            throw mobileError ?? FFIError.operationFailed("Failed to create mobile keys handle")
-        }
-        print("   ✅ Mobile keys handle created")
+        // Create keys handles using high-level Swift FFI API
+        let nodeKeys = KeysFFI(logger: createTestLogger())
+        let mobileKeys = KeysFFI(logger: createTestLogger())
         
         // Initialize as node
-        let (initNodeResult, initNodeError) = withRnError { errPtr in
-            rn_keys_init_as_node(nodeKeys, errPtr)
-        }
-        guard initNodeResult == 0 else {
-            throw initNodeError ?? FFIError.operationFailed("Failed to initialize as node")
-        }
+        try nodeKeys.initializeAsNode()
         print("   ✅ Node initialized")
         
         // Initialize as mobile
-        let (initMobileResult, initMobileError) = withRnError { errPtr in
-            rn_keys_init_as_mobile(mobileKeys, errPtr)
-        }
-        guard initMobileResult == 0 else {
-            throw initMobileError ?? FFIError.operationFailed("Failed to initialize as mobile")
-        }
+        try mobileKeys.initializeAsMobile()
         print("   ✅ Mobile initialized")
         
         print("   ✅ Keys handles created and initialized")
@@ -686,18 +658,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // ==========================================
         print("\n📱 PHASE 3: Mobile Node CSR and Enrollment")
 
-        // Generate CSR on node (returns SetupToken CBOR) - EXACTLY like Rust
-        var setupTokenPtr: UnsafeMutablePointer<UInt8>?
-        var setupTokenLen: Int = 0
-        let (csrResult, csrError) = withRnError { errPtr in
-            rn_keys_node_generate_csr(nodeKeys, &setupTokenPtr, &setupTokenLen, errPtr)
-        }
-        guard csrResult == 0, let setupTokenRaw = setupTokenPtr, setupTokenLen > 0 else {
-            throw csrError ?? FFIError.operationFailed("Failed to generate CSR")
-        }
-        
-        let setupTokenCbor = Data(bytes: setupTokenRaw, count: setupTokenLen)
-        print("   ✅ CSR generated (\(setupTokenLen) bytes)")
+        // Generate CSR on node (returns SetupToken CBOR) - using high-level Swift FFI API
+        let setupTokenCbor = try nodeKeys.generateCSR()
+        print("   ✅ CSR generated (\(setupTokenCbor.count) bytes)")
         
         // Use FFI to extract CSR DER from SetupToken (EXACTLY like Rust)
         // The FFI should handle CBOR deserialization internally
@@ -816,103 +779,40 @@ final class FFIE2EIntegrationTest: XCTestCase {
         
         let configCbor = try CodableCBOREncoder().encode(config)
         
-        var caClientHandle: UnsafeMutableRawPointer?
-        let (clientResult, clientError) = withRnError { errPtr in
-            configCbor.withUnsafeBytes { raw in
-                rn_transport_ca_client_new_with_config(
-                    raw.bindMemory(to: UInt8.self).baseAddress,
-                    configCbor.count,
-                    nodeKeys,
-                    &caClientHandle,
-                    errPtr
-                )
-            }
-        }
-        guard clientResult == 0, let caClient = caClientHandle else {
-            throw clientError ?? FFIError.operationFailed("Failed to create CA client")
-        }
+        // Create CA Client using high-level Swift FFI API
+        let caClientConfig = CaClientConfig(
+            bootstrapServer: config.bootstrap_server,
+            authenticatedServer: config.authenticated_server,
+            networkId: config.network_id,
+            requestTimeoutSeconds: config.request_timeout_seconds,
+            maxRetries: config.max_retries
+        )
+        let caClient = try CAClient.createWithConfig(
+            config: caClientConfig,
+            nodeKeys: nodeKeys.rawHandle!
+        )
         print("   ✅ CA Client created with all configuration for REAL QUIC mTLS")
 
-        // Enroll via CA Client (EXACTLY like Rust)
+        // Enroll via CA Client using high-level Swift FFI API
         print("   🔧 Attempting enrollment with:")
         print("      Bootstrap address: \(bootstrapAddr)")
         print("      Request size: \(enrollRequest.count) bytes")
         print("      CSR size: \(csrDer.count) bytes")
         
-        var enrollResponsePtr: UnsafeMutablePointer<UInt8>?
-        var enrollResponseLen: Int = 0
-        let (enrollResult, enrollError) = withRnError { errPtr in
-            bootstrapAddr.withCString { cBootstrapAddr in
-                enrollRequest.withUnsafeBytes { raw in
-                    rn_transport_ca_client_enroll(
-                        caClient,
-                        cBootstrapAddr,
-                        raw.bindMemory(to: UInt8.self).baseAddress,
-                        enrollRequest.count,
-                        &enrollResponsePtr,
-                        &enrollResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        guard enrollResult == 0, let enrollResponseRaw = enrollResponsePtr, enrollResponseLen > 0 else {
-            throw enrollError ?? FFIError.operationFailed("Failed to enroll")
-        }
+        let enrollResponse = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: enrollRequest)
+        print("   ✅ Enrollment successful (\(enrollResponse.count) bytes response)")
         
-        let enrollResponse = Data(bytes: enrollResponseRaw, count: enrollResponseLen)
-        print("   ✅ Enrollment successful (\(enrollResponseLen) bytes response)")
+        // Convert response to NodeCertificateMessage using high-level Swift FFI API
+        let certMessage = try mobileKeys.fromEnrollResponse(enrollResponse)
+        print("   ✅ Certificate message created (\(certMessage.count) bytes)")
         
-        // Convert response to NodeCertificateMessage (EXACTLY like Rust)
-        var certMsgPtr: UnsafeMutablePointer<UInt8>?
-        var certMsgLen: Int = 0
-        let (certMsgResult, certMsgError) = withRnError { errPtr in
-            enrollResponse.withUnsafeBytes { raw in
-                rn_keys_mobile_from_enroll_response(
-                    mobileKeys,
-                    raw.bindMemory(to: UInt8.self).baseAddress,
-                    enrollResponse.count,
-                    &certMsgPtr,
-                    &certMsgLen,
-                    errPtr
-                )
-            }
-        }
-        guard certMsgResult == 0, let certMsgRaw = certMsgPtr, certMsgLen > 0 else {
-            throw certMsgError ?? FFIError.operationFailed("Failed to convert enroll response")
-        }
-        
-        let certMessage = Data(bytes: certMsgRaw, count: certMsgLen)
-        print("   ✅ Certificate message created (\(certMsgLen) bytes)")
-        
-        // Install certificate (EXACTLY like Rust)
-        let (installResult, installError) = withRnError { errPtr in
-            certMessage.withUnsafeBytes { raw in
-                rn_keys_node_install_certificate(
-                    nodeKeys,
-                    raw.bindMemory(to: UInt8.self).baseAddress,
-                    certMessage.count,
-                    errPtr
-                )
-            }
-        }
-        guard installResult == 0 else {
-            throw installError ?? FFIError.operationFailed("Failed to install certificate")
-        }
+        // Install certificate using high-level Swift FFI API
+        try nodeKeys.installCertificate(certMessage)
         print("   ✅ Certificate installed and validated")
 
-        // QUIC Cert Config Validation (EXACTLY like Rust)
-        var quicConfigPtr: UnsafeMutablePointer<UInt8>?
-        var quicConfigLen: Int = 0
-        let (quicResult, quicError) = withRnError { errPtr in
-            rn_keys_node_get_quic_certificate_config(nodeKeys, &quicConfigPtr, &quicConfigLen, errPtr)
-        }
-        guard quicResult == 0, let quicConfigRaw = quicConfigPtr, quicConfigLen > 0 else {
-            throw quicError ?? FFIError.operationFailed("Failed to get QUIC certificate config")
-        }
-        
-        let quicConfig = Data(bytes: quicConfigRaw, count: quicConfigLen)
-        print("   ✅ QUIC certificate config validated (\(quicConfigLen) bytes)")
+        // QUIC Cert Config Validation using high-level Swift FFI API
+        let quicConfig = try nodeKeys.getQuicCertificateConfig()
+        print("   ✅ QUIC certificate config validated (\(quicConfig.count) bytes)")
 
         // ==========================================
         // Phase 4: Certificate Renewal via REAL QUIC mTLS
@@ -920,17 +820,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🔄 PHASE 4: Certificate Renewal via REAL QUIC mTLS")
 
         // Generate renewal CSR (returns SetupToken CBOR) - EXACTLY like Rust
-        var renewalSetupTokenPtr: UnsafeMutablePointer<UInt8>?
-        var renewalSetupTokenLen: Int = 0
-        let (renewalCsrResult, renewalCsrError) = withRnError { errPtr in
-            rn_keys_node_generate_csr(nodeKeys, &renewalSetupTokenPtr, &renewalSetupTokenLen, errPtr)
-        }
-        guard renewalCsrResult == 0, let renewalSetupTokenRaw = renewalSetupTokenPtr, renewalSetupTokenLen > 0 else {
-            throw renewalCsrError ?? FFIError.operationFailed("Failed to generate renewal CSR")
-        }
-        
-        let renewalSetupTokenCbor = Data(bytes: renewalSetupTokenRaw, count: renewalSetupTokenLen)
-        print("   ✅ Renewal CSR generated (\(renewalSetupTokenLen) bytes)")
+        // Generate renewal CSR using high-level Swift FFI API
+        let renewalSetupTokenCbor = try nodeKeys.generateCSR()
+        print("   ✅ Renewal CSR generated (\(renewalSetupTokenCbor.count) bytes)")
         
         // Extract DER bytes from SetupToken CBOR (EXACTLY like Rust)
         let renewalSetupToken: SetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: renewalSetupTokenCbor)
@@ -946,66 +838,19 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let renewRequest = try CodableCBOREncoder().encode(renewRequestStruct)
         
         // Renew via CA Client (authenticated endpoint) - EXACTLY like Rust
-        var renewResponsePtr: UnsafeMutablePointer<UInt8>?
-        var renewResponseLen: Int = 0
-        let (renewResult, renewError) = withRnError { errPtr in
-            authenticatedAddr.withCString { cAuthAddr in
-                renewRequest.withUnsafeBytes { raw in
-                    rn_transport_ca_client_renew(
-                        caClient,
-                        cAuthAddr,
-                        raw.bindMemory(to: UInt8.self).baseAddress,
-                        renewRequest.count,
-                        &renewResponsePtr,
-                        &renewResponseLen,
-                        errPtr
-                    )
-                }
-            }
-        }
-        guard renewResult == 0, let renewResponseRaw = renewResponsePtr, renewResponseLen > 0 else {
-            throw renewError ?? FFIError.operationFailed("Failed to renew certificate")
-        }
+        // Renew certificate using high-level Swift FFI API
+        let renewResponse = try caClient.renew(
+            authenticatedAddr: authenticatedAddr,
+            request: renewRequest
+        )
+        print("   ✅ Certificate renewal successful (\(renewResponse.count) bytes response)")
         
-        let renewResponse = Data(bytes: renewResponseRaw, count: renewResponseLen)
-        print("   ✅ Certificate renewal successful (\(renewResponseLen) bytes response)")
+        // Convert response to NodeCertificateMessage using high-level Swift FFI API
+        let renewalCertMessage = try mobileKeys.fromRenewResponse(renewResponse)
+        print("   ✅ Renewal certificate message created (\(renewalCertMessage.count) bytes)")
         
-        // Convert response to NodeCertificateMessage (EXACTLY like Rust)
-        var renewalCertMsgPtr: UnsafeMutablePointer<UInt8>?
-        var renewalCertMsgLen: Int = 0
-        let (renewalCertMsgResult, renewalCertMsgError) = withRnError { errPtr in
-            renewResponse.withUnsafeBytes { raw in
-                rn_keys_mobile_from_renew_response(
-                    mobileKeys,
-                    raw.bindMemory(to: UInt8.self).baseAddress,
-                    renewResponse.count,
-                    &renewalCertMsgPtr,
-                    &renewalCertMsgLen,
-                    errPtr
-                )
-            }
-        }
-        guard renewalCertMsgResult == 0, let renewalCertMsgRaw = renewalCertMsgPtr, renewalCertMsgLen > 0 else {
-            throw renewalCertMsgError ?? FFIError.operationFailed("Failed to convert renew response")
-        }
-        
-        let renewalCertMessage = Data(bytes: renewalCertMsgRaw, count: renewalCertMsgLen)
-        print("   ✅ Renewal certificate message created (\(renewalCertMsgLen) bytes)")
-        
-        // Install renewed certificate (EXACTLY like Rust)
-        let (renewalInstallResult, renewalInstallError) = withRnError { errPtr in
-            renewalCertMessage.withUnsafeBytes { raw in
-                rn_keys_node_install_certificate(
-                    nodeKeys,
-                    raw.bindMemory(to: UInt8.self).baseAddress,
-                    renewalCertMessage.count,
-                    errPtr
-                )
-            }
-        }
-        guard renewalInstallResult == 0 else {
-            throw renewalInstallError ?? FFIError.operationFailed("Failed to install renewed certificate")
-        }
+        // Install renewed certificate using high-level Swift FFI API
+        try nodeKeys.installCertificate(renewalCertMessage)
         print("   ✅ Renewed certificate installed and validated")
 
         // ==========================================
@@ -1014,16 +859,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🚫 PHASE 5: Certificate Revocation + CRL-lite via REAL QUIC mTLS")
 
         // Extract SKI from the client's certificate for admin authorization (EXACTLY like Rust)
-        var clientCertDerPtr: UnsafeMutablePointer<UInt8>?
-        var clientCertDerLen: Int = 0
-        let (clientCertResult, clientCertError) = withRnError { errPtr in
-            rn_keys_node_get_node_certificate(nodeKeys, &clientCertDerPtr, &clientCertDerLen, errPtr)
-        }
-        guard clientCertResult == 0, let clientCertDerRaw = clientCertDerPtr, clientCertDerLen > 0 else {
-            throw clientCertError ?? FFIError.operationFailed("Failed to get client certificate")
-        }
-        
-        let clientCertDer = Data(bytes: clientCertDerRaw, count: clientCertDerLen)
+        // Get node certificate using high-level Swift FFI API
+        let clientCertDer = try nodeKeys.getNodeCertificate()
         
         // Extract SKI from client certificate (EXACTLY like Rust)
         var clientSkiPtr: UnsafeMutablePointer<CChar>?
