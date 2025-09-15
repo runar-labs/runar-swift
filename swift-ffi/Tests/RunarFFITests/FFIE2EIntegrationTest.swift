@@ -20,7 +20,6 @@ import XCTest
 @_implementationOnly import func CRunarFFI.rn_transport_ca_server_get_bootstrap_addr
 @_implementationOnly import func CRunarFFI.rn_transport_ca_server_get_authenticated_addr
 @_implementationOnly import func CRunarFFI.rn_keys_node_generate_csr
-@_implementationOnly import func CRunarFFI.rn_keys_ca_generate_enrollment_token
 @_implementationOnly import func CRunarFFI.rn_keys_ca_node_get_root_ca_certificate
 @_implementationOnly import func CRunarFFI.rn_keys_ca_node_get_issuing_ca_certificate
 @_implementationOnly import func CRunarFFI.rn_transport_ca_client_new_with_config
@@ -712,55 +711,20 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let nonce = Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
         let capabilities = ["enroll"]
         
-        var tokenCborPtr: UnsafeMutablePointer<UInt8>?
-        var tokenCborLen: Int = 0
-        let (tokenResult, tokenError) = withRnError { errPtr in
-            // Create properly null-terminated C strings for capabilities (EXACTLY like Rust)
-            // Keep the C strings alive for the duration of the FFI call
-            let capabilitiesCStrings = capabilities.map { capability in
-                capability.withCString { cString in
-                    // Allocate memory and copy the string to keep it alive
-                    let length = strlen(cString) + 1
-                    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
-                    buffer.initialize(from: cString, count: length)
-                    return buffer
-                }
-            }
-            defer {
-                // Clean up the allocated strings
-                for cString in capabilitiesCStrings {
-                    cString.deallocate()
-                }
-            }
-            
-            let capabilitiesPtrsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>.allocate(capacity: capabilities.count)
-            defer { capabilitiesPtrsBuffer.deallocate() }
-            for (index, ptr) in capabilitiesCStrings.enumerated() {
-                capabilitiesPtrsBuffer[index] = UnsafePointer(ptr)
-            }
-            
-            return rn_keys_ca_generate_enrollment_token(
-                eaKey,
-                tokenId,
-                networkId,
-                subject,
-                now,
-                now + 3600, // 1 hour validity
-                nonce.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
-                nonce.count,
-                capabilitiesPtrsBuffer.baseAddress,
-                capabilities.count,
-                &tokenCborPtr,
-                &tokenCborLen,
-                errPtr
-            )
-        }
-        guard tokenResult == 0, let tokenCborRaw = tokenCborPtr, tokenCborLen > 0 else {
-            throw tokenError ?? FFIError.operationFailed("Failed to generate enrollment token")
-        }
-        
-        let enrollmentTokenCbor = Data(bytes: tokenCborRaw, count: tokenCborLen)
-        print("   ✅ Enrollment token created using secure FFI (private key stays internal)")
+        // Generate enrollment token using high-level Swift FFI API
+        let eaKeyManager = EAKeyManager(logger: createTestLogger())
+        let params = EAKeyManager.EnrollmentTokenParams(
+            eaKeyHandle: eaKey,
+            tokenId: tokenId,
+            networkId: networkId,
+            subject: subject,
+            validFrom: now,
+            validUntil: now + 3600, // 1 hour validity
+            nonce: nonce,
+            capabilities: capabilities
+        )
+        let enrollmentTokenCbor = try eaKeyManager.generateEnrollmentToken(params: params)
+        print("   ✅ Enrollment token created using high-level Swift FFI API")
         
         // Debug: Print raw CBOR data from FFI
         print("   🔍 Debug: Raw enrollment token CBOR from FFI: \(enrollmentTokenCbor.count) bytes")
@@ -1521,56 +1485,19 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let invalidNonce = Data([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
         let invalidCapabilities = ["enroll"]
         
-        var invalidTokenCborPtr: UnsafeMutablePointer<UInt8>?
-        var invalidTokenCborLen: Int = 0
-        
-        // Generate invalid enrollment token using FFI (EXACTLY like Rust)
-        let (invalidTokenResult, invalidTokenError) = withRnError { errPtr in
-            // Create properly null-terminated C strings for capabilities (EXACTLY like Rust)
-            let capabilitiesCStrings = invalidCapabilities.map { capability in
-                capability.withCString { cString in
-                    // Allocate memory and copy the string to keep it alive
-                    let length = strlen(cString) + 1
-                    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
-                    buffer.initialize(from: cString, count: length)
-                    return buffer
-                }
-            }
-            defer {
-                // Clean up the allocated strings
-                for cString in capabilitiesCStrings {
-                    cString.deallocate()
-                }
-            }
-            
-            let capabilitiesPtrsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>.allocate(capacity: invalidCapabilities.count)
-            defer { capabilitiesPtrsBuffer.deallocate() }
-            for (index, ptr) in capabilitiesCStrings.enumerated() {
-                capabilitiesPtrsBuffer[index] = UnsafePointer(ptr)
-            }
-            
-            return rn_keys_ca_generate_enrollment_token(
-                eaKey,
-                invalidTokenId,
-                invalidNetworkId,  // Different network ID to make it invalid
-                invalidSubject,
-                now - 60,
-                now + 3600,
-                invalidNonce.withUnsafeBytes { $0.bindMemory(to: UInt8.self).baseAddress! },
-                invalidNonce.count,
-                capabilitiesPtrsBuffer.baseAddress,
-                invalidCapabilities.count,
-                &invalidTokenCborPtr,
-                &invalidTokenCborLen,
-                errPtr
-            )
-        }
-        
-        guard invalidTokenResult == 0, let invalidTokenCborRaw = invalidTokenCborPtr, invalidTokenCborLen > 0 else {
-            throw invalidTokenError ?? FFIError.operationFailed("Failed to generate invalid enrollment token")
-        }
-        
-        let invalidTokenCbor = Data(bytes: invalidTokenCborRaw, count: invalidTokenCborLen)
+        // Generate invalid enrollment token using high-level Swift FFI API
+        let invalidEaKeyManager = EAKeyManager(logger: createTestLogger())
+        let invalidParams = EAKeyManager.EnrollmentTokenParams(
+            eaKeyHandle: eaKey,
+            tokenId: invalidTokenId,
+            networkId: invalidNetworkId,  // Different network ID to make it invalid
+            subject: invalidSubject,
+            validFrom: now - 60,
+            validUntil: now + 3600,
+            nonce: invalidNonce,
+            capabilities: invalidCapabilities
+        )
+        let invalidTokenCbor = try invalidEaKeyManager.generateEnrollmentToken(params: invalidParams)
         // Deserialize invalid enrollment token and create request struct (EXACTLY like Rust)
         let invalidEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: invalidTokenCbor)
         
