@@ -5,14 +5,14 @@ import XCTest
 final class LoggerRefactorTest: XCTestCase {
     
     func testLoggerLevelSetting() throws {
-        // Test setting logger level to Debug (4)
-        XCTAssertNoThrow(try FFILogger.setLoggerLevel(4))
+        // Test setting logger level to Debug
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(.debug))
         
-        // Test setting logger level to Info (2)
-        XCTAssertNoThrow(try FFILogger.setLoggerLevel(2))
+        // Test setting logger level to Warn
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(.warn))
         
-        // Test setting logger level to Error (0)
-        XCTAssertNoThrow(try FFILogger.setLoggerLevel(0))
+        // Test setting logger level to Off
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(.off))
     }
     
     func testLoggerNodeIdSetting() throws {
@@ -49,11 +49,11 @@ final class LoggerRefactorTest: XCTestCase {
     
     func testLoggerFunctionsWork() throws {
         // Test that logger functions can be called without errors
-        XCTAssertNoThrow(try FFILogger.setLoggerLevel(2)) // Info level
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(.warn)) // Warn level
         XCTAssertNoThrow(try FFILogger.setLoggerNodeId("test-node-123"))
         
         // Test that we can call them multiple times
-        XCTAssertNoThrow(try FFILogger.setLoggerLevel(4)) // Debug level
+        XCTAssertNoThrow(try FFILogger.setLoggerLevel(.debug)) // Debug level
         XCTAssertNoThrow(try FFILogger.setLoggerNodeId("another-node-456"))
     }
     

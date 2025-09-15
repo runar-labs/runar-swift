@@ -552,22 +552,13 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // ==========================================
         print("\n🏗️  PHASE 1: Setup")
         
-        // Set up logging exactly like the working test
-        // Note: Swift doesn't have direct equivalent of Rust's LoggingConfig,
-        // but we ensure proper logger setup
-        let testLogger = createTestLogger()
-        
         // Set log level to TRACE for detailed debugging
-        try FFILogger.setLoggerLevel(5) // TRACE level
+        try FFILogger.setLoggerLevel(.trace)
         print("   🔧 Set log level to TRACE for detailed debugging")
         
         // Initialize rustls crypto provider
         // Note: Swift uses system crypto, but we ensure proper initialization
         print("   🔧 Initializing crypto provider...")
-        
-        // Set log level to TRACE for detailed debugging
-        try FFILogger.setLoggerLevel(5) // TRACE level
-        print("   🔧 Set log level to TRACE for detailed debugging")
         
         // Create keys handles using raw FFI calls (EXACTLY like Rust)
         var nodeKeysHandle: UnsafeMutableRawPointer?

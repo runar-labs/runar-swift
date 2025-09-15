@@ -1,5 +1,29 @@
 import Foundation
 
+/// Log levels matching the Rust FFI implementation
+/// Maps to the same numeric values as the Rust `rn_set_logger_level` function
+@available(macOS 11.0, *)
+public enum LogLevel: Int32, CaseIterable {
+    case off = 0
+    case error = 1
+    case warn = 2
+    case info = 3
+    case debug = 4
+    case trace = 5
+    
+    /// Human-readable description of the log level
+    public var description: String {
+        switch self {
+        case .off: return "OFF"
+        case .error: return "ERROR"
+        case .warn: return "WARN"
+        case .info: return "INFO"
+        case .debug: return "DEBUG"
+        case .trace: return "TRACE"
+        }
+    }
+}
+
 /// Standalone FFI Logger functions
 /// These are global FFI functions, not related to keys
 @available(macOS 11.0, *)
@@ -8,7 +32,14 @@ public final class FFILogger {
     // MARK: - Simple Logger Functions (No Error Handling)
     
     /// Set the log level for the FFI (simple version)
+    /// - Parameter level: Log level enum
+    public static func setLogLevel(_ level: LogLevel) {
+        rn_set_log_level(level.rawValue)
+    }
+    
+    /// Set the log level for the FFI (simple version) - legacy numeric support
     /// - Parameter level: Log level (0=Off, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
+    @available(*, deprecated, message: "Use setLogLevel(_ level: LogLevel) instead")
     public static func setLogLevel(_ level: Int32) {
         rn_set_log_level(level)
     }
@@ -16,8 +47,19 @@ public final class FFILogger {
     // MARK: - Advanced Logger Functions (With Error Handling)
     
     /// Set the global logger level with error handling
+    /// - Parameter level: Log level enum
+    /// - Throws: FFIError if the operation fails
+    public static func setLoggerLevel(_ level: LogLevel) throws {
+        let (_, err) = withRnError { errPtr in
+            rn_set_logger_level(level.rawValue, errPtr)
+        }
+        if let error = err { throw error }
+    }
+    
+    /// Set the global logger level with error handling - legacy numeric support
     /// - Parameter level: Log level (0=Off, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
     /// - Throws: FFIError if the operation fails
+    @available(*, deprecated, message: "Use setLoggerLevel(_ level: LogLevel) instead")
     public static func setLoggerLevel(_ level: Int32) throws {
         let (_, err) = withRnError { errPtr in
             rn_set_logger_level(level, errPtr)
