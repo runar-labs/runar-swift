@@ -1,6 +1,7 @@
 import CRunarFFI
 import Foundation
 import SwiftCBOR
+import SwiftCommon
 
 // MARK: - CA Server Implementation
 
@@ -54,7 +55,7 @@ public class CAServer {
             throw FFIError.operationFailed("Failed to create CA Server handle")
         }
 
-        return CAServer(handle: serverHandle, logger: SimpleLogger())
+        return CAServer(handle: serverHandle, logger: RunarLogger(component: .transporter))
     }
 
     /// Configure admin SKIs

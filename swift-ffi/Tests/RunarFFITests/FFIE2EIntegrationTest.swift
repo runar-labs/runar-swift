@@ -1,6 +1,7 @@
 import Foundation
 @testable import RunarFFI
 import SwiftCBOR
+import SwiftCommon
 import XCTest
 
 // All FFI functionality is now accessed through high-level Swift FFI package APIs
@@ -26,8 +27,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
     // MARK: - Helper Functions
 
     /// Create test logger for CA operations
-    func createTestLogger() -> Logger {
-        return SimpleLogger()
+    func createTestLogger() -> RunarLogger {
+        return RunarLogger(component: .custom)
     }
     
     /// Create CString from Swift String

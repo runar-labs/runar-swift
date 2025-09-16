@@ -10,16 +10,16 @@ public enum LogLevel: Int32, CaseIterable {
     case info = 3
     case debug = 4
     case trace = 5
-    
+
     /// Human-readable description of the log level
     public var description: String {
         switch self {
-        case .off: return "OFF"
-        case .error: return "ERROR"
-        case .warn: return "WARN"
-        case .info: return "INFO"
-        case .debug: return "DEBUG"
-        case .trace: return "TRACE"
+        case .off: "OFF"
+        case .error: "ERROR"
+        case .warn: "WARN"
+        case .info: "INFO"
+        case .debug: "DEBUG"
+        case .trace: "TRACE"
         }
     }
 }
@@ -28,24 +28,23 @@ public enum LogLevel: Int32, CaseIterable {
 /// These are global FFI functions, not related to keys
 @available(macOS 11.0, *)
 public final class FFILogger {
-    
     // MARK: - Simple Logger Functions (No Error Handling)
-    
+
     /// Set the log level for the FFI (simple version)
     /// - Parameter level: Log level enum
     public static func setLogLevel(_ level: LogLevel) {
         rn_set_log_level(level.rawValue)
     }
-    
+
     /// Set the log level for the FFI (simple version) - legacy numeric support
     /// - Parameter level: Log level (0=Off, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
     @available(*, deprecated, message: "Use setLogLevel(_ level: LogLevel) instead")
     public static func setLogLevel(_ level: Int32) {
         rn_set_log_level(level)
     }
-    
+
     // MARK: - Advanced Logger Functions (With Error Handling)
-    
+
     /// Set the global logger level with error handling
     /// - Parameter level: Log level enum
     /// - Throws: FFIError if the operation fails
@@ -55,7 +54,7 @@ public final class FFILogger {
         }
         if let error = err { throw error }
     }
-    
+
     /// Set the global logger level with error handling - legacy numeric support
     /// - Parameter level: Log level (0=Off, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
     /// - Throws: FFIError if the operation fails
@@ -66,7 +65,7 @@ public final class FFILogger {
         }
         if let error = err { throw error }
     }
-    
+
     /// Set the node ID on the global logger
     /// - Parameter nodeId: Node ID to set on the logger
     /// - Throws: FFIError if the operation fails

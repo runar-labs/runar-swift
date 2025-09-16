@@ -193,7 +193,7 @@ public enum FFIError: LocalizedError {
             1020: { .loggerAlreadyInitialized($0) },
             1021: { .loggerNodeIdAlreadySet($0) },
             1022: { .loggerInvalidNodeId($0) },
-            1023: { .loggerInvalidLevel($0) }
+            1023: { .loggerInvalidLevel($0) },
         ]
 
         if let errorConstructor = errorMap[code] {

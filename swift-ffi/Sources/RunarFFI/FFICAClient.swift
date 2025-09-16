@@ -1,20 +1,21 @@
 import CRunarFFI
 import Foundation
 import SwiftCBOR
+import SwiftCommon
 
 // MARK: - CA Client Implementation
 
 @available(macOS 11.0, *)
 public class CAClient {
     private let handle: UnsafeMutableRawPointer
-    private let logger: Logger
+    private let logger: RunarLogger
     private let nodeKeys: UnsafeMutableRawPointer
-    
+
     public var rawHandle: UnsafeMutableRawPointer {
-        return handle
+        handle
     }
 
-    init(handle: UnsafeMutableRawPointer, logger: Logger, nodeKeys: UnsafeMutableRawPointer) {
+    init(handle: UnsafeMutableRawPointer, logger: RunarLogger, nodeKeys: UnsafeMutableRawPointer) {
         self.handle = handle
         self.logger = logger
         self.nodeKeys = nodeKeys
@@ -36,10 +37,15 @@ public class CAClient {
         config: CaClientConfigAll,
         nodeKeys: UnsafeMutableRawPointer
     ) throws -> CAClient {
+        let logger = RunarLogger(component: .transporter)
+        logger.trace("Creating CA client with config: bootstrap=\(config.bootstrap_server), " +
+            "authenticated=\(config.authenticated_server), network_id=\(config.network_id)")
+
         var out: UnsafeMutableRawPointer?
 
         // Convert config to CBOR
         let configData = try CodableCBOREncoder().encode(config)
+        logger.debug("Config encoded to CBOR: \(configData.count) bytes")
 
         let (_, err) = withRnError { errPtr in
             configData.withUnsafeBytes { raw in
@@ -52,13 +58,18 @@ public class CAClient {
                 )
             }
         }
-        if let error = err { throw error }
+        if let error = err {
+            logger.error("Failed to create CA client: \(error)")
+            throw error
+        }
 
         guard let clientHandle = out else {
+            logger.error("CA client creation failed: handle is nil")
             throw FFIError.operationFailed("Failed to create CA Client handle")
         }
 
-        return CAClient(handle: clientHandle, logger: SimpleLogger(), nodeKeys: nodeKeys)
+        logger.debug("CA client created successfully with handle: \(clientHandle)")
+        return CAClient(handle: clientHandle, logger: logger, nodeKeys: nodeKeys)
     }
 
     // MARK: - CA Client Operations
@@ -70,6 +81,9 @@ public class CAClient {
     /// - Returns: CBOR-encoded enrollment response
     /// - Throws: FFIError if the operation fails
     public func enroll(bootstrapAddr: String, request: Data) throws -> Data {
+        logger.trace("Starting enrollment with bootstrap address: \(bootstrapAddr), " +
+            "request size: \(request.count) bytes")
+
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
 
@@ -88,10 +102,17 @@ public class CAClient {
                 }
             }
         }
-        if let error = err { throw error }
+        if let error = err {
+            logger.error("Enrollment failed: \(error)")
+            throw error
+        }
 
-        guard let outPtr = out else { return Data() }
+        guard let outPtr = out else {
+            logger.error("Enrollment returned nil response")
+            return Data()
+        }
         let data = Data(bytes: outPtr, count: outLen)
+        logger.debug("Enrollment successful: response size \(outLen) bytes")
         rn_free(outPtr, outLen)
         return data
     }

@@ -1,11 +1,12 @@
 import CRunarFFI
 import Foundation
 import os
+import SwiftCommon
 
 /// Swift FFI Keys Manager - mirrors Rust KeysInner structure
 @available(macOS 11.0, *)
 public final class KeysFFI {
-    let logger: Logger
+    let logger: RunarLogger
     var mobileKeyManager: MobileKeyManager?
     var nodeKeyManager: NodeKeyManager?
     private var labelResolver: LabelResolver?
@@ -20,23 +21,28 @@ public final class KeysFFI {
         handle
     }
 
-    public init(logger: Logger? = nil) throws {
+    public init(logger: RunarLogger? = nil) throws {
         if let logger {
             self.logger = logger
         } else {
-            self.logger = SimpleLogger()
+            self.logger = RunarLogger(component: .custom)
         }
+        self.logger.trace("Initializing KeysFFI")
         localNodeInfo = Atomic<RunarFFINodeInfo?>(nil)
         autoPersist = false
 
         // Initialize the underlying FFI handle
+        self.logger.trace("Calling rn_keys_new to create keys handle")
         var out: UnsafeMutableRawPointer?
         let (result, error) = withRnError { errPtr in
             rn_keys_new(&out, errPtr)
         }
         guard result == 0, let keysHandle = out else {
+            self.logger.error("Failed to create keys handle: result=\(result), " +
+                "error=\(error?.localizedDescription ?? "unknown")")
             throw error ?? FFIError.operationFailed("Failed to create keys handle")
         }
+        self.logger.debug("KeysFFI initialized successfully with handle: \(keysHandle)")
         handle = keysHandle
     }
 
@@ -49,45 +55,59 @@ public final class KeysFFI {
     // MARK: - Initialization Functions
 
     public func initializeAsMobile() throws {
+        logger.trace("Initializing KeysFFI as mobile")
         guard let keysHandle = handle else {
+            logger.error("Keys handle not initialized")
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
         guard mobileKeyManager == nil else {
+            logger.error("Already initialized as mobile")
             throw FFIError.wrongManagerType("Already initialized as mobile")
         }
 
         // Call the Rust FFI to initialize
+        logger.trace("Calling rn_keys_init_as_mobile with handle: \(keysHandle)")
         let (_, error) = withRnError { errPtr in
             rn_keys_init_as_mobile(keysHandle, errPtr)
         }
-        if let error { throw error }
+        if let error {
+            logger.error("Failed to initialize as mobile: \(error)")
+            throw error
+        }
 
         let manager = MobileKeyManagerImpl(handle: keysHandle, logger: logger)
         mobileKeyManager = manager
         nodeKeyManager = nil
 
-        logger.info("Initialized as mobile key manager via FFI")
+        logger.debug("Initialized as mobile key manager via FFI")
     }
 
     public func initializeAsNode() throws {
+        logger.trace("Initializing KeysFFI as node")
         guard let keysHandle = handle else {
+            logger.error("Keys handle not initialized")
             throw FFIError.invalidHandle("Keys handle not initialized")
         }
         guard nodeKeyManager == nil else {
+            logger.error("Already initialized as node")
             throw FFIError.wrongManagerType("Already initialized as node")
         }
 
         // Call the Rust FFI to initialize
+        logger.trace("Calling rn_keys_init_as_node with handle: \(keysHandle)")
         let (_, error) = withRnError { errPtr in
             rn_keys_init_as_node(keysHandle, errPtr)
         }
-        if let error { throw error }
+        if let error {
+            logger.error("Failed to initialize as node: \(error)")
+            throw error
+        }
 
         let manager = NodeKeyManagerImpl(handle: keysHandle, logger: logger)
         nodeKeyManager = manager
         mobileKeyManager = nil
 
-        logger.info("Initialized as node key manager via FFI")
+        logger.debug("Successfully initialized as node key manager via FFI")
     }
 
     func validateMobileManager() throws -> MobileKeyManager {
@@ -146,7 +166,9 @@ public final class KeysFFI {
     ///   - profileKeys: Array of profile keys (optional)
     /// - Returns: Encrypted envelope data
     /// - Throws: FFIError if the operation fails
-    public func encryptWithEnvelope(data: Data, networkPublicKey: Data? = nil, profileKeys: [Data]? = nil) throws -> Data {
+    public func encryptWithEnvelope(data: Data,
+                                    networkPublicKey: Data? = nil,
+                                    profileKeys: [Data]? = nil) throws -> Data {
         let manager = try validateNodeManager()
         return try manager.encryptWithEnvelope(data: data, networkPublicKey: networkPublicKey, profileKeys: profileKeys)
     }
@@ -202,7 +224,6 @@ public final class KeysFFI {
         }
         return "Failed to retrieve error message"
     }
-
 
     /// Set local NodeInfo from CBOR buffer
     public func setLocalNodeInfo(_ nodeInfoCBOR: Data) throws {
@@ -412,5 +433,4 @@ public final class KeysFFI {
         rn_free(outPtr, outLen)
         return result
     }
-
 }

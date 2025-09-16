@@ -1,26 +1,9 @@
 import CRunarFFI
 import Foundation
+import SwiftCommon
 
-// Simple Logger for compatibility
-public protocol Logger {
-    func info(_ message: String)
-    func error(_ message: String)
-    func debug(_ message: String)
-}
-
-public struct SimpleLogger: Logger {
-    public func info(_ message: String) {
-        print("[INFO] \(message)")
-    }
-
-    public func error(_ message: String) {
-        print("[ERROR] \(message)")
-    }
-
-    public func debug(_ message: String) {
-        print("[DEBUG] \(message)")
-    }
-}
+// Use RunarLogger directly from SwiftCommon
+public typealias Logger = RunarLogger
 
 // MARK: - Mobile Key Manager Implementation
 

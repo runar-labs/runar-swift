@@ -1,6 +1,7 @@
 import Foundation
 @testable import RunarFFI
 import SwiftCBOR
+import SwiftCommon
 import XCTest
 
 // Import FFI functions
@@ -73,8 +74,8 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     // MARK: - Helper Functions
 
     /// Create test logger for CA operations
-    func createTestLogger() -> Logger {
-        return SimpleLogger()
+    func createTestLogger() -> RunarLogger {
+        return RunarLogger(component: .custom)
     }
     
     /// Create CString from Swift String

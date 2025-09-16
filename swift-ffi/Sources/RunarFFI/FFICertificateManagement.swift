@@ -178,9 +178,9 @@ public class EAKeyManager {
                                     cString.deallocate()
                                 }
                             }
-                            
+
                             let capabilitiesPtrs = capabilitiesCStrings.map { UnsafePointer<CChar>($0) as UnsafePointer<CChar>? }
-                            
+
                             rn_keys_ca_generate_enrollment_token(
                                 params.eaKeyHandle,
                                 cTokenId,

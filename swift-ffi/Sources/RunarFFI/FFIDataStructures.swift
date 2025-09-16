@@ -193,7 +193,7 @@ public struct CaClientConfigAll: Codable {
     public let max_retries: UInt32
     public let root_ca_der: Data // Required, not optional
     public let issuing_ca_der: Data // Required, not optional
-    
+
     public init(bootstrap_server: String, authenticated_server: String, network_id: String, request_timeout_seconds: UInt32, max_retries: UInt32, root_ca_der: Data, issuing_ca_der: Data) {
         self.bootstrap_server = bootstrap_server
         self.authenticated_server = authenticated_server
@@ -203,30 +203,30 @@ public struct CaClientConfigAll: Codable {
         self.root_ca_der = root_ca_der
         self.issuing_ca_der = issuing_ca_der
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         bootstrap_server = try container.decode(String.self, forKey: .bootstrap_server)
         authenticated_server = try container.decode(String.self, forKey: .authenticated_server)
         network_id = try container.decode(String.self, forKey: .network_id)
         request_timeout_seconds = try container.decode(UInt32.self, forKey: .request_timeout_seconds)
         max_retries = try container.decode(UInt32.self, forKey: .max_retries)
-        
+
         // Handle Data fields as CBOR bytes (matching Rust serde_bytes)
         if let rootCaDerBytes = try? container.decode([UInt8].self, forKey: .root_ca_der) {
             root_ca_der = Data(rootCaDerBytes)
         } else {
             root_ca_der = try container.decode(Data.self, forKey: .root_ca_der)
         }
-        
+
         if let issuingCaDerBytes = try? container.decode([UInt8].self, forKey: .issuing_ca_der) {
             issuing_ca_der = Data(issuingCaDerBytes)
         } else {
             issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
         }
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(bootstrap_server, forKey: .bootstrap_server)
@@ -237,7 +237,7 @@ public struct CaClientConfigAll: Codable {
         try container.encode(Array(root_ca_der), forKey: .root_ca_der)
         try container.encode(Array(issuing_ca_der), forKey: .issuing_ca_der)
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case bootstrap_server
         case authenticated_server
@@ -284,23 +284,23 @@ public struct SetupToken: Codable {
     public let node_agreement_public_key: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
     public let csr_der: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
     public let node_id: String
-    
+
     enum CodingKeys: String, CodingKey {
         case node_public_key
         case node_agreement_public_key
         case csr_der
         case node_id
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         node_public_key = try container.decode([UInt8].self, forKey: .node_public_key)
         node_agreement_public_key = try container.decode([UInt8].self, forKey: .node_agreement_public_key)
         csr_der = try container.decode([UInt8].self, forKey: .csr_der)
         node_id = try container.decode(String.self, forKey: .node_id)
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(node_public_key, forKey: .node_public_key)
@@ -315,7 +315,7 @@ public struct EnrollmentToken: Codable {
     public let body: EnrollmentTokenBody
     public let signature: [UInt8] // Rust uses Vec<u8>, Swift uses [UInt8]
     public let signer_id: String
-    
+
     enum CodingKeys: String, CodingKey {
         case body
         case signature
@@ -332,7 +332,7 @@ public struct EnrollmentTokenBody: Codable {
     public let expires_at: UInt64
     public let nonce: [UInt8] // Rust uses [u8; 16], Swift uses [UInt8]
     public let permissions: [String]
-    
+
     enum CodingKeys: String, CodingKey {
         case token_id
         case network_id
@@ -346,8 +346,8 @@ public struct EnrollmentTokenBody: Codable {
 
 // MARK: - Data Extensions
 
-extension Data {
-    public init?(hexString: String) {
+public extension Data {
+    init?(hexString: String) {
         let len = hexString.count / 2
         var data = Data(capacity: len)
         var i = hexString.startIndex

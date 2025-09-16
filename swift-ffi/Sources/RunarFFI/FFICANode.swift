@@ -1,5 +1,6 @@
 import CRunarFFI
 import Foundation
+import SwiftCommon
 
 // MARK: - CA Node Implementation
 
@@ -9,7 +10,7 @@ public class CANode {
     private let logger: Logger
     /// Get the internal handle for direct FFI calls
     public var ffiHandle: UnsafeMutableRawPointer {
-        return handle
+        handle
     }
 
     init(handle: UnsafeMutableRawPointer, logger: Logger) {
@@ -38,7 +39,7 @@ public class CANode {
             throw FFIError.operationFailed("Failed to create CA Node handle")
         }
 
-        return CANode(handle: caNodeHandle, logger: SimpleLogger())
+        return CANode(handle: caNodeHandle, logger: RunarLogger(component: .node))
     }
 
     /// Create shared CA Node reference for server usage
@@ -105,7 +106,7 @@ public class CANode {
     ///   - networkId: Network identifier
     /// - Throws: FFIError if the operation fails
     @available(*, deprecated,
-                message: "Use setupComplete() instead. This function has been removed for security reasons.")
+               message: "Use setupComplete() instead. This function has been removed for security reasons.")
     public func installIssuingCA(
         issuingCaKey _: Data,
         issuingCaCert _: Data,

@@ -3,11 +3,15 @@ import PackageDescription
 
 let package = Package(
     name: "swift-ffi",
+    platforms: [
+        .macOS(.v12)
+    ],
     products: [
         .library(name: "RunarFFI", targets: ["RunarFFI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
+        .package(path: "../swift-common"),
     ],
     targets: [
         .target(
@@ -19,7 +23,7 @@ let package = Package(
         ),
         .target(
             name: "RunarFFI",
-            dependencies: ["CRunarFFI"],
+            dependencies: ["CRunarFFI", .product(name: "SwiftCommon", package: "swift-common")],
             swiftSettings: [],
             linkerSettings: [
                 .linkedLibrary("runar_ffi"),

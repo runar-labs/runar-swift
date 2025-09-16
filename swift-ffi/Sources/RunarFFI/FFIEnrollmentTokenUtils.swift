@@ -182,7 +182,7 @@ public class FFIEnrollmentTokenUtils {
     public static func createTestEaPublicKeys() throws -> Data {
         let publicKeys = [
             Data(repeating: 0x01, count: 32),
-            Data(repeating: 0x02, count: 32)
+            Data(repeating: 0x02, count: 32),
         ]
 
         return Data(CBOR.array(publicKeys.map { .byteString(Array($0)) }).encode())

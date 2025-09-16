@@ -24,6 +24,7 @@ public enum Component: String, Sendable {
 }
 
 public enum LogLevel: String, Sendable {
+    case trace = "TRACE"
     case debug = "DEBUG"
     case info = "INFO"
     case warning = "WARNING"
@@ -68,6 +69,10 @@ public final class RunarLogger: Sendable {
 
     public func child(component: Component) -> RunarLogger {
         RunarLogger(component: component, config: config, nodeId: nodeId)
+    }
+
+    public func trace(_ message: String, file: String = #file, line: Int = #line, function: String = #function) {
+        log(level: .trace, message: message, file: file, line: line, function: function)
     }
 
     public func debug(_ message: String, file: String = #file, line: Int = #line, function: String = #function) {
@@ -119,7 +124,7 @@ public final class RunarLogger: Sendable {
     }
 
     private func shouldLog(level: LogLevel) -> Bool {
-        let levels: [LogLevel] = [.debug, .info, .warning, .error]
+        let levels: [LogLevel] = [.trace, .debug, .info, .warning, .error]
         guard let currentIndex = levels.firstIndex(of: config.level),
               let messageIndex = levels.firstIndex(of: level)
         else {
