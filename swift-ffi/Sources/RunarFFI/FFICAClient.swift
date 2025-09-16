@@ -124,13 +124,20 @@ public class CAClient {
     /// - Returns: CBOR-encoded renewal response
     /// - Throws: FFIError if the operation fails
     public func renew(authenticatedAddr: String, request: Data) throws -> Data {
+        logger.trace("CAClient.renew called with authenticatedAddr: \(authenticatedAddr), request size: \(request.count) bytes")
+        logger.trace("CAClient.renew handle: \(handle)")
+        
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
 
-        let (_, err) = withRnError { errPtr in
+        logger.trace("CAClient.renew calling rn_transport_ca_client_renew with handle: \(handle)")
+        let (result, err) = withRnError { errPtr in
+            logger.trace("CAClient.renew inside withRnError closure, calling FFI function")
             authenticatedAddr.withCString { cAuthenticatedAddr in
+                logger.trace("CAClient.renew authenticatedAddr converted to CString: \(String(cString: cAuthenticatedAddr))")
                 request.withUnsafeBytes { requestRaw in
-                    rn_transport_ca_client_renew(
+                    logger.trace("CAClient.renew request bytes prepared, calling rn_transport_ca_client_renew")
+                    let ffiResult = rn_transport_ca_client_renew(
                         handle,
                         cAuthenticatedAddr,
                         requestRaw.bindMemory(to: UInt8.self).baseAddress,
@@ -139,10 +146,17 @@ public class CAClient {
                         &outLen,
                         errPtr
                     )
+                    logger.trace("CAClient.renew rn_transport_ca_client_renew returned: \(ffiResult)")
+                    return ffiResult
                 }
             }
         }
-        if let error = err { throw error }
+        
+        logger.trace("CAClient.renew FFI call completed, result: \(result)")
+        if let error = err { 
+            logger.error("CAClient.renew FFI call failed: \(error)")
+            throw error 
+        }
 
         guard let outPtr = out else { return Data() }
         let data = Data(bytes: outPtr, count: outLen)
@@ -279,3 +293,4 @@ public class CAClient {
         return data
     }
 }
+

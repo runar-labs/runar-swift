@@ -46,17 +46,34 @@ class NodeKeyManagerImpl: NodeKeyManager {
     }
 
     func generateCSR() throws -> Data {
+        logger.trace("NodeKeyManagerImpl.generateCSR called with handle: \(handle)")
+        
         var out: UnsafeMutablePointer<UInt8>?
         var outLen = 0
 
-        let (_, err) = withRnError { errPtr in
-            rn_keys_node_generate_csr(handle, &out, &outLen, errPtr)
+        logger.trace("NodeKeyManagerImpl.generateCSR calling rn_keys_node_generate_csr with handle: \(handle)")
+        let (result, err) = withRnError { errPtr in
+            logger.trace("NodeKeyManagerImpl.generateCSR inside withRnError closure, calling FFI function")
+            let ffiResult = rn_keys_node_generate_csr(handle, &out, &outLen, errPtr)
+            logger.trace("NodeKeyManagerImpl.generateCSR rn_keys_node_generate_csr returned: \(ffiResult)")
+            return ffiResult
         }
-        if let error = err { throw error }
+        
+        logger.trace("NodeKeyManagerImpl.generateCSR FFI call completed, result: \(result)")
+        if let error = err { 
+            logger.error("NodeKeyManagerImpl.generateCSR FFI call failed: \(error)")
+            throw error 
+        }
 
-        guard let outPtr = out else { return Data() }
+        guard let outPtr = out else { 
+            logger.error("NodeKeyManagerImpl.generateCSR FFI returned null pointer")
+            return Data() 
+        }
+        
+        logger.trace("NodeKeyManagerImpl.generateCSR FFI returned \(outLen) bytes")
         let data = Data(bytes: outPtr, count: outLen)
         rn_free(outPtr, outLen)
+        logger.trace("NodeKeyManagerImpl.generateCSR returning \(data.count) bytes")
         return data
     }
 

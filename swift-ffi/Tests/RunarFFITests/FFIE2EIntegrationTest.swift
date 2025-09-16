@@ -629,10 +629,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Phase 4: Certificate Renewal via REAL QUIC mTLS
         // ==========================================
         print("\n🔄 PHASE 4: Certificate Renewal via REAL QUIC mTLS")
+        let testLogger = RunarLogger(component: .custom)
+        testLogger.trace("Starting Phase 4: Certificate Renewal")
 
         // Generate renewal CSR (returns SetupToken CBOR) - EXACTLY like Rust
         // Generate renewal CSR using high-level Swift FFI API
+        testLogger.trace("About to call nodeKeys.generateCSR() for renewal")
         let renewalSetupTokenCbor = try nodeKeys.generateCSR()
+        testLogger.trace("nodeKeys.generateCSR() completed successfully, got \(renewalSetupTokenCbor.count) bytes")
         print("   ✅ Renewal CSR generated (\(renewalSetupTokenCbor.count) bytes)")
         
         // Extract DER bytes from SetupToken CBOR (EXACTLY like Rust)
@@ -650,7 +654,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         
         // Renew via CA Client (authenticated endpoint) - EXACTLY like Rust
         // Renew certificate via CA Client using high-level Swift FFI API
+        testLogger.trace("About to call caClient.renew with authenticatedAddr: \(authenticatedAddr), request size: \(renewRequest.count)")
         let renewResponse = try caClient.renew(authenticatedAddr: authenticatedAddr, request: renewRequest)
+        testLogger.trace("caClient.renew completed successfully, got \(renewResponse.count) bytes response")
         print("   ✅ Certificate renewal successful (\(renewResponse.count) bytes response)")
 
         // Convert response to NodeCertificateMessage using high-level Swift FFI API
