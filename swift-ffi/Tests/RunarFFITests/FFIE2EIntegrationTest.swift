@@ -366,7 +366,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("\n🏗️  PHASE 1: Setup")
 
         // Set log level to TRACE for detailed debugging
-        try FFILogger.setLoggerLevel(.trace)
+        FFILogger.setLogLevel(.trace)
         print("   🔧 Set log level to TRACE for detailed debugging")
         
         // Initialize rustls crypto provider
@@ -587,6 +587,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let configCbor = try CodableCBOREncoder().encode(config)
         
         // Create CA Client using high-level Swift FFI API
+        // Debug: Check nodeKeys handle before creating CAClient
+        print("   🔍 DEBUG: nodeKeys.rawHandle = \(nodeKeys.rawHandle != nil ? "valid" : "nil")")
+        print("   🔍 DEBUG: nodeKeys handle value = \(nodeKeys.rawHandle != nil ? "valid" : "nil")")
+        
         let caClient = try CAClient.createWithConfig(config: config, nodeKeys: nodeKeys.rawHandle!)
         print("   ✅ CA Client created with all configuration for REAL QUIC mTLS")
 
@@ -595,6 +599,16 @@ final class FFIE2EIntegrationTest: XCTestCase {
         print("      Bootstrap address: \(bootstrapAddr)")
         print("      Request size: \(enrollRequest.count) bytes")
         print("      CSR size: \(csrDer.count) bytes")
+        
+        // DUMP: Save refactored test data for comparison
+        let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_refactor.cbor"))
+        try csrDer.write(to: projectPath.appendingPathComponent("csr_refactor.der"))
+        try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_refactor.cbor"))
+        print("   📁 DUMP: Saved refactored test data to project directory")
+        print("      - enroll_refactor.cbor: \(enrollRequest.count) bytes")
+        print("      - csr_refactor.der: \(csrDer.count) bytes") 
+        print("      - token_refactor.cbor: \(enrollmentTokenCbor.count) bytes")
         
         let enrollResponse = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: enrollRequest)
         print("   ✅ Enrollment successful (\(enrollResponse.count) bytes response)")

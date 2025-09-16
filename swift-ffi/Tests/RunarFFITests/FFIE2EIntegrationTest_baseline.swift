@@ -473,7 +473,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("\n🏗️  PHASE 1: Setup")
         
         // Set log level to TRACE for detailed debugging
-        try FFILogger.setLoggerLevel(.trace)
+        FFILogger.setLogLevel(.trace)
         print("   🔧 Set log level to TRACE for detailed debugging")
         
         // Initialize rustls crypto provider
@@ -875,6 +875,16 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("      Bootstrap address: \(bootstrapAddr)")
         print("      Request size: \(enrollRequest.count) bytes")
         print("      CSR size: \(csrDer.count) bytes")
+        
+        // DUMP: Save baseline test data for comparison
+        let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_baseline.cbor"))
+        try csrDer.write(to: projectPath.appendingPathComponent("csr_baseline.der"))
+        try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_baseline.cbor"))
+        print("   📁 DUMP: Saved baseline test data to project directory")
+        print("      - enroll_baseline.cbor: \(enrollRequest.count) bytes")
+        print("      - csr_baseline.der: \(csrDer.count) bytes")
+        print("      - token_baseline.cbor: \(enrollmentTokenCbor.count) bytes")
         
         var enrollResponsePtr: UnsafeMutablePointer<UInt8>?
         var enrollResponseLen: Int = 0
