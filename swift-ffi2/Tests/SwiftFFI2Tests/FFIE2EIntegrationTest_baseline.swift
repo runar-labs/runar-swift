@@ -85,66 +85,6 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
     // MARK: - Data Structures for CBOR Serialization
 
-    /// SimpleEnrollmentToken struct (deprecated - use the correct one later in file)
-    struct SimpleEnrollmentToken: Codable {
-        let tokenId: String
-        let networkId: String
-        let subject: String
-        let validFrom: UInt64
-        let validTo: UInt64
-        let nonce: Data
-        let capabilities: [String]
-        let signature: Data
-
-        enum CodingKeys: String, CodingKey {
-            case tokenId = "token_id"
-            case networkId = "network_id"
-            case subject
-            case validFrom = "valid_from"
-            case validTo = "valid_to"
-            case nonce
-            case capabilities
-            case signature
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-
-            tokenId = try container.decode(String.self, forKey: .tokenId)
-            networkId = try container.decode(String.self, forKey: .networkId)
-            subject = try container.decode(String.self, forKey: .subject)
-            validFrom = try container.decode(UInt64.self, forKey: .validFrom)
-            validTo = try container.decode(UInt64.self, forKey: .validTo)
-
-            // Handle Data fields as CBOR bytes (matching Rust serde_bytes)
-            if let nonceBytes = try? container.decode([UInt8].self, forKey: .nonce) {
-                nonce = Data(nonceBytes)
-            } else {
-                nonce = try container.decode(Data.self, forKey: .nonce)
-            }
-
-            capabilities = try container.decode([String].self, forKey: .capabilities)
-
-            if let signatureBytes = try? container.decode([UInt8].self, forKey: .signature) {
-                signature = Data(signatureBytes)
-            } else {
-                signature = try container.decode(Data.self, forKey: .signature)
-            }
-        }
-
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(tokenId, forKey: .tokenId)
-            try container.encode(networkId, forKey: .networkId)
-            try container.encode(subject, forKey: .subject)
-            try container.encode(validFrom, forKey: .validFrom)
-            try container.encode(validTo, forKey: .validTo)
-            try container.encode(Array(nonce), forKey: .nonce)
-            try container.encode(capabilities, forKey: .capabilities)
-            try container.encode(Array(signature), forKey: .signature)
-        }
-    }
-
     // Use the correct CsrEnrollRequest structure defined later in the file
 
     /// Validate certificate chain to ensure proper signing relationships
