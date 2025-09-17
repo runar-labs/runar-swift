@@ -29,4 +29,16 @@ Error handling for oversized messages
 
 The other sceanrions, if possible (if we have FFI APIS for it) we shuold also implement in swift to make sure  all works over the FFI as expected and as it works in the Rust side.
 
+
+Goal #5 add Discovery API and a test to validate it and show how ti works in the swift API -rust test as refernce to minic is: /Users/rafael/dev/runar-swift/runar-rust/runar-node-tests/src/network/multicast_discovery_test.rs
+
 Overal goal is to have a swift ffi wrapper liabrary with all the functionality that is available in /Users/rafael/dev/runar-swift/runar-rust/runar-ffi and test it properly with proper e2e tsts taht validates and show the whole functionality.
+
+Comparing the first attempt, which had issues, but it was more complete we found:
+Gap Analysis
+Swift-FFI had some features that Swift-FFI2 doesn't:
+Device keystore integration
+Discovery service
+Transport layer abstraction
+Persistence functionality
+Complex key management
