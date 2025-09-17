@@ -72,6 +72,26 @@ public func withRnError(_ body: (UnsafeMutablePointer<RNAPIRnError>) -> Int32) -
     return withRnErrorCode(body)
 }
 
+// MARK: - Copy-and-free helpers for FFI outputs
+
+@inline(__always)
+private func copyBytesAndFree(_ pointer: UnsafeMutablePointer<UInt8>?, _ length: Int) throws -> Data {
+    guard let pointer = pointer, length > 0 else {
+        throw FFIError.memoryError("Invalid FFI buffer")
+    }
+    let data = Data(bytes: pointer, count: length)
+    rn_free(pointer, length)
+    return data
+}
+
+@inline(__always)
+private func copyCStringAndFree(_ pointer: UnsafeMutablePointer<CChar>?) throws -> String {
+    guard let pointer = pointer else { throw FFIError.memoryError("Invalid FFI string") }
+    let string = String(cString: pointer)
+    rn_string_free(pointer)
+    return string
+}
+
 // MARK: - Data Extensions
 
 extension Data {
@@ -459,10 +479,10 @@ public class EAKeyManager {
             rn_keys_ca_get_ea_public_key(handle, &outPtr, &outLen, errPtr)
         }
         if let error = err { throw error }
-        guard code == 0, let raw = outPtr, outLen > 0 else {
+        guard code == 0 else {
             throw FFIError.operationFailed("Failed to get EA public key")
         }
-        return Data(bytes: raw, count: outLen)
+        return try copyBytesAndFree(outPtr, outLen)
     }
     
     public func generateEnrollmentToken(params: EnrollmentTokenParams) throws -> Data {
@@ -470,13 +490,13 @@ public class EAKeyManager {
         let capabilityCStringPtrs: [UnsafeMutablePointer<CChar>] = params.capabilities.map { capability in
             let length = capability.lengthOfBytes(using: .utf8) + 1
             let buf = UnsafeMutablePointer<CChar>.allocate(capacity: length)
-            _ = capability.withCString { src in
+            capability.withCString { src in
                 buf.initialize(from: src, count: length)
             }
             return buf
         }
         defer { capabilityCStringPtrs.forEach { $0.deallocate() } }
-        var capsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>(
+        let capsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>(
             start: .allocate(capacity: params.capabilities.count),
             count: params.capabilities.count
         )
@@ -505,10 +525,10 @@ public class EAKeyManager {
             }
         }
         if let error = err { throw error }
-        guard code == 0, let raw = tokenPtr, tokenLen > 0 else {
+        guard code == 0 else {
             throw FFIError.operationFailed("Failed to generate enrollment token")
         }
-        return Data(bytes: raw, count: tokenLen)
+        return try copyBytesAndFree(tokenPtr, tokenLen)
     }
     
     public static func free(_ handle: UnsafeMutableRawPointer) {
@@ -576,6 +596,10 @@ public class CANode {
     public static func freeShared(_ handle: UnsafeMutableRawPointer) {
         rn_keys_ca_node_free_shared(handle)
     }
+
+    deinit {
+        rn_keys_ca_node_free(ffiHandle)
+    }
 }
 
 public class CANodeManager {
@@ -635,11 +659,459 @@ public class CAServer {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to stop CA Server") }
     }
+
+    public func start() throws {
+        guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_ca_server_start(server, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to start CA Server") }
+    }
+
+    public func bootstrapAddress() throws -> String {
+        guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        var out: UnsafeMutablePointer<CChar>?
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_ca_server_get_bootstrap_addr(server, &out, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get bootstrap address") }
+        return try copyCStringAndFree(out)
+    }
+
+    public func authenticatedAddress() throws -> String {
+        guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        var out: UnsafeMutablePointer<CChar>?
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_ca_server_get_authenticated_addr(server, &out, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get authenticated address") }
+        return try copyCStringAndFree(out)
+    }
+
+    public func configureAdminSkis(_ skisCbor: Data) throws {
+        guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        let (code, err) = withRnErrorCode { errPtr in
+            skisCbor.withUnsafeBytes { raw in
+                rn_transport_ca_server_configure_admin_skis(
+                    server,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    skisCbor.count,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to configure admin SKIs") }
+    }
     
     deinit {
         if let server = handle {
             rn_transport_ca_server_free(server)
             handle = nil
         }
+    }
+}
+
+// MARK: - Shared CA Node Wrapper
+
+public final class SharedCANode {
+    public let handle: UnsafeMutableRawPointer
+
+    public init(handle: UnsafeMutableRawPointer) {
+        self.handle = handle
+    }
+
+    public func addAdminSki(_ ski: String) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            ski.withCString { cSki in
+                rn_keys_ca_node_add_admin_ski(self.handle, cSki, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to add admin SKI") }
+    }
+
+    deinit {
+        rn_keys_ca_node_free_shared(handle)
+    }
+}
+
+// MARK: - CA Node Extensions
+
+public extension CANode {
+    func getRootCACertificate() throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_ca_node_get_root_ca_certificate(self.ffiHandle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get Root CA certificate") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    func getIssuingCACertificate() throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_ca_node_get_issuing_ca_certificate(self.ffiHandle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get Issuing CA certificate") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    func createSharedWrapped() throws -> SharedCANode {
+        let raw = try self.createShared()
+        return SharedCANode(handle: raw)
+    }
+
+    func handleCRL(networkId: String) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            networkId.withCString { cNet in
+                rn_keys_ca_node_handle_crl(self.ffiHandle, cNet, &outPtr, &outLen, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to generate CRL-lite") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    func revokeToken(_ tokenId: String) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            tokenId.withCString { cToken in
+                rn_keys_ca_node_revoke_token(self.ffiHandle, cToken, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to revoke token") }
+    }
+}
+
+// MARK: - Keys Wrapper
+
+public final class KeysHandle {
+    public let handle: UnsafeMutableRawPointer
+
+    public init() throws {
+        var out: UnsafeMutableRawPointer?
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_new(&out, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0, let handle = out else { throw FFIError.operationFailed("Failed to create keys handle") }
+        self.handle = handle
+    }
+
+    public func initializeAsNode() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_init_as_node(self.handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to initialize as node") }
+    }
+
+    public func initializeAsMobile() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_init_as_mobile(self.handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to initialize as mobile") }
+    }
+
+    public func generateCsrSetupToken() throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_node_generate_csr(self.handle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to generate CSR setup token") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func installCertificate(_ certMessage: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            certMessage.withUnsafeBytes { raw in
+                rn_keys_node_install_certificate(
+                    self.handle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    certMessage.count,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to install certificate") }
+    }
+
+    public func getQuicCertificateConfig() throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_node_get_quic_certificate_config(self.handle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get QUIC certificate config") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func getNodeCertificate() throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_node_get_node_certificate(self.handle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get node certificate") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func deriveUserProfileKey(label: String) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            label.withCString { cLabel in
+                rn_keys_node_derive_user_profile_key(self.handle, cLabel, &outPtr, &outLen, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to derive user profile key") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func getCompactId(for key: Data) throws -> String {
+        var outPtr: UnsafeMutablePointer<CChar>?
+        let (code, err) = withRnErrorCode { errPtr in
+            key.withUnsafeBytes { raw in
+                rn_keys_get_compact_id(raw.bindMemory(to: UInt8.self).baseAddress, key.count, &outPtr, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get compact ID") }
+        return try copyCStringAndFree(outPtr)
+    }
+
+    public func encryptWithEnvelope(plaintext: Data, profileKeys: [Data], networkKey: Data? = nil) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            plaintext.withUnsafeBytes { ptRaw in
+                var keyPointers: [UnsafePointer<UInt8>?] = []
+                var keyLengths: [Int] = []
+                keyPointers.reserveCapacity(profileKeys.count)
+                keyLengths.reserveCapacity(profileKeys.count)
+                for k in profileKeys {
+                    k.withUnsafeBytes { keyRaw in
+                        keyPointers.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
+                        keyLengths.append(k.count)
+                    }
+                }
+                return keyPointers.withUnsafeBufferPointer { keysPtr in
+                    keyLengths.withUnsafeBufferPointer { lensPtr in
+                        rn_keys_node_encrypt_with_envelope(
+                            self.handle,
+                            ptRaw.bindMemory(to: UInt8.self).baseAddress,
+                            plaintext.count,
+                            nil,
+                            0,
+                            keysPtr.baseAddress,
+                            lensPtr.baseAddress,
+                            profileKeys.count,
+                            &outPtr,
+                            &outLen,
+                            errPtr
+                        )
+                    }
+                }
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to encrypt with envelope") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func decryptWithProfile(envelope: Data, profileId: String) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            envelope.withUnsafeBytes { envRaw in
+                profileId.withCString { cId in
+                    rn_keys_node_decrypt_with_profile(
+                        self.handle,
+                        envRaw.bindMemory(to: UInt8.self).baseAddress,
+                        envelope.count,
+                        cId,
+                        &outPtr,
+                        &outLen,
+                        errPtr
+                    )
+                }
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt with profile") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func mobileFromEnrollResponse(_ response: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            response.withUnsafeBytes { raw in
+                rn_keys_mobile_from_enroll_response(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to convert enroll response") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func mobileFromRenewResponse(_ response: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            response.withUnsafeBytes { raw in
+                rn_keys_mobile_from_renew_response(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to convert renew response") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    deinit {
+        rn_keys_free(handle)
+    }
+}
+
+// MARK: - CA Client Wrapper
+
+public final class CAClient {
+    public let handle: UnsafeMutableRawPointer
+
+    public init(config: CaClientConfigAll, nodeKeys: KeysHandle) throws {
+        let cbor = try CodableCBOREncoder().encode(config)
+        var out: UnsafeMutableRawPointer?
+        let (code, err) = withRnErrorCode { errPtr in
+            cbor.withUnsafeBytes { raw in
+                rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, cbor.count, nodeKeys.handle, &out, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0, let handle = out else { throw FFIError.operationFailed("Failed to create CA client") }
+        self.handle = handle
+    }
+
+    public func enroll(bootstrapAddress: String, request: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            bootstrapAddress.withCString { cAddr in
+                request.withUnsafeBytes { raw in
+                    rn_transport_ca_client_enroll(self.handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
+                }
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to enroll") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func renew(authenticatedAddress: String, request: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            authenticatedAddress.withCString { cAddr in
+                request.withUnsafeBytes { raw in
+                    rn_transport_ca_client_renew(self.handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
+                }
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to renew certificate") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func revoke(authenticatedAddress: String, request: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            authenticatedAddress.withCString { cAddr in
+                request.withUnsafeBytes { raw in
+                    rn_transport_ca_client_revoke(self.handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
+                }
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to revoke certificate") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func getStatus(authenticatedAddress: String, networkId: String) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            authenticatedAddress.withCString { cAddr in
+                networkId.withCString { cNet in
+                    rn_transport_ca_client_get_status(self.handle, cAddr, cNet, &outPtr, &outLen, errPtr)
+                }
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get status") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    public func getChain(bootstrapAddress: String, networkId: String) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            bootstrapAddress.withCString { cAddr in
+                networkId.withCString { cNet in
+                    rn_transport_ca_client_get_chain(self.handle, cAddr, cNet, &outPtr, &outLen, errPtr)
+                }
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get chain") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    deinit {
+        rn_transport_ca_client_free(handle)
+    }
+}
+
+// MARK: - Certificate Utilities
+
+public enum CertificateUtils {
+    public static func extractSki(from certificateDer: Data) throws -> String {
+        var outPtr: UnsafeMutablePointer<CChar>?
+        let (code, err) = withRnErrorCode { errPtr in
+            certificateDer.withUnsafeBytes { raw in
+                rn_keys_certificate_extract_ski(raw.bindMemory(to: UInt8.self).baseAddress, certificateDer.count, &outPtr, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to extract SKI") }
+        return try copyCStringAndFree(outPtr)
+    }
+
+    public static func getSerialHex(from certificateDer: Data) throws -> String {
+        var outPtr: UnsafeMutablePointer<CChar>?
+        let (code, err) = withRnErrorCode { errPtr in
+            certificateDer.withUnsafeBytes { raw in
+                rn_keys_certificate_get_serial(raw.bindMemory(to: UInt8.self).baseAddress, certificateDer.count, &outPtr, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get serial") }
+        return try copyCStringAndFree(outPtr)
     }
 }
