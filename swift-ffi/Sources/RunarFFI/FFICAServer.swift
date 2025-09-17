@@ -106,10 +106,12 @@ public class CAServer {
         }
         if let error = err { throw error }
 
-        defer { if let outString = out { rn_string_free(outString) } }
-        let address = out.map { String(cString: $0) } ?? ""
-        bootstrapAddr = address
-        return address
+        guard let outString = out else { return "" }
+        let address = String(cString: outString)  // This creates a String that references the C string
+        let copiedAddress = String(address.utf8)  // This creates a copy by converting to UTF8 and back
+        rn_string_free(outString)  // Safe to free after copying
+        bootstrapAddr = copiedAddress
+        return copiedAddress
     }
 
     /// Get authenticated address
@@ -123,10 +125,12 @@ public class CAServer {
         }
         if let error = err { throw error }
 
-        defer { if let outString = out { rn_string_free(outString) } }
-        let address = out.map { String(cString: $0) } ?? ""
-        authenticatedAddr = address
-        return address
+        guard let outString = out else { return "" }
+        let address = String(cString: outString)  // This creates a String that references the C string
+        let copiedAddress = String(address.utf8)  // This creates a copy by converting to UTF8 and back
+        rn_string_free(outString)  // Safe to free after copying
+        authenticatedAddr = copiedAddress
+        return copiedAddress
     }
 
     // MARK: - Convenience Properties

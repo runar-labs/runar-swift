@@ -72,8 +72,11 @@ public final class FFITransport {
         var len = 0
         let (_, error) = withRnError { rn_transport_local_addr(transportHandle, &cstr, &len, $0) }
         if let error { throw error }
-        defer { if let cString = cstr { rn_string_free(cString) } }
-        return cstr.map { String(cString: $0) } ?? ""
+        guard let cString = cstr else { return "" }
+        let result = String(cString: cString)  // This creates a String that references the C string
+        let copiedResult = String(result.utf8)  // This creates a copy by converting to UTF8 and back
+        rn_string_free(cString)  // Safe to free after copying
+        return copiedResult
     }
 
     public func connectPeer(_ peerInfoCBOR: Data) throws {

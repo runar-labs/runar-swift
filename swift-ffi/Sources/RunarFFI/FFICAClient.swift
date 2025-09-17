@@ -111,9 +111,9 @@ public class CAClient {
             logger.error("Enrollment returned nil response")
             return Data()
         }
-        let data = Data(bytes: outPtr, count: outLen)
+        let data = Data(bytes: outPtr, count: outLen)  // This copies the data
         logger.debug("Enrollment successful: response size \(outLen) bytes")
-        rn_free(outPtr, outLen)
+        rn_free(outPtr, outLen)  // Safe to free after copying
         return data
     }
 
@@ -159,8 +159,8 @@ public class CAClient {
         }
 
         guard let outPtr = out else { return Data() }
-        let data = Data(bytes: outPtr, count: outLen)
-        rn_free(outPtr, outLen)
+        let data = Data(bytes: outPtr, count: outLen)  // This copies the data
+        rn_free(outPtr, outLen)  // Safe to free after copying
         return data
     }
 
@@ -192,8 +192,8 @@ public class CAClient {
         if let error = err { throw error }
 
         guard let outPtr = out else { return Data() }
-        let data = Data(bytes: outPtr, count: outLen)
-        rn_free(outPtr, outLen)
+        let data = Data(bytes: outPtr, count: outLen)  // This copies the data
+        rn_free(outPtr, outLen)  // Safe to free after copying
         return data
     }
 

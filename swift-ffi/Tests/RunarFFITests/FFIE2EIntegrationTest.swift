@@ -21,23 +21,22 @@ import XCTest
 /// 7. Token revocation over FFI with REAL QUIC mTLS
 @available(macOS 11.0, *)
 final class FFIE2EIntegrationTest: XCTestCase {
-
     // MARK: - Test Helper Functions
 
     // MARK: - Helper Functions
 
     /// Create test logger for CA operations
     func createTestLogger() -> RunarLogger {
-        return RunarLogger(component: .custom)
+        RunarLogger(component: .custom)
     }
-    
+
     /// Create CString from Swift String
     func createCString(_ string: String) -> UnsafeMutablePointer<CChar> {
-        return strdup(string)!
+        strdup(string)!
     }
-    
+
     // MARK: - Data Structures for CBOR Serialization
-    
+
     // All data structures are now imported from the Swift FFI package
 
     /// Validate certificate chain to ensure proper signing relationships
@@ -84,7 +83,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let eaKeyManager = EAKeyManager(logger: createTestLogger())
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
-        
+
         let now = UInt64(Date().timeIntervalSince1970)
         let tokenIdCstr = createCString(tokenId)
         let networkIdCstr = createCString(networkId)
@@ -93,7 +92,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let capabilities = ["enroll"]
         let capabilitiesCstr = capabilities.map { createCString($0) }
         defer { capabilitiesCstr.forEach { free($0) } }
-        
+
         let params = EAKeyManager.EnrollmentTokenParams(
             eaKeyHandle: eaKeyHandle,
             tokenId: String(cString: tokenIdCstr),
@@ -104,31 +103,31 @@ final class FFIE2EIntegrationTest: XCTestCase {
             nonce: nonce,
             capabilities: capabilities
         )
-        
+
         return try eaKeyManager.generateEnrollmentToken(params: params)
     }
-    
+
     /// Test CA Node creation only
     func testCANodeCreation() throws {
         print("\n🚀 Starting CA Node creation test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Clean up
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node creation test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key creation
     func testCANodeWithEAKey() throws {
         print("\n🚀 Starting CA Node + EA Key test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
 
@@ -145,34 +144,34 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Clean up
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key + Setup
     func testCANodeWithEASetup() throws {
         print("\n🚀 Starting CA Node + EA Key + Setup test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -186,34 +185,34 @@ final class FFIE2EIntegrationTest: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Clean up
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key + Setup test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key + Setup + Shared CA Node
     func testCANodeWithShared() throws {
         print("\n🚀 Starting CA Node + EA Key + Setup + Shared test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -227,39 +226,39 @@ final class FFIE2EIntegrationTest: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Create shared CA Node reference
         let sharedCaNode = try caNode.createShared()
         print("   ✅ Shared CA Node created")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key + Setup + Shared test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key + Setup + Shared CA Node + Server Creation
     func testCANodeWithServer() throws {
         print("\n🚀 Starting CA Node + EA Key + Setup + Shared + Server test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -273,7 +272,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Create shared CA Node reference
         let sharedCaNode = try caNode.createShared()
         print("   ✅ Shared CA Node created")
@@ -281,45 +280,45 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Create CA Server (EXACTLY like Rust)
         let caServer = try CAServer.create(
             config: CaServerConfig(
-            bootstrapBind: "127.0.0.1:0",
-            authenticatedBind: "127.0.0.1:0",
-            networkId: "test_network",
-            rateLimitPerMinute: 5,
-            rateLimitPerHour: 30
+                bootstrapBind: "127.0.0.1:0",
+                authenticatedBind: "127.0.0.1:0",
+                networkId: "test_network",
+                rateLimitPerMinute: 5,
+                rateLimitPerHour: 30
             ),
             sharedCaNode: sharedCaNode
         )
         print("   ✅ CA Server created")
-        
+
         // Clean up
         try caServer.stop()
         CANode.freeShared(sharedCaNode)
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key + Setup + Shared + Server test completed successfully!")
     }
-    
+
     /// Test minimal CA setup to isolate the segfault issue
     func testMinimalCASetup() throws {
         print("\n🚀 Starting minimal CA setup test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA Node setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -333,15 +332,15 @@ final class FFIE2EIntegrationTest: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Try to create shared CA Node reference
         let sharedCaNode = try caNode.createShared()
         print("   ✅ Shared CA Node created")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 Minimal CA setup test completed successfully!")
     }
 
@@ -358,50 +357,49 @@ final class FFIE2EIntegrationTest: XCTestCase {
     /// 6. Rate limiting over FFI with REAL QUIC mTLS
     /// 7. Token revocation over FFI with REAL QUIC mTLS
     func testFFIFullTransportE2EQuicMtls() throws {
-        print("\n🚀 Starting FFI Full-transport E2E QUIC mTLS test")
+        // Set log level to TRACE for detailed debugging
+        FFILogger.setLogLevel(.trace)
+
+        // Test Swift logger
+        let testLogger = RunarLogger(component: .custom)
+        testLogger.info("SWIFT: Starting FFI Full-transport E2E QUIC mTLS test")
 
         // ==========================================
         // Phase 1: Setup
         // ==========================================
-        print("\n🏗️  PHASE 1: Setup")
+        testLogger.info("SWIFT: Phase 1 - Setup")
 
-        // Set log level to TRACE for detailed debugging
-        FFILogger.setLogLevel(.trace)
-        print("   🔧 Set log level to TRACE for detailed debugging")
-        
         // Initialize rustls crypto provider
         // Note: Swift uses system crypto, but we ensure proper initialization
-        print("   🔧 Initializing crypto provider...")
-        
+        testLogger.trace("SWIFT: Initializing crypto provider...")
+
         // Create keys handles using high-level Swift FFI APIs
         let nodeKeys = try KeysFFI(logger: createTestLogger())
         let mobileKeys = try KeysFFI(logger: createTestLogger())
-        
+
         // Initialize as node and mobile (EXACTLY like Rust)
         try nodeKeys.initializeAsNode()
         try mobileKeys.initializeAsMobile()
-        print("   ✅ Node and mobile keys created and initialized")
-
-        print("   ✅ Keys handles created and initialized")
+        testLogger.debug("SWIFT: Node and mobile keys created and initialized")
 
         // ==========================================
         // Phase 2: CA Node and Server
         // ==========================================
-        print("\n🏗️  PHASE 2: CA Node and Server")
+        testLogger.info("SWIFT: Phase 2 - CA Node and Server")
 
         // Create CA Node using high-level Swift FFI API
         let caNode = try CANode.create()
-        print("   ✅ CA Node created")
-        
+        testLogger.debug("SWIFT: CA Node created")
+
         // Create EA key pair using high-level Swift FFI API (private key stays internal)
         let eaKeyManager = EAKeyManager(logger: createTestLogger())
         let eaKeyHandle = try eaKeyManager.createKeyPair()
-        print("   ✅ EA key pair created (private key stays internal)")
-        
+        testLogger.debug("SWIFT: EA key pair created (private key stays internal)")
+
         // Get EA public key using high-level Swift FFI API (only public key exposed)
         let eaPublicKeyCbor = try eaKeyManager.getPublicKey(eaKeyHandle)
-        print("   ✅ EA public key retrieved (\(eaPublicKeyCbor.count) bytes)")
-        
+        testLogger.debug("SWIFT: EA public key retrieved (\(eaPublicKeyCbor.count) bytes)")
+
         // Complete CA setup using high-level Swift FFI API (no private keys exposed)
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -414,14 +412,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
             networkId: networkId
         )
         try caNode.setupComplete(params: setupParams)
-        print("   ✅ CA Node setup complete (no private keys exposed)")
+        testLogger.debug("SWIFT: CA Node setup complete (no private keys exposed)")
 
-        print("   ✅ CA Node configured with issuing CA and enrollment authority")
+        testLogger.debug("SWIFT: CA Node configured with issuing CA and enrollment authority")
 
         // Create shared CA Node reference for server usage using high-level Swift FFI API
         let sharedCaNode = try caNode.createShared()
-        print("   ✅ Shared CA Node created")
-        
+        testLogger.debug("SWIFT: Shared CA Node created")
+
         // Create CA Server config CBOR (EXACTLY like Rust)
         let customConfig = CustomCaServerConfig(
             bootstrap_bind: "127.0.0.1:0",
@@ -430,27 +428,27 @@ final class FFIE2EIntegrationTest: XCTestCase {
             rate_limit_per_minute: 5,
             rate_limit_per_hour: 30
         )
-        
+
         let serverConfigCbor = try CodableCBOREncoder().encode(customConfig)
-        
+
         // Create CA Server using high-level Swift FFI API
         let caServer = try CAServer.create(
             config: CaServerConfig(
-            bootstrapBind: "127.0.0.1:0",
-            authenticatedBind: "127.0.0.1:0",
-            networkId: "test_network",
-            rateLimitPerMinute: 5,
-            rateLimitPerHour: 30
+                bootstrapBind: "127.0.0.1:0",
+                authenticatedBind: "127.0.0.1:0",
+                networkId: "test_network",
+                rateLimitPerMinute: 5,
+                rateLimitPerHour: 30
             ),
             sharedCaNode: sharedCaNode
         )
-        print("   ✅ CA Server created")
-        
+        testLogger.debug("SWIFT: CA Server created")
+
         // Note: Server starts with empty admin SKIs, real admin SKI will be added when needed for revocation
 
         // Start CA Server using high-level Swift FFI API
         try caServer.start()
-        print("   ✅ CA Server started")
+        testLogger.debug("SWIFT: CA Server started")
 
         // Wait a moment for server to fully start
         Thread.sleep(forTimeInterval: 0.1)
@@ -459,46 +457,46 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let bootstrapAddr = try caServer.getBootstrapAddr()
         let authenticatedAddr = try caServer.getAuthenticatedAddr()
 
-        print("   ✅ CA Server started with addresses")
-        print("      Bootstrap: \(bootstrapAddr)")
-        print("      Authenticated: \(authenticatedAddr)")
+        testLogger.debug("SWIFT: CA Server started with addresses")
+        testLogger.trace("SWIFT: Bootstrap: \(bootstrapAddr)")
+        testLogger.trace("SWIFT: Authenticated: \(authenticatedAddr)")
 
         // Test basic network connectivity (EXACTLY like Rust)
-        print("   🔍 Testing basic network connectivity...")
+        testLogger.trace("SWIFT: Testing basic network connectivity...")
         if bootstrapAddr.range(of: ":") != nil {
-            print("   ✅ Bootstrap address resolved: \(bootstrapAddr)")
+            testLogger.trace("SWIFT: Bootstrap address resolved: \(bootstrapAddr)")
         } else {
-            print("   ❌ Bootstrap address resolution failed")
+            testLogger.error("SWIFT: Bootstrap address resolution failed")
         }
 
         if authenticatedAddr.range(of: ":") != nil {
-            print("   ✅ Authenticated address resolved: \(authenticatedAddr)")
+            testLogger.trace("SWIFT: Authenticated address resolved: \(authenticatedAddr)")
         } else {
-            print("   ❌ Authenticated address resolution failed")
+            testLogger.error("SWIFT: Authenticated address resolution failed")
         }
 
         // ==========================================
         // Phase 3: Mobile Node (client role) CSR and Enrollment
         // ==========================================
-        print("\n📱 PHASE 3: Mobile Node CSR and Enrollment")
+        testLogger.info("SWIFT: Phase 3 - Mobile Node CSR and Enrollment")
 
         // Generate CSR on node (returns SetupToken CBOR) - EXACTLY like Rust
         // Generate CSR using high-level Swift FFI API
         let setupTokenCbor = try nodeKeys.generateCSR()
-        print("   ✅ CSR generated (\(setupTokenCbor.count) bytes)")
-        
+        testLogger.debug("SWIFT: CSR generated (\(setupTokenCbor.count) bytes)")
+
         // Use FFI to extract CSR DER from SetupToken (EXACTLY like Rust)
         // The FFI should handle CBOR deserialization internally
-        let csrDer = setupTokenCbor  // For now, use the raw CBOR data
-        print("   ✅ CSR DER extracted from SetupToken (\(csrDer.count) bytes)")
-        
+        let csrDer = setupTokenCbor // For now, use the raw CBOR data
+        testLogger.debug("SWIFT: CSR DER extracted from SetupToken (\(csrDer.count) bytes)")
+
         // Create enrollment token using new secure FFI (private key stays internal) - EXACTLY like Rust
         let now = UInt64(Date().timeIntervalSince1970)
         let tokenId = "test_token_001"
         let subject = "test_subject"
         let nonce = Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
         let capabilities = ["enroll"]
-        
+
         // Generate enrollment token using high-level Swift FFI API
         let params = EAKeyManager.EnrollmentTokenParams(
             eaKeyHandle: eaKeyHandle, // Use the handle from the manager
@@ -511,26 +509,26 @@ final class FFIE2EIntegrationTest: XCTestCase {
             capabilities: capabilities
         )
         let enrollmentTokenCbor = try eaKeyManager.generateEnrollmentToken(params: params)
-        print("   ✅ Enrollment token created using high-level Swift FFI API")
-        
+        testLogger.debug("SWIFT: Enrollment token created using high-level Swift FFI API")
+
         // Debug: Print raw CBOR data from FFI
-        print("   🔍 Debug: Raw enrollment token CBOR from FFI: \(enrollmentTokenCbor.count) bytes")
-        print("   🔍 Debug: First 50 bytes of raw CBOR: \(Array(enrollmentTokenCbor.prefix(50)))")
-        
+        testLogger.trace("SWIFT: Raw enrollment token CBOR from FFI: \(enrollmentTokenCbor.count) bytes")
+        testLogger.trace("SWIFT: First 50 bytes of raw CBOR: \(Array(enrollmentTokenCbor.prefix(50)))")
+
         // Deserialize enrollment token CBOR into struct (EXACTLY like Rust)
         // Use the correct EnrollmentToken structure with body field
         let enrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
-        print("   ✅ Enrollment token deserialized into struct")
-        
+        testLogger.debug("SWIFT: Enrollment token deserialized into struct")
+
         // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
-        print("   🔍 Debug: SetupToken CBOR size: \(setupTokenCbor.count) bytes")
+        testLogger.trace("SWIFT: SetupToken CBOR size: \(setupTokenCbor.count) bytes")
         let setupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
         let csrDerFromToken = setupTokenStruct.csr_der
-        print("   🔍 Debug: CSR extracted from SetupToken: \(csrDerFromToken.count) bytes")
-        print("   🔍 Debug: SetupToken node_id: \(setupTokenStruct.node_id)")
-        print("   🔍 Debug: SetupToken node_public_key: \(setupTokenStruct.node_public_key.count) bytes")
-        print("   🔍 Debug: SetupToken node_agreement_public_key: \(setupTokenStruct.node_agreement_public_key.count) bytes")
-        
+        testLogger.trace("SWIFT: CSR extracted from SetupToken: \(csrDerFromToken.count) bytes")
+        testLogger.trace("SWIFT: SetupToken node_id: \(setupTokenStruct.node_id)")
+        testLogger.trace("SWIFT: SetupToken node_public_key: \(setupTokenStruct.node_public_key.count) bytes")
+        testLogger.trace("SWIFT: SetupToken node_agreement_public_key: \(setupTokenStruct.node_agreement_public_key.count) bytes")
+
         // Build CsrEnrollRequest CBOR using struct approach (EXACTLY like Rust)
         // Use the correct structure with snake_case field names
         let enrollRequestStruct = CsrEnrollRequest(
@@ -538,40 +536,40 @@ final class FFIE2EIntegrationTest: XCTestCase {
             csr_der: csrDerFromToken,
             enrollment_token: enrollmentTokenStruct
         )
-        
+
         // Encode the CsrEnrollRequest as CBOR payload (EXACTLY like Rust)
         // The FFI function handles the binary protocol internally
         let enrollRequest = try CodableCBOREncoder().encode(enrollRequestStruct)
-        
+
         // Debug: Print the CBOR structure to understand what we're sending
-        print("   🔍 Debug: Enrollment request CBOR size: \(enrollRequest.count) bytes")
-        print("   🔍 Debug: Enrollment request structure:")
-        print("     - network_id: \(enrollRequestStruct.network_id)")
-        print("     - csr_der: \(enrollRequestStruct.csr_der.count) bytes")
-        print("     - enrollment_token.body.token_id: \(enrollRequestStruct.enrollment_token.body.token_id)")
-        print("     - enrollment_token.body.network_id: \(enrollRequestStruct.enrollment_token.body.network_id)")
-        print("     - enrollment_token.body.subject_hint: \(enrollRequestStruct.enrollment_token.body.subject_hint ?? "nil")")
-        print("     - enrollment_token.body.not_before: \(enrollRequestStruct.enrollment_token.body.not_before)")
-        print("     - enrollment_token.body.expires_at: \(enrollRequestStruct.enrollment_token.body.expires_at)")
-        print("     - enrollment_token.body.nonce: \(enrollRequestStruct.enrollment_token.body.nonce.count) bytes")
-        print("     - enrollment_token.body.permissions: \(enrollRequestStruct.enrollment_token.body.permissions)")
-        print("     - enrollment_token.signature: \(enrollRequestStruct.enrollment_token.signature.count) bytes")
-        print("     - enrollment_token.signer_id: \(enrollRequestStruct.enrollment_token.signer_id)")
-        
+        testLogger.trace("SWIFT: Enrollment request CBOR size: \(enrollRequest.count) bytes")
+        testLogger.trace("SWIFT: Enrollment request structure:")
+        testLogger.trace("SWIFT:   - network_id: \(enrollRequestStruct.network_id)")
+        testLogger.trace("SWIFT:   - csr_der: \(enrollRequestStruct.csr_der.count) bytes")
+        testLogger.trace("SWIFT:   - enrollment_token.body.token_id: \(enrollRequestStruct.enrollment_token.body.token_id)")
+        testLogger.trace("SWIFT:   - enrollment_token.body.network_id: \(enrollRequestStruct.enrollment_token.body.network_id)")
+        testLogger.trace("SWIFT:   - enrollment_token.body.subject_hint: \(enrollRequestStruct.enrollment_token.body.subject_hint ?? "nil")")
+        testLogger.trace("SWIFT:   - enrollment_token.body.not_before: \(enrollRequestStruct.enrollment_token.body.not_before)")
+        testLogger.trace("SWIFT:   - enrollment_token.body.expires_at: \(enrollRequestStruct.enrollment_token.body.expires_at)")
+        testLogger.trace("SWIFT:   - enrollment_token.body.nonce: \(enrollRequestStruct.enrollment_token.body.nonce.count) bytes")
+        testLogger.trace("SWIFT:   - enrollment_token.body.permissions: \(enrollRequestStruct.enrollment_token.body.permissions)")
+        testLogger.trace("SWIFT:   - enrollment_token.signature: \(enrollRequestStruct.enrollment_token.signature.count) bytes")
+        testLogger.trace("SWIFT:   - enrollment_token.signer_id: \(enrollRequestStruct.enrollment_token.signer_id)")
+
         // Get certificates from CA Node using high-level Swift FFI API
         let rootCaCert = try caNode.getRootCaCertificate()
         let issuingCertDer = try caNode.getIssuingCaCertificate()
-        
-        print("   ✅ Certificates retrieved from CA Node (public certificates only)")
-        print("      Root CA cert: \(rootCaCert.count) bytes")
-        print("      Issuing CA cert: \(issuingCertDer.count) bytes")
-        
+
+        testLogger.debug("SWIFT: Certificates retrieved from CA Node (public certificates only)")
+        testLogger.trace("SWIFT: Root CA cert: \(rootCaCert.count) bytes")
+        testLogger.trace("SWIFT: Issuing CA cert: \(issuingCertDer.count) bytes")
+
         // Create CA Client with all configuration at once (EXACTLY like Rust)
-        print("   🔧 Creating CA Client with all configuration (following design section 6.6):")
-        print("      Bootstrap: \(bootstrapAddr)")
-        print("      Authenticated: \(authenticatedAddr)")
-        print("      Network ID: test_network")
-        print("      Timeout: 30s, Max retries: 3")
+        testLogger.trace("SWIFT: Creating CA Client with all configuration (following design section 6.6):")
+        testLogger.trace("SWIFT: Bootstrap: \(bootstrapAddr)")
+        testLogger.trace("SWIFT: Authenticated: \(authenticatedAddr)")
+        testLogger.trace("SWIFT: Network ID: test_network")
+        testLogger.trace("SWIFT: Timeout: 30s, Max retries: 3")
 
         // Create configuration CBOR (EXACTLY like Rust)
         let config = CaClientConfigAll(
@@ -583,117 +581,116 @@ final class FFIE2EIntegrationTest: XCTestCase {
             root_ca_der: rootCaCert,
             issuing_ca_der: issuingCertDer
         )
-        
+
         let configCbor = try CodableCBOREncoder().encode(config)
-        
+
         // Create CA Client using high-level Swift FFI API
         // Debug: Check nodeKeys handle before creating CAClient
-        print("   🔍 DEBUG: nodeKeys.rawHandle = \(nodeKeys.rawHandle != nil ? "valid" : "nil")")
-        print("   🔍 DEBUG: nodeKeys handle value = \(nodeKeys.rawHandle != nil ? "valid" : "nil")")
-        
+        testLogger.trace("SWIFT: nodeKeys.rawHandle = \(nodeKeys.rawHandle != nil ? "valid" : "nil")")
+        testLogger.trace("SWIFT: nodeKeys handle value = \(nodeKeys.rawHandle != nil ? "valid" : "nil")")
+
         let caClient = try CAClient.createWithConfig(config: config, nodeKeys: nodeKeys.rawHandle!)
-        print("   ✅ CA Client created with all configuration for REAL QUIC mTLS")
+        testLogger.debug("SWIFT: CA Client created with all configuration for REAL QUIC mTLS")
 
         // Enroll via CA Client using high-level Swift FFI API
-        print("   🔧 Attempting enrollment with:")
-        print("      Bootstrap address: \(bootstrapAddr)")
-        print("      Request size: \(enrollRequest.count) bytes")
-        print("      CSR size: \(csrDer.count) bytes")
-        
+        testLogger.trace("SWIFT: Attempting enrollment with:")
+        testLogger.trace("SWIFT: Bootstrap address: \(bootstrapAddr)")
+        testLogger.trace("SWIFT: Request size: \(enrollRequest.count) bytes")
+        testLogger.trace("SWIFT: CSR size: \(csrDer.count) bytes")
+
         // DUMP: Save refactored test data for comparison
         let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_refactor.cbor"))
         try csrDer.write(to: projectPath.appendingPathComponent("csr_refactor.der"))
         try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_refactor.cbor"))
-        print("   📁 DUMP: Saved refactored test data to project directory")
-        print("      - enroll_refactor.cbor: \(enrollRequest.count) bytes")
-        print("      - csr_refactor.der: \(csrDer.count) bytes") 
-        print("      - token_refactor.cbor: \(enrollmentTokenCbor.count) bytes")
-        
+        testLogger.trace("SWIFT: Saved refactored test data to project directory")
+        testLogger.trace("SWIFT: - enroll_refactor.cbor: \(enrollRequest.count) bytes")
+        testLogger.trace("SWIFT: - csr_refactor.der: \(csrDer.count) bytes")
+        testLogger.trace("SWIFT: - token_refactor.cbor: \(enrollmentTokenCbor.count) bytes")
+
         let enrollResponse = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: enrollRequest)
-        print("   ✅ Enrollment successful (\(enrollResponse.count) bytes response)")
+        testLogger.debug("SWIFT: Enrollment successful (\(enrollResponse.count) bytes response)")
 
         // Convert response to NodeCertificateMessage using high-level Swift FFI API
         let certMessage = try mobileKeys.fromEnrollResponse(enrollResponse)
-        print("   ✅ Certificate message created (\(certMessage.count) bytes)")
+        testLogger.debug("SWIFT: Certificate message created (\(certMessage.count) bytes)")
 
         // Install certificate using high-level Swift FFI API
         try nodeKeys.installCertificate(certMessage)
-        print("   ✅ Certificate installed and validated")
+        testLogger.debug("SWIFT: Certificate installed and validated")
 
         // QUIC Cert Config Validation using high-level Swift FFI API
         let quicConfig = try nodeKeys.getQuicCertificateConfig()
-        print("   ✅ QUIC certificate config validated (\(quicConfig.count) bytes)")
+        testLogger.debug("SWIFT: QUIC certificate config validated (\(quicConfig.count) bytes)")
 
         // ==========================================
         // Phase 4: Certificate Renewal via REAL QUIC mTLS
         // ==========================================
-        print("\n🔄 PHASE 4: Certificate Renewal via REAL QUIC mTLS")
-        let testLogger = RunarLogger(component: .custom)
-        testLogger.trace("Starting Phase 4: Certificate Renewal")
+        testLogger.info("SWIFT: Phase 4 - Certificate Renewal via REAL QUIC mTLS")
 
         // Generate renewal CSR (returns SetupToken CBOR) - EXACTLY like Rust
         // Generate renewal CSR using high-level Swift FFI API
-        testLogger.trace("About to call nodeKeys.generateCSR() for renewal")
         let renewalSetupTokenCbor = try nodeKeys.generateCSR()
-        testLogger.trace("nodeKeys.generateCSR() completed successfully, got \(renewalSetupTokenCbor.count) bytes")
-        print("   ✅ Renewal CSR generated (\(renewalSetupTokenCbor.count) bytes)")
-        
+        testLogger.debug("SWIFT: Generated renewal CSR (\(renewalSetupTokenCbor.count) bytes)")
+
         // Extract DER bytes from SetupToken CBOR (EXACTLY like Rust)
         let renewalSetupToken: SetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: renewalSetupTokenCbor)
         let renewalCsrDer = renewalSetupToken.csr_der
-        print("   ✅ Renewal CSR DER extracted from SetupToken (\(renewalCsrDer.count) bytes)")
-        
+        testLogger.debug("SWIFT: Extracted CSR DER from SetupToken (\(renewalCsrDer.count) bytes)")
+
         // Build RenewRequest CBOR (EXACTLY like Rust)
         let renewRequestStruct = RenewRequest(
             network_id: "test_network",
             csr_der: renewalCsrDer
         )
-        
+
         let renewRequest = try CodableCBOREncoder().encode(renewRequestStruct)
-        
+
         // Renew via CA Client (authenticated endpoint) - EXACTLY like Rust
         // Renew certificate via CA Client using high-level Swift FFI API
-        testLogger.trace("About to call caClient.renew with authenticatedAddr: \(authenticatedAddr), request size: \(renewRequest.count)")
         let renewResponse = try caClient.renew(authenticatedAddr: authenticatedAddr, request: renewRequest)
-        testLogger.trace("caClient.renew completed successfully, got \(renewResponse.count) bytes response")
-        print("   ✅ Certificate renewal successful (\(renewResponse.count) bytes response)")
+        testLogger.debug("SWIFT: Certificate renewal successful (\(renewResponse.count) bytes response)")
 
         // Convert response to NodeCertificateMessage using high-level Swift FFI API
         let renewalCertMessage = try mobileKeys.fromRenewResponse(renewResponse)
-        print("   ✅ Renewal certificate message created (\(renewalCertMessage.count) bytes)")
+        testLogger.debug("SWIFT: Created renewal certificate message (\(renewalCertMessage.count) bytes)")
 
         // Install renewed certificate using high-level Swift FFI API
         try nodeKeys.installCertificate(renewalCertMessage)
-        print("   ✅ Renewed certificate installed and validated")
+        testLogger.debug("SWIFT: Certificate installation completed successfully")
 
         // ==========================================
         // Phase 5: Certificate Revocation + CRL-lite via REAL QUIC mTLS
         // ==========================================
-        print("\n🚫 PHASE 5: Certificate Revocation + CRL-lite via REAL QUIC mTLS")
+        testLogger.info("SWIFT: Phase 5 - Certificate Revocation + CRL-lite via REAL QUIC mTLS")
 
         // Extract SKI from the client's certificate for admin authorization (EXACTLY like Rust)
         // Extract SKI from the client's certificate for admin authorization using high-level Swift FFI API
         let clientCertDer = try nodeKeys.getNodeCertificate()
-        
+        testLogger.debug("SWIFT: Retrieved client certificate (\(clientCertDer.count) bytes)")
+
         // Extract SKI from client certificate using high-level Swift FFI API
         let certUtils = CertificateUtilities(logger: createTestLogger())
+        testLogger.debug("SWIFT: About to call extractSki")
         let clientSki = try certUtils.extractSki(clientCertDer)
-        print("   📋 Client certificate SKI: \(clientSki)")
+        testLogger.debug("SWIFT: extractSki completed successfully")
+        testLogger.debug("SWIFT: Extracted client certificate SKI: \(clientSki)")
+        testLogger.debug("SWIFT: About to call addAdminSki")
 
         // Add client SKI to shared CA Node using high-level Swift FFI API
         try caNode.addAdminSki(clientSki)
+        testLogger.debug("SWIFT: addAdminSki completed successfully")
 
         // Also configure admin SKIs on the server using high-level Swift FFI API
         let adminSkis = [clientSki]
         let adminSkisCbor = try CodableCBOREncoder().encode(adminSkis)
         try caServer.configureAdminSkis(adminSkisCbor)
 
-        print("   ✅ Admin SKI configured for revocation: \(clientSki)")
+        testLogger.debug("SWIFT: Admin SKI configured for revocation: \(clientSki)")
 
         // Get certificate serial for revocation using high-level Swift FFI API
         let certSerial = try certUtils.getSerial(clientCertDer)
-        print("   📋 Certificate serial for revocation: \(certSerial)")
+        testLogger.trace("SWIFT: Certificate serial for revocation: \(certSerial)")
 
         // Create RevokeRequest (EXACTLY like Rust)
         let revokeRequest = RevokeRequest(
@@ -705,59 +702,59 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let revokeRequestCbor = try CodableCBOREncoder().encode(revokeRequest)
 
         // Debug: Print revocation request details
-        print("   🔍 Debug: Revocation request structure:")
-        print("     - network_id: \(revokeRequest.network_id)")
-        print("     - certificate_serial: \(revokeRequest.certificate_serial.count) bytes")
-        print("     - certificate_serial hex: \(revokeRequest.certificate_serial.map { String(format: "%02x", $0) }.joined())")
-        print("     - reason: \(revokeRequest.reason)")
-        print("   🔍 Debug: Revocation request CBOR size: \(revokeRequestCbor.count) bytes")
-        print("   🔍 Debug: First 50 bytes of revocation CBOR: \(Array(revokeRequestCbor.prefix(50)))")
+        testLogger.trace("SWIFT: Revocation request structure:")
+        testLogger.trace("SWIFT: - network_id: \(revokeRequest.network_id)")
+        testLogger.trace("SWIFT: - certificate_serial: \(revokeRequest.certificate_serial.count) bytes")
+        testLogger.trace("SWIFT: - certificate_serial hex: \(revokeRequest.certificate_serial.map { String(format: "%02x", $0) }.joined())")
+        testLogger.trace("SWIFT: - reason: \(revokeRequest.reason)")
+        testLogger.trace("SWIFT: Revocation request CBOR size: \(revokeRequestCbor.count) bytes")
+        testLogger.trace("SWIFT: First 50 bytes of revocation CBOR: \(Array(revokeRequestCbor.prefix(50)))")
 
         // Revoke certificate via client (mTLS) (EXACTLY like Rust)
         // Revoke certificate via CA Client using high-level Swift FFI API
         let revokeResponse = try caClient.revoke(authenticatedAddr: authenticatedAddr, request: revokeRequestCbor)
-        print("   ✅ Certificate revoked successfully")
+        testLogger.debug("SWIFT: Certificate revoked successfully")
 
         // Generate CRL-lite using high-level Swift FFI API
         let crl = try caNode.handleCrl(networkId: networkId)
-        print("   ✅ CRL-lite generated successfully")
-        
-        print("   ✅ Phase 5 completed: Certificate revocation and CRL-lite generation")
+        testLogger.debug("SWIFT: CRL-lite generated successfully")
+
+        testLogger.debug("SWIFT: Phase 5 completed: Certificate revocation and CRL-lite generation")
 
         // ==========================================
         // Phase 6: Status and Chain via REAL QUIC mTLS
         // ==========================================
-        print("\n📊 PHASE 6: Status and Chain via REAL QUIC mTLS")
+        testLogger.info("SWIFT: Phase 6 - Status and Chain via REAL QUIC mTLS")
 
         // Get CA Status (EXACTLY like Rust)
         // Get CA Status using high-level Swift FFI API
         let statusResponse = try caClient.getStatus(authenticatedAddr: authenticatedAddr, networkId: networkId)
-        print("   ✅ CA Status retrieved via REAL QUIC mTLS (\(statusResponse.count) bytes)")
+        testLogger.debug("SWIFT: CA Status retrieved via REAL QUIC mTLS (\(statusResponse.count) bytes)")
 
         // Get Certificate Chain using high-level Swift FFI API
         let chainResponse = try caClient.getChain(bootstrapAddr: bootstrapAddr, networkId: networkId)
-        print("   ✅ Certificate chain retrieved via REAL QUIC mTLS (\(chainResponse.count) bytes)")
+        testLogger.debug("SWIFT: Certificate chain retrieved via REAL QUIC mTLS (\(chainResponse.count) bytes)")
 
         // ==========================================
         // Phase 7: Profile Key Functionality via REAL QUIC mTLS
         // ==========================================
-        print("\n🔑 PHASE 7: Profile Key Functionality via REAL QUIC mTLS")
+        testLogger.info("SWIFT: Phase 7 - Profile Key Functionality via REAL QUIC mTLS")
 
         // Derive profile keys (EXACTLY like Rust)
         let personalLabel = "personal"
         let workLabel = "work"
-        
+
         // Derive personal profile key using high-level Swift FFI API
         let personalProfileKey = try nodeKeys.deriveUserProfileKey(label: personalLabel)
-        
+
         // Derive work profile key using high-level Swift FFI API
         let workProfileKey = try nodeKeys.deriveUserProfileKey(label: workLabel)
-        
-        print("   ✅ Profile keys derived: personal (\(personalProfileKey.count) bytes), work (\(workProfileKey.count) bytes)")
-        
+
+        testLogger.debug("SWIFT: Profile keys derived: personal (\(personalProfileKey.count) bytes), work (\(workProfileKey.count) bytes)")
+
         // Test profile key encryption/decryption (EXACTLY like Rust)
         let testData = Data("Hello, encrypted world!".utf8)
-        
+
         // Get compact ID for personal profile key using high-level Swift FFI API
         let personalProfileId = try nodeKeys.getCompactId(publicKey: personalProfileKey)
 
@@ -767,51 +764,51 @@ final class FFIE2EIntegrationTest: XCTestCase {
             networkPublicKey: nil,
             profileKeys: [personalProfileKey]
         )
-        print("   ✅ Data encrypted with profile key envelope (\(envelope.count) bytes)")
-        
+        testLogger.debug("SWIFT: Data encrypted with profile key envelope (\(envelope.count) bytes)")
+
         // Decrypt with profile key using high-level Swift FFI API
         let decryptedData = try nodeKeys.decryptWithProfile(
             envelopeData: envelope,
             profileId: personalProfileId
         )
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
-        print("   ✅ Profile key encryption/decryption working correctly")
+        testLogger.debug("SWIFT: Profile key encryption/decryption working correctly")
 
         // ==========================================
         // Phase 8: Rate Limiting via REAL QUIC mTLS
         // ==========================================
-        print("\n⏱️  PHASE 8: Rate Limiting via REAL QUIC mTLS")
+        testLogger.info("SWIFT: Phase 8 - Rate Limiting via REAL QUIC mTLS")
 
         // Test rate limiting with multiple enrollment requests using the same token using high-level Swift FFI API
-        for i in 1...3 {
+        for i in 1 ... 3 {
             // Generate test CSR using high-level Swift FFI API
             let testSetupTokenCbor = try nodeKeys.generateCSR()
-            
+
             // Use the same enrollment token for all requests (rate limiting is per token_id)
             // Deserialize enrollment token and create request struct (EXACTLY like Rust)
             let enrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
-            
+
             // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
             let testSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
             let testCsrDerFromToken = testSetupTokenStruct.csr_der
-            
+
             let testEnrollRequestStruct = CsrEnrollRequest(
                 network_id: "test_network",
                 csr_der: testCsrDerFromToken,
                 enrollment_token: enrollmentTokenStruct
             )
-            
+
             // Encode the CsrEnrollRequest as CBOR payload (EXACTLY like Rust)
             // The FFI function handles the binary protocol internally
             let testEnrollRequest = try CodableCBOREncoder().encode(testEnrollRequestStruct)
-            
+
             // All requests in this phase should be rate limited because we're using the same token
             // Note: The high-level API will throw an error if rate limited, so we need to catch it
             do {
                 let testEnrollResponse = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: testEnrollRequest)
-                print("   ⚠️  Rate limit check \(i) unexpectedly passed (rate limiting may not be working)")
+                testLogger.error("SWIFT: Rate limit check \(i) unexpectedly passed (rate limiting may not be working)")
             } catch {
-                print("   ✅ Rate limit check \(i) correctly rejected (rate limiting working): \(error)")
+                testLogger.debug("SWIFT: Rate limit check \(i) correctly rejected (rate limiting working): \(error)")
             }
 
             // Add a small delay to ensure rate limiting works properly
@@ -821,41 +818,41 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // ==========================================
         // Phase 9: Token Revocation via REAL QUIC mTLS
         // ==========================================
-        print("\n🔒 PHASE 9: Token Revocation via REAL QUIC mTLS")
+        testLogger.info("SWIFT: Phase 9 - Token Revocation via REAL QUIC mTLS")
 
         // Revoke the enrollment token using high-level Swift FFI API
         try caNode.revokeToken("test_token_001")
-        print("   ✅ Enrollment token revoked via REAL QUIC mTLS")
+        testLogger.debug("SWIFT: Enrollment token revoked via REAL QUIC mTLS")
 
         // Try to use revoked token (should fail) using high-level Swift FFI API
         let testSetupTokenCbor = try nodeKeys.generateCSR()
         // Deserialize enrollment token and create request struct (EXACTLY like Rust)
         let revokedEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
-        
+
         // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
         let revokedSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
         let revokedCsrDerFromToken = revokedSetupTokenStruct.csr_der
-        
+
         let revokedRequestStruct = CsrEnrollRequest(
             network_id: "test_network",
             csr_der: revokedCsrDerFromToken,
             enrollment_token: revokedEnrollmentTokenStruct
         )
         let revokedRequestCbor = try CodableCBOREncoder().encode(revokedRequestStruct)
-        
+
         // Try to use revoked token (should fail) using high-level Swift FFI API
         do {
-            let _ = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: revokedRequestCbor)
+            _ = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: revokedRequestCbor)
             XCTFail("Revoked token should be rejected")
             return
         } catch {
-            print("   ✅ Revoked token correctly rejected via REAL QUIC mTLS: \(error)")
+            testLogger.debug("SWIFT: Revoked token correctly rejected via REAL QUIC mTLS: \(error)")
         }
 
         // ==========================================
         // Phase 10: Negative Cases via REAL QUIC mTLS
         // ==========================================
-        print("\n❌ PHASE 10: Negative Cases via REAL QUIC mTLS")
+        testLogger.info("SWIFT: Phase 10 - Negative Cases via REAL QUIC mTLS")
 
         // Test invalid enrollment token (wrong network_id) using new secure FFI (EXACTLY like Rust)
         let invalidTokenId = "invalid_token"
@@ -863,14 +860,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let invalidSubject = "invalid"
         let invalidNonce = Data([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
         let invalidCapabilities = ["enroll"]
-        
+
         // Generate invalid enrollment token using high-level Swift FFI API
         let invalidEaKeyManager = EAKeyManager(logger: createTestLogger())
         let invalidEaKeyHandle = try invalidEaKeyManager.createKeyPair()
         let invalidParams = EAKeyManager.EnrollmentTokenParams(
             eaKeyHandle: invalidEaKeyHandle,
             tokenId: invalidTokenId,
-            networkId: invalidNetworkId,  // Different network ID to make it invalid
+            networkId: invalidNetworkId, // Different network ID to make it invalid
             subject: invalidSubject,
             validFrom: now - 60,
             validUntil: now + 3600,
@@ -880,87 +877,87 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let invalidTokenCbor = try invalidEaKeyManager.generateEnrollmentToken(params: invalidParams)
         // Deserialize invalid enrollment token and create request struct (EXACTLY like Rust)
         let invalidEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: invalidTokenCbor)
-        
+
         // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
         let invalidSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
         let invalidCsrDerFromToken = invalidSetupTokenStruct.csr_der
-        
+
         let invalidRequestStruct = CsrEnrollRequest(
             network_id: "test_network",
             csr_der: invalidCsrDerFromToken,
             enrollment_token: invalidEnrollmentTokenStruct
         )
         let invalidRequestCbor = try CodableCBOREncoder().encode(invalidRequestStruct)
-        
+
         // Try to use invalid token (should fail) using high-level Swift FFI API
         do {
-            let _ = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: invalidRequestCbor)
+            _ = try caClient.enroll(bootstrapAddr: bootstrapAddr, request: invalidRequestCbor)
             XCTFail("Invalid token should be rejected")
             return
         } catch {
-            print("   ✅ Invalid enrollment token rejected via REAL QUIC mTLS: \(error)")
+            testLogger.debug("SWIFT: Invalid enrollment token rejected via REAL QUIC mTLS: \(error)")
         }
-        
+
         // Test unauthorized renewal (new node without enrollment) using high-level Swift FFI API
         let unauthorizedKeys = try KeysFFI(logger: createTestLogger())
         try unauthorizedKeys.initializeAsNode()
-        
+
         // Generate CSR for unauthorized keys using high-level Swift FFI API
         let unauthorizedSetupTokenCbor = try unauthorizedKeys.generateCSR()
         let unauthorizedSetupToken: SetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: unauthorizedSetupTokenCbor)
         let unauthorizedCsrDer = unauthorizedSetupToken.csr_der
-        
+
         let unauthorizedRenew = RenewRequest(
             network_id: "test_network",
             csr_der: unauthorizedCsrDer
         )
-        
+
         let unauthorizedRenewCbor = try CodableCBOREncoder().encode(unauthorizedRenew)
-        
+
         // Try to renew with unauthorized keys (should fail) using high-level Swift FFI API
         do {
-            let _ = try caClient.renew(authenticatedAddr: authenticatedAddr, request: unauthorizedRenewCbor)
+            _ = try caClient.renew(authenticatedAddr: authenticatedAddr, request: unauthorizedRenewCbor)
             XCTFail("Unauthorized renewal should be rejected")
             return
         } catch {
-            print("   ✅ Unauthorized renewal correctly rejected via REAL QUIC mTLS: \(error)")
+            testLogger.debug("SWIFT: Unauthorized renewal correctly rejected via REAL QUIC mTLS: \(error)")
         }
 
         // ==========================================
         // Cleanup
         // ==========================================
-        print("\n🧹 CLEANUP: Freeing all resources")
+        testLogger.info("SWIFT: Cleanup - Freeing all resources")
 
         // Stop CA Server using high-level Swift FFI API
         try caServer.stop()
-        
+
         // Memory cleanup is handled automatically by Swift FFI package
         // No manual cleanup needed - Swift's ARC handles all memory management
 
-        print("   ✅ All resources freed successfully")
+        testLogger.debug("SWIFT: All resources freed successfully")
 
-        print("\n🎉 FFI FULL-TRANSPORT E2E TEST COMPLETED SUCCESSFULLY!")
-        print("📋 All validations passed:")
-        print("   ✅ CA Node infrastructure setup")
-        print("   ✅ REAL QUIC mTLS transport configuration")
-        print("   ✅ Mobile node enrollment via REAL QUIC mTLS")
-        print("   ✅ Certificate renewal via REAL QUIC mTLS")
-        print("   ✅ Certificate revocation and CRL-lite via REAL QUIC mTLS")
-        print("   ✅ CA Node API status and chain via REAL QUIC mTLS")
-        print("   ✅ Profile key interop via REAL QUIC mTLS")
-        print("   ✅ Rate limiting via REAL QUIC mTLS")
-        print("   ✅ Token revocation via REAL QUIC mTLS")
-        print("   ✅ Error handling via REAL QUIC mTLS")
+        testLogger.info("SWIFT: FFI FULL-TRANSPORT E2E TEST COMPLETED SUCCESSFULLY!")
+        testLogger.info("SWIFT: All validations passed:")
+        testLogger.info("SWIFT: - CA Node infrastructure setup")
+        testLogger.info("SWIFT: - REAL QUIC mTLS transport configuration")
+        testLogger.info("SWIFT: - Mobile node enrollment via REAL QUIC mTLS")
+        testLogger.info("SWIFT: - Certificate renewal via REAL QUIC mTLS")
+        testLogger.info("SWIFT: - Certificate revocation and CRL-lite via REAL QUIC mTLS")
+        testLogger.info("SWIFT: - CA Node API status and chain via REAL QUIC mTLS")
+        testLogger.info("SWIFT: - Profile key interop via REAL QUIC mTLS")
+        testLogger.info("SWIFT: - Rate limiting via REAL QUIC mTLS")
+        testLogger.info("SWIFT: - Token revocation via REAL QUIC mTLS")
+        testLogger.info("SWIFT: - Error handling via REAL QUIC mTLS")
 
-        print("\n🌐 CA NODE INFRASTRUCTURE READY FOR PRODUCTION WITH REAL QUIC mTLS!")
-        print("📊 Test Statistics:")
-        print("   • Root CA: \(rootCaCert.count) bytes")
-        print("   • Issuing CA: \(issuingCertDer.count) bytes")
-        print("   • Network ID: test_network")
-        print("   • Profile keys: 2 (personal, work)")
-        print("   • Revoked certificates: 1")
-        print("   • Rate limiting: ✅")
-        print("   • CRL-lite: ✅")
-        print("   • REAL QUIC mTLS: ✅")
+        testLogger.info("SWIFT: CA NODE INFRASTRUCTURE READY FOR PRODUCTION WITH REAL QUIC mTLS!")
+        testLogger.info("SWIFT: Test Statistics:")
+        testLogger.info("SWIFT: - Root CA: \(rootCaCert.count) bytes")
+        testLogger.info("SWIFT: - Issuing CA: \(issuingCertDer.count) bytes")
+        testLogger.info("SWIFT: - Network ID: test_network")
+        testLogger.info("SWIFT: - Profile keys: 2 (personal, work)")
+        testLogger.info("SWIFT: - Revoked certificates: 1")
+        testLogger.info("SWIFT: - Rate limiting: ✅")
+        testLogger.info("SWIFT: - CRL-lite: ✅")
+        testLogger.info("SWIFT: - REAL QUIC mTLS: ✅")
     }
 }

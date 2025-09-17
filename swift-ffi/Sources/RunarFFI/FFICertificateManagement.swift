@@ -1,5 +1,6 @@
 import CRunarFFI
 import Foundation
+import SwiftCommon
 
 // MARK: - Secure CA Node Management Implementation
 
@@ -231,17 +232,33 @@ public class CertificateUtilities {
     /// - Returns: SKI as hex string
     /// - Throws: FFIError if the operation fails
     public func extractSki(_ cert: Data) throws -> String {
+        logger.debug("extractSki: Starting")
         var out: UnsafeMutablePointer<CChar>?
 
+        logger.debug("extractSki: Calling FFI function")
         let (_, err) = withRnError { errPtr in
             cert.withUnsafeBytes { raw in
                 rn_keys_certificate_extract_ski(raw.bindMemory(to: UInt8.self).baseAddress, cert.count, &out, errPtr)
             }
         }
-        if let error = err { throw error }
+        logger.debug("extractSki: FFI function completed")
+        if let error = err { 
+            logger.error("extractSki: FFI function failed: \(error)")
+            throw error 
+        }
 
-        defer { if let outString = out { rn_string_free(outString) } }
-        return out.map { String(cString: $0) } ?? ""
+        logger.debug("extractSki: Checking output pointer")
+        guard let outString = out else { 
+            logger.debug("extractSki: Output pointer is nil, returning empty string")
+            return "" 
+        }
+        logger.debug("extractSki: Creating String from C string")
+        let result = String(cString: outString)
+        logger.debug("extractSki: String created successfully")
+        logger.debug("extractSki: Freeing C string")
+        rn_string_free(outString)
+        logger.debug("extractSki: C string freed, returning result")
+        return result
     }
 
     /// Get certificate serial number
@@ -258,8 +275,11 @@ public class CertificateUtilities {
         }
         if let error = err { throw error }
 
-        defer { if let outString = out { rn_string_free(outString) } }
-        return out.map { String(cString: $0) } ?? ""
+        guard let outString = out else { return "" }
+        let result = String(cString: outString)  // This creates a String that references the C string
+        let copiedResult = String(result.utf8)  // This creates a copy by converting to UTF8 and back
+        rn_string_free(outString)  // Safe to free after copying
+        return copiedResult
     }
 }
 
@@ -333,9 +353,10 @@ public class CertificateManager {
         if let error = err { throw error }
 
         guard let subjectPtr = outSubject else { return "" }
-        let subject = String(cString: subjectPtr)
-        rn_string_free(subjectPtr)
-        return subject
+        let subject = String(cString: subjectPtr)  // This creates a String that references the C string
+        let copiedSubject = String(subject.utf8)  // This creates a copy by converting to UTF8 and back
+        rn_string_free(subjectPtr)  // Safe to free after copying
+        return copiedSubject
     }
 
     /// Free CA resources

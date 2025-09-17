@@ -299,8 +299,11 @@ class NodeKeyManagerImpl: NodeKeyManager {
         }
         if let error = err { throw error }
 
-        defer { if let outString = out { rn_string_free(outString) } }
-        return out.map { String(cString: $0) } ?? ""
+        guard let outString = out else { return "" }
+        let result = String(cString: outString)  // This creates a String that references the C string
+        let copiedResult = String(result.utf8)  // This creates a copy by converting to UTF8 and back
+        rn_string_free(outString)  // Safe to free after copying
+        return copiedResult
     }
 
     // MARK: - Additional Node Key Manager Functions
