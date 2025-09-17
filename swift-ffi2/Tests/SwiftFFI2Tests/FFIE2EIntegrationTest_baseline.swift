@@ -817,14 +817,14 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("      CSR size: \(csrDer.count) bytes")
 
         // DUMP: Save baseline test data for comparison
-        let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_baseline.cbor"))
-        try csrDer.write(to: projectPath.appendingPathComponent("csr_baseline.der"))
-        try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_baseline.cbor"))
-        print("   📁 DUMP: Saved baseline test data to project directory")
-        print("      - enroll_baseline.cbor: \(enrollRequest.count) bytes")
-        print("      - csr_baseline.der: \(csrDer.count) bytes")
-        print("      - token_baseline.cbor: \(enrollmentTokenCbor.count) bytes")
+        // let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        // try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_baseline.cbor"))
+        // try csrDer.write(to: projectPath.appendingPathComponent("csr_baseline.der"))
+        // try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_baseline.cbor"))
+        // print("   📁 DUMP: Saved baseline test data to project directory")
+        // print("      - enroll_baseline.cbor: \(enrollRequest.count) bytes")
+        // print("      - csr_baseline.der: \(csrDer.count) bytes")
+        // print("      - token_baseline.cbor: \(enrollmentTokenCbor.count) bytes")
 
         var enrollResponsePtr: UnsafeMutablePointer<UInt8>?
         var enrollResponseLen = 0
