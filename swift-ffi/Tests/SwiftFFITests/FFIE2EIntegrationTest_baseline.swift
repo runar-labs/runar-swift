@@ -413,7 +413,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("\n🏗️  PHASE 1: Setup")
 
         // Set log level to TRACE for detailed debugging
-        FFILogger.setLogLevel(.trace)
+        try FFILogger.setLogLevel(.trace)
         print("   🔧 Set log level to TRACE for detailed debugging")
 
         // Initialize rustls crypto provider

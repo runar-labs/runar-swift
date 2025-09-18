@@ -32,7 +32,7 @@ final class FFIQuicTransportTest: XCTestCase {
         print("🚀 Starting Basic Transport Setup test")
 
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("quic-transport-test")
 
         // For now, let's test just the basic transport creation without certificates
@@ -69,7 +69,7 @@ final class FFIQuicTransportTest: XCTestCase {
         print("🚀 Starting Basic Transport Connection test")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("connection-test")
         
         // Create two key managers for two nodes
@@ -131,7 +131,7 @@ final class FFIQuicTransportTest: XCTestCase {
         print("🚀 Starting Transport Start/Stop Idempotence test")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("idempotence-test")
         
         // Create keys for the transport
@@ -177,7 +177,7 @@ final class FFIQuicTransportTest: XCTestCase {
         print("🚀 Starting Simple Transport Connection test")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("simple-transport-test")
         
         // Create two node key managers (A and B)
@@ -289,7 +289,7 @@ final class FFIQuicTransportTest: XCTestCase {
                 print("🚀 Starting Basic Transport Connection test")
                 
                 // Set up logging
-                FFILogger.setLogLevel(.debug)
+                try FFILogger.setLogLevel(.debug)
                 try FFILogger.setLoggerNodeId("basic-transport-test")
                 
                 // Create two node key managers (A and B)
@@ -406,7 +406,7 @@ final class FFIQuicTransportTest: XCTestCase {
         print("🚀 Starting Two Transports Request/Response test")
         
                 // Set up logging
-                FFILogger.setLogLevel(.trace)
+                try FFILogger.setLogLevel(.trace)
                 try FFILogger.setLoggerNodeId("two-transports-test")
         
         // Create two node key managers (A and B)

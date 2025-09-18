@@ -21,7 +21,7 @@ final class FFIDiscoveryTest: XCTestCase {
         print("🚀 Starting Basic Discovery Setup test")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("discovery-setup-test")
         
         // Create keys for discovery
@@ -72,7 +72,7 @@ final class FFIDiscoveryTest: XCTestCase {
         print("🚀 Starting Discovery with Transport test")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("discovery-transport-test")
         
         // Create two node key managers (A and B)
@@ -215,7 +215,7 @@ final class FFIDiscoveryTest: XCTestCase {
         print("🚀 Starting Discovery TTL and Debounce test")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("discovery-ttl-test")
         
         // Create two node key managers (A and B)

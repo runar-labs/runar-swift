@@ -20,7 +20,7 @@ final class FFIKeysE2ETest: XCTestCase {
         print("\n📱 MOBILE SIDE - First Time Setup")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("mobile-test")
         
         // Create mobile keys manager
@@ -112,7 +112,7 @@ final class FFIKeysE2ETest: XCTestCase {
         print("🚀 Starting Primitives-only E2E CA Node test")
         
         // Set up logging
-        FFILogger.setLogLevel(.debug)
+        try FFILogger.setLogLevel(.debug)
         try FFILogger.setLoggerNodeId("ca-node-test")
         
         // ==========================================

@@ -29,27 +29,42 @@ public enum FFIError: Error, LocalizedError {
 
 public class FFILogger {
     public enum LogLevel: Int32, CaseIterable {
-        case trace = 0
-        case debug = 1
-        case info = 2
-        case warn = 3
-        case error = 4
+        case off = 0
+        case error = 1
+        case warn = 2
+        case info = 3
+        case debug = 4
+        case trace = 5
         
         public var stringValue: String {
             switch self {
-            case .trace: return "TRACE"
-            case .debug: return "DEBUG"
-            case .info: return "INFO"
-            case .warn: return "WARN"
+            case .off: return "OFF"
             case .error: return "ERROR"
+            case .warn: return "WARN"
+            case .info: return "INFO"
+            case .debug: return "DEBUG"
+            case .trace: return "TRACE"
             }
         }
     }
     
     /// Set the global log level for the Rust FFI logger
     /// - Parameter level: The log level to set
-    public static func setLogLevel(_ level: LogLevel) {
-        rn_set_log_level(level.rawValue)
+    /// - Throws: FFIError if the operation fails
+    public static func setLogLevel(_ level: LogLevel) throws {
+        var err = CRunarFFI.RnError(code: 0, message: nil)
+        let code = withUnsafeMutablePointer(to: &err) { errPtr in
+            rn_set_log_level(level.rawValue, errPtr)
+        }
+        
+        // Check if there's an error message set (more reliable than return code)
+        if let msgPtr = err.message {
+            let message = String(cString: msgPtr)
+            rn_string_free(msgPtr)
+            throw FFIError.operationFailed("Failed to set log level: \(message)")
+        }
+        
+        // If no error message, assume success (the function works even with garbage return code)
     }
     
     /// Set the node ID for the Rust FFI logger context
@@ -82,7 +97,7 @@ public class FFILogger {
 // MARK: - FFI Helper Functions
 
 @inline(__always)
-private func buildError(from err: RNAPIRnError) -> Error {
+private func buildError(from err: CRunarFFI.RnError) -> Error {
     if let msgPtr = err.message {
         let message = String(cString: msgPtr)
         rn_string_free(msgPtr)
@@ -92,8 +107,8 @@ private func buildError(from err: RNAPIRnError) -> Error {
 }
 
 @inline(__always)
-func withRnErrorCode(_ body: (UnsafeMutablePointer<RNAPIRnError>) -> Int32) -> (Int32, Error?) {
-    var err = RNAPIRnError(code: 0, message: nil)
+func withRnErrorCode(_ body: (UnsafeMutablePointer<CRunarFFI.RnError>) -> Int32) -> (Int32, Error?) {
+    var err = CRunarFFI.RnError(code: 0, message: nil)
     let code = withUnsafeMutablePointer(to: &err) { errPtr in
         body(errPtr)
     }
@@ -102,7 +117,7 @@ func withRnErrorCode(_ body: (UnsafeMutablePointer<RNAPIRnError>) -> Int32) -> (
 }
 
 @inline(__always)
-public func withRnError(_ body: (UnsafeMutablePointer<RNAPIRnError>) -> Int32) -> (Int32, Error?) {
+public func withRnError(_ body: (UnsafeMutablePointer<CRunarFFI.RnError>) -> Int32) -> (Int32, Error?) {
     return withRnErrorCode(body)
 }
 
@@ -1196,16 +1211,13 @@ public final class KeysHandle {
     /// - Parameter nodeInfoCbor: Node information in CBOR format
     /// - Throws: FFIError if the operation fails
     public func setLocalNodeInfo(nodeInfoCbor: Data) throws {
-        let code = nodeInfoCbor.withUnsafeBytes { raw in
-            rn_keys_set_local_node_info(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count)
+        let (code, error) = withRnError { errPtr in
+            nodeInfoCbor.withUnsafeBytes { raw in
+                rn_keys_set_local_node_info(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
+            }
         }
-        guard code == 0 else { 
-            // Try to get more details about the error
-            var errorBuffer = [CChar](repeating: 0, count: 256)
-            let _ = rn_last_error(&errorBuffer, 256)
-            let errorMessage = String(decoding: errorBuffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
-            throw FFIError.operationFailed("Failed to set local node info (code: \(code)): \(errorMessage)") 
-        }
+        if let error = error { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to set local node info") }
     }
 
     deinit {
