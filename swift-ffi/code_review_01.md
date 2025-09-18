@@ -15,7 +15,7 @@ Code Review:
 - Error handling
   - Consistent “withRnError” wrapper and typed `FFIError`. Good.
   - Message extraction frees `rn_string_free` reliably. Good.
-  - One inconsistency: only `setLocalNodeInfo` tries `rn_last_error` on failure; everything else relies on `RNAPIRnError`. This is fine; `RNAPIRnError` is the primary channel. Keep `rn_last_error` only for legacy code paths that do not use error structs (which you’ve already done).
+  - One inconsistency: only `setLocalNodeInfo` tries `rn_last_error` on failure; everything else relies on `RnError`. This is fine; `RnError` is the primary channel. Keep `rn_last_error` only for legacy code paths that do not use error structs (which you’ve already done).
 
 - Memory management and safety
   - Every out buffer returned by FFI is copied by `copyBytesAndFree` then freed with `rn_free`, and c-strings are copied then freed with `rn_string_free`. Good.

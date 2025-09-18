@@ -1,5 +1,5 @@
 module CRunarFFI [system] {
-	header "runar_ffi.h"
+	header "runar_ffi_wrapper.h"
 	export *
 }
 
