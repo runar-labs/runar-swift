@@ -1,7 +1,7 @@
 import Foundation
 import SwiftCBOR
 import SwiftCommon
-@testable import SwiftFFI2
+@testable import SwiftFFI
 import XCTest
 
 @available(macOS 12.0, *)

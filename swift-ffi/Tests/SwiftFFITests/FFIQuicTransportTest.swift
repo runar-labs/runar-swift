@@ -1,5 +1,5 @@
 import XCTest
-import SwiftFFI2
+import SwiftFFI
 import SwiftCommon
 import SwiftCBOR
 
@@ -13,7 +13,7 @@ import SwiftCBOR
 /// - Event handling
 /// - Message publishing
 /// - Connection state management
-@testable import SwiftFFI2
+@testable import SwiftFFI
 
 /// Transport event structure for CBOR decoding
 struct TransportEvent: Codable {

@@ -1,57 +1,58 @@
 import Foundation
-@testable import RunarFFI
 import SwiftCBOR
 import SwiftCommon
+@testable import SwiftFFI
 import XCTest
 
 // Import FFI functions
 @_implementationOnly import CRunarFFI
 
+@_implementationOnly import func CRunarFFI.rn_keys_ca_create_ea_key_pair
+@_implementationOnly import func CRunarFFI.rn_keys_ca_free_ea_key_pair
+@_implementationOnly import func CRunarFFI.rn_keys_ca_generate_enrollment_token
+@_implementationOnly import func CRunarFFI.rn_keys_ca_get_ea_public_key
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_add_admin_ski
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_create_shared
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_free
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_free_shared
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_get_issuing_ca_certificate
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_get_root_ca_certificate
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_handle_crl
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_new
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_revoke_token
+@_implementationOnly import func CRunarFFI.rn_keys_ca_node_setup_complete
+@_implementationOnly import func CRunarFFI.rn_keys_certificate_extract_ski
+@_implementationOnly import func CRunarFFI.rn_keys_certificate_get_serial
+@_implementationOnly import func CRunarFFI.rn_keys_free
+@_implementationOnly import func CRunarFFI.rn_keys_get_compact_id
+@_implementationOnly import func CRunarFFI.rn_keys_init_as_mobile
+@_implementationOnly import func CRunarFFI.rn_keys_init_as_node
+@_implementationOnly import func CRunarFFI.rn_keys_mobile_from_enroll_response
+@_implementationOnly import func CRunarFFI.rn_keys_mobile_from_renew_response
+
 // Import FFI functions directly
 @_implementationOnly import func CRunarFFI.rn_keys_new
-@_implementationOnly import func CRunarFFI.rn_keys_init_as_node
-@_implementationOnly import func CRunarFFI.rn_keys_init_as_mobile
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_new
-@_implementationOnly import func CRunarFFI.rn_keys_ca_create_ea_key_pair
-@_implementationOnly import func CRunarFFI.rn_keys_ca_get_ea_public_key
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_setup_complete
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_create_shared
+@_implementationOnly import func CRunarFFI.rn_keys_node_decrypt_with_profile
+@_implementationOnly import func CRunarFFI.rn_keys_node_derive_user_profile_key
+@_implementationOnly import func CRunarFFI.rn_keys_node_encrypt_with_envelope
+@_implementationOnly import func CRunarFFI.rn_keys_node_generate_csr
+@_implementationOnly import func CRunarFFI.rn_keys_node_get_node_certificate
+@_implementationOnly import func CRunarFFI.rn_keys_node_get_quic_certificate_config
+@_implementationOnly import func CRunarFFI.rn_keys_node_install_certificate
+@_implementationOnly import func CRunarFFI.rn_transport_ca_client_enroll
+@_implementationOnly import func CRunarFFI.rn_transport_ca_client_free
+@_implementationOnly import func CRunarFFI.rn_transport_ca_client_get_chain
+@_implementationOnly import func CRunarFFI.rn_transport_ca_client_get_status
+@_implementationOnly import func CRunarFFI.rn_transport_ca_client_new_with_config
+@_implementationOnly import func CRunarFFI.rn_transport_ca_client_renew
+@_implementationOnly import func CRunarFFI.rn_transport_ca_client_revoke
+@_implementationOnly import func CRunarFFI.rn_transport_ca_server_configure_admin_skis
+@_implementationOnly import func CRunarFFI.rn_transport_ca_server_free
+@_implementationOnly import func CRunarFFI.rn_transport_ca_server_get_authenticated_addr
+@_implementationOnly import func CRunarFFI.rn_transport_ca_server_get_bootstrap_addr
 @_implementationOnly import func CRunarFFI.rn_transport_ca_server_new
 @_implementationOnly import func CRunarFFI.rn_transport_ca_server_start
-@_implementationOnly import func CRunarFFI.rn_transport_ca_server_get_bootstrap_addr
-@_implementationOnly import func CRunarFFI.rn_transport_ca_server_get_authenticated_addr
-@_implementationOnly import func CRunarFFI.rn_keys_node_generate_csr
-@_implementationOnly import func CRunarFFI.rn_keys_ca_generate_enrollment_token
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_get_root_ca_certificate
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_get_issuing_ca_certificate
-@_implementationOnly import func CRunarFFI.rn_transport_ca_client_new_with_config
-@_implementationOnly import func CRunarFFI.rn_transport_ca_client_enroll
-@_implementationOnly import func CRunarFFI.rn_keys_mobile_from_enroll_response
-@_implementationOnly import func CRunarFFI.rn_keys_node_install_certificate
-@_implementationOnly import func CRunarFFI.rn_keys_node_get_quic_certificate_config
-@_implementationOnly import func CRunarFFI.rn_transport_ca_client_renew
-@_implementationOnly import func CRunarFFI.rn_keys_mobile_from_renew_response
-@_implementationOnly import func CRunarFFI.rn_keys_node_get_node_certificate
-@_implementationOnly import func CRunarFFI.rn_keys_certificate_extract_ski
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_add_admin_ski
-@_implementationOnly import func CRunarFFI.rn_transport_ca_server_configure_admin_skis
-@_implementationOnly import func CRunarFFI.rn_keys_certificate_get_serial
-@_implementationOnly import func CRunarFFI.rn_transport_ca_client_revoke
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_handle_crl
-@_implementationOnly import func CRunarFFI.rn_transport_ca_client_get_status
-@_implementationOnly import func CRunarFFI.rn_transport_ca_client_get_chain
-@_implementationOnly import func CRunarFFI.rn_keys_node_derive_user_profile_key
-@_implementationOnly import func CRunarFFI.rn_keys_get_compact_id
-@_implementationOnly import func CRunarFFI.rn_keys_node_encrypt_with_envelope
-@_implementationOnly import func CRunarFFI.rn_keys_node_decrypt_with_profile
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_revoke_token
 @_implementationOnly import func CRunarFFI.rn_transport_ca_server_stop
-@_implementationOnly import func CRunarFFI.rn_keys_ca_free_ea_key_pair
-@_implementationOnly import func CRunarFFI.rn_transport_ca_server_free
-@_implementationOnly import func CRunarFFI.rn_transport_ca_client_free
-@_implementationOnly import func CRunarFFI.rn_keys_free
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_free_shared
-@_implementationOnly import func CRunarFFI.rn_keys_ca_node_free
 
 /// FFI End-to-End Integration Tests with REAL QUIC mTLS
 ///
@@ -68,7 +69,6 @@ import XCTest
 /// 7. Token revocation over FFI with REAL QUIC mTLS
 @available(macOS 11.0, *)
 final class FFIE2EIntegrationTestBaseline: XCTestCase {
-
     // MARK: - Test Helper Functions
 
     // MARK: - Helper Functions
@@ -77,74 +77,14 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     func createTestLogger() -> RunarLogger {
         return RunarLogger(component: .custom)
     }
-    
+
     /// Create CString from Swift String
     func createCString(_ string: String) -> UnsafeMutablePointer<CChar> {
         return strdup(string)!
     }
-    
+
     // MARK: - Data Structures for CBOR Serialization
-    
-    /// SimpleEnrollmentToken struct (deprecated - use the correct one later in file)
-    struct SimpleEnrollmentToken: Codable {
-        let tokenId: String
-        let networkId: String
-        let subject: String
-        let validFrom: UInt64
-        let validTo: UInt64
-        let nonce: Data
-        let capabilities: [String]
-        let signature: Data
-        
-        enum CodingKeys: String, CodingKey {
-            case tokenId = "token_id"
-            case networkId = "network_id"
-            case subject
-            case validFrom = "valid_from"
-            case validTo = "valid_to"
-            case nonce
-            case capabilities
-            case signature
-        }
-        
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            
-            tokenId = try container.decode(String.self, forKey: .tokenId)
-            networkId = try container.decode(String.self, forKey: .networkId)
-            subject = try container.decode(String.self, forKey: .subject)
-            validFrom = try container.decode(UInt64.self, forKey: .validFrom)
-            validTo = try container.decode(UInt64.self, forKey: .validTo)
-            
-            // Handle Data fields as CBOR bytes (matching Rust serde_bytes)
-            if let nonceBytes = try? container.decode([UInt8].self, forKey: .nonce) {
-                nonce = Data(nonceBytes)
-            } else {
-                nonce = try container.decode(Data.self, forKey: .nonce)
-            }
-            
-            capabilities = try container.decode([String].self, forKey: .capabilities)
-            
-            if let signatureBytes = try? container.decode([UInt8].self, forKey: .signature) {
-                signature = Data(signatureBytes)
-            } else {
-                signature = try container.decode(Data.self, forKey: .signature)
-            }
-        }
-        
-        func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(tokenId, forKey: .tokenId)
-            try container.encode(networkId, forKey: .networkId)
-            try container.encode(subject, forKey: .subject)
-            try container.encode(validFrom, forKey: .validFrom)
-            try container.encode(validTo, forKey: .validTo)
-            try container.encode(Array(nonce), forKey: .nonce)
-            try container.encode(capabilities, forKey: .capabilities)
-            try container.encode(Array(signature), forKey: .signature)
-        }
-    }
-    
+
     // Use the correct CsrEnrollRequest structure defined later in the file
 
     /// Validate certificate chain to ensure proper signing relationships
@@ -191,7 +131,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         let eaKeyManager = EAKeyManager(logger: createTestLogger())
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
-        
+
         let now = UInt64(Date().timeIntervalSince1970)
         let tokenIdCstr = createCString(tokenId)
         let networkIdCstr = createCString(networkId)
@@ -200,7 +140,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         let capabilities = ["enroll"]
         let capabilitiesCstr = capabilities.map { createCString($0) }
         defer { capabilitiesCstr.forEach { free($0) } }
-        
+
         let params = EAKeyManager.EnrollmentTokenParams(
             eaKeyHandle: eaKeyHandle,
             tokenId: String(cString: tokenIdCstr),
@@ -211,31 +151,31 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             nonce: nonce,
             capabilities: capabilities
         )
-        
+
         return try eaKeyManager.generateEnrollmentToken(params: params)
     }
-    
+
     /// Test CA Node creation only
     func testCANodeCreation() throws {
         print("\n🚀 Starting CA Node creation test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Clean up
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node creation test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key creation
     func testCANodeWithEAKey() throws {
         print("\n🚀 Starting CA Node + EA Key test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
 
@@ -252,34 +192,34 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Clean up
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key + Setup
     func testCANodeWithEASetup() throws {
         print("\n🚀 Starting CA Node + EA Key + Setup test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -293,34 +233,34 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Clean up
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key + Setup test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key + Setup + Shared CA Node
     func testCANodeWithShared() throws {
         print("\n🚀 Starting CA Node + EA Key + Setup + Shared test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -334,39 +274,39 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Create shared CA Node reference
         let sharedCaNode = try caNode.createShared()
         print("   ✅ Shared CA Node created")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key + Setup + Shared test completed successfully!")
     }
-    
+
     /// Test CA Node + EA Key + Setup + Shared CA Node + Server Creation
     func testCANodeWithServer() throws {
         print("\n🚀 Starting CA Node + EA Key + Setup + Shared + Server test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -380,7 +320,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Create shared CA Node reference
         let sharedCaNode = try caNode.createShared()
         print("   ✅ Shared CA Node created")
@@ -388,45 +328,45 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         // Create CA Server (EXACTLY like Rust)
         let caServer = try CAServer.create(
             config: CaServerConfig(
-            bootstrapBind: "127.0.0.1:0",
-            authenticatedBind: "127.0.0.1:0",
-            networkId: "test_network",
-            rateLimitPerMinute: 5,
-            rateLimitPerHour: 30
+                bootstrapBind: "127.0.0.1:0",
+                authenticatedBind: "127.0.0.1:0",
+                networkId: "test_network",
+                rateLimitPerMinute: 5,
+                rateLimitPerHour: 30
             ),
             sharedCaNode: sharedCaNode
         )
         print("   ✅ CA Server created")
-        
+
         // Clean up
         try caServer.stop()
         CANode.freeShared(sharedCaNode)
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 CA Node + EA Key + Setup + Shared + Server test completed successfully!")
     }
-    
+
     /// Test minimal CA setup to isolate the segfault issue
     func testMinimalCASetup() throws {
         print("\n🚀 Starting minimal CA setup test")
-        
+
         // Create test logger
         let testLogger = createTestLogger()
-        
+
         // Create CA Node
         let caNode = try CANode.create()
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
         let eaKeyHandle = try eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
-        
+
         // Get EA public key
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
-        
+
         // Complete CA Node setup
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -440,18 +380,18 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         )
         try caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
-        
+
         // Try to create shared CA Node reference
         let sharedCaNode = try caNode.createShared()
         print("   ✅ Shared CA Node created")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
         print("   ✅ Cleanup complete")
-        
+
         print("\n🎉 Minimal CA setup test completed successfully!")
     }
-    
+
     /// Test the full CA Node infrastructure using FFI API with REAL QUIC mTLS connections
     /// This test validates the complete CA Node infrastructure using the FFI API with ACTUAL QUIC mTLS connections,
     /// including bootstrap enrollment, mTLS participation, renewal, and CRL-lite enforcement.
@@ -466,24 +406,24 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     /// 7. Token revocation over FFI with REAL QUIC mTLS
     func testFFIFullTransportE2EQuicMtls() throws {
         print("\n🚀 Starting FFI Full-transport E2E QUIC mTLS test")
-        
+
         // ==========================================
         // Phase 1: Setup
         // ==========================================
         print("\n🏗️  PHASE 1: Setup")
-        
+
         // Set log level to TRACE for detailed debugging
         FFILogger.setLogLevel(.trace)
         print("   🔧 Set log level to TRACE for detailed debugging")
-        
+
         // Initialize rustls crypto provider
         // Note: Swift uses system crypto, but we ensure proper initialization
         print("   🔧 Initializing crypto provider...")
-        
+
         // Create keys handles using raw FFI calls (EXACTLY like Rust)
         var nodeKeysHandle: UnsafeMutableRawPointer?
         var mobileKeysHandle: UnsafeMutableRawPointer?
-        
+
         // Create node keys
         let (nodeResult, nodeError) = withRnError { errPtr in
             rn_keys_new(&nodeKeysHandle, errPtr)
@@ -492,7 +432,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw nodeError ?? FFIError.operationFailed("Failed to create node keys handle")
         }
         print("   ✅ Node keys handle created")
-        
+
         // Create mobile keys
         let (mobileResult, mobileError) = withRnError { errPtr in
             rn_keys_new(&mobileKeysHandle, errPtr)
@@ -501,7 +441,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw mobileError ?? FFIError.operationFailed("Failed to create mobile keys handle")
         }
         print("   ✅ Mobile keys handle created")
-        
+
         // Initialize as node
         let (initNodeResult, initNodeError) = withRnError { errPtr in
             rn_keys_init_as_node(nodeKeys, errPtr)
@@ -510,7 +450,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw initNodeError ?? FFIError.operationFailed("Failed to initialize as node")
         }
         print("   ✅ Node initialized")
-        
+
         // Initialize as mobile
         let (initMobileResult, initMobileError) = withRnError { errPtr in
             rn_keys_init_as_mobile(mobileKeys, errPtr)
@@ -519,14 +459,14 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw initMobileError ?? FFIError.operationFailed("Failed to initialize as mobile")
         }
         print("   ✅ Mobile initialized")
-        
+
         print("   ✅ Keys handles created and initialized")
-        
+
         // ==========================================
         // Phase 2: CA Node and Server
         // ==========================================
         print("\n🏗️  PHASE 2: CA Node and Server")
-        
+
         // Create CA Node using raw FFI calls (EXACTLY like Rust)
         var caNodeHandle: UnsafeMutableRawPointer?
         let (caNodeResult, caNodeError) = withRnError { errPtr in
@@ -536,7 +476,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw caNodeError ?? FFIError.operationFailed("Failed to create CA node")
         }
         print("   ✅ CA Node created")
-        
+
         // Create EA key pair using new secure FFI (private key stays internal)
         var eaKeyHandle: UnsafeMutableRawPointer?
         let (eaKeyResult, eaKeyError) = withRnError { errPtr in
@@ -546,25 +486,25 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw eaKeyError ?? FFIError.operationFailed("Failed to create EA key pair")
         }
         print("   ✅ EA key pair created (private key stays internal)")
-        
+
         // Get EA public key (only public key exposed) - EXACTLY like Rust
         var eaPublicKeyPtr: UnsafeMutablePointer<UInt8>?
-        var eaPublicKeyLen: Int = 0
+        var eaPublicKeyLen = 0
         let (eaPublicKeyResult, eaPublicKeyError) = withRnError { errPtr in
             rn_keys_ca_get_ea_public_key(eaKey, &eaPublicKeyPtr, &eaPublicKeyLen, errPtr)
         }
         guard eaPublicKeyResult == 0, let eaPublicKeyRaw = eaPublicKeyPtr, eaPublicKeyLen > 0 else {
             throw eaPublicKeyError ?? FFIError.operationFailed("Failed to get EA public key")
         }
-        
+
         let eaPublicKeyCbor = Data(bytes: eaPublicKeyRaw, count: eaPublicKeyLen)
         print("   ✅ EA public key retrieved (\(eaPublicKeyLen) bytes)")
-        
+
         // Complete CA setup using new secure FFI (no private keys exposed) - EXACTLY like Rust
         let networkId = "test_network"
         let rootCaSubject = "CN=Test Root CA,O=Test,C=US"
         let issuingCaSubject = "CN=Test Issuing CA,O=Test,C=US"
-        
+
         let (setupResult, setupError) = withRnError { errPtr in
             rootCaSubject.withCString { cRootSubject in
                 issuingCaSubject.withCString { cIssuingSubject in
@@ -575,7 +515,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                                 cRootSubject,
                                 cIssuingSubject,
                                 365, // validity_days
-                                1,   // issuing_ca_serial
+                                1, // issuing_ca_serial
                                 eaRaw.bindMemory(to: UInt8.self).baseAddress,
                                 eaPublicKeyCbor.count,
                                 cNetworkId,
@@ -590,9 +530,9 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw setupError ?? FFIError.operationFailed("Failed to setup CA node")
         }
         print("   ✅ CA Node setup complete (no private keys exposed)")
-        
+
         print("   ✅ CA Node configured with issuing CA and enrollment authority")
-        
+
         // Create shared CA Node reference for server usage AFTER configuring the CA Node (EXACTLY like Rust)
         var sharedCaNodeHandle: UnsafeMutableRawPointer?
         let (sharedResult, sharedError) = withRnError { errPtr in
@@ -602,7 +542,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw sharedError ?? FFIError.operationFailed("Failed to create shared CA node reference")
         }
         print("   ✅ Shared CA Node created")
-        
+
         // Create CA Server config CBOR (EXACTLY like Rust)
         let customConfig = CustomCaServerConfig(
             bootstrap_bind: "127.0.0.1:0",
@@ -611,9 +551,9 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             rate_limit_per_minute: 5,
             rate_limit_per_hour: 30
         )
-        
+
         let serverConfigCbor = try CodableCBOREncoder().encode(customConfig)
-        
+
         // Create CA Server using shared CA Node reference (EXACTLY like Rust)
         var caServerHandle: UnsafeMutableRawPointer?
         let (serverResult, serverError) = withRnError { errPtr in
@@ -631,7 +571,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw serverError ?? FFIError.operationFailed("Failed to create CA server")
         }
         print("   ✅ CA Server created")
-        
+
         // Note: Server starts with empty admin SKIs, real admin SKI will be added when needed for revocation
 
         // Start CA Server
@@ -655,7 +595,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw bootstrapError ?? FFIError.operationFailed("Failed to get bootstrap address")
         }
         let bootstrapAddr = String(cString: bootstrapAddrRaw)
-        
+
         var authenticatedAddrPtr: UnsafeMutablePointer<CChar>?
         let (authResult, authError) = withRnError { errPtr in
             rn_transport_ca_server_get_authenticated_addr(caServer, &authenticatedAddrPtr, errPtr)
@@ -690,31 +630,31 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
         // Generate CSR on node (returns SetupToken CBOR) - EXACTLY like Rust
         var setupTokenPtr: UnsafeMutablePointer<UInt8>?
-        var setupTokenLen: Int = 0
+        var setupTokenLen = 0
         let (csrResult, csrError) = withRnError { errPtr in
             rn_keys_node_generate_csr(nodeKeys, &setupTokenPtr, &setupTokenLen, errPtr)
         }
         guard csrResult == 0, let setupTokenRaw = setupTokenPtr, setupTokenLen > 0 else {
             throw csrError ?? FFIError.operationFailed("Failed to generate CSR")
         }
-        
+
         let setupTokenCbor = Data(bytes: setupTokenRaw, count: setupTokenLen)
         print("   ✅ CSR generated (\(setupTokenLen) bytes)")
-        
+
         // Use FFI to extract CSR DER from SetupToken (EXACTLY like Rust)
         // The FFI should handle CBOR deserialization internally
-        let csrDer = setupTokenCbor  // For now, use the raw CBOR data
+        let csrDer = setupTokenCbor // For now, use the raw CBOR data
         print("   ✅ CSR DER extracted from SetupToken (\(csrDer.count) bytes)")
-        
+
         // Create enrollment token using new secure FFI (private key stays internal) - EXACTLY like Rust
         let now = UInt64(Date().timeIntervalSince1970)
         let tokenId = "test_token_001"
         let subject = "test_subject"
         let nonce = Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
         let capabilities = ["enroll"]
-        
+
         var tokenCborPtr: UnsafeMutablePointer<UInt8>?
-        var tokenCborLen: Int = 0
+        var tokenCborLen = 0
         let (tokenResult, tokenError) = withRnError { errPtr in
             // Create properly null-terminated C strings for capabilities (EXACTLY like Rust)
             // Keep the C strings alive for the duration of the FFI call
@@ -733,13 +673,13 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                     cString.deallocate()
                 }
             }
-            
+
             let capabilitiesPtrsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>.allocate(capacity: capabilities.count)
             defer { capabilitiesPtrsBuffer.deallocate() }
             for (index, ptr) in capabilitiesCStrings.enumerated() {
                 capabilitiesPtrsBuffer[index] = UnsafePointer(ptr)
             }
-            
+
             return rn_keys_ca_generate_enrollment_token(
                 eaKey,
                 tokenId,
@@ -759,19 +699,19 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard tokenResult == 0, let tokenCborRaw = tokenCborPtr, tokenCborLen > 0 else {
             throw tokenError ?? FFIError.operationFailed("Failed to generate enrollment token")
         }
-        
+
         let enrollmentTokenCbor = Data(bytes: tokenCborRaw, count: tokenCborLen)
         print("   ✅ Enrollment token created using secure FFI (private key stays internal)")
-        
+
         // Debug: Print raw CBOR data from FFI
         print("   🔍 Debug: Raw enrollment token CBOR from FFI: \(enrollmentTokenCbor.count) bytes")
         print("   🔍 Debug: First 50 bytes of raw CBOR: \(Array(enrollmentTokenCbor.prefix(50)))")
-        
+
         // Deserialize enrollment token CBOR into struct (EXACTLY like Rust)
         // Use the correct EnrollmentToken structure with body field
         let enrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
         print("   ✅ Enrollment token deserialized into struct")
-        
+
         // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
         print("   🔍 Debug: SetupToken CBOR size: \(setupTokenCbor.count) bytes")
         let setupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
@@ -780,7 +720,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("   🔍 Debug: SetupToken node_id: \(setupTokenStruct.node_id)")
         print("   🔍 Debug: SetupToken node_public_key: \(setupTokenStruct.node_public_key.count) bytes")
         print("   🔍 Debug: SetupToken node_agreement_public_key: \(setupTokenStruct.node_agreement_public_key.count) bytes")
-        
+
         // Build CsrEnrollRequest CBOR using struct approach (EXACTLY like Rust)
         // Use the correct structure with snake_case field names
         let enrollRequestStruct = CsrEnrollRequest(
@@ -788,11 +728,11 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             csr_der: csrDerFromToken,
             enrollment_token: enrollmentTokenStruct
         )
-        
+
         // Encode the CsrEnrollRequest as CBOR payload (EXACTLY like Rust)
         // The FFI function handles the binary protocol internally
         let enrollRequest = try CodableCBOREncoder().encode(enrollRequestStruct)
-        
+
         // Debug: Print the CBOR structure to understand what we're sending
         print("   🔍 Debug: Enrollment request CBOR size: \(enrollRequest.count) bytes")
         print("   🔍 Debug: Enrollment request structure:")
@@ -807,10 +747,10 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("     - enrollment_token.body.permissions: \(enrollRequestStruct.enrollment_token.body.permissions)")
         print("     - enrollment_token.signature: \(enrollRequestStruct.enrollment_token.signature.count) bytes")
         print("     - enrollment_token.signer_id: \(enrollRequestStruct.enrollment_token.signer_id)")
-        
+
         // Get certificates from CA Node using new secure FFI (public certificates only) - EXACTLY like Rust
         var rootCaCertPtr: UnsafeMutablePointer<UInt8>?
-        var rootCaCertLen: Int = 0
+        var rootCaCertLen = 0
         let (rootCaResult, rootCaError) = withRnError { errPtr in
             rn_keys_ca_node_get_root_ca_certificate(caNode, &rootCaCertPtr, &rootCaCertLen, errPtr)
         }
@@ -818,9 +758,9 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw rootCaError ?? FFIError.operationFailed("Failed to get Root CA certificate")
         }
         let rootCaCert = Data(bytes: rootCaCertRaw, count: rootCaCertLen)
-        
+
         var issuingCaCertPtr: UnsafeMutablePointer<UInt8>?
-        var issuingCaCertLen: Int = 0
+        var issuingCaCertLen = 0
         let (issuingCaResult, issuingCaError) = withRnError { errPtr in
             rn_keys_ca_node_get_issuing_ca_certificate(caNode, &issuingCaCertPtr, &issuingCaCertLen, errPtr)
         }
@@ -828,11 +768,11 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw issuingCaError ?? FFIError.operationFailed("Failed to get Issuing CA certificate")
         }
         let issuingCertDer = Data(bytes: issuingCaCertRaw, count: issuingCaCertLen)
-        
+
         print("   ✅ Certificates retrieved from CA Node (public certificates only)")
         print("      Root CA cert: \(rootCaCertLen) bytes")
         print("      Issuing CA cert: \(issuingCaCertLen) bytes")
-        
+
         // Create CA Client with all configuration at once (EXACTLY like Rust)
         print("   🔧 Creating CA Client with all configuration (following design section 6.6):")
         print("      Bootstrap: \(bootstrapAddr)")
@@ -850,9 +790,9 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             root_ca_der: rootCaCert,
             issuing_ca_der: issuingCertDer
         )
-        
+
         let configCbor = try CodableCBOREncoder().encode(config)
-        
+
         var caClientHandle: UnsafeMutableRawPointer?
         let (clientResult, clientError) = withRnError { errPtr in
             configCbor.withUnsafeBytes { raw in
@@ -875,19 +815,19 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("      Bootstrap address: \(bootstrapAddr)")
         print("      Request size: \(enrollRequest.count) bytes")
         print("      CSR size: \(csrDer.count) bytes")
-        
+
         // DUMP: Save baseline test data for comparison
-        let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_baseline.cbor"))
-        try csrDer.write(to: projectPath.appendingPathComponent("csr_baseline.der"))
-        try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_baseline.cbor"))
-        print("   📁 DUMP: Saved baseline test data to project directory")
-        print("      - enroll_baseline.cbor: \(enrollRequest.count) bytes")
-        print("      - csr_baseline.der: \(csrDer.count) bytes")
-        print("      - token_baseline.cbor: \(enrollmentTokenCbor.count) bytes")
-        
+        // let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        // try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_baseline.cbor"))
+        // try csrDer.write(to: projectPath.appendingPathComponent("csr_baseline.der"))
+        // try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_baseline.cbor"))
+        // print("   📁 DUMP: Saved baseline test data to project directory")
+        // print("      - enroll_baseline.cbor: \(enrollRequest.count) bytes")
+        // print("      - csr_baseline.der: \(csrDer.count) bytes")
+        // print("      - token_baseline.cbor: \(enrollmentTokenCbor.count) bytes")
+
         var enrollResponsePtr: UnsafeMutablePointer<UInt8>?
-        var enrollResponseLen: Int = 0
+        var enrollResponseLen = 0
         let (enrollResult, enrollError) = withRnError { errPtr in
             bootstrapAddr.withCString { cBootstrapAddr in
                 enrollRequest.withUnsafeBytes { raw in
@@ -903,16 +843,27 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        guard enrollResult == 0, let enrollResponseRaw = enrollResponsePtr, enrollResponseLen > 0 else {
+
+        // EXACTLY like Rust: Check result and log error details before failing
+        if enrollResult != 0 {
+            print("   ❌ Enrollment failed with error code: \(enrollResult)")
+            if let error = enrollError {
+                print("   ❌ Error message: \(error.localizedDescription)")
+            }
             throw enrollError ?? FFIError.operationFailed("Failed to enroll")
         }
-        
+
+        // EXACTLY like Rust: Assert response is valid
+        guard let enrollResponseRaw = enrollResponsePtr, enrollResponseLen > 0 else {
+            throw FFIError.operationFailed("Enroll response should not be null and length should be positive")
+        }
+
         let enrollResponse = Data(bytes: enrollResponseRaw, count: enrollResponseLen)
         print("   ✅ Enrollment successful (\(enrollResponseLen) bytes response)")
-        
+
         // Convert response to NodeCertificateMessage (EXACTLY like Rust)
         var certMsgPtr: UnsafeMutablePointer<UInt8>?
-        var certMsgLen: Int = 0
+        var certMsgLen = 0
         let (certMsgResult, certMsgError) = withRnError { errPtr in
             enrollResponse.withUnsafeBytes { raw in
                 rn_keys_mobile_from_enroll_response(
@@ -925,13 +876,25 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 )
             }
         }
-        guard certMsgResult == 0, let certMsgRaw = certMsgPtr, certMsgLen > 0 else {
+
+        // EXACTLY like Rust: assert_eq!(result, 0, "Failed to convert enroll response")
+        guard certMsgResult == 0 else {
             throw certMsgError ?? FFIError.operationFailed("Failed to convert enroll response")
         }
-        
+
+        // EXACTLY like Rust: assert!(!cert_msg_ptr.is_null(), "Certificate message should not be null")
+        guard let certMsgRaw = certMsgPtr else {
+            throw FFIError.operationFailed("Certificate message should not be null")
+        }
+
+        // EXACTLY like Rust: assert!(cert_msg_len > 0, "Certificate message length should be positive")
+        guard certMsgLen > 0 else {
+            throw FFIError.operationFailed("Certificate message length should be positive")
+        }
+
         let certMessage = Data(bytes: certMsgRaw, count: certMsgLen)
         print("   ✅ Certificate message created (\(certMsgLen) bytes)")
-        
+
         // Install certificate (EXACTLY like Rust)
         let (installResult, installError) = withRnError { errPtr in
             certMessage.withUnsafeBytes { raw in
@@ -943,21 +906,24 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 )
             }
         }
+
+        // EXACTLY like Rust: assert_eq!(result, 0, "Failed to install certificate")
         guard installResult == 0 else {
             throw installError ?? FFIError.operationFailed("Failed to install certificate")
         }
+
         print("   ✅ Certificate installed and validated")
 
         // QUIC Cert Config Validation (EXACTLY like Rust)
         var quicConfigPtr: UnsafeMutablePointer<UInt8>?
-        var quicConfigLen: Int = 0
+        var quicConfigLen = 0
         let (quicResult, quicError) = withRnError { errPtr in
             rn_keys_node_get_quic_certificate_config(nodeKeys, &quicConfigPtr, &quicConfigLen, errPtr)
         }
         guard quicResult == 0, let quicConfigRaw = quicConfigPtr, quicConfigLen > 0 else {
             throw quicError ?? FFIError.operationFailed("Failed to get QUIC certificate config")
         }
-        
+
         let quicConfig = Data(bytes: quicConfigRaw, count: quicConfigLen)
         print("   ✅ QUIC certificate config validated (\(quicConfigLen) bytes)")
 
@@ -968,33 +934,33 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
         // Generate renewal CSR (returns SetupToken CBOR) - EXACTLY like Rust
         var renewalSetupTokenPtr: UnsafeMutablePointer<UInt8>?
-        var renewalSetupTokenLen: Int = 0
+        var renewalSetupTokenLen = 0
         let (renewalCsrResult, renewalCsrError) = withRnError { errPtr in
             rn_keys_node_generate_csr(nodeKeys, &renewalSetupTokenPtr, &renewalSetupTokenLen, errPtr)
         }
         guard renewalCsrResult == 0, let renewalSetupTokenRaw = renewalSetupTokenPtr, renewalSetupTokenLen > 0 else {
             throw renewalCsrError ?? FFIError.operationFailed("Failed to generate renewal CSR")
         }
-        
+
         let renewalSetupTokenCbor = Data(bytes: renewalSetupTokenRaw, count: renewalSetupTokenLen)
         print("   ✅ Renewal CSR generated (\(renewalSetupTokenLen) bytes)")
-        
+
         // Extract DER bytes from SetupToken CBOR (EXACTLY like Rust)
         let renewalSetupToken: SetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: renewalSetupTokenCbor)
         let renewalCsrDer = renewalSetupToken.csr_der
         print("   ✅ Renewal CSR DER extracted from SetupToken (\(renewalCsrDer.count) bytes)")
-        
+
         // Build RenewRequest CBOR (EXACTLY like Rust)
         let renewRequestStruct = RenewRequest(
             network_id: "test_network",
             csr_der: renewalCsrDer
         )
-        
+
         let renewRequest = try CodableCBOREncoder().encode(renewRequestStruct)
-        
+
         // Renew via CA Client (authenticated endpoint) - EXACTLY like Rust
         var renewResponsePtr: UnsafeMutablePointer<UInt8>?
-        var renewResponseLen: Int = 0
+        var renewResponseLen = 0
         let (renewResult, renewError) = withRnError { errPtr in
             authenticatedAddr.withCString { cAuthAddr in
                 renewRequest.withUnsafeBytes { raw in
@@ -1010,16 +976,27 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        guard renewResult == 0, let renewResponseRaw = renewResponsePtr, renewResponseLen > 0 else {
+
+        // EXACTLY like Rust: Check result and log error details before failing
+        if renewResult != 0 {
+            print("   ❌ Renewal failed with error code: \(renewResult)")
+            if let error = renewError {
+                print("   ❌ Error message: \(error.localizedDescription)")
+            }
             throw renewError ?? FFIError.operationFailed("Failed to renew certificate")
         }
-        
+
+        // EXACTLY like Rust: Assert response is valid
+        guard let renewResponseRaw = renewResponsePtr, renewResponseLen > 0 else {
+            throw FFIError.operationFailed("Renew response should not be null and length should be positive")
+        }
+
         let renewResponse = Data(bytes: renewResponseRaw, count: renewResponseLen)
         print("   ✅ Certificate renewal successful (\(renewResponseLen) bytes response)")
-        
+
         // Convert response to NodeCertificateMessage (EXACTLY like Rust)
         var renewalCertMsgPtr: UnsafeMutablePointer<UInt8>?
-        var renewalCertMsgLen: Int = 0
+        var renewalCertMsgLen = 0
         let (renewalCertMsgResult, renewalCertMsgError) = withRnError { errPtr in
             renewResponse.withUnsafeBytes { raw in
                 rn_keys_mobile_from_renew_response(
@@ -1032,13 +1009,25 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 )
             }
         }
-        guard renewalCertMsgResult == 0, let renewalCertMsgRaw = renewalCertMsgPtr, renewalCertMsgLen > 0 else {
+
+        // EXACTLY like Rust: assert_eq!(result, 0, "Failed to convert renew response")
+        guard renewalCertMsgResult == 0 else {
             throw renewalCertMsgError ?? FFIError.operationFailed("Failed to convert renew response")
         }
-        
+
+        // EXACTLY like Rust: assert!(!renewal_cert_msg_ptr.is_null(), "Renewal certificate message should not be null")
+        guard let renewalCertMsgRaw = renewalCertMsgPtr else {
+            throw FFIError.operationFailed("Renewal certificate message should not be null")
+        }
+
+        // EXACTLY like Rust: assert!(renewal_cert_msg_len > 0, "Renewal certificate message length should be positive")
+        guard renewalCertMsgLen > 0 else {
+            throw FFIError.operationFailed("Renewal certificate message length should be positive")
+        }
+
         let renewalCertMessage = Data(bytes: renewalCertMsgRaw, count: renewalCertMsgLen)
         print("   ✅ Renewal certificate message created (\(renewalCertMsgLen) bytes)")
-        
+
         // Install renewed certificate (EXACTLY like Rust)
         let (renewalInstallResult, renewalInstallError) = withRnError { errPtr in
             renewalCertMessage.withUnsafeBytes { raw in
@@ -1050,9 +1039,12 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 )
             }
         }
+
+        // EXACTLY like Rust: assert_eq!(result, 0, "Failed to install renewed certificate")
         guard renewalInstallResult == 0 else {
             throw renewalInstallError ?? FFIError.operationFailed("Failed to install renewed certificate")
         }
+
         print("   ✅ Renewed certificate installed and validated")
 
         // ==========================================
@@ -1062,16 +1054,16 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
         // Extract SKI from the client's certificate for admin authorization (EXACTLY like Rust)
         var clientCertDerPtr: UnsafeMutablePointer<UInt8>?
-        var clientCertDerLen: Int = 0
+        var clientCertDerLen = 0
         let (clientCertResult, clientCertError) = withRnError { errPtr in
             rn_keys_node_get_node_certificate(nodeKeys, &clientCertDerPtr, &clientCertDerLen, errPtr)
         }
         guard clientCertResult == 0, let clientCertDerRaw = clientCertDerPtr, clientCertDerLen > 0 else {
             throw clientCertError ?? FFIError.operationFailed("Failed to get client certificate")
         }
-        
+
         let clientCertDer = Data(bytes: clientCertDerRaw, count: clientCertDerLen)
-        
+
         // Extract SKI from client certificate (EXACTLY like Rust)
         var clientSkiPtr: UnsafeMutablePointer<CChar>?
         let (skiResult, skiError) = withRnError { errPtr in
@@ -1087,7 +1079,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard skiResult == 0, let clientSkiRaw = clientSkiPtr else {
             throw skiError ?? FFIError.operationFailed("Failed to extract client certificate SKI")
         }
-        
+
         let clientSki = String(cString: clientSkiRaw)
         print("   📋 Client certificate SKI: \(clientSki)")
 
@@ -1100,7 +1092,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard addSkiResult == 0 else {
             throw addSkiError ?? FFIError.operationFailed("Failed to add client SKI to shared CA Node admin allowlist")
         }
-        
+
         // Also configure admin SKIs on the server (EXACTLY like Rust)
         let adminSkis = [clientSki]
         let adminSkisCbor = try CodableCBOREncoder().encode(adminSkis)
@@ -1135,7 +1127,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard serialResult == 0, let certSerialRaw = certSerialPtr else {
             throw serialError ?? FFIError.operationFailed("Failed to get certificate serial")
         }
-        
+
         let certSerial = String(cString: certSerialRaw)
         print("   📋 Certificate serial for revocation: \(certSerial)")
 
@@ -1147,7 +1139,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         )
 
         let revokeRequestCbor = try CodableCBOREncoder().encode(revokeRequest)
-        
+
         // Debug: Print revocation request details
         print("   🔍 Debug: Revocation request structure:")
         print("     - network_id: \(revokeRequest.network_id)")
@@ -1159,7 +1151,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
         // Revoke certificate via client (mTLS) (EXACTLY like Rust)
         var revokeResponsePtr: UnsafeMutablePointer<UInt8>?
-        var revokeResponseLen: Int = 0
+        var revokeResponseLen = 0
         let (revokeResult, revokeError) = withRnError { errPtr in
             authenticatedAddr.withCString { cAuthAddr in
                 revokeRequestCbor.withUnsafeBytes { raw in
@@ -1175,16 +1167,23 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        guard revokeResult == 0, let revokeResponseRaw = revokeResponsePtr, revokeResponseLen > 0 else {
+
+        // EXACTLY like Rust: assert_eq!(result, 0, "Failed to revoke certificate")
+        guard revokeResult == 0 else {
             throw revokeError ?? FFIError.operationFailed("Failed to revoke certificate")
         }
-        
+
+        // EXACTLY like Rust: assert!(!revoke_response_ptr.is_null(), "Revoke response should not be null")
+        guard let revokeResponseRaw = revokeResponsePtr else {
+            throw FFIError.operationFailed("Revoke response should not be null")
+        }
+
         let revokeResponse = Data(bytes: revokeResponseRaw, count: revokeResponseLen)
         print("   ✅ Certificate revoked successfully")
 
         // Generate CRL-lite (EXACTLY like Rust)
         var crlPtr: UnsafeMutablePointer<UInt8>?
-        var crlLen: Int = 0
+        var crlLen = 0
         let (crlResult, crlError) = withRnError { errPtr in
             networkId.withCString { cNetworkId in
                 rn_keys_ca_node_handle_crl(caNode, cNetworkId, &crlPtr, &crlLen, errPtr)
@@ -1193,10 +1192,10 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard crlResult == 0, let crlRaw = crlPtr, crlLen > 0 else {
             throw crlError ?? FFIError.operationFailed("Failed to generate CRL-lite")
         }
-        
+
         let crl = Data(bytes: crlRaw, count: crlLen)
         print("   ✅ CRL-lite generated successfully")
-        
+
         print("   ✅ Phase 5 completed: Certificate revocation and CRL-lite generation")
 
         // ==========================================
@@ -1206,7 +1205,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
         // Get CA Status (EXACTLY like Rust)
         var statusResponsePtr: UnsafeMutablePointer<UInt8>?
-        var statusResponseLen: Int = 0
+        var statusResponseLen = 0
         let (statusResult, statusError) = withRnError { errPtr in
             authenticatedAddr.withCString { cAuthAddr in
                 networkId.withCString { cNetworkId in
@@ -1221,16 +1220,27 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        guard statusResult == 0, let statusResponseRaw = statusResponsePtr, statusResponseLen > 0 else {
+
+        // EXACTLY like Rust: Check result and log error details before failing
+        if statusResult != 0 {
+            print("   ❌ Status request failed with error code: \(statusResult)")
+            if let error = statusError {
+                print("   ❌ Error message: \(error.localizedDescription)")
+            }
             throw statusError ?? FFIError.operationFailed("Failed to get CA status")
         }
-        
+
+        // EXACTLY like Rust: Assert response is valid
+        guard let statusResponseRaw = statusResponsePtr, statusResponseLen > 0 else {
+            throw FFIError.operationFailed("Status response should not be null and length should be positive")
+        }
+
         let statusResponse = Data(bytes: statusResponseRaw, count: statusResponseLen)
         print("   ✅ CA Status retrieved via REAL QUIC mTLS (\(statusResponseLen) bytes)")
-        
+
         // Get Certificate Chain (EXACTLY like Rust)
         var chainResponsePtr: UnsafeMutablePointer<UInt8>?
-        var chainResponseLen: Int = 0
+        var chainResponseLen = 0
         let (chainResult, chainError) = withRnError { errPtr in
             bootstrapAddr.withCString { cBootstrapAddr in
                 networkId.withCString { cNetworkId in
@@ -1245,10 +1255,21 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        guard chainResult == 0, let chainResponseRaw = chainResponsePtr, chainResponseLen > 0 else {
+
+        // EXACTLY like Rust: Check result and log error details before failing
+        if chainResult != 0 {
+            print("   ❌ Chain request failed with error code: \(chainResult)")
+            if let error = chainError {
+                print("   ❌ Error message: \(error.localizedDescription)")
+            }
             throw chainError ?? FFIError.operationFailed("Failed to get certificate chain")
         }
-        
+
+        // EXACTLY like Rust: Assert response is valid
+        guard let chainResponseRaw = chainResponsePtr, chainResponseLen > 0 else {
+            throw FFIError.operationFailed("Chain response should not be null and length should be positive")
+        }
+
         let chainResponse = Data(bytes: chainResponseRaw, count: chainResponseLen)
         print("   ✅ Certificate chain retrieved via REAL QUIC mTLS (\(chainResponseLen) bytes)")
 
@@ -1260,9 +1281,9 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         // Derive profile keys (EXACTLY like Rust)
         let personalLabel = "personal"
         let workLabel = "work"
-        
+
         var personalProfileKeyPtr: UnsafeMutablePointer<UInt8>?
-        var personalProfileKeyLen: Int = 0
+        var personalProfileKeyLen = 0
         let (personalResult, personalError) = withRnError { errPtr in
             personalLabel.withCString { cLabel in
                 rn_keys_node_derive_user_profile_key(
@@ -1278,9 +1299,9 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw personalError ?? FFIError.operationFailed("Failed to derive personal profile key")
         }
         let personalProfileKey = Data(bytes: personalProfileKeyRaw, count: personalProfileKeyLen)
-        
+
         var workProfileKeyPtr: UnsafeMutablePointer<UInt8>?
-        var workProfileKeyLen: Int = 0
+        var workProfileKeyLen = 0
         let (workResult, workError) = withRnError { errPtr in
             workLabel.withCString { cLabel in
                 rn_keys_node_derive_user_profile_key(
@@ -1296,12 +1317,12 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw workError ?? FFIError.operationFailed("Failed to derive work profile key")
         }
         let workProfileKey = Data(bytes: workProfileKeyRaw, count: workProfileKeyLen)
-        
+
         print("   ✅ Profile keys derived: personal (\(personalProfileKeyLen) bytes), work (\(workProfileKeyLen) bytes)")
-        
+
         // Test profile key encryption/decryption (EXACTLY like Rust)
         let testData = Data("Hello, encrypted world!".utf8)
-        
+
         // Get compact ID for personal profile key
         var personalProfileIdPtr: UnsafeMutablePointer<CChar>?
         let (compactIdResult, compactIdError) = withRnError { errPtr in
@@ -1318,15 +1339,15 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             throw compactIdError ?? FFIError.operationFailed("Failed to get compact ID")
         }
         let personalProfileId = String(cString: personalProfileIdRaw)
-        
+
         // Create envelope with profile keys (EXACTLY like Rust)
         var envelopePtr: UnsafeMutablePointer<UInt8>?
-        var envelopeLen: Int = 0
-        
+        var envelopeLen = 0
+
         // Prepare profile keys array (array of pointers to profile key data) - EXACTLY like Rust
         let profileKeys = [personalProfileKey]
         let profileLens = [personalProfileKey.count]
-        
+
         let (envelopeResult, envelopeError) = withRnError { errPtr in
             testData.withUnsafeBytes { testDataRaw in
                 // Prepare profile key pointers
@@ -1336,7 +1357,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                         profileKeyPtrs.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
                     }
                 }
-                
+
                 return profileKeyPtrs.withUnsafeBufferPointer { keysPtr in
                     profileLens.withUnsafeBufferPointer { lensPtr in
                         rn_keys_node_encrypt_with_envelope(
@@ -1356,17 +1377,17 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        
+
         guard envelopeResult == 0, let envelopeRaw = envelopePtr, envelopeLen > 0 else {
             throw envelopeError ?? FFIError.operationFailed("Failed to encrypt with envelope")
         }
-        
+
         let envelope = Data(bytes: envelopeRaw, count: envelopeLen)
         print("   ✅ Data encrypted with profile key envelope (\(envelopeLen) bytes)")
-        
+
         // Decrypt with profile key (EXACTLY like Rust)
         var decryptedDataPtr: UnsafeMutablePointer<UInt8>?
-        var decryptedDataLen: Int = 0
+        var decryptedDataLen = 0
         let (decryptResult, decryptError) = withRnError { errPtr in
             envelope.withUnsafeBytes { envelopeRaw in
                 personalProfileId.withCString { cProfileId in
@@ -1385,7 +1406,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard decryptResult == 0, let decryptedDataRaw = decryptedDataPtr, decryptedDataLen > 0 else {
             throw decryptError ?? FFIError.operationFailed("Failed to decrypt with profile")
         }
-        
+
         let decryptedData = Data(bytes: decryptedDataRaw, count: decryptedDataLen)
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
         print("   ✅ Profile key encryption/decryption working correctly")
@@ -1396,38 +1417,38 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("\n⏱️  PHASE 8: Rate Limiting via REAL QUIC mTLS")
 
         // Test rate limiting with multiple enrollment requests using the same token (EXACTLY like Rust)
-        for i in 1...3 {
+        for i in 1 ... 3 {
             var testSetupTokenPtr: UnsafeMutablePointer<UInt8>?
-            var testSetupTokenLen: Int = 0
+            var testSetupTokenLen = 0
             let (testCsrResult, testCsrError) = withRnError { errPtr in
                 rn_keys_node_generate_csr(nodeKeys, &testSetupTokenPtr, &testSetupTokenLen, errPtr)
             }
             guard testCsrResult == 0, let testSetupTokenRaw = testSetupTokenPtr, testSetupTokenLen > 0 else {
                 throw testCsrError ?? FFIError.operationFailed("Failed to generate test CSR for rate limiting")
             }
-            
+
             let testSetupTokenCbor = Data(bytes: testSetupTokenRaw, count: testSetupTokenLen)
-            
+
             // Use the same enrollment token for all requests (rate limiting is per token_id)
             // Deserialize enrollment token and create request struct (EXACTLY like Rust)
             let enrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
-            
+
             // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
             let testSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
             let testCsrDerFromToken = testSetupTokenStruct.csr_der
-            
+
             let testEnrollRequestStruct = CsrEnrollRequest(
                 network_id: "test_network",
                 csr_der: testCsrDerFromToken,
                 enrollment_token: enrollmentTokenStruct
             )
-            
+
             // Encode the CsrEnrollRequest as CBOR payload (EXACTLY like Rust)
             // The FFI function handles the binary protocol internally
             let testEnrollRequest = try CodableCBOREncoder().encode(testEnrollRequestStruct)
-            
+
             var testResponsePtr: UnsafeMutablePointer<UInt8>?
-            var testResponseLen: Int = 0
+            var testResponseLen = 0
             let (testResult, testError) = withRnError { errPtr in
                 bootstrapAddr.withCString { cBootstrapAddr in
                     testEnrollRequest.withUnsafeBytes { raw in
@@ -1443,7 +1464,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                     }
                 }
             }
-            
+
             // All requests in this phase should be rate limited because we're using the same token
             if testResult == 0 {
                 print("   ⚠️  Rate limit check \(i) unexpectedly passed (rate limiting may not be working)")
@@ -1473,31 +1494,31 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
         // Try to use revoked token (should fail) (EXACTLY like Rust)
         var testSetupTokenPtr: UnsafeMutablePointer<UInt8>?
-        var testSetupTokenLen: Int = 0
+        var testSetupTokenLen = 0
         let (testCsrResult, testCsrError) = withRnError { errPtr in
             rn_keys_node_generate_csr(nodeKeys, &testSetupTokenPtr, &testSetupTokenLen, errPtr)
         }
         guard testCsrResult == 0, let testSetupTokenRaw = testSetupTokenPtr, testSetupTokenLen > 0 else {
             throw testCsrError ?? FFIError.operationFailed("Failed to generate test CSR for revoked token test")
         }
-        
+
         let testSetupTokenCbor = Data(bytes: testSetupTokenRaw, count: testSetupTokenLen)
         // Deserialize enrollment token and create request struct (EXACTLY like Rust)
         let revokedEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: enrollmentTokenCbor)
-        
+
         // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
         let revokedSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
         let revokedCsrDerFromToken = revokedSetupTokenStruct.csr_der
-        
+
         let revokedRequestStruct = CsrEnrollRequest(
             network_id: "test_network",
             csr_der: revokedCsrDerFromToken,
             enrollment_token: revokedEnrollmentTokenStruct
         )
         let revokedRequestCbor = try CodableCBOREncoder().encode(revokedRequestStruct)
-        
+
         var revokedResponsePtr: UnsafeMutablePointer<UInt8>?
-        var revokedResponseLen: Int = 0
+        var revokedResponseLen = 0
         let (revokedResult, revokedError) = withRnError { errPtr in
             bootstrapAddr.withCString { cBootstrapAddr in
                 revokedRequestCbor.withUnsafeBytes { raw in
@@ -1513,7 +1534,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        
+
         guard revokedResult != 0 else {
             XCTFail("Revoked token should be rejected")
             return
@@ -1531,10 +1552,10 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         let invalidSubject = "invalid"
         let invalidNonce = Data([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
         let invalidCapabilities = ["enroll"]
-        
+
         var invalidTokenCborPtr: UnsafeMutablePointer<UInt8>?
-        var invalidTokenCborLen: Int = 0
-        
+        var invalidTokenCborLen = 0
+
         // Generate invalid enrollment token using FFI (EXACTLY like Rust)
         let (invalidTokenResult, invalidTokenError) = withRnError { errPtr in
             // Create properly null-terminated C strings for capabilities (EXACTLY like Rust)
@@ -1553,17 +1574,17 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                     cString.deallocate()
                 }
             }
-            
+
             let capabilitiesPtrsBuffer = UnsafeMutableBufferPointer<UnsafePointer<CChar>?>.allocate(capacity: invalidCapabilities.count)
             defer { capabilitiesPtrsBuffer.deallocate() }
             for (index, ptr) in capabilitiesCStrings.enumerated() {
                 capabilitiesPtrsBuffer[index] = UnsafePointer(ptr)
             }
-            
+
             return rn_keys_ca_generate_enrollment_token(
                 eaKey,
                 invalidTokenId,
-                invalidNetworkId,  // Different network ID to make it invalid
+                invalidNetworkId, // Different network ID to make it invalid
                 invalidSubject,
                 now - 60,
                 now + 3600,
@@ -1576,28 +1597,28 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 errPtr
             )
         }
-        
+
         guard invalidTokenResult == 0, let invalidTokenCborRaw = invalidTokenCborPtr, invalidTokenCborLen > 0 else {
             throw invalidTokenError ?? FFIError.operationFailed("Failed to generate invalid enrollment token")
         }
-        
+
         let invalidTokenCbor = Data(bytes: invalidTokenCborRaw, count: invalidTokenCborLen)
         // Deserialize invalid enrollment token and create request struct (EXACTLY like Rust)
         let invalidEnrollmentTokenStruct = try CodableCBORDecoder().decode(EnrollmentToken.self, from: invalidTokenCbor)
-        
+
         // Extract CSR DER from SetupToken CBOR (EXACTLY like Rust)
         let invalidSetupTokenStruct = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
         let invalidCsrDerFromToken = invalidSetupTokenStruct.csr_der
-        
+
         let invalidRequestStruct = CsrEnrollRequest(
             network_id: "test_network",
             csr_der: invalidCsrDerFromToken,
             enrollment_token: invalidEnrollmentTokenStruct
         )
         let invalidRequestCbor = try CodableCBOREncoder().encode(invalidRequestStruct)
-        
+
         var invalidResponsePtr: UnsafeMutablePointer<UInt8>?
-        var invalidResponseLen: Int = 0
+        var invalidResponseLen = 0
         let (invalidResult, invalidError) = withRnError { errPtr in
             bootstrapAddr.withCString { cBootstrapAddr in
                 invalidRequestCbor.withUnsafeBytes { raw in
@@ -1613,13 +1634,13 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        
+
         guard invalidResult != 0 else {
             XCTFail("Invalid token should be rejected")
             return
         }
-            print("   ✅ Invalid enrollment token rejected via REAL QUIC mTLS")
-        
+        print("   ✅ Invalid enrollment token rejected via REAL QUIC mTLS")
+
         // Test unauthorized renewal (new node without enrollment) (EXACTLY like Rust)
         var unauthorizedKeysHandle: UnsafeMutableRawPointer?
         let (unauthorizedResult, unauthorizedError) = withRnError { errPtr in
@@ -1628,36 +1649,36 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard unauthorizedResult == 0, let unauthorizedKeys = unauthorizedKeysHandle else {
             throw unauthorizedError ?? FFIError.operationFailed("Failed to create unauthorized keys handle")
         }
-        
+
         let (unauthorizedInitResult, unauthorizedInitError) = withRnError { errPtr in
             rn_keys_init_as_node(unauthorizedKeys, errPtr)
         }
         guard unauthorizedInitResult == 0 else {
             throw unauthorizedInitError ?? FFIError.operationFailed("Failed to initialize unauthorized keys as node")
         }
-        
+
         var unauthorizedSetupTokenPtr: UnsafeMutablePointer<UInt8>?
-        var unauthorizedSetupTokenLen: Int = 0
+        var unauthorizedSetupTokenLen = 0
         let (unauthorizedCsrResult, unauthorizedCsrError) = withRnError { errPtr in
             rn_keys_node_generate_csr(unauthorizedKeys, &unauthorizedSetupTokenPtr, &unauthorizedSetupTokenLen, errPtr)
         }
         guard unauthorizedCsrResult == 0, let unauthorizedSetupTokenRaw = unauthorizedSetupTokenPtr, unauthorizedSetupTokenLen > 0 else {
             throw unauthorizedCsrError ?? FFIError.operationFailed("Failed to generate unauthorized CSR")
         }
-        
+
         let unauthorizedSetupTokenCbor = Data(bytes: unauthorizedSetupTokenRaw, count: unauthorizedSetupTokenLen)
         let unauthorizedSetupToken: SetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: unauthorizedSetupTokenCbor)
         let unauthorizedCsrDer = unauthorizedSetupToken.csr_der
-        
+
         let unauthorizedRenew = RenewRequest(
             network_id: "test_network",
             csr_der: unauthorizedCsrDer
         )
-        
+
         let unauthorizedRenewCbor = try CodableCBOREncoder().encode(unauthorizedRenew)
-        
+
         var unauthorizedResponsePtr: UnsafeMutablePointer<UInt8>?
-        var unauthorizedResponseLen: Int = 0
+        var unauthorizedResponseLen = 0
         let (unauthorizedRenewResult, unauthorizedRenewError) = withRnError { errPtr in
             authenticatedAddr.withCString { cAuthAddr in
                 unauthorizedRenewCbor.withUnsafeBytes { raw in
@@ -1673,7 +1694,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
                 }
             }
         }
-        
+
         guard unauthorizedRenewResult != 0 else {
             XCTFail("Unauthorized renewal should be rejected")
             return
@@ -1692,7 +1713,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         guard stopResult == 0 else {
             throw stopError ?? FFIError.operationFailed("Failed to stop CA server")
         }
-        
+
         // Free all resources (EXACTLY like Rust)
         rn_keys_ca_free_ea_key_pair(eaKey)
         rn_transport_ca_server_free(caServer)

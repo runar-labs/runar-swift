@@ -1,6 +1,0 @@
-module CRunarFFI [system] {
-	header "runar_ffi.h"
-	export *
-}
-
-

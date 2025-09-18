@@ -7,7 +7,7 @@ let package = Package(
         .macOS(.v12)
     ],
     products: [
-        .library(name: "RunarFFI", targets: ["RunarFFI"]),
+        .library(name: "SwiftFFI", targets: ["SwiftFFI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
@@ -22,8 +22,8 @@ let package = Package(
             ]
         ),
         .target(
-            name: "RunarFFI",
-            dependencies: ["CRunarFFI", .product(name: "SwiftCommon", package: "swift-common")],
+            name: "SwiftFFI",
+            dependencies: ["CRunarFFI", .product(name: "SwiftCommon", package: "swift-common"), .product(name: "SwiftCBOR", package: "SwiftCBOR")],
             swiftSettings: [],
             linkerSettings: [
                 .linkedLibrary("runar_ffi"),
@@ -31,8 +31,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "RunarFFITests",
-            dependencies: ["RunarFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR")]
+            name: "SwiftFFITests",
+            dependencies: ["SwiftFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR")]
         ),
     ]
 )

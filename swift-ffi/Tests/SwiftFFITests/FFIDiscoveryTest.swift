@@ -1,5 +1,5 @@
 import XCTest
-import SwiftFFI2
+import SwiftFFI
 import SwiftCommon
 import SwiftCBOR
 import Foundation
@@ -12,7 +12,7 @@ import Foundation
 /// - Discovery events (discovered/lost)
 /// - TTL and debounce handling
 /// - Integration with transport layer
-@testable import SwiftFFI2
+@testable import SwiftFFI
 
 final class FFIDiscoveryTest: XCTestCase {
     

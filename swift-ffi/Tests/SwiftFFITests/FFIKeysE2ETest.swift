@@ -1,5 +1,5 @@
 import XCTest
-import SwiftFFI2
+import SwiftFFI
 import SwiftCommon
 
 /// Comprehensive End-to-End Integration Tests for Runar Keys FFI
@@ -7,7 +7,7 @@ import SwiftCommon
 /// This test mirrors the Rust end_to_end_test.rs and primitives_e2e_test.rs
 /// to validate the complete end-to-end encryption and key management flows
 /// using the Swift FFI wrapper library.
-@testable import SwiftFFI2
+@testable import SwiftFFI
 
 final class FFIKeysE2ETest: XCTestCase {
     
