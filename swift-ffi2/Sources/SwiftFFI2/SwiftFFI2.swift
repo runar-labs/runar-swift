@@ -1745,6 +1745,140 @@ public struct PeerInfo: Codable {
     }
 }
 
+// MARK: - Discovery Options
+
+/// Swift representation of DiscoveryOptions from Rust FFI
+public struct DiscoveryOptions: Codable {
+    public let multicastGroup: String
+    public let announceIntervalMs: UInt32
+    public let discoveryTimeoutMs: UInt32
+    public let debounceWindowMs: UInt32
+    
+    public init(multicastGroup: String = "224.0.0.251:5353", 
+                announceIntervalMs: UInt32 = 1000,
+                discoveryTimeoutMs: UInt32 = 5000,
+                debounceWindowMs: UInt32 = 200) {
+        self.multicastGroup = multicastGroup
+        self.announceIntervalMs = announceIntervalMs
+        self.discoveryTimeoutMs = discoveryTimeoutMs
+        self.debounceWindowMs = debounceWindowMs
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case multicastGroup = "multicast_group"
+        case announceIntervalMs = "announce_interval_ms"
+        case discoveryTimeoutMs = "discovery_timeout_ms"
+        case debounceWindowMs = "debounce_window_ms"
+    }
+}
+
+// MARK: - Discovery Handle
+
+/// Handle for Discovery operations
+public class DiscoveryHandle {
+    private let handle: UnsafeMutableRawPointer
+    
+    private init(handle: UnsafeMutableRawPointer) {
+        self.handle = handle
+    }
+    
+    deinit {
+        rn_discovery_free(handle)
+    }
+    
+    /// Create a new discovery instance with multicast
+    public static func create(keys: KeysHandle, optionsCbor: Data) throws -> DiscoveryHandle {
+        var outPtr: UnsafeMutableRawPointer?
+        let (code, err) = withRnErrorCode { errPtr in
+            optionsCbor.withUnsafeBytes { raw in
+                rn_discovery_new_with_multicast(
+                    keys.handle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    optionsCbor.count,
+                    &outPtr,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to create discovery") }
+        guard let handle = outPtr else { throw FFIError.operationFailed("Discovery handle is null") }
+        return DiscoveryHandle(handle: handle)
+    }
+    
+    /// Initialize discovery with options
+    public func initialize(optionsCbor: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            optionsCbor.withUnsafeBytes { raw in
+                rn_discovery_init(
+                    self.handle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    optionsCbor.count,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to initialize discovery") }
+    }
+    
+    /// Bind discovery events to transport
+    public func bindEventsToTransport(transport: TransportHandle) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_discovery_bind_events_to_transport(
+                self.handle,
+                transport.rawHandle,
+                errPtr
+            )
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to bind discovery events to transport") }
+    }
+    
+    /// Start announcing this node
+    public func startAnnouncing() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_discovery_start_announcing(self.handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to start announcing") }
+    }
+    
+    /// Stop announcing this node
+    public func stopAnnouncing() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_discovery_stop_announcing(self.handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to stop announcing") }
+    }
+    
+    /// Shutdown discovery
+    public func shutdown() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_discovery_shutdown(self.handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to shutdown discovery") }
+    }
+    
+    /// Update local peer info
+    public func updateLocalPeerInfo(peerInfoCbor: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            peerInfoCbor.withUnsafeBytes { raw in
+                rn_discovery_update_local_peer_info(
+                    self.handle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    peerInfoCbor.count,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to update local peer info") }
+    }
+}
+
 // MARK: - Transport Handle
 
 /// Handle for QUIC Transport operations
@@ -1753,6 +1887,11 @@ public class TransportHandle {
     
     private init(handle: UnsafeMutableRawPointer) {
         self.handle = handle
+    }
+    
+    /// Get the raw handle for internal use
+    internal var rawHandle: UnsafeMutableRawPointer {
+        return handle
     }
     
     deinit {
