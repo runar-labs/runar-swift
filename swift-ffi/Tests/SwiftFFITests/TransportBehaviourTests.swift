@@ -177,13 +177,13 @@ final class TransportBehaviourTests: XCTestCase {
         
         let completeCbor = try CBORHelper.encodeTransportCompleteRequestParams(completeParams)
         
-        // Complete request - this should fail since no request was received
+        // Complete request - this should fail since no certificate is installed
         do {
             try transport1.completeRequest(completeCbor: completeCbor)
-            XCTFail("Should have thrown error when completing non-existent request")
+            XCTFail("Should have thrown error when no certificate is installed")
         } catch {
             XCTAssertTrue(error is FFIError)
-            // Expected error: "Node certificate not installed" or similar
+            // Expected error: "Certificate not found: Node certificate not installed"
         }
     }
     

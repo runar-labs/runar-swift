@@ -314,16 +314,16 @@ final class SymmetricKeyTests: XCTestCase {
     func testSymmetricKeyPersistence() throws {
         // Test that symmetric keys persist across handle recreation
         
-        // Initialize as node first
-        try keysHandle.initializeAsNode()
-        
-        // Set up persistence
+        // Set up persistence BEFORE initialization (matches Rust pattern)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         
         try keysHandle.setPersistenceDirectory(tempDir.path)
         try keysHandle.enableAutoPersistence(true)
+        
+        // Initialize as node
+        try keysHandle.initializeAsNode()
         
         // Create symmetric key and encrypt some data
         let keyName = "persistent-key"
@@ -340,6 +340,9 @@ final class SymmetricKeyTests: XCTestCase {
         try newKeysHandle.setPersistenceDirectory(tempDir.path)
         try newKeysHandle.enableAutoPersistence(true)
         try newKeysHandle.initializeAsNode()
+        
+        // Generate keys to trigger state loading
+        try newKeysHandle.nodeGenerateKeys()
         
         // Verify symmetric key is restored
         let restoredKey = try newKeysHandle.ensureSymmetricKey(keyName: keyName)

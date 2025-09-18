@@ -201,14 +201,14 @@ final class PersistenceTests: XCTestCase {
     
     func testPersistenceStateContinuity() throws {
         // Test that state can be persisted and restored
-        // This test follows the Rust pattern: initialize first, then set persistence
+        // This test follows the Rust pattern: set persistence BEFORE initialization
         
-        // 1. Initialize as node first (matches Rust pattern)
-        try keysHandle.initializeAsNode()
-        
-        // 2. Set up persistence AFTER initialization (matches Rust pattern)
+        // 1. Set up persistence BEFORE initialization (matches Rust pattern)
         try keysHandle.setPersistenceDirectory(tempDir)
         try keysHandle.enableAutoPersistence(true)
+        
+        // 2. Initialize as node
+        try keysHandle.initializeAsNode()
         
         // 3. Generate keys explicitly (to ensure they exist)
         try keysHandle.nodeGenerateKeys()
@@ -223,14 +223,17 @@ final class PersistenceTests: XCTestCase {
         // 6. Create new keys handle (simulating restart)
         let newKeysHandle = try KeysHandle()
         
-        // 7. Initialize as node first
-        try newKeysHandle.initializeAsNode()
-        
-        // 8. Set same persistence directory and enable auto-persistence AFTER initialization
+        // 7. Set same persistence directory and enable auto-persistence BEFORE initialization
         try newKeysHandle.setPersistenceDirectory(tempDir)
         try newKeysHandle.enableAutoPersistence(true)
         
-        // 9. Verify keys exist (should be restored from persistence)
+        // 8. Initialize as node (this should restore state from persistence)
+        try newKeysHandle.initializeAsNode()
+        
+        // 9. Generate keys to trigger state loading
+        try newKeysHandle.nodeGenerateKeys()
+        
+        // 10. Verify keys exist (should be restored from persistence)
         let hasKeys = try newKeysHandle.nodeHasKeys()
         XCTAssertTrue(hasKeys, "Keys should be restored from persistence")
         
