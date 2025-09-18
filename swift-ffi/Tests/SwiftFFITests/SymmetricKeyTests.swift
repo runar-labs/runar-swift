@@ -338,8 +338,8 @@ final class SymmetricKeyTests: XCTestCase {
         // Create new keys handle
         let newKeysHandle = try KeysHandle()
         try newKeysHandle.setPersistenceDirectory(tempDir.path)
+        try newKeysHandle.enableAutoPersistence(true)
         try newKeysHandle.initializeAsNode()
-        try newKeysHandle.nodeGenerateKeys()
         
         // Verify symmetric key is restored
         let restoredKey = try newKeysHandle.ensureSymmetricKey(keyName: keyName)

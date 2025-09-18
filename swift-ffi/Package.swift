@@ -26,12 +26,11 @@ let package = Package(
             dependencies: ["CRunarFFI", .product(name: "SwiftCommon", package: "swift-common"), .product(name: "SwiftCBOR", package: "SwiftCBOR")],
             swiftSettings: [],
             linkerSettings: [
-                // Always search an env-configurable directory first for the static archive
-                .unsafeFlags(["-L", ProcessInfo.processInfo.environment["RUNAR_FFI_LIB_DIR"] ?? "/Users/rafael/dev/runar-swift/runar-rust/target/release"]),
-                // Force load static archive objects to avoid stale dylib resolution
-                .unsafeFlags(["-Wl,-force_load,\(ProcessInfo.processInfo.environment[\"RUNAR_FFI_LIB_DIR\"] ?? "/Users/rafael/dev/runar-swift/runar-rust/target/release")/librunar_ffi.a"]),
-                // Keep linkedLibrary for name resolution when archive not present (e.g., CI prebuilt)
                 .linkedLibrary("runar_ffi"),
+                // Prefer the FFI crate output directory (release); harmless if absent (CI)
+                // Search path for the built FFI library in the workspace
+                .unsafeFlags(["-Xlinker", "-L", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release"]),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release"]),
             ]
         ),
         .testTarget(

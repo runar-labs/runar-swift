@@ -201,33 +201,36 @@ final class PersistenceTests: XCTestCase {
     
     func testPersistenceStateContinuity() throws {
         // Test that state can be persisted and restored
+        // This test follows the Rust pattern: initialize first, then set persistence
         
-        // 1. Initialize as node first
+        // 1. Initialize as node first (matches Rust pattern)
         try keysHandle.initializeAsNode()
         
-        // 2. Set up persistence
+        // 2. Set up persistence AFTER initialization (matches Rust pattern)
         try keysHandle.setPersistenceDirectory(tempDir)
         try keysHandle.enableAutoPersistence(true)
         
-        // 3. Generate keys
+        // 3. Generate keys explicitly (to ensure they exist)
         try keysHandle.nodeGenerateKeys()
         
-        // 4. Flush state
+        // 4. Verify keys exist before flushing
+        let hasKeysBeforeFlush = try keysHandle.nodeHasKeys()
+        XCTAssertTrue(hasKeysBeforeFlush, "Keys should exist before flush")
+        
+        // 5. Flush state
         try keysHandle.flushState()
         
-        // 5. Create new keys handle (simulating restart)
+        // 6. Create new keys handle (simulating restart)
         let newKeysHandle = try KeysHandle()
         
-        // 6. Set same persistence directory
-        try newKeysHandle.setPersistenceDirectory(tempDir)
-        
-        // 7. Initialize as node (should restore state)
+        // 7. Initialize as node first
         try newKeysHandle.initializeAsNode()
         
-        // 8. Generate keys (this should load from persistence if available)
-        try newKeysHandle.nodeGenerateKeys()
+        // 8. Set same persistence directory and enable auto-persistence AFTER initialization
+        try newKeysHandle.setPersistenceDirectory(tempDir)
+        try newKeysHandle.enableAutoPersistence(true)
         
-        // 9. Verify keys exist
+        // 9. Verify keys exist (should be restored from persistence)
         let hasKeys = try newKeysHandle.nodeHasKeys()
         XCTAssertTrue(hasKeys, "Keys should be restored from persistence")
         
