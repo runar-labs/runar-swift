@@ -28,20 +28,54 @@ public enum FFIError: Error, LocalizedError {
 // MARK: - FFI Logger
 
 public class FFILogger {
-    public enum LogLevel: String, CaseIterable {
-        case trace = "TRACE"
-        case debug = "DEBUG"
-        case info = "INFO"
-        case warn = "WARN"
-        case error = "ERROR"
+    public enum LogLevel: Int32, CaseIterable {
+        case trace = 0
+        case debug = 1
+        case info = 2
+        case warn = 3
+        case error = 4
+        
+        public var stringValue: String {
+            switch self {
+            case .trace: return "TRACE"
+            case .debug: return "DEBUG"
+            case .info: return "INFO"
+            case .warn: return "WARN"
+            case .error: return "ERROR"
+            }
+        }
     }
     
+    /// Set the global log level for the Rust FFI logger
+    /// - Parameter level: The log level to set
     public static func setLogLevel(_ level: LogLevel) {
-        // Integrate with SwiftCommon logger configuration if needed. No stdout prints here.
+        rn_set_log_level(level.rawValue)
     }
     
+    /// Set the node ID for the Rust FFI logger context
+    /// - Parameter nodeId: The node ID to set for logging context
+    /// - Throws: FFIError if the operation fails
+    public static func setLoggerNodeId(_ nodeId: String) throws {
+        let (result, error) = withRnError { errPtr in
+            nodeId.withCString { cNodeId in
+                rn_set_logger_node_id(cNodeId, errPtr)
+            }
+        }
+        
+        if result != 0 {
+            throw error ?? FFIError.operationFailed("Failed to set logger node ID")
+        }
+    }
+    
+    /// Log a message using the Rust FFI logger
+    /// - Parameters:
+    ///   - level: The log level
+    ///   - message: The message to log
+    /// - Note: This is a convenience method that integrates with SwiftCommon's RunarLogger
     public static func log(_ level: LogLevel, _ message: String) {
-        // Library must not print. Rely on SwiftCommon's RunarLogger in call sites.
+        // The actual logging is handled by the Rust side through the log level setting
+        // This method is provided for API consistency but relies on SwiftCommon's RunarLogger
+        // in the calling code for actual output
     }
 }
 
@@ -984,6 +1018,195 @@ public final class KeysHandle {
         guard code == 0 else { throw FFIError.operationFailed("Failed to convert renew response") }
         return try copyBytesAndFree(outPtr, outLen)
     }
+    
+    // MARK: - Mobile-Specific Functions
+    
+    /// Initialize user root key for mobile device
+    /// - Throws: FFIError if the operation fails
+    public func mobileInitializeUserRootKey() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_mobile_initialize_user_root_key(self.handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to initialize user root key") }
+    }
+    
+    /// Get user public key for mobile device
+    /// - Returns: User public key data
+    /// - Throws: FFIError if the operation fails
+    public func mobileGetUserPublicKey() throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_mobile_get_user_public_key(self.handle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get user public key") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+    
+    /// Derive user profile key for mobile device
+    /// - Parameter label: Profile label (e.g., "personal", "work")
+    /// - Returns: Derived profile key data
+    /// - Throws: FFIError if the operation fails
+    public func mobileDeriveUserProfileKey(label: String) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            label.withCString { cLabel in
+                rn_keys_mobile_derive_user_profile_key(self.handle, cLabel, &outPtr, &outLen, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to derive user profile key") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+    
+    /// Encrypt data with envelope for mobile device
+    /// - Parameters:
+    ///   - plaintext: Data to encrypt
+    ///   - profileKeys: Array of profile keys for encryption
+    ///   - networkKey: Optional network key
+    /// - Returns: Encrypted envelope data
+    /// - Throws: FFIError if the operation fails
+    public func mobileEncryptWithEnvelope(plaintext: Data, profileKeys: [Data], networkKey: Data? = nil) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        
+        // Prepare profile key pointers
+        var profileKeyPtrs: [UnsafePointer<UInt8>?] = []
+        var profileLens: [Int] = []
+        
+        for key in profileKeys {
+            key.withUnsafeBytes { keyRaw in
+                profileKeyPtrs.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
+                profileLens.append(key.count)
+            }
+        }
+        
+        let (code, err) = withRnErrorCode { errPtr in
+            plaintext.withUnsafeBytes { plaintextRaw in
+                profileKeyPtrs.withUnsafeBufferPointer { keysPtr in
+                    profileLens.withUnsafeBufferPointer { lensPtr in
+                        if let networkKey = networkKey {
+                            networkKey.withUnsafeBytes { networkRaw in
+                                rn_keys_mobile_encrypt_with_envelope(
+                                    self.handle,
+                                    plaintextRaw.bindMemory(to: UInt8.self).baseAddress,
+                                    plaintext.count,
+                                    networkRaw.bindMemory(to: UInt8.self).baseAddress,
+                                    networkKey.count,
+                                    keysPtr.baseAddress,
+                                    lensPtr.baseAddress,
+                                    profileKeys.count,
+                                    &outPtr,
+                                    &outLen,
+                                    errPtr
+                                )
+                            }
+                        } else {
+                            rn_keys_mobile_encrypt_with_envelope(
+                                self.handle,
+                                plaintextRaw.bindMemory(to: UInt8.self).baseAddress,
+                                plaintext.count,
+                                nil,
+                                0,
+                                keysPtr.baseAddress,
+                                lensPtr.baseAddress,
+                                profileKeys.count,
+                                &outPtr,
+                                &outLen,
+                                errPtr
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to encrypt with envelope") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+    
+    /// Decrypt envelope data for mobile device
+    /// - Parameters:
+    ///   - envelope: Encrypted envelope data
+    /// - Returns: Decrypted data
+    /// - Throws: FFIError if the operation fails
+    public func mobileDecryptEnvelope(envelope: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            envelope.withUnsafeBytes { envelopeRaw in
+                rn_keys_mobile_decrypt_envelope(
+                    self.handle,
+                    envelopeRaw.bindMemory(to: UInt8.self).baseAddress,
+                    envelope.count,
+                    &outPtr,
+                    &outLen,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt envelope") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+    
+    /// Process setup token (CSR) to create certificate
+    /// - Parameter setupToken: Certificate signing request data
+    /// - Returns: Certificate message data
+    /// - Throws: FFIError if processing fails
+    public func mobileProcessSetupToken(setupToken: Data) throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            setupToken.withUnsafeBytes { raw in
+                rn_keys_mobile_process_setup_token(
+                    self.handle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    setupToken.count,
+                    &outPtr,
+                    &outLen,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to process setup token") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+
+    /// Get node public key
+    /// - Returns: Node public key data
+    /// - Throws: FFIError if the operation fails
+    public func getNodePublicKey() throws -> Data {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_keys_node_get_public_key(self.handle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get node public key") }
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+    
+    /// Set local node information
+    /// - Parameter nodeInfoCbor: Node information in CBOR format
+    /// - Throws: FFIError if the operation fails
+    public func setLocalNodeInfo(nodeInfoCbor: Data) throws {
+        let code = nodeInfoCbor.withUnsafeBytes { raw in
+            rn_keys_set_local_node_info(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count)
+        }
+        guard code == 0 else { 
+            // Try to get more details about the error
+            var errorBuffer = [CChar](repeating: 0, count: 256)
+            let _ = rn_last_error(&errorBuffer, 256)
+            let errorMessage = String(decoding: errorBuffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            throw FFIError.operationFailed("Failed to set local node info (code: \(code)): \(errorMessage)") 
+        }
+    }
 
     deinit {
         rn_keys_free(handle)
@@ -1113,5 +1336,601 @@ public enum CertificateUtils {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to get serial") }
         return try copyCStringAndFree(outPtr)
+    }
+}
+
+// MARK: - CBOR Structures for Transport
+
+/// Swift representation of NodeInfo structure from Rust
+public struct NodeInfo: Codable {
+    public let nodePublicKey: Data
+    public let networkIds: [String]
+    public let addresses: [String]
+    public let nodeMetadata: NodeMetadata
+    public let version: Int64
+    
+    public init(nodePublicKey: Data, networkIds: [String], addresses: [String], nodeMetadata: NodeMetadata, version: Int64) {
+        self.nodePublicKey = nodePublicKey
+        self.networkIds = networkIds
+        self.addresses = addresses
+        self.nodeMetadata = nodeMetadata
+        self.version = version
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case nodePublicKey = "node_public_key"
+        case networkIds = "network_ids"
+        case addresses
+        case nodeMetadata = "node_metadata"
+        case version
+    }
+}
+
+/// Swift representation of NodeMetadata structure from Rust
+public struct NodeMetadata: Codable {
+    public let services: [ServiceMetadata]
+    public let subscriptions: [SubscriptionMetadata]
+    
+    public init(services: [ServiceMetadata], subscriptions: [SubscriptionMetadata]) {
+        self.services = services
+        self.subscriptions = subscriptions
+    }
+}
+
+/// Swift representation of ServiceMetadata structure from Rust
+public struct ServiceMetadata: Codable {
+    public let networkId: String
+    public let servicePath: String
+    public let name: String
+    public let version: String
+    public let description: String
+    public let actions: [ActionMetadata]
+    public let registrationTime: UInt64
+    public let lastStartTime: UInt64?
+    
+    public init(networkId: String, servicePath: String, name: String, version: String, description: String, actions: [ActionMetadata], registrationTime: UInt64, lastStartTime: UInt64? = nil) {
+        self.networkId = networkId
+        self.servicePath = servicePath
+        self.name = name
+        self.version = version
+        self.description = description
+        self.actions = actions
+        self.registrationTime = registrationTime
+        self.lastStartTime = lastStartTime
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case networkId = "network_id"
+        case servicePath = "service_path"
+        case name
+        case version
+        case description
+        case actions
+        case registrationTime = "registration_time"
+        case lastStartTime = "last_start_time"
+    }
+}
+
+/// Swift representation of ActionMetadata structure from Rust
+public struct ActionMetadata: Codable {
+    public let name: String
+    public let description: String
+    public let inputSchema: FieldSchema?
+    public let outputSchema: FieldSchema?
+    
+    public init(name: String, description: String, inputSchema: FieldSchema? = nil, outputSchema: FieldSchema? = nil) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+        self.outputSchema = outputSchema
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case inputSchema = "input_schema"
+        case outputSchema = "output_schema"
+    }
+}
+
+/// Swift representation of SubscriptionMetadata structure from Rust
+public struct SubscriptionMetadata: Codable {
+    public let path: String
+    
+    public init(path: String) {
+        self.path = path
+    }
+}
+
+/// Swift representation of FieldSchema structure from Rust
+public struct FieldSchema: Codable {
+    public let dataType: SchemaDataType
+    public let required: Bool
+    public let description: String?
+    
+    public init(dataType: SchemaDataType, required: Bool, description: String? = nil) {
+        self.dataType = dataType
+        self.required = required
+        self.description = description
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case dataType = "data_type"
+        case required
+        case description
+    }
+}
+
+/// Swift representation of SchemaDataType enum from Rust
+public enum SchemaDataType: String, Codable {
+    case string = "String"
+    case int32 = "Int32"
+    case int64 = "Int64"
+    case float32 = "Float32"
+    case float64 = "Float64"
+    case boolean = "Boolean"
+    case bytes = "Bytes"
+    case array = "Array"
+    case map = "Map"
+}
+
+/// Swift representation of QuicTransportOptions for CBOR encoding
+public struct QuicTransportOptionsCbor: Codable {
+    public let bindAddr: String?
+    public let handshakeTimeoutMs: UInt64?
+    public let openStreamTimeoutMs: UInt64?
+    public let maxMessageSize: UInt64?
+    public let responseCacheTtlMs: UInt64?
+    public let maxRequestRetries: UInt32?
+    
+    public init(bindAddr: String? = nil, handshakeTimeoutMs: UInt64? = nil, openStreamTimeoutMs: UInt64? = nil, maxMessageSize: UInt64? = nil, responseCacheTtlMs: UInt64? = nil, maxRequestRetries: UInt32? = nil) {
+        self.bindAddr = bindAddr
+        self.handshakeTimeoutMs = handshakeTimeoutMs
+        self.openStreamTimeoutMs = openStreamTimeoutMs
+        self.maxMessageSize = maxMessageSize
+        self.responseCacheTtlMs = responseCacheTtlMs
+        self.maxRequestRetries = maxRequestRetries
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case bindAddr = "bind_addr"
+        case handshakeTimeoutMs = "handshake_timeout_ms"
+        case openStreamTimeoutMs = "open_stream_timeout_ms"
+        case maxMessageSize = "max_message_size"
+        case responseCacheTtlMs = "response_cache_ttl_ms"
+        case maxRequestRetries = "max_request_retries"
+    }
+}
+
+// MARK: - CBOR Encoding Helpers
+
+/// Helper functions for creating CBOR-encoded data
+public struct CBORHelper {
+    /// Create a minimal NodeInfo for testing
+    public static func createMinimalNodeInfo(nodePublicKey: Data, networkId: String = "test-network") -> NodeInfo {
+        let serviceMetadata = ServiceMetadata(
+            networkId: networkId,
+            servicePath: "/test",
+            name: "test-service",
+            version: "1.0.0",
+            description: "Test service",
+            actions: [],
+            registrationTime: UInt64(Date().timeIntervalSince1970)
+        )
+        
+        let nodeMetadata = NodeMetadata(
+            services: [serviceMetadata],
+            subscriptions: []
+        )
+        
+        return NodeInfo(
+            nodePublicKey: nodePublicKey,
+            networkIds: [networkId],
+            addresses: ["127.0.0.1:0"], // Will be updated by transport
+            nodeMetadata: nodeMetadata,
+            version: 1
+        )
+    }
+    
+    /// Create minimal transport options for testing
+    public static func createMinimalTransportOptions(bindAddr: String = "127.0.0.1:0") -> QuicTransportOptionsCbor {
+        return QuicTransportOptionsCbor(
+            bindAddr: bindAddr,
+            handshakeTimeoutMs: 5000,
+            maxMessageSize: 1024,
+            maxRequestRetries: 3
+        )
+    }
+    
+    /// Encode NodeInfo to CBOR data
+    public static func encodeNodeInfo(_ nodeInfo: NodeInfo) throws -> Data {
+        // Create CBOR map manually to match Rust structure
+        var map: [CBOR: CBOR] = [:]
+        map[.utf8String("node_public_key")] = .array([UInt8](nodeInfo.nodePublicKey).map { .unsignedInt(UInt64($0)) })
+        map[.utf8String("network_ids")] = .array(nodeInfo.networkIds.map { .utf8String($0) })
+        map[.utf8String("addresses")] = .array(nodeInfo.addresses.map { .utf8String($0) })
+        
+        // Encode node metadata
+        var metadataMap: [CBOR: CBOR] = [:]
+        metadataMap[.utf8String("services")] = .array(nodeInfo.nodeMetadata.services.map { service in
+            var serviceMap: [CBOR: CBOR] = [:]
+            serviceMap[.utf8String("network_id")] = .utf8String(service.networkId)
+            serviceMap[.utf8String("service_path")] = .utf8String(service.servicePath)
+            serviceMap[.utf8String("name")] = .utf8String(service.name)
+            serviceMap[.utf8String("version")] = .utf8String(service.version)
+            serviceMap[.utf8String("description")] = .utf8String(service.description)
+            serviceMap[.utf8String("actions")] = .array([])
+            serviceMap[.utf8String("registration_time")] = .unsignedInt(service.registrationTime)
+            return .map(serviceMap)
+        })
+        metadataMap[.utf8String("subscriptions")] = .array([])
+        
+        map[.utf8String("node_metadata")] = .map(metadataMap)
+        map[.utf8String("version")] = .unsignedInt(UInt64(nodeInfo.version))
+        
+        return Data(CBOR.map(map).encode())
+    }
+    
+    /// Encode QuicTransportOptions to CBOR data
+    public static func encodeTransportOptions(_ options: QuicTransportOptionsCbor) throws -> Data {
+        // Create CBOR map manually to match Rust structure
+        var map: [CBOR: CBOR] = [:]
+        
+        if let bindAddr = options.bindAddr {
+            map[.utf8String("bind_addr")] = .utf8String(bindAddr)
+        }
+        if let handshakeTimeoutMs = options.handshakeTimeoutMs {
+            map[.utf8String("handshake_timeout_ms")] = .unsignedInt(handshakeTimeoutMs)
+        }
+        if let openStreamTimeoutMs = options.openStreamTimeoutMs {
+            map[.utf8String("open_stream_timeout_ms")] = .unsignedInt(openStreamTimeoutMs)
+        }
+        if let maxMessageSize = options.maxMessageSize {
+            map[.utf8String("max_message_size")] = .unsignedInt(maxMessageSize)
+        }
+        if let responseCacheTtlMs = options.responseCacheTtlMs {
+            map[.utf8String("response_cache_ttl_ms")] = .unsignedInt(responseCacheTtlMs)
+        }
+        if let maxRequestRetries = options.maxRequestRetries {
+            map[.utf8String("max_request_retries")] = .unsignedInt(UInt64(maxRequestRetries))
+        }
+        
+        return Data(CBOR.map(map).encode())
+    }
+    
+    /// Encode PeerInfo to CBOR data
+    public static func encodePeerInfo(_ peerInfo: PeerInfo) throws -> Data {
+        // Create CBOR map manually to match Rust structure
+        var map: [CBOR: CBOR] = [:]
+        map[.utf8String("public_key")] = .array([UInt8](peerInfo.publicKey).map { .unsignedInt(UInt64($0)) })
+        map[.utf8String("addresses")] = .array(peerInfo.addresses.map { .utf8String($0) })
+        
+        return Data(CBOR.map(map).encode())
+    }
+    
+    /// Encode TransportRequestParams to CBOR data using proper struct serialization
+    public static func encodeTransportRequestParams(_ params: TransportRequestParams) throws -> Data {
+        // Use proper CBOR encoding like Rust does with serde_cbor
+        let encoder = CodableCBOREncoder()
+        return try encoder.encode(params)
+    }
+    
+    /// Encode TransportCompleteRequestParams to CBOR data using proper struct serialization
+    public static func encodeTransportCompleteRequestParams(_ params: TransportCompleteRequestParams) throws -> Data {
+        // Use proper CBOR encoding like Rust does with serde_cbor
+        let encoder = CodableCBOREncoder()
+        return try encoder.encode(params)
+    }
+}
+
+// MARK: - Transport Request/Response Structures
+
+/// Swift representation of TransportRequestParams from Rust FFI
+public struct TransportRequestParams: Codable {
+    public let path: String
+    public let correlationId: String
+    public let payload: Data
+    public let destPeerId: String
+    public let networkPublicKey: Data?
+    public let profilePublicKeys: [Data]
+    
+    public init(path: String, correlationId: String, payload: Data, destPeerId: String, networkPublicKey: Data? = nil, profilePublicKeys: [Data] = []) {
+        self.path = path
+        self.correlationId = correlationId
+        self.payload = payload
+        self.destPeerId = destPeerId
+        self.networkPublicKey = networkPublicKey
+        self.profilePublicKeys = profilePublicKeys
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case path
+        case correlationId = "correlation_id"
+        case payload
+        case destPeerId = "dest_peer_id"
+        case networkPublicKey = "network_public_key"
+        case profilePublicKeys = "profile_public_keys"
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(correlationId, forKey: .correlationId)
+        try container.encode(Array(payload), forKey: .payload)
+        try container.encode(destPeerId, forKey: .destPeerId)
+        if let networkPublicKey = networkPublicKey {
+            try container.encode(Array(networkPublicKey), forKey: .networkPublicKey)
+        }
+        try container.encode(profilePublicKeys.map { Array($0) }, forKey: .profilePublicKeys)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        let payloadBytes = try container.decode([UInt8].self, forKey: .payload)
+        payload = Data(payloadBytes)
+        destPeerId = try container.decode(String.self, forKey: .destPeerId)
+        if let networkBytes = try? container.decode([UInt8].self, forKey: .networkPublicKey) {
+            networkPublicKey = Data(networkBytes)
+        } else {
+            networkPublicKey = nil
+        }
+        let profileBytesArray = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
+        profilePublicKeys = profileBytesArray.map { Data($0) }
+    }
+}
+
+/// Swift representation of TransportCompleteRequestParams from Rust FFI
+public struct TransportCompleteRequestParams: Codable {
+    public let requestId: String
+    public let responsePayload: Data
+    public let profilePublicKeys: [Data]
+    
+    public init(requestId: String, responsePayload: Data, profilePublicKeys: [Data] = []) {
+        self.requestId = requestId
+        self.responsePayload = responsePayload
+        self.profilePublicKeys = profilePublicKeys
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case responsePayload = "response_payload"
+        case profilePublicKeys = "profile_public_keys"
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(Array(responsePayload), forKey: .responsePayload)
+        try container.encode(profilePublicKeys.map { Array($0) }, forKey: .profilePublicKeys)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        requestId = try container.decode(String.self, forKey: .requestId)
+        let responseBytes = try container.decode([UInt8].self, forKey: .responsePayload)
+        responsePayload = Data(responseBytes)
+        let profileBytesArray = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
+        profilePublicKeys = profileBytesArray.map { Data($0) }
+    }
+}
+
+/// Swift representation of PeerInfo from Rust
+public struct PeerInfo: Codable {
+    public let publicKey: Data
+    public let addresses: [String]
+    
+    public init(publicKey: Data, addresses: [String]) {
+        self.publicKey = publicKey
+        self.addresses = addresses
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case publicKey = "public_key"
+        case addresses
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Array(publicKey), forKey: .publicKey)
+        try container.encode(addresses, forKey: .addresses)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let publicKeyBytes = try container.decode([UInt8].self, forKey: .publicKey)
+        publicKey = Data(publicKeyBytes)
+        addresses = try container.decode([String].self, forKey: .addresses)
+    }
+}
+
+// MARK: - Transport Handle
+
+/// Handle for QUIC Transport operations
+public class TransportHandle {
+    private let handle: UnsafeMutableRawPointer
+    
+    private init(handle: UnsafeMutableRawPointer) {
+        self.handle = handle
+    }
+    
+    deinit {
+        rn_transport_free(handle)
+    }
+    
+    /// Create a new transport instance with keys
+    /// - Parameters:
+    ///   - keys: Keys handle instance
+    ///   - optionsCbor: Transport options in CBOR format
+    /// - Returns: New transport handle
+    /// - Throws: FFIError if creation fails
+    public static func create(keys: KeysHandle, optionsCbor: Data) throws -> TransportHandle {
+        var outTransport: UnsafeMutableRawPointer?
+        let (code, err) = withRnErrorCode { errPtr in
+            optionsCbor.withUnsafeBytes { raw in
+                rn_transport_new_with_keys(keys.handle, raw.bindMemory(to: UInt8.self).baseAddress, optionsCbor.count, &outTransport, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0, let transport = outTransport else { 
+            throw FFIError.operationFailed("Failed to create transport") 
+        }
+        return TransportHandle(handle: transport)
+    }
+    
+    /// Start the transport
+    /// - Throws: FFIError if start fails
+    public func start() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_start(handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to start transport") }
+    }
+    
+    /// Poll for events
+    /// - Returns: Event data if available, nil if no events
+    /// - Throws: FFIError if polling fails
+    public func pollEvent() throws -> Data? {
+        var outEvent: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_poll_event(handle, &outEvent, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to poll event") }
+        
+        if outLen == 0 {
+            return nil
+        }
+        
+        return try copyBytesAndFree(outEvent, outLen)
+    }
+    
+    /// Connect to a peer
+    /// - Parameter peerInfoCbor: Peer information in CBOR format
+    /// - Throws: FFIError if connection fails
+    public func connectPeer(peerInfoCbor: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            peerInfoCbor.withUnsafeBytes { raw in
+                rn_transport_connect_peer(handle, raw.bindMemory(to: UInt8.self).baseAddress, peerInfoCbor.count, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to connect to peer") }
+    }
+    
+    /// Disconnect from a peer
+    /// - Parameter peerNodeId: Node ID of the peer to disconnect
+    /// - Throws: FFIError if disconnection fails
+    public func disconnectPeer(peerNodeId: String) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            peerNodeId.withCString { cString in
+                rn_transport_disconnect_peer(handle, cString, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to disconnect from peer") }
+    }
+    
+    /// Check if connected to a peer
+    /// - Parameter peerNodeId: Node ID of the peer to check
+    /// - Returns: True if connected, false otherwise
+    /// - Throws: FFIError if check fails
+    public func isConnected(peerNodeId: String) throws -> Bool {
+        var outConnected: Bool = false
+        let (code, err) = withRnErrorCode { errPtr in
+            peerNodeId.withCString { cString in
+                rn_transport_is_connected(handle, cString, &outConnected, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to check connection status") }
+        return outConnected
+    }
+    
+    /// Update local node information
+    /// - Parameter nodeInfoCbor: Node information in CBOR format
+    /// - Throws: FFIError if update fails
+    public func updateLocalNodeInfo(nodeInfoCbor: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            nodeInfoCbor.withUnsafeBytes { raw in
+                rn_transport_update_local_node_info(handle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to update local node info") }
+    }
+    
+    /// Send a request
+    /// - Parameter requestCbor: Request data in CBOR format
+    /// - Throws: FFIError if request fails
+    public func request(requestCbor: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            requestCbor.withUnsafeBytes { raw in
+                rn_transport_request(handle, raw.bindMemory(to: UInt8.self).baseAddress, requestCbor.count, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to send request") }
+    }
+    
+    /// Publish an event
+    /// - Parameter publishCbor: Event data in CBOR format
+    /// - Throws: FFIError if publish fails
+    public func publish(publishCbor: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            publishCbor.withUnsafeBytes { raw in
+                rn_transport_publish(handle, raw.bindMemory(to: UInt8.self).baseAddress, publishCbor.count, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to publish event") }
+    }
+    
+    /// Complete a request
+    /// - Parameter completeCbor: Completion data in CBOR format
+    /// - Throws: FFIError if completion fails
+    public func completeRequest(completeCbor: Data) throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            completeCbor.withUnsafeBytes { raw in
+                rn_transport_complete_request(handle, raw.bindMemory(to: UInt8.self).baseAddress, completeCbor.count, errPtr)
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to complete request") }
+    }
+    
+    /// Stop the transport
+    /// - Throws: FFIError if stop fails
+    public func stop() throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_stop(handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to stop transport") }
+    }
+    
+    /// Get local address
+    /// - Returns: Local address string
+    /// - Throws: FFIError if getting address fails
+    public func getLocalAddr() throws -> String {
+        var outStr: UnsafeMutablePointer<CChar>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_local_addr(handle, &outStr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to get local address") }
+        
+        defer {
+            if let str = outStr {
+                rn_string_free(str)
+            }
+        }
+        
+        guard let str = outStr else { throw FFIError.operationFailed("No local address returned") }
+        return String(cString: str)
     }
 }
