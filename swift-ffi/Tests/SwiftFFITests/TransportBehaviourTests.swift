@@ -1,24 +1,23 @@
-import XCTest
 @testable import SwiftFFI
+import XCTest
 
 final class TransportBehaviourTests: XCTestCase {
-    var nodeKeys: KeysHandle!
+    var nodeKeys: NodeKeyManager!
 
     override func setUp() {
         super.setUp()
-        
+
         do {
             // Create node keys handle
-            nodeKeys = try KeysHandle()
-            try nodeKeys.initializeAsNode()
-            try nodeKeys.nodeGenerateKeys()
-            
+            nodeKeys = try NodeKeyManager()
+            try nodeKeys.generateKeys()
+
             // Set local node info (required for transport)
             let nodePublicKey = try nodeKeys.getNodePublicKey()
             let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: nodePublicKey)
             let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
-            try nodeKeys.setLocalNodeInfo(nodeInfoCbor: nodeInfoCbor)
-            
+            try nodeKeys.setLocalNodeInfo(nodeInfoCbor)
+
             // Note: Transport handles will be created in individual tests that need them
             // Some tests expect certificate-related errors, so we don't install certificates here
         } catch {
@@ -33,7 +32,7 @@ final class TransportBehaviourTests: XCTestCase {
 
     func testTransportCompleteRequest() throws {
         // Test completing a request through transport
-        
+
         // Create transport handle (this should fail due to missing certificate)
         let transportOptions = QuicTransportOptionsCbor(
             bindAddr: "127.0.0.1:0",
@@ -43,12 +42,12 @@ final class TransportBehaviourTests: XCTestCase {
             responseCacheTtlMs: 30000,
             maxRequestRetries: 3
         )
-        
+
         let optionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
-        
+
         // This should fail because no certificate is installed
         do {
-            let _ = try TransportHandle.create(keys: nodeKeys, optionsCbor: optionsCbor)
+            _ = try TransportHandle.create(keys: nodeKeys, optionsCbor: optionsCbor)
             XCTFail("Should have thrown error when no certificate is installed")
         } catch {
             XCTAssertTrue(error is FFIError)

@@ -18,25 +18,45 @@ The current `KeysHandle` exposes mixed node and mobile methods and inconsistent 
 
 ## Proposed Swift API
 
-### Common Envelope Crypto (role-agnostic)
+### Common Key Manager (shared by both roles)
 
-Minimal surface used by serializer. Implemented by both node and mobile managers.
+Single common capability surface (also used by serializer). Implemented by both node and mobile managers.
 
 ```swift
-public protocol EnvelopeCryptoCommon: Sendable {
+public struct KeystoreCapabilities: Sendable {
+    public let version: UInt32
+    public let flags: UInt32
+}
+
+public protocol CommonKeyManager: Sendable {
+    // Envelope crypto (serializer-critical)
     func encryptWithEnvelope(data: Data, networkPublicKey: Data?, profilePublicKeys: [Data]) throws -> Data
     func decryptEnvelope(envelopeData: Data) throws -> Data
+
+    // Symmetric key management
+    func ensureSymmetricKey(name: String) throws -> Data
+    func encryptLocalData(data: Data, keyName: String) throws -> Data
+    func decryptLocalData(encryptedData: Data, keyName: String) throws -> Data
+
+    // Persistence & keystore
+    func setPersistenceDirectory(_ path: String) throws
+    func enableAutoPersistence(_ enabled: Bool) throws
+    func wipePersistence() throws
+    func getKeystoreCapabilities() throws -> KeystoreCapabilities
+    func flushState() throws
+    func registerAppleDeviceKeystore(label: String) throws
+
+    // General message crypto (role-agnostic FFI)
+    func encryptForPublicKey(data: Data, publicKey: Data) throws -> Data
+    func encryptForNetwork(data: Data, networkPublicKey: Data) throws -> Data
+    func decryptNetworkData(encryptedEnvelope: Data) throws -> Data
 }
 ```
-
-Notes:
-- Only truly common methods are included. Node-only features like `decryptWithProfile` are not part of the common protocol and remain in the node API.
 
 ### Node-only API
 
 ```swift
-public protocol NodeOnly: Sendable {
-    // Also conforms to EnvelopeCryptoCommon
+public protocol NodeOnly: CommonKeyManager, Sendable {
     func hasKeys() throws -> Bool
     func generateKeys() throws
     func generateCsrSetupToken() throws -> Data
@@ -44,44 +64,60 @@ public protocol NodeOnly: Sendable {
     func getQuicCertificateConfig() throws -> Data
     func getNodeCertificate() throws -> Data
     func getNodePublicKey() throws -> Data
+    func getAgreementPublicKey() throws -> Data
+    func setLocalNodeInfo(_ nodeInfoCbor: Data) throws
+
+    // Profile keys (node authority)
     func deriveUserProfileKey(label: String) throws -> Data
     func decryptWithProfile(envelopeData: Data, profileId: String) throws -> Data
     func installProfilePublicKey(_ publicKey: Data) throws
-    func getProfilePublicKey(label: String) throws -> (publicKey: Data, exists: Bool)
-    func getCertificateStatus() throws -> Int32
-    func getCertificateSerial() throws -> String
-    func validatePeerCertificate(_ cert: Data) throws
+    func getProfilePublicKey(label: String) throws -> (publicKey: Data?, exists: Bool)
+
+    // Network keys (node side)
     func installNetworkKey(_ networkKeyMessage: Data) throws
     func getNetworkAgreement(networkPublicKey: Data) throws -> Data
     func hasNetworkPrivateKey(networkPublicKey: Data) throws -> Bool
+
+    // Message crypto (node <-> mobile)
+    func encryptMessageForMobile(data: Data, mobilePublicKey: Data) throws -> Data
+    func decryptMessageFromMobile(encryptedData: Data) throws -> Data
 }
 ```
 
 ### Mobile-only API
 
 ```swift
-public protocol MobileOnly: Sendable {
-    // Also conforms to EnvelopeCryptoCommon
+public protocol MobileOnly: CommonKeyManager, Sendable {
     func initializeUserRootKey() throws
     func getUserPublicKey() throws -> Data
+
+    // Profile key derivation (mobile may derive; install/listing are node-only)
     func deriveUserProfileKey(label: String) throws -> Data
+
+    // Network key operations (mobile side)
     func installNetworkPublicKey(_ networkPublicKey: Data) throws
     func generateNetworkDataKey() throws -> Data
     func hasNetworkPrivateKey(networkPublicKey: Data) throws -> Bool
     func createNetworkKeyMessage(networkPublicKey: Data, nodeAgreementPublicKey: Data) throws -> Data
+
+    // Setup/cert flows
     func processSetupToken(_ setupToken: Data) throws -> Data
     func fromEnrollResponse(_ response: Data) throws -> Data
     func fromRenewResponse(_ response: Data) throws -> Data
+
+    // Message crypto (mobile <-> node)
+    func encryptMessageForNode(data: Data, nodeAgreementPublicKey: Data) throws -> Data
+    func decryptMessageFromNode(encryptedData: Data) throws -> Data
 }
 ```
 
 ## Concrete Types
 
-Two concrete, role-specific managers. Each creates and owns its FFI handle and implements `EnvelopeCryptoCommon` plus its role protocol.
+Two concrete, role-specific managers. Each creates and owns its FFI handle and implements `CommonKeyManager` plus its role protocol.
 
 ```swift
-public final class NodeKeyManager: NodeOnly, EnvelopeCryptoCommon { /* FFI-backed */ }
-public final class MobileKeyManager: MobileOnly, EnvelopeCryptoCommon { /* FFI-backed */ }
+public final class NodeKeyManager: NodeOnly { /* FFI-backed */ }
+public final class MobileKeyManager: MobileOnly { /* FFI-backed */ }
 ```
 
 Initialization:
@@ -92,14 +128,29 @@ No type exposes APIs from the opposite role, so misuse is prevented at compile-t
 
 ## FFI Mapping
 
-### Common methods (both types implement)
+### CommonKeyManager (both types)
 
-- encryptWithEnvelope
-  - Node: `rn_keys_node_encrypt_with_envelope`
-  - Mobile: `rn_keys_mobile_encrypt_with_envelope`
-- decryptEnvelope
-  - Node: `rn_keys_node_decrypt_envelope`
-  - Mobile: `rn_keys_mobile_decrypt_envelope`
+- Envelope crypto
+  - encryptWithEnvelope → node: `rn_keys_node_encrypt_with_envelope`, mobile: `rn_keys_mobile_encrypt_with_envelope`
+  - decryptEnvelope → node: `rn_keys_node_decrypt_envelope`, mobile: `rn_keys_mobile_decrypt_envelope`
+
+- Symmetric keys
+  - ensureSymmetricKey → `rn_keys_ensure_symmetric_key`
+  - encryptLocalData → `rn_keys_encrypt_local_data`
+  - decryptLocalData → `rn_keys_decrypt_local_data`
+
+- Persistence & keystore
+  - setPersistenceDirectory → `rn_keys_set_persistence_dir`
+  - enableAutoPersistence → `rn_keys_enable_auto_persist`
+  - wipePersistence → `rn_keys_wipe_persistence`
+  - getKeystoreCapabilities → `rn_keys_get_keystore_caps`
+  - flushState → `rn_keys_flush_state`
+  - registerAppleDeviceKeystore → `rn_keys_register_apple_device_keystore`
+
+- General message crypto
+  - encryptForPublicKey → `rn_keys_encrypt_for_public_key`
+  - encryptForNetwork → `rn_keys_encrypt_for_network`
+  - decryptNetworkData → `rn_keys_decrypt_network_data`
 
 ### Node-only
 
@@ -110,16 +161,17 @@ No type exposes APIs from the opposite role, so misuse is prevented at compile-t
 - getQuicCertificateConfig → `rn_keys_node_get_quic_certificate_config`
 - getNodeCertificate → `rn_keys_node_get_node_certificate`
 - getNodePublicKey → `rn_keys_node_get_public_key`
+- getAgreementPublicKey → `rn_keys_node_get_agreement_public_key`
+- setLocalNodeInfo → `rn_keys_set_local_node_info`
 - deriveUserProfileKey → `rn_keys_node_derive_user_profile_key`
 - decryptWithProfile → `rn_keys_node_decrypt_with_profile`
 - installProfilePublicKey → `rn_keys_node_install_profile_public_key`
 - getProfilePublicKey → `rn_keys_node_get_profile_public_key_by_label`
-- getCertificateStatus → `rn_keys_node_get_certificate_status`
-- getCertificateSerial → `rn_keys_node_get_certificate_serial`
-- validatePeerCertificate → `rn_keys_node_validate_peer_certificate`
 - installNetworkKey → `rn_keys_node_install_network_key`
 - getNetworkAgreement → `rn_keys_node_get_network_agreement`
 - hasNetworkPrivateKey → `rn_keys_node_has_network_private_key`
+- encryptMessageForMobile → `rn_keys_encrypt_message_for_mobile`
+- decryptMessageFromMobile → `rn_keys_decrypt_message_from_mobile`
 
 ### Mobile-only
 
@@ -133,36 +185,37 @@ No type exposes APIs from the opposite role, so misuse is prevented at compile-t
 - processSetupToken → `rn_keys_mobile_process_setup_token`
 - fromEnrollResponse → `rn_keys_mobile_from_enroll_response`
 - fromRenewResponse → `rn_keys_mobile_from_renew_response`
+- encryptMessageForNode → `rn_keys_encrypt_message_for_node`
+- decryptMessageFromNode → `rn_keys_mobile_decrypt_message_from_node`
 
 ## Error Model
 
-- No role errors at runtime (types prevent it). All FFI errors propagate with original codes/messages.
-- No fallbacks; deterministic behavior only.
+- Role separation is enforced by types; all FFI errors propagate with original codes/messages. No fallbacks.
 
 ## Serializer Integration
 
-- Serializer depends only on `EnvelopeCryptoCommon`.
-- Wherever serializer currently calls node-only decryptWithProfile, migrate to use the common decryptEnvelope flow or move that functionality into code that depends on `NodeOnly` explicitly.
-- The concrete instance passed to serializer can be either `NodeKeyManager` or `MobileKeyManager` and must satisfy `EnvelopeCryptoCommon`.
+- Serializer depends only on `CommonKeyManager`.
+- Node-only `decryptWithProfile` remains in NodeOnly; any use must live in node-aware code.
 
 ## Refactor Plan (swift-ffi)
 
-1. Add protocols: `EnvelopeCryptoCommon`, `NodeOnly`, `MobileOnly`.
+1. Add protocols: `CommonKeyManager`, `NodeOnly`, `MobileOnly`.
 2. Implement `NodeKeyManager` and `MobileKeyManager` types:
    - Own FFI handle lifecycle (`rn_keys_new`/`rn_keys_free`), init as node/mobile.
    - Implement common and role-specific methods with proper memory handling.
-3. Remove `KeysHandle` entirely. Replace all usages with role-specific types or `EnvelopeCryptoCommon` as appropriate.
+3. Remove `KeysHandle` entirely. Replace all usages with role-specific types or `CommonKeyManager` as appropriate.
 4. Unify method names: remove `mobile*` prefixes. Provide only the common names on respective types.
-5. Update transport/discovery and other helpers to accept the appropriate role-specific type or `EnvelopeCryptoCommon` where only common functions are needed.
-6. Update serializer to depend only on `EnvelopeCryptoCommon` and stop invoking node-only APIs.
+5. Update transport/discovery and other helpers to accept the appropriate role-specific type or `CommonKeyManager` where only common functions are needed.
+6. Update serializer to depend only on `CommonKeyManager` and stop invoking node-only APIs.
 7. Run SwiftLint/SwiftFormat and fix violations.
+8. Unskip tests for symmetric keys, persistence, message crypto after implementing these methods.
 
 ## Test Strategy
 
 - Create tests for both managers exercising common methods with vectors and ensuring parity.
 - Node-only tests cover certificates, CSR, profile decrypt, network agreement, etc.
 - Mobile-only tests cover setup token processing, network key message, etc.
-- Integration tests in serializer with both `NodeKeyManager` and `MobileKeyManager` via `EnvelopeCryptoCommon`.
+- Integration tests in serializer with both `NodeKeyManager` and `MobileKeyManager` via `CommonKeyManager`.
 
 ## Security and Determinism
 

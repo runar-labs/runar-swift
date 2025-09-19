@@ -1,6 +1,6 @@
-import XCTest
-import SwiftFFI
 import SwiftCommon
+import SwiftFFI
+import XCTest
 
 @testable import SwiftFFI
 
@@ -8,24 +8,26 @@ import SwiftCommon
 /// Tests for CA Node, CA Server, and CA Client functionality
 /// Mirrors the comprehensive FFI tests from Rust
 final class CATests: XCTestCase {
-    
-    private var nodeKeys: KeysHandle!
+    private var nodeKeys: NodeKeyManager!
     private var caNode: CANode!
     private var caServer: CAServer!
     private var caClient: CAClient!
-    
+
     override func setUp() {
         super.setUp()
-        
+
         // Set up logging
-        try! FFILogger.setLogLevel(.debug)
-        
-        // Create node keys handle
-        nodeKeys = try! KeysHandle()
-        try! nodeKeys.initializeAsNode()
-        try! nodeKeys.nodeGenerateKeys()
+        do {
+            try FFILogger.setLogLevel(.debug)
+
+            // Create node keys handle
+            nodeKeys = try NodeKeyManager()
+            try nodeKeys.generateKeys()
+        } catch {
+            XCTFail("Failed to set up test: \(error)")
+        }
     }
-    
+
     override func tearDown() {
         caClient = nil
         caServer = nil
@@ -33,30 +35,30 @@ final class CATests: XCTestCase {
         nodeKeys = nil
         super.tearDown()
     }
-    
+
     // MARK: - CA Node Tests
-    
+
     func testCaNodeNewHappyPath() throws {
         // Test successful CA node creation
         let caNode = try CANode.create()
         XCTAssertNotNil(caNode, "CA node should be created successfully")
     }
-    
+
     func testCaNodeFreeNull() {
         // Test that freeing null CA node doesn't crash
         // This is handled internally by the FFI, so we just ensure it doesn't throw
         // Note: CANode.free doesn't exist in the current API
     }
-    
+
     func testCaNodeSetupCompleteHappyPath() throws {
         // Test CA node setup with proper configuration
         let caNode = try CANode.create()
-        
+
         // Create EA key pair for testing
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try eaKeyManager.createKeyPair()
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         // Set up CA node
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: caNode.ffiHandle,
@@ -67,19 +69,19 @@ final class CATests: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: "test_network"
         )
-        
+
         XCTAssertNoThrow(try caNode.setupComplete(params: setupParams), "CA node setup should succeed")
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     func testCaNodeSetupCompleteNullCaNode() throws {
         // Test CA node setup with null CA node
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try eaKeyManager.createKeyPair()
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: UnsafeMutableRawPointer(bitPattern: 0) ?? UnsafeMutableRawPointer(bitPattern: 1)!, // Null pointer
             rootCaSubject: "CN=Test Root CA,O=Test,C=US",
@@ -89,7 +91,7 @@ final class CATests: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: "test_network"
         )
-        
+
         // This should fail gracefully
         if let nullPointer = UnsafeMutableRawPointer(bitPattern: 0) {
             XCTAssertThrowsError(try CANode(ffiHandle: nullPointer).setupComplete(params: setupParams), "Should fail with null CA node")
@@ -97,21 +99,21 @@ final class CATests: XCTestCase {
             // If we can't create a null pointer, just test that the function exists
             XCTAssertTrue(true, "CANode.setupComplete function exists")
         }
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     func testCaNodeCreateShared() throws {
         // Test creating shared CA node
         let caNode = try CANode.create()
         let sharedCaNode = try caNode.createShared()
         XCTAssertNotNil(sharedCaNode, "Shared CA node should be created successfully")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
     }
-    
+
     func testCaNodeFreeShared() {
         // Test freeing shared CA node - use a proper null pointer
         let nullPointer = UnsafeMutableRawPointer(bitPattern: 0)
@@ -122,9 +124,9 @@ final class CATests: XCTestCase {
             XCTAssertTrue(true, "CANode.freeShared function exists")
         }
     }
-    
+
     // MARK: - CA Server Tests
-    
+
     func testCaServerNewStub() throws {
         // Test CA server creation
         let caNode = try CANode.create()
@@ -138,16 +140,16 @@ final class CATests: XCTestCase {
         )
         let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
         XCTAssertNotNil(caServer, "CA server should be created successfully")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
     }
-    
+
     func testCaServerFreeNull() {
         // Test that freeing null CA server doesn't crash
         // Note: CAServer.free doesn't exist in the current API
     }
-    
+
     func testCaServerStartStop() throws {
         // Test CA server start and stop
         let caNode = try CANode.create()
@@ -160,14 +162,14 @@ final class CATests: XCTestCase {
             rateLimitPerHour: 1000
         )
         let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
-        
+
         XCTAssertNoThrow(try caServer.start(), "CA server should start successfully")
         XCTAssertNoThrow(try caServer.stop(), "CA server should stop successfully")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
     }
-    
+
     func testCaServerBootstrapAddress() throws {
         // Test getting bootstrap address
         let caNode = try CANode.create()
@@ -180,19 +182,19 @@ final class CATests: XCTestCase {
             rateLimitPerHour: 1000
         )
         let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
-        
+
         // Start the server first
         try caServer.start()
-        
+
         XCTAssertNoThrow(try caServer.bootstrapAddress(), "Should get bootstrap address")
-        
+
         // Stop the server
         try caServer.stop()
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
     }
-    
+
     func testCaServerAuthenticatedAddress() throws {
         // Test getting authenticated address
         let caNode = try CANode.create()
@@ -205,21 +207,21 @@ final class CATests: XCTestCase {
             rateLimitPerHour: 1000
         )
         let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
-        
+
         // Start the server first
         try caServer.start()
-        
+
         XCTAssertNoThrow(try caServer.authenticatedAddress(), "Should get authenticated address")
-        
+
         // Stop the server
         try caServer.stop()
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
     }
-    
+
     // MARK: - CA Client Tests
-    
+
     func testCaClientNewStub() throws {
         // Test CA client creation
         let caClientConfig = CaClientConfigAll(
@@ -231,16 +233,16 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
         XCTAssertNotNil(caClient, "CA client should be created successfully")
     }
-    
+
     func testCaClientFreeNull() {
         // Test that freeing null CA client doesn't crash
         // Note: CAClient.free doesn't exist in the current API
     }
-    
+
     func testCaClientEnroll() throws {
         // Test CA client enrollment
         let caClientConfig = CaClientConfigAll(
@@ -252,12 +254,12 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
-        
+
         // Test enrollment (may fail if server not running, which is expected)
         do {
-            let _ = try caClient.enroll(
+            _ = try caClient.enroll(
                 bootstrapAddress: "127.0.0.1:8080",
                 request: Data() // Empty request for testing
             )
@@ -266,7 +268,7 @@ final class CATests: XCTestCase {
             XCTAssertTrue(error is FFIError)
         }
     }
-    
+
     func testCaClientRenew() throws {
         // Test CA client renewal
         let caClientConfig = CaClientConfigAll(
@@ -278,12 +280,12 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
-        
+
         // Test renewal (may fail if server not running, which is expected)
         do {
-            let _ = try caClient.renew(
+            _ = try caClient.renew(
                 authenticatedAddress: "127.0.0.1:8080",
                 request: Data() // Empty request for testing
             )
@@ -292,7 +294,7 @@ final class CATests: XCTestCase {
             XCTAssertTrue(error is FFIError)
         }
     }
-    
+
     func testCaClientRevoke() throws {
         // Test CA client revocation
         let caClientConfig = CaClientConfigAll(
@@ -304,12 +306,12 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
-        
+
         // Test revocation (may fail if server not running, which is expected)
         do {
-            let _ = try caClient.revoke(
+            _ = try caClient.revoke(
                 authenticatedAddress: "127.0.0.1:8080",
                 request: Data() // Empty request for testing
             )
@@ -318,7 +320,7 @@ final class CATests: XCTestCase {
             XCTAssertTrue(error is FFIError)
         }
     }
-    
+
     func testCaClientGetChain() throws {
         // Test CA client chain retrieval
         let caClientConfig = CaClientConfigAll(
@@ -330,12 +332,12 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
-        
+
         // Test chain retrieval (may fail if server not running, which is expected)
         do {
-            let _ = try caClient.getChain(
+            _ = try caClient.getChain(
                 bootstrapAddress: "127.0.0.1:8080",
                 networkId: "test-network"
             )
@@ -344,7 +346,7 @@ final class CATests: XCTestCase {
             XCTAssertTrue(error is FFIError)
         }
     }
-    
+
     func testCaClientGetStatus() throws {
         // Test CA client status retrieval
         let caClientConfig = CaClientConfigAll(
@@ -356,12 +358,12 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
-        
+
         // Test status retrieval (may fail if server not running, which is expected)
         do {
-            let _ = try caClient.getStatus(
+            _ = try caClient.getStatus(
                 authenticatedAddress: "127.0.0.1:8080",
                 networkId: "test-network"
             )
@@ -370,65 +372,65 @@ final class CATests: XCTestCase {
             XCTAssertTrue(error is FFIError)
         }
     }
-    
+
     // MARK: - EA Key Manager Tests
-    
+
     func testEaKeyManagerCreateKeyPair() throws {
         // Test EA key pair creation
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try eaKeyManager.createKeyPair()
         XCTAssertNotNil(eaKeyPair, "EA key pair should be created successfully")
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     func testEaKeyManagerGetPublicKey() throws {
         // Test getting EA public key
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try eaKeyManager.createKeyPair()
         let publicKey = try eaKeyManager.getPublicKey(eaKeyPair)
         XCTAssertFalse(publicKey.isEmpty, "Public key should not be empty")
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     func testEaKeyManagerGenerateEnrollmentToken() throws {
         // Test enrollment token generation
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try eaKeyManager.createKeyPair()
-        
+
         let tokenParams = EAKeyManager.EnrollmentTokenParams(
             eaKeyHandle: eaKeyPair,
             tokenId: "test_token",
             networkId: "test_network",
             subject: "CN=Test User,O=Test,C=US",
-            validFrom: 1234567890,
-            validUntil: 1234567890 + 3600,
+            validFrom: 1_234_567_890,
+            validUntil: 1_234_567_890 + 3600,
             nonce: Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
             capabilities: ["enroll"]
         )
-        
+
         let token = try eaKeyManager.generateEnrollmentToken(params: tokenParams)
         XCTAssertFalse(token.isEmpty, "Enrollment token should not be empty")
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     func testEaKeyManagerFreeNull() {
         // Test that freeing null EA key pair doesn't crash
         let nullPointer = UnsafeMutableRawPointer(bitPattern: 1)!
         XCTAssertNoThrow(EAKeyManager.free(nullPointer), "Freeing null EA key pair should not crash")
     }
-    
+
     // MARK: - Error Handling Tests
-    
+
     func testCaNodeErrorHandling() throws {
         // Test CA node error handling with invalid parameters
         let caNode = try CANode.create()
-        
+
         // Test with empty EA public keys
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: caNode.ffiHandle,
@@ -439,11 +441,11 @@ final class CATests: XCTestCase {
             eaPublicKeys: Data(), // Empty data
             networkId: "test_network"
         )
-        
+
         // This should fail with empty EA public keys
         XCTAssertThrowsError(try caNode.setupComplete(params: setupParams), "Should fail with empty EA public keys")
     }
-    
+
     func testCaClientErrorHandling() throws {
         // Test CA client error handling with invalid parameters
         let caClientConfig = CaClientConfigAll(
@@ -455,33 +457,33 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
-        
+
         // Test with empty address
         XCTAssertThrowsError(try caClient.enroll(
             bootstrapAddress: "",
             request: Data()
         ), "Should fail with empty address")
-        
+
         // Test with empty network ID
         XCTAssertThrowsError(try caClient.enroll(
             bootstrapAddress: "127.0.0.1:8080",
             request: Data()
         ), "Should fail with empty network ID")
     }
-    
+
     // MARK: - Integration Tests
-    
+
     func testCaNodeServerIntegration() throws {
         // Test CA node and server integration
         let caNode = try CANode.create()
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try eaKeyManager.createKeyPair()
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         // Set up CA node
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: caNode.ffiHandle,
@@ -492,12 +494,12 @@ final class CATests: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: "test_network"
         )
-        
+
         try caNode.setupComplete(params: setupParams)
-        
+
         // Create shared CA node
         let sharedCaNode = try caNode.createShared()
-        
+
         // Create CA server with shared CA node
         let caServerConfig = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -506,24 +508,24 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        
+
         let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
         XCTAssertNotNil(caServer, "CA server should be created with shared CA node")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     func testCaClientServerIntegration() throws {
         // Test CA client and server integration - simplified to avoid crashes
         let caNode = try CANode.create()
-        
+
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try eaKeyManager.createKeyPair()
         let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         // Set up CA node
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: caNode.ffiHandle,
@@ -534,12 +536,12 @@ final class CATests: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: "test_network"
         )
-        
+
         try caNode.setupComplete(params: setupParams)
-        
+
         // Create shared CA node
         let sharedCaNode = try caNode.createShared()
-        
+
         // Create CA server (but don't start it to avoid crashes)
         let caServerConfig = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -548,10 +550,10 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        
+
         let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
         XCTAssertNotNil(caServer, "CA server should be created successfully")
-        
+
         // Create CA client
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
@@ -562,54 +564,54 @@ final class CATests: XCTestCase {
             root_ca_der: Data(),
             issuing_ca_der: Data()
         )
-        
+
         let caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
         XCTAssertNotNil(caClient, "CA client should be created successfully")
-        
+
         // Test that both client and server were created successfully
         // (We don't start the server to avoid segmentation faults)
         XCTAssertTrue(true, "CA client and server integration test completed successfully")
-        
+
         // Clean up
         CANode.freeShared(sharedCaNode)
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     // MARK: - Performance Tests
-    
+
     func testCaNodeCreationPerformance() throws {
         // Test performance of CA node creation
         let iterations = 100
-        
+
         let startTime = CFAbsoluteTimeGetCurrent()
-        
-        for _ in 0..<iterations {
-            let _ = try CANode.create()
+
+        for _ in 0 ..< iterations {
+            _ = try CANode.create()
             // CA node is automatically cleaned up when out of scope
         }
-        
+
         let totalTime = CFAbsoluteTimeGetCurrent() - startTime
         let averageTime = totalTime / Double(iterations)
-        
+
         XCTAssertGreaterThan(totalTime, 0, "CA node creation should take some time")
         print("Average CA node creation time: \(averageTime) seconds")
     }
-    
+
     func testEaKeyPairCreationPerformance() throws {
         // Test performance of EA key pair creation
         let iterations = 50
-        
+
         let startTime = CFAbsoluteTimeGetCurrent()
-        
+
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
-        for _ in 0..<iterations {
+        for _ in 0 ..< iterations {
             let eaKeyPair = try eaKeyManager.createKeyPair()
             EAKeyManager.free(eaKeyPair)
         }
-        
+
         let totalTime = CFAbsoluteTimeGetCurrent() - startTime
         let averageTime = totalTime / Double(iterations)
-        
+
         XCTAssertGreaterThan(totalTime, 0, "EA key pair creation should take some time")
         print("Average EA key pair creation time: \(averageTime) seconds")
     }

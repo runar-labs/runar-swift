@@ -6,7 +6,6 @@ import XCTest
 
 @available(macOS 12.0, *)
 final class FFIE2EIntegrationTest: XCTestCase {
-
     func createLogger() -> RunarLogger { RunarLogger(component: .custom) }
 
     func encode<T: Codable>(_ value: T) throws -> Data { try CodableCBOREncoder().encode(value) }
@@ -20,10 +19,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Phase 1: Setup
         // ==========================================
         print("\n🏗️  PHASE 1 (WRAPPER): Setup")
-        let nodeKeys = try KeysHandle()
-        try nodeKeys.initializeAsNode()
-        let mobileKeys = try KeysHandle()
-        try mobileKeys.initializeAsMobile()
+        let nodeKeys = try NodeKeyManager()
+        let mobileKeys = try MobileKeyManager()
         print("   ✅ (WRAPPER) Keys handles created and initialized")
 
         // ==========================================
@@ -76,7 +73,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let csrDer = setupToken.csr_der
 
         let now = UInt64(Date().timeIntervalSince1970)
-        let nonce = Data([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16])
+        let nonce = Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
         let tokenParams = EAKeyManager.EnrollmentTokenParams(
             eaKeyHandle: eaHandle,
             tokenId: "test_token_001",
@@ -110,7 +107,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let client = try CAClient(config: clientConfig, nodeKeys: nodeKeys)
 
         let enrollResp = try client.enroll(bootstrapAddress: bootstrapAddr, request: enrollReqCbor)
-        let certMsg = try mobileKeys.mobileFromEnrollResponse(enrollResp)
+        let certMsg = try mobileKeys.fromEnrollResponse(enrollResp)
         try nodeKeys.installCertificate(certMsg)
         let quicConfig = try nodeKeys.getQuicCertificateConfig()
         print("   ✅ (WRAPPER) Enrollment successful; QUIC config bytes: \(quicConfig.count)")
@@ -124,7 +121,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let renewReq = RenewRequest(network_id: networkId, csr_der: renewalSetupToken.csr_der)
         let renewReqCbor = try encode(renewReq)
         let renewResp = try client.renew(authenticatedAddress: authenticatedAddr, request: renewReqCbor)
-        let renewalCertMsg = try mobileKeys.mobileFromRenewResponse(renewResp)
+        let renewalCertMsg = try mobileKeys.fromRenewResponse(renewResp)
         try nodeKeys.installCertificate(renewalCertMsg)
         print("   ✅ (WRAPPER) Renewal successful and certificate installed")
 
@@ -161,8 +158,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let workKey = try nodeKeys.deriveUserProfileKey(label: "work")
         let personalId = try nodeKeys.getCompactId(for: personalKey)
         let testData = Data("Hello, encrypted world!".utf8)
-        let envelope = try nodeKeys.encryptWithEnvelope(plaintext: testData, profileKeys: [personalKey])
-        let decrypted = try nodeKeys.decryptWithProfile(envelope: envelope, profileId: personalId)
+        let envelope = try nodeKeys.encryptWithEnvelope(data: testData, networkPublicKey: nil, profilePublicKeys: [personalKey])
+        let decrypted = try nodeKeys.decryptWithProfile(envelopeData: envelope, profileId: personalId)
         XCTAssertEqual(decrypted, testData)
         print("   ✅ (WRAPPER) Profile key envelope roundtrip succeeded")
 
@@ -170,7 +167,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Phase 8: Rate Limiting via REAL QUIC mTLS
         // ==========================================
         print("\n⏱️  PHASE 8 (WRAPPER): Rate Limiting via REAL QUIC mTLS")
-        for _ in 1...3 {
+        for _ in 1 ... 3 {
             let setupCbor = try nodeKeys.generateCsrSetupToken()
             let setup: SetupToken = try decode(SetupToken.self, from: setupCbor)
             let req = CsrEnrollRequest(network_id: networkId, csr_der: setup.csr_der, enrollment_token: token)
@@ -207,7 +204,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
             subject: "invalid",
             validFrom: now - 60,
             validUntil: now + 3600,
-            nonce: Data([2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]),
+            nonce: Data([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]),
             capabilities: ["enroll"]
         )
         let badTokenCbor = try eaManager.generateEnrollmentToken(params: badParams)
@@ -222,8 +219,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         } catch { print("   ✅ (WRAPPER) Invalid token rejected as expected") }
 
         // Unauthorized renewal (new node)
-        let unauthorizedKeys = try KeysHandle()
-        try unauthorizedKeys.initializeAsNode()
+        let unauthorizedKeys = try NodeKeyManager()
         let unauthorizedSetupCbor = try unauthorizedKeys.generateCsrSetupToken()
         let unauthorizedSetup: SetupToken = try decode(SetupToken.self, from: unauthorizedSetupCbor)
         let unauthorizedReq = RenewRequest(network_id: networkId, csr_der: unauthorizedSetup.csr_der)
@@ -238,21 +234,19 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // ==========================================
         print("\n🧹 CLEANUP (WRAPPER): Freeing resources")
         try server.stop()
-        _ = (workKey) // keep references used
-        _ = (envelope)
-        _ = (personalId)
+        _ = workKey // keep references used
+        _ = envelope
+        _ = personalId
         print("   ✅ (WRAPPER) Cleanup complete")
         print("\n🎉 WRAPPER FULL-TRANSPORT E2E TEST COMPLETED SUCCESSFULLY!")
     }
 
     private func validateCertificates(rootCa: Data, issuingCa: Data) throws {
-        guard !rootCa.isEmpty && !issuingCa.isEmpty else {
+        guard !rootCa.isEmpty, !issuingCa.isEmpty else {
             throw FFIError.operationFailed("Certificates cannot be empty")
         }
-        guard rootCa.count > 100 && issuingCa.count > 100 else {
+        guard rootCa.count > 100, issuingCa.count > 100 else {
             throw FFIError.operationFailed("Certificates seem too small")
         }
     }
 }
-
-
