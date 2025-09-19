@@ -11,7 +11,7 @@
 
 - Swift packages: `swift-serializer`, `swift-serializer-macros`.
 - Rust references: `runar-rust/runar-serializer`, `runar-rust/runar-serializer-macros`.
-- Crypto via FFI: `swift-ffi` EnvelopeCrypto (mobile/node keystores). Swift must present actual public keys/IDs to FFI, not labels.
+- Crypto via FFI: `swift-ffi` EnvelopeCrypto (mobile/node keystores). Swift must present actual public keys to FFI, not labels.
 
 ## Current State (Swift)
 
@@ -41,10 +41,11 @@
 ### 1) Swift-side Label Resolution Model (Parity)
 
 Implement types and behavior aligning with Rust `traits.rs`:
-- `LabelKeyInfo { profilePublicKeys: [Data], networkPublicKey: Data? }` or, if FFI requires IDs, maintain `profileIds: [String], networkId: String?` and ensure the keystore API matches. The key is pre-resolved, deterministic input to crypto.
+- `LabelKeyInfo { profilePublicKeys: [Data], networkPublicKey: Data? }` as the canonical output. These are the actual public key bytes FFI expects.
 - `LabelResolverConfig`, `LabelValue/LabelKeyword` (if needed for dynamic resolution), and a concrete `LabelResolver` creation path analogous to Rust’s `create_context_label_resolver` using system config + user profile keys from the request context.
 - Expose: `func canResolve(_:) -> Bool`, `func resolveLabelInfo(_:) throws -> LabelKeyInfo?`, `func availableLabels() -> [String]`.
-- Integration: Provide an adapter layer only if the FFI protocol is not yet upgraded. Preferred long-term: upgrade FFI protocol to match parity.
+- No FFI involvement in label resolution. The resolver is 100% Swift-side and authoritative.
+- Validation: each label must specify at least one of `networkPublicKey` or `userKeySpec` (or both). Network-only and profile-only labels are valid; labels with neither are invalid. If a network key is provided, it must be non-empty and of correct length.
 
 Outcome: Deterministic, context-aware, pre-resolved key info for label-group encryption.
 
@@ -121,5 +122,6 @@ Outcome: Generated code compiles and honors runtime contracts.
 
 ## Notes on FFI Alignment
 
-- Preferred: enhance `RunarFFI.LabelResolver` to expose `canResolve(_:)` and return `LabelKeyInfo` rather than a single string. If not immediately possible, provide a temporary adapter in `swift-serializer` that constructs `LabelKeyInfo` from available FFI calls and configuration, with strict behavior (no silent defaults).
-- Ensure EnvelopeCrypto APIs accept the resolved recipients exactly once per operation; avoid hidden fallbacks.
+- FFI exposes only keystore encryption/decryption with public keys (envelope crypto). It does not and will not provide label resolution APIs.
+- The Swift-side `LabelResolver` must map labels to actual recipients: `networkPublicKey` and `profilePublicKeys` as raw bytes, pre-resolved before invoking FFI.
+- Ensure EnvelopeCrypto is fed with these pre-resolved recipients exactly once per operation; avoid any hidden defaults or fallbacks.
