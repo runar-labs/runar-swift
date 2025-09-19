@@ -90,56 +90,7 @@ public struct LabelResolver: Sendable, Equatable {
 }
 ```
 
-### Factory (Context-Aware Construction)
-
-Construct a resolver for a specific request context (e.g., current user’s profile public keys).
-
-```swift
-public enum LabelResolverFactory {
-    /// Create a context-bound resolver using system configuration and user profile public keys.
-    /// - Parameters:
-    ///   - systemConfig: Static system config mapping labels to LabelValue.
-    ///   - userProfilePublicKeys: Public key bytes for the current user context. May be empty.
-    /// - Throws: LabelResolverError on validation failure.
-    /// - Returns: A LabelResolver with immutable mappings ready for encryption.
-    public static func createContextResolver(
-        systemConfig: LabelResolverConfig,
-        userProfilePublicKeys: [Data]
-    ) throws -> LabelResolver {
-        try validate(systemConfig: systemConfig)
-
-        var out: [String: LabelKeyInfo] = [:]
-        out.reserveCapacity(systemConfig.labelMappings.count)
-
-        for (label, value) in systemConfig.labelMappings {
-            // Network key handling (explicit only; no defaults)
-            let networkKey = value.networkPublicKey
-
-            // Profile keys based on userKeySpec
-            let profileKeys: [Data]
-            if let spec = value.userKeySpec {
-                switch spec {
-                case .currentUser:
-                    profileKeys = userProfilePublicKeys
-                case let .custom(name):
-                    // Custom selectors require explicit mapping at call site
-                    // No implicit resolution allowed. Fail fast.
-                    throw LabelResolverError.invalidConfiguration("Custom userKeySpec '" + name + "' requires explicit pre-resolution before factory call")
-                }
-            } else {
-                profileKeys = []
-            }
-
-            // Key validation (sizes, formats). Implementation should be aligned with the crypto suite in use.
-            try validatePublicKeys(networkKey: networkKey, profileKeys: profileKeys, label: label)
-
-            out[label] = LabelKeyInfo(profilePublicKeys: profileKeys, networkPublicKey: networkKey)
-        }
-
-        return LabelResolver(mapping: out)
-    }
-}
-```
+// (Factory moved to Future (Node-only) section below)
 
 ### Key Validation
 
@@ -185,64 +136,7 @@ private func validatePublicKeys(networkKey: Data?, profileKeys: [Data], label: S
 Notes:
 - Adjust lengths and algorithm checks to the actual key types enforced by the FFI keystore. The validation logic should be centralized and reused across call sites.
 
-## Caching 
-
-A cache can reduce allocations for identical contexts. The cache key should be a stable fingerprint of the user profile public keys (order-insensitive) and a system config version.
-
-```swift
-public final class LabelResolverCache: @unchecked Sendable {
-    private struct CacheKey: Hashable {
-        let systemConfigVersion: String
-        let profileKeysDigest: Data
-    }
-
-    private let cache = NSCache<WrappedKey, WrappedValue>()
-
-    public init(maxEntries: Int = 1024) {
-        cache.countLimit = maxEntries
-    }
-
-    public func getOrCreate(
-        systemConfig: LabelResolverConfig,
-        systemConfigVersion: String,
-        userProfilePublicKeys: [Data]
-    ) throws -> LabelResolver {
-        let digest = digestKeys(userProfilePublicKeys)
-        let key = CacheKey(systemConfigVersion: systemConfigVersion, profileKeysDigest: digest)
-        let wrappedKey = WrappedKey(key)
-        if let existing = cache.object(forKey: wrappedKey)?.resolver { return existing }
-        let created = try LabelResolverFactory.createContextResolver(systemConfig: systemConfig, userProfilePublicKeys: userProfilePublicKeys)
-        cache.setObject(WrappedValue(created), forKey: wrappedKey)
-        return created
-    }
-
-    private func digestKeys(_ keys: [Data]) -> Data {
-        // Order-insensitive digest: sort, then Hash
-        let sorted = keys.sorted { $0.lexicographicallyPrecedes($1) }
-        // Use a fast, stable hash (e.g., CryptoKit.SHA256) — omitted here for brevity.
-        // Return 32 bytes digest.
-        return Data(sorted.flatMap { $0 })
-    }
-
-    private final class WrappedKey: NSObject {
-        let key: CacheKey
-        init(_ key: CacheKey) { self.key = key }
-        override var hash: Int { key.hashValue }
-        override func isEqual(_ object: Any?) -> Bool {
-            guard let other = object as? WrappedKey else { return false }
-            return key == other.key
-        }
-    }
-
-    private final class WrappedValue: NSObject {
-        let resolver: LabelResolver
-        init(_ resolver: LabelResolver) { self.resolver = resolver }
-    }
-}
-```
-
-- The caller supplies `systemConfigVersion` to invalidate the cache on config updates.
-- Use CryptoKit for a real digest; avoid storing raw concatenation in production.
+// (Caching moved to Future (Node-only) section below)
 
 ## Deterministic Behavior and No Fallbacks
 
@@ -296,6 +190,81 @@ if resolver.canResolve("system") {
   - `availableLabels()` returns a sorted set matching config.
   - `canResolve`/`resolveLabelInfo` behave deterministically.
   - End-to-end: label-group encryption produces envelopes with expected recipients and decrypts correctly under node vs mobile keystores (partial access semantics verified at orchestrator layer).
+
+Implementation note for tests:
+- For serializer tests, construct `LabelResolver` manually (no Factory, no context, no cache). This mirrors Rust tests and avoids introducing context concepts before Node work.
+
+## Future (Node-only) - DO NOT IMPLEMENT THIS NOW.. just for future reference.
+
+The following sections are for future reference only and MUST NOT be implemented now. They will be introduced when building the Swift Node, where request/user contexts exist.
+
+### Factory (Context-Aware Construction)
+
+Construct a resolver for a specific request context (e.g., current user’s profile public keys).
+
+```swift
+public enum LabelResolverFactory {
+    public static func createContextResolver(
+        systemConfig: LabelResolverConfig,
+        userProfilePublicKeys: [Data]
+    ) throws -> LabelResolver {
+        try validate(systemConfig: systemConfig)
+        var out: [String: LabelKeyInfo] = [:]
+        out.reserveCapacity(systemConfig.labelMappings.count)
+        for (label, value) in systemConfig.labelMappings {
+            let networkKey = value.networkPublicKey
+            let profileKeys: [Data]
+            if let spec = value.userKeySpec {
+                switch spec {
+                case .currentUser:
+                    profileKeys = userProfilePublicKeys
+                case let .custom(name):
+                    throw LabelResolverError.invalidConfiguration("Custom userKeySpec '" + name + "' requires explicit pre-resolution before factory call")
+                }
+            } else {
+                profileKeys = []
+            }
+            try validatePublicKeys(networkKey: networkKey, profileKeys: profileKeys, label: label)
+            out[label] = LabelKeyInfo(profilePublicKeys: profileKeys, networkPublicKey: networkKey)
+        }
+        return LabelResolver(mapping: out)
+    }
+}
+```
+
+### Caching
+
+A cache can reduce allocations for identical contexts. The cache key should be a stable fingerprint of the user profile public keys (order-insensitive) and a system config version.
+
+```swift
+public final class LabelResolverCache: @unchecked Sendable {
+    private struct CacheKey: Hashable {
+        let systemConfigVersion: String
+        let profileKeysDigest: Data
+    }
+    private let cache = NSCache<WrappedKey, WrappedValue>()
+    public init(maxEntries: Int = 1024) { cache.countLimit = maxEntries }
+    public func getOrCreate(
+        systemConfig: LabelResolverConfig,
+        systemConfigVersion: String,
+        userProfilePublicKeys: [Data]
+    ) throws -> LabelResolver {
+        let digest = digestKeys(userProfilePublicKeys)
+        let key = CacheKey(systemConfigVersion: systemConfigVersion, profileKeysDigest: digest)
+        let wrappedKey = WrappedKey(key)
+        if let existing = cache.object(forKey: wrappedKey)?.resolver { return existing }
+        let created = try LabelResolverFactory.createContextResolver(systemConfig: systemConfig, userProfilePublicKeys: userProfilePublicKeys)
+        cache.setObject(WrappedValue(created), forKey: wrappedKey)
+        return created
+    }
+    private func digestKeys(_ keys: [Data]) -> Data {
+        let sorted = keys.sorted { $0.lexicographicallyPrecedes($1) }
+        return Data(sorted.flatMap { $0 }) // Replace with CryptoKit SHA256 in production
+    }
+    private final class WrappedKey: NSObject { let key: CacheKey; init(_ key: CacheKey) { self.key = key } ; override var hash: Int { key.hashValue } ; override func isEqual(_ object: Any?) -> Bool { (object as? WrappedKey)?.key == key } }
+    private final class WrappedValue: NSObject { let resolver: LabelResolver; init(_ resolver: LabelResolver) { self.resolver = resolver } }
+}
+```
 
 ## Acceptance Criteria
 

@@ -54,25 +54,35 @@ Outcome: Deterministic, context-aware, pre-resolved key info for label-group enc
 Create `LabelGroupEncryption.swift`:
 - `struct EncryptedLabelGroup { let label: String; let envelope: EnvelopeEncryptedData? }`.
 - `func encryptLabelGroup<T: Codable>(label: String, fieldsStruct: T, keystore: EnvelopeCrypto, resolver: LabelResolver) throws -> EncryptedLabelGroup`:
-  - Encode `fieldsStruct` to CBOR deterministically.
-  - Resolve label via resolver; if absent, return `EncryptedLabelGroup(label, envelope: nil)` (expected partial access).
-  - Encrypt via keystore using network and profile recipients from `LabelKeyInfo`.
+  - Encode `fieldsStruct` to CBOR using SwiftCBOR Codable encoder with canonical options (stable maps, deterministic ordering).
+  - If `resolver.canResolve(label)` is false, return `EncryptedLabelGroup(label, envelope: nil)` (expected partial-access case).
+  - Otherwise, `let info = try resolver.resolveLabelInfo(label)` and call `keystore.encryptWithEnvelope(data:plainBytes, networkPublicKey: info.networkPublicKey, profilePublicKeys: info.profilePublicKeys)`.
+  - Return `EncryptedLabelGroup(label: label, envelope: envelope)`.
 - `func decryptLabelGroup<T: Codable & RunarDefault>(encryptedGroup: EncryptedLabelGroup, keystore: EnvelopeCrypto) throws -> T`:
-  - If envelope is nil, return `T.runarDefaultValue` (expected partial access semantics).
-  - Decrypt envelope and CBOR-decode to T.
+  - If `encryptedGroup.envelope == nil`, return `T.runarDefaultValue`.
+  - Else, decrypt with `keystore.decryptWithNetwork` or `decryptWithProfile` per keystore capabilities; then CBOR-decode bytes to `T`.
+  - Decrypt errors due to missing keys are contained and result in `T.runarDefaultValue`. Malformed envelopes or CBOR decode errors throw `SerializerError.deserializationFailed`.
 
 Outcome: Exact Rust behavior for per-label field-group processing.
 
 ### 3) Re-enable Registry Integration in AnyValue
 
 - Add boxed raw value retrieval to `AnyValueBox` so the registry encryptor can receive the original struct as `Any`.
-- In `AnyValue.serialize(context:)`:
-  - Require registry encryptor when `context != nil` for struct/plain types; compute encrypted wire name; set header encrypted bit; append encryptor-produced payload.
-  - If missing encryptor or mapping, throw `serializationFailed`.
-- In lazy deserialization default branch:
-  - Lookup decoder via registry and dispatch.
-  - If decoder returns an encrypted companion type and caller expects plain T with a keystore, decrypt and return.
-  - Otherwise, throw on unknown wire name.
+- Serialization path (registry-first, strict):
+  - Header format remains `[category][encrypted][name_len][name][payload]`.
+  - When `context == nil`: serialize plain using existing CBOR fast paths.
+  - When `context != nil` and category == `.struct`:
+    - Lookup encryptor: `await SerializationRegistry.shared.encryptor(for: plainWireName)`; if nil, throw `SerializerError.serializationFailed("Missing encryptor for \(plainWireName)")`.
+    - Lookup encrypted wire name: `await SerializationRegistry.shared.encryptedWireName(for: plainWireName)`; if nil, throw `serializationFailed`.
+    - Obtain original value from box; if unavailable, throw `serializationFailed("Missing boxed raw value")`.
+    - Produce payload: invoke encryptor with `(rawValue, context.keystore, context.resolver)`; set `encrypted = 0x01` and use encrypted wire name in header; append payload bytes.
+- Deserialization path (registry-first, strict):
+  - For primitives/containers/json/bytes: keep strict wire-name checks as implemented.
+  - For custom wire names (structs and encrypted structs):
+    - Lookup decoder: `await SerializationRegistry.shared.decoder(for: wireName)`; if missing, throw `Unknown wire name`.
+    - If decoder returns plain `T`, wrap into `AnyValue` result appropriately.
+    - If decoder returns `AnyRunarDecryptable` and a caller later requests the plain type via `asType<T>(keystore:)`, decrypt with the provided keystore and return `T`. If the caller requests the encrypted type, return as-is.
+  - No fallbacks; all missing registrations are hard errors with precise messages.
 
 Outcome: Deterministic registry-first behavior, no silent fallbacks.
 
@@ -119,6 +129,19 @@ Outcome: Generated code compiles and honors runtime contracts.
 4. Update macros for async-first registration and correct grouping/encryption generation.
 5. Add integration tests leveraging `swift-test-utils`; run full test suites.
 6. Archive outdated docs; keep this document updated.
+
+### Tests and Usage Notes
+
+- Tests will construct `LabelResolver` manually (no Factory, no context cache). This mirrors Rust test approach.
+- Macro-generated entry points must be async and call `await _ensureRegistered()` before use; tests await these methods—no sleeps.
+- Add tests for:
+  - encrypt/decrypt label groups across system/user/system_only/search labels.
+  - AnyValue serialization with context performs registry encryption and sets encrypted header and wire name.
+  - AnyValue lazy deserialization dispatches via registry; decrypt-then-decode path succeeds with provided keystore.
+
+### Future (Node-only)
+
+- Factory (Context-Aware Construction) and Caching for `LabelResolver` are deferred until Node work. Do not implement now.
 
 ## Notes on FFI Alignment
 
