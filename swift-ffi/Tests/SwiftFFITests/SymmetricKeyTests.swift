@@ -2,67 +2,68 @@
 import XCTest
 
 /// Tests ensure_symmetric_key + encrypt/decrypt local data
+@MainActor
 final class SymmetricKeyTests: XCTestCase {
     private var keysHandle: NodeKeyManager!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
 
         // Create keys handle for testing
         do {
-            keysHandle = try NodeKeyManager()
-            try keysHandle.generateKeys()
+            keysHandle = try await NodeKeyManager()
+            try await keysHandle.generateKeys()
         } catch {
             XCTFail("Failed to set up test: \(error)")
         }
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         keysHandle = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Symmetric Key Creation Tests
 
-    func testEnsureSymmetricKey() throws {
+    func testEnsureSymmetricKey() async throws {
         let keyName = "test-key"
-        let keyData = try keysHandle.ensureSymmetricKey(name: keyName)
+        let keyData = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         XCTAssertFalse(keyData.isEmpty, "Symmetric key should not be empty")
         XCTAssertGreaterThan(keyData.count, 0, "Symmetric key should have data")
     }
 
-    func testEnsureSymmetricKeyMultipleTimes() throws {
+    func testEnsureSymmetricKeyMultipleTimes() async throws {
         let keyName = "test-key-multiple"
-        let keyData1 = try keysHandle.ensureSymmetricKey(name: keyName)
-        let keyData2 = try keysHandle.ensureSymmetricKey(name: keyName)
+        let keyData1 = try await keysHandle.ensureSymmetricKey(name: keyName)
+        let keyData2 = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         XCTAssertEqual(keyData1, keyData2, "Multiple calls should return the same key")
         XCTAssertFalse(keyData1.isEmpty, "Symmetric key should not be empty")
     }
 
-    func testEnsureSymmetricKeyDifferentNames() throws {
+    func testEnsureSymmetricKeyDifferentNames() async throws {
         let keyName1 = "test-key-1"
         let keyName2 = "test-key-2"
-        let keyData1 = try keysHandle.ensureSymmetricKey(name: keyName1)
-        let keyData2 = try keysHandle.ensureSymmetricKey(name: keyName2)
+        let keyData1 = try await keysHandle.ensureSymmetricKey(name: keyName1)
+        let keyData2 = try await keysHandle.ensureSymmetricKey(name: keyName2)
         
         XCTAssertNotEqual(keyData1, keyData2, "Different key names should return different keys")
         XCTAssertFalse(keyData1.isEmpty, "Symmetric key 1 should not be empty")
         XCTAssertFalse(keyData2.isEmpty, "Symmetric key 2 should not be empty")
     }
 
-    func testEnsureSymmetricKeyWithSpecialCharacters() throws {
+    func testEnsureSymmetricKeyWithSpecialCharacters() async throws {
         let keyName = "test-key-with-special-chars-!@#$%^&*()"
-        let keyData = try keysHandle.ensureSymmetricKey(name: keyName)
+        let keyData = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         XCTAssertFalse(keyData.isEmpty, "Symmetric key with special characters should not be empty")
         XCTAssertGreaterThan(keyData.count, 0, "Symmetric key should have data")
     }
 
-    func testEnsureSymmetricKeyWithEmptyName() throws {
+    func testEnsureSymmetricKeyWithEmptyName() async throws {
         let keyName = ""
-        let keyData = try keysHandle.ensureSymmetricKey(name: keyName)
+        let keyData = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         XCTAssertFalse(keyData.isEmpty, "Symmetric key with empty name should not be empty")
         XCTAssertGreaterThan(keyData.count, 0, "Symmetric key should have data")
@@ -70,68 +71,68 @@ final class SymmetricKeyTests: XCTestCase {
 
     // MARK: - Local Data Encryption Tests
 
-    func testEncryptLocalData() throws {
+    func testEncryptLocalData() async throws {
         let testData = Data("This is a test message for encryption".utf8)
         let keyName = "test-encrypt-key"
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
-        let encryptedData = try keysHandle.encryptLocalData(data: testData, keyName: keyName)
+        let encryptedData = try await keysHandle.encryptLocalData(data: testData)
         
         XCTAssertFalse(encryptedData.isEmpty, "Encrypted data should not be empty")
         XCTAssertNotEqual(encryptedData, testData, "Encrypted data should be different from original")
         XCTAssertGreaterThan(encryptedData.count, 0, "Encrypted data should have content")
     }
 
-    func testDecryptLocalData() throws {
+    func testDecryptLocalData() async throws {
         let testData = Data("This is a test message for decryption".utf8)
         let keyName = "test-decrypt-key"
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // First encrypt the data
-        let encryptedData = try keysHandle.encryptLocalData(data: testData, keyName: keyName)
+        let encryptedData = try await keysHandle.encryptLocalData(data: testData)
         
         // Then decrypt it
-        let decryptedData = try keysHandle.decryptLocalData(encryptedData: encryptedData, keyName: keyName)
+        let decryptedData = try await keysHandle.decryptLocalData(encryptedData: encryptedData)
         
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
         XCTAssertFalse(decryptedData.isEmpty, "Decrypted data should not be empty")
     }
 
-    func testEncryptDecryptLocalDataRoundTrip() throws {
+    func testEncryptDecryptLocalDataRoundTrip() async throws {
         let testData = Data("This is a test message for round-trip encryption".utf8)
         let keyName = "test-roundtrip-key"
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // Encrypt the data
-        let encryptedData = try keysHandle.encryptLocalData(data: testData, keyName: keyName)
+        let encryptedData = try await keysHandle.encryptLocalData(data: testData)
         
         // Decrypt the data
-        let decryptedData = try keysHandle.decryptLocalData(encryptedData: encryptedData, keyName: keyName)
+        let decryptedData = try await keysHandle.decryptLocalData(encryptedData: encryptedData)
         
         XCTAssertEqual(decryptedData, testData, "Round-trip encryption should preserve original data")
         XCTAssertNotEqual(encryptedData, testData, "Encrypted data should be different from original")
     }
 
-    func testMultipleSymmetricKeys() throws {
+    func testMultipleSymmetricKeys() async throws {
         let keyName1 = "test-multiple-key-1"
         let keyName2 = "test-multiple-key-2"
         let testData = Data("Test data for multiple keys".utf8)
         
         // Ensure both symmetric keys exist
-        let keyData1 = try keysHandle.ensureSymmetricKey(name: keyName1)
-        let keyData2 = try keysHandle.ensureSymmetricKey(name: keyName2)
+        let keyData1 = try await keysHandle.ensureSymmetricKey(name: keyName1)
+        let keyData2 = try await keysHandle.ensureSymmetricKey(name: keyName2)
         
         // Encrypt with first key
-        let encrypted1 = try keysHandle.encryptLocalData(data: testData, keyName: keyName1)
+        let encrypted1 = try await keysHandle.encryptLocalData(data: testData)
         
         // Encrypt with second key
-        let encrypted2 = try keysHandle.encryptLocalData(data: testData, keyName: keyName2)
+        let encrypted2 = try await keysHandle.encryptLocalData(data: testData)
         
         // Keys should be different
         XCTAssertNotEqual(keyData1, keyData2, "Different key names should return different keys")
@@ -140,133 +141,138 @@ final class SymmetricKeyTests: XCTestCase {
         XCTAssertNotEqual(encrypted1, encrypted2, "Encryption with different keys should produce different results")
         
         // Both should decrypt correctly
-        let decrypted1 = try keysHandle.decryptLocalData(encryptedData: encrypted1, keyName: keyName1)
-        let decrypted2 = try keysHandle.decryptLocalData(encryptedData: encrypted2, keyName: keyName2)
+        let decrypted1 = try await keysHandle.decryptLocalData(encryptedData: encrypted1)
+        let decrypted2 = try await keysHandle.decryptLocalData(encryptedData: encrypted2)
         
         XCTAssertEqual(decrypted1, testData, "First key should decrypt correctly")
         XCTAssertEqual(decrypted2, testData, "Second key should decrypt correctly")
     }
 
-    func testLargeDataEncryption() throws {
+    func testLargeDataEncryption() async throws {
         // Create a large data set (1MB)
         let largeData = Data(repeating: 0x42, count: 1024 * 1024)
         let keyName = "test-large-key"
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // Encrypt large data
-        let encryptedData = try keysHandle.encryptLocalData(data: largeData, keyName: keyName)
+        let encryptedData = try await keysHandle.encryptLocalData(data: largeData)
         
         // Decrypt large data
-        let decryptedData = try keysHandle.decryptLocalData(encryptedData: encryptedData, keyName: keyName)
+        let decryptedData = try await keysHandle.decryptLocalData(encryptedData: encryptedData)
         
         XCTAssertEqual(decryptedData, largeData, "Large data round-trip should preserve original data")
         XCTAssertNotEqual(encryptedData, largeData, "Encrypted large data should be different from original")
     }
 
-    func testEncryptLocalDataWithEmptyData() throws {
+    func testEncryptLocalDataWithEmptyData() async throws {
         let testData = Data()
         let keyName = "test-empty-key"
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // Encrypt empty data
-        let encryptedData = try keysHandle.encryptLocalData(data: testData, keyName: keyName)
+        let encryptedData = try await keysHandle.encryptLocalData(data: testData)
         
         // Decrypt empty data
-        let decryptedData = try keysHandle.decryptLocalData(encryptedData: encryptedData, keyName: keyName)
+        let decryptedData = try await keysHandle.decryptLocalData(encryptedData: encryptedData)
         
         XCTAssertEqual(decryptedData, testData, "Empty data round-trip should preserve empty data")
     }
 
-    func testDecryptLocalDataWithInvalidData() throws {
+    func testDecryptLocalDataWithInvalidData() async throws {
         let invalidData = Data("This is not valid encrypted data".utf8)
         let keyName = "test-invalid-key"
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // This should throw an error
-        XCTAssertThrowsError(try keysHandle.decryptLocalData(encryptedData: invalidData, keyName: keyName), "Decrypting invalid data should throw an error")
+        await XCTAssertThrowsErrorAsync(try await keysHandle.decryptLocalData(encryptedData: invalidData), "Decrypting invalid data should throw an error")
     }
 
-    func testSymmetricKeyOperationsWithoutInitialization() throws {
+    func testSymmetricKeyOperationsWithoutInitialization() async throws {
         // Test that symmetric key operations work even without calling generateKeys()
-        let newKeysHandle = try NodeKeyManager()
+        let newKeysHandle = try await NodeKeyManager()
         let keyName = "test-no-init-key"
         let testData = Data("Test data without initialization".utf8)
         
         // These should work without calling generateKeys()
-        let keyData = try newKeysHandle.ensureSymmetricKey(name: keyName)
+        let keyData = try await newKeysHandle.ensureSymmetricKey(name: keyName)
         XCTAssertFalse(keyData.isEmpty, "Symmetric key should be created without initialization")
         
-        let encryptedData = try newKeysHandle.encryptLocalData(data: testData, keyName: keyName)
+        let encryptedData = try await newKeysHandle.encryptLocalData(data: testData)
         XCTAssertFalse(encryptedData.isEmpty, "Encryption should work without initialization")
         
-        let decryptedData = try newKeysHandle.decryptLocalData(encryptedData: encryptedData, keyName: keyName)
+        let decryptedData = try await newKeysHandle.decryptLocalData(encryptedData: encryptedData)
         XCTAssertEqual(decryptedData, testData, "Decryption should work without initialization")
     }
 
-    func testConcurrentSymmetricKeyOperations() throws {
+    func testConcurrentSymmetricKeyOperations() async throws {
         let keyName = "test-concurrent-key"
         let testData = Data("Test data for concurrent operations".utf8)
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
+        
+        // Capture the keysHandle before TaskGroup to avoid Sendable issues
+        guard let keysHandle = self.keysHandle else {
+            XCTFail("Keys handle not initialized")
+            return
+        }
         
         // Test concurrent encryption operations
-        let group = DispatchGroup()
         var results: [Data] = []
-        let resultsQueue = DispatchQueue(label: "results.queue")
-        let operationQueue = DispatchQueue(label: "test.concurrent", attributes: .concurrent)
         
-        for i in 0..<10 {
-            group.enter()
-            operationQueue.async {
-                do {
-                    let data = testData + Data("\(i)".utf8)
-                    let encrypted = try self.keysHandle.encryptLocalData(data: data, keyName: keyName)
-                    let decrypted = try self.keysHandle.decryptLocalData(encryptedData: encrypted, keyName: keyName)
-                    XCTAssertEqual(decrypted, data, "Concurrent operation \(i) should work correctly")
-                    
-                    resultsQueue.async {
-                        results.append(encrypted)
+        await withTaskGroup(of: Data?.self) { group in
+            for i in 0..<10 {
+                group.addTask {
+                    do {
+                        let data = testData + Data("\(i)".utf8)
+                        let encrypted = try await keysHandle.encryptLocalData(data: data)
+                        let decrypted = try await keysHandle.decryptLocalData(encryptedData: encrypted)
+                        XCTAssertEqual(decrypted, data, "Concurrent operation \(i) should work correctly")
+                        return encrypted
+                    } catch {
+                        XCTFail("Concurrent operation \(i) failed: \(error)")
+                        return nil
                     }
-                } catch {
-                    XCTFail("Concurrent operation \(i) failed: \(error)")
                 }
-                group.leave()
+            }
+            
+            for await result in group {
+                if let result = result {
+                    results.append(result)
+                }
             }
         }
         
-        group.wait()
-        
         // Wait a bit for all results to be added
-        Thread.sleep(forTimeInterval: 0.1)
+        try await Task.sleep(nanoseconds: UInt64(0.1 * 1_000_000_000))
         
         XCTAssertEqual(results.count, 10, "All concurrent operations should complete")
     }
 
-    func testSymmetricKeyPersistence() throws {
+    func testSymmetricKeyPersistence() async throws {
         let keyName = "test-persistence-key"
         let testData = Data("Test data for persistence".utf8)
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // Encrypt some data
-        let encryptedData = try keysHandle.encryptLocalData(data: testData, keyName: keyName)
+        let encryptedData = try await keysHandle.encryptLocalData(data: testData)
         
         // Create a new keys handle (simulating persistence)
-        let newKeysHandle = try NodeKeyManager()
+        let newKeysHandle = try await NodeKeyManager()
         
         // The same key should work with the new handle (if persistence is working)
         // Note: This test assumes that symmetric keys are persisted globally
         // If they're not, this test might fail, which is expected
         do {
-            let decryptedData = try newKeysHandle.decryptLocalData(encryptedData: encryptedData, keyName: keyName)
+            let decryptedData = try await newKeysHandle.decryptLocalData(encryptedData: encryptedData)
             XCTAssertEqual(decryptedData, testData, "Symmetric key should persist across handles")
         } catch {
             // If persistence is not implemented, this is expected to fail
@@ -275,7 +281,7 @@ final class SymmetricKeyTests: XCTestCase {
         }
     }
 
-    func testKeyNameValidation() throws {
+    func testKeyNameValidation() async throws {
         // Test various key name formats
         let validKeyNames = [
             "simple-key",
@@ -287,35 +293,35 @@ final class SymmetricKeyTests: XCTestCase {
         ]
         
         for keyName in validKeyNames {
-            let keyData = try keysHandle.ensureSymmetricKey(name: keyName)
+            let keyData = try await keysHandle.ensureSymmetricKey(name: keyName)
             XCTAssertFalse(keyData.isEmpty, "Key name '\(keyName)' should be valid")
         }
         
         // Test that different key names produce different keys
-        let key1 = try keysHandle.ensureSymmetricKey(name: "key1")
-        let key2 = try keysHandle.ensureSymmetricKey(name: "key2")
+        let key1 = try await keysHandle.ensureSymmetricKey(name: "key1")
+        let key2 = try await keysHandle.ensureSymmetricKey(name: "key2")
         XCTAssertNotEqual(key1, key2, "Different key names should produce different keys")
     }
 
-    func testSymmetricKeyPerformance() throws {
+    func testSymmetricKeyPerformance() async throws {
         let keyName = "test-performance-key"
         let testData = Data("Performance test data".utf8)
         
         // Ensure the symmetric key exists
-        _ = try keysHandle.ensureSymmetricKey(name: keyName)
+        _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // Measure encryption performance
         let encryptionStart = CFAbsoluteTimeGetCurrent()
         for _ in 0..<100 {
-            _ = try keysHandle.encryptLocalData(data: testData, keyName: keyName)
+            _ = try await keysHandle.encryptLocalData(data: testData)
         }
         let encryptionTime = CFAbsoluteTimeGetCurrent() - encryptionStart
         
         // Measure decryption performance
-        let encryptedData = try keysHandle.encryptLocalData(data: testData, keyName: keyName)
+        let encryptedData = try await keysHandle.encryptLocalData(data: testData)
         let decryptionStart = CFAbsoluteTimeGetCurrent()
         for _ in 0..<100 {
-            _ = try keysHandle.decryptLocalData(encryptedData: encryptedData, keyName: keyName)
+            _ = try await keysHandle.decryptLocalData(encryptedData: encryptedData)
         }
         let decryptionTime = CFAbsoluteTimeGetCurrent() - decryptionStart
         

@@ -6,22 +6,23 @@ import XCTest
 
 /// Tests for CA Client CRL functionality
 /// Tests get_crl parity and rejection scenarios
+@MainActor
 final class CaClientCrlTests: XCTestCase {
     private var nodeKeys: NodeKeyManager!
     private var caNode: CANode!
     private var caServer: CAServer!
     private var caClient: CAClient!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
 
         // Create node keys handle
         do {
-            nodeKeys = try NodeKeyManager()
-            try nodeKeys.generateKeys()
+            nodeKeys = try await NodeKeyManager()
+            try await nodeKeys.generateKeys()
 
             // Create CA node for testing
-            caNode = try CANode.create()
+            caNode = try await CANode.create()
         } catch {
             XCTFail("Failed to set up test: \(error)")
         }
@@ -36,8 +37,8 @@ final class CaClientCrlTests: XCTestCase {
         )
 
         do {
-            let sharedCaNode = try caNode.createShared()
-            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+            let sharedCaNode = try await caNode.createShared()
+            caServer = try await CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
 
             // Set up CA client for testing
             let caClientConfig = CaClientConfigAll(
@@ -50,29 +51,29 @@ final class CaClientCrlTests: XCTestCase {
                 issuing_ca_der: Data()
             )
 
-            caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+            caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
         } catch {
             XCTFail("Failed to set up CA components: \(error)")
         }
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         caClient = nil
         caServer = nil
         caNode = nil
         nodeKeys = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - CRL Retrieval Tests
 
-    func testGetCrl() throws {
+    func testGetCrl() async throws {
         // Test getting CRL from CA client
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: networkId
             )
@@ -86,14 +87,14 @@ final class CaClientCrlTests: XCTestCase {
         }
     }
 
-    func testGetCrlWithDifferentNetworkIds() throws {
+    func testGetCrlWithDifferentNetworkIds() async throws {
         // Test getting CRL with different network IDs
         let authenticatedAddress = "127.0.0.1:8080"
         let networkIds = ["network-1", "network-2", "test-network", "production-network"]
 
         for networkId in networkIds {
             do {
-                let crlData = try caClient.getCrl(
+                let crlData = try await caClient.getCrl(
                     authenticatedAddress: authenticatedAddress,
                     networkId: networkId
                 )
@@ -107,14 +108,14 @@ final class CaClientCrlTests: XCTestCase {
         }
     }
 
-    func testGetCrlWithDifferentAddresses() throws {
+    func testGetCrlWithDifferentAddresses() async throws {
         // Test getting CRL with different addresses
         let addresses = ["127.0.0.1:8080", "127.0.0.1:8081", "localhost:8080", "0.0.0.0:8080"]
         let networkId = "test-network"
 
         for address in addresses {
             do {
-                let crlData = try caClient.getCrl(
+                let crlData = try await caClient.getCrl(
                     authenticatedAddress: address,
                     networkId: networkId
                 )
@@ -130,13 +131,13 @@ final class CaClientCrlTests: XCTestCase {
 
     // MARK: - CRL Error Handling Tests
 
-    func testGetCrlWithInvalidAddress() throws {
+    func testGetCrlWithInvalidAddress() async throws {
         // Test getting CRL with invalid address
         let invalidAddress = "invalid-address:99999"
         let networkId = "test-network"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: invalidAddress,
                 networkId: networkId
             )
@@ -146,13 +147,13 @@ final class CaClientCrlTests: XCTestCase {
         }
     }
 
-    func testGetCrlWithEmptyAddress() throws {
+    func testGetCrlWithEmptyAddress() async throws {
         // Test getting CRL with empty address
         let emptyAddress = ""
         let networkId = "test-network"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: emptyAddress,
                 networkId: networkId
             )
@@ -162,13 +163,13 @@ final class CaClientCrlTests: XCTestCase {
         }
     }
 
-    func testGetCrlWithEmptyNetworkId() throws {
+    func testGetCrlWithEmptyNetworkId() async throws {
         // Test getting CRL with empty network ID
         let authenticatedAddress = "127.0.0.1:8080"
         let emptyNetworkId = ""
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: emptyNetworkId
             )
@@ -178,13 +179,13 @@ final class CaClientCrlTests: XCTestCase {
         }
     }
 
-    func testGetCrlWithSpecialCharacters() throws {
+    func testGetCrlWithSpecialCharacters() async throws {
         // Test getting CRL with special characters in parameters
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network-@#$%^&*()"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: networkId
             )
@@ -196,18 +197,18 @@ final class CaClientCrlTests: XCTestCase {
 
     // MARK: - CRL Consistency Tests
 
-    func testCrlConsistency() throws {
+    func testCrlConsistency() async throws {
         // Test that CRL data is consistent across multiple calls
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
 
         do {
-            let crl1 = try caClient.getCrl(
+            let crl1 = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: networkId
             )
 
-            let crl2 = try caClient.getCrl(
+            let crl2 = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: networkId
             )
@@ -220,7 +221,7 @@ final class CaClientCrlTests: XCTestCase {
         }
     }
 
-    func testCrlWithDifferentClients() throws {
+    func testCrlWithDifferentClients() async throws {
         // Test CRL retrieval with different CA clients
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -236,15 +237,15 @@ final class CaClientCrlTests: XCTestCase {
             issuing_ca_der: Data()
         )
 
-        let caClient2 = try CAClient(config: caClientConfig2, nodeKeys: nodeKeys)
+        let caClient2 = try await CAClient(config: caClientConfig2, nodeKeys: nodeKeys)
 
         do {
-            let crl1 = try caClient.getCrl(
+            let crl1 = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: networkId
             )
 
-            let crl2 = try caClient2.getCrl(
+            let crl2 = try await caClient2.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: networkId
             )
@@ -259,7 +260,7 @@ final class CaClientCrlTests: XCTestCase {
 
     // MARK: - CRL Performance Tests
 
-    func testCrlPerformance() throws {
+    func testCrlPerformance() async throws {
         // Test performance of CRL retrieval
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -269,7 +270,7 @@ final class CaClientCrlTests: XCTestCase {
             let startTime = CFAbsoluteTimeGetCurrent()
 
             for _ in 0 ..< iterations {
-                _ = try caClient.getCrl(
+                _ = try await caClient.getCrl(
                     authenticatedAddress: authenticatedAddress,
                     networkId: networkId
                 )
@@ -291,20 +292,20 @@ final class CaClientCrlTests: XCTestCase {
 
     // MARK: - CRL with Server Integration Tests
 
-    func testCrlWithServerIntegration() throws {
+    func testCrlWithServerIntegration() async throws {
         // Test CRL retrieval with actual server running
         // This test requires the CA server to be running
 
         // Start the CA server
-        try caServer.start()
+        try await caServer.start()
 
         // Get server addresses
-        let bootstrapAddress = try caServer.bootstrapAddress()
-        let authenticatedAddress = try caServer.authenticatedAddress()
+        let bootstrapAddress = try await caServer.bootstrapAddress()
+        let authenticatedAddress = try await caServer.authenticatedAddress()
 
         // Test CRL retrieval
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: "test-network"
             )
@@ -317,12 +318,12 @@ final class CaClientCrlTests: XCTestCase {
         }
 
         // Stop the server
-        try caServer.stop()
+        try await caServer.stop()
     }
 
     // MARK: - CRL Error Scenarios Tests
 
-    func testCrlErrorScenarios() throws {
+    func testCrlErrorScenarios() async throws {
         // Test various error scenarios for CRL retrieval
 
         // Test with very long address
@@ -330,7 +331,7 @@ final class CaClientCrlTests: XCTestCase {
         let networkId = "test-network"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: longAddress,
                 networkId: networkId
             )
@@ -343,7 +344,7 @@ final class CaClientCrlTests: XCTestCase {
         let longNetworkId = String(repeating: "a", count: 1000)
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: "127.0.0.1:8080",
                 networkId: longNetworkId
             )
@@ -355,73 +356,69 @@ final class CaClientCrlTests: XCTestCase {
 
     // MARK: - CRL Concurrent Access Tests
 
-    func testCrlConcurrentAccess() throws {
+    func testCrlConcurrentAccess() async throws {
         // Test concurrent CRL retrieval operations
-
-        let expectation = XCTestExpectation(description: "Concurrent CRL operations")
-        expectation.expectedFulfillmentCount = 3
-
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
-
-        // Run concurrent operations
-        DispatchQueue.global().async {
-            do {
-                let crlData = try self.caClient.getCrl(
-                    authenticatedAddress: authenticatedAddress,
-                    networkId: networkId
-                )
-                XCTAssertFalse(crlData.isEmpty)
-                expectation.fulfill()
-            } catch {
-                // Might fail if server is not running
-                XCTAssertTrue(error is FFIError)
-                expectation.fulfill()
-            }
+        guard let caClient = self.caClient else {
+            XCTFail("CA client not initialized")
+            return
         }
 
-        DispatchQueue.global().async {
-            do {
-                let crlData = try self.caClient.getCrl(
-                    authenticatedAddress: authenticatedAddress,
-                    networkId: networkId
-                )
-                XCTAssertFalse(crlData.isEmpty)
-                expectation.fulfill()
-            } catch {
-                // Might fail if server is not running
-                XCTAssertTrue(error is FFIError)
-                expectation.fulfill()
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                do {
+                    let crlData = try await caClient.getCrl(
+                        authenticatedAddress: authenticatedAddress,
+                        networkId: networkId
+                    )
+                    XCTAssertFalse(crlData.isEmpty)
+                } catch {
+                    // Might fail if server is not running
+                    XCTAssertTrue(error is FFIError)
+                }
             }
-        }
 
-        DispatchQueue.global().async {
-            do {
-                let crlData = try self.caClient.getCrl(
-                    authenticatedAddress: authenticatedAddress,
-                    networkId: networkId
-                )
-                XCTAssertFalse(crlData.isEmpty)
-                expectation.fulfill()
-            } catch {
-                // Might fail if server is not running
-                XCTAssertTrue(error is FFIError)
-                expectation.fulfill()
+            group.addTask {
+                do {
+                    let crlData = try await caClient.getCrl(
+                        authenticatedAddress: authenticatedAddress,
+                        networkId: networkId
+                    )
+                    XCTAssertFalse(crlData.isEmpty)
+                } catch {
+                    // Might fail if server is not running
+                    XCTAssertTrue(error is FFIError)
+                }
             }
-        }
 
-        wait(for: [expectation], timeout: 10.0)
+            group.addTask {
+                do {
+                    let crlData = try await caClient.getCrl(
+                        authenticatedAddress: authenticatedAddress,
+                        networkId: networkId
+                    )
+                    XCTAssertFalse(crlData.isEmpty)
+                } catch {
+                    // Might fail if server is not running
+                    XCTAssertTrue(error is FFIError)
+                }
+            }
+
+            // Wait for all tasks to complete
+            for await _ in group {}
+        }
     }
 
     // MARK: - CRL Data Validation Tests
 
-    func testCrlDataValidation() throws {
+    func testCrlDataValidation() async throws {
         // Test validation of CRL data format
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: authenticatedAddress,
                 networkId: networkId
             )
@@ -441,7 +438,7 @@ final class CaClientCrlTests: XCTestCase {
 
     // MARK: - CRL Network Error Handling
 
-    func testCrlNetworkErrorHandling() throws {
+    func testCrlNetworkErrorHandling() async throws {
         // Test handling of network errors during CRL retrieval
 
         // Test with unreachable address
@@ -449,7 +446,7 @@ final class CaClientCrlTests: XCTestCase {
         let networkId = "test-network"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: unreachableAddress,
                 networkId: networkId
             )
@@ -462,7 +459,7 @@ final class CaClientCrlTests: XCTestCase {
         let invalidPortAddress = "127.0.0.1:99999"
 
         do {
-            let crlData = try caClient.getCrl(
+            let crlData = try await caClient.getCrl(
                 authenticatedAddress: invalidPortAddress,
                 networkId: networkId
             )

@@ -8,6 +8,7 @@ let package = Package(
     ],
     products: [
         .library(name: "SwiftFFI", targets: ["SwiftFFI"]),
+        .library(name: "RunarFFI", targets: ["SwiftFFI"]), // Alias for backward compatibility
     ],
     dependencies: [
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),

@@ -26,13 +26,14 @@ struct TransportEvent: Codable {
     }
 }
 
+@MainActor
 final class FFIQuicTransportTest: XCTestCase {
-    func testBasicTransportSetup() throws {
+    func testBasicTransportSetup() async throws {
         print("🚀 Starting Basic Transport Setup test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("quic-transport-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("quic-transport-test")
 
         // For now, let's test just the basic transport creation without certificates
         // This will help us understand what's needed for the full implementation
@@ -41,7 +42,7 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Test basic CBOR encoding
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
+        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         XCTAssertFalse(optionsCbor.isEmpty, "Transport options CBOR should not be empty")
         print("   ✅ Transport options CBOR encoding works")
@@ -49,7 +50,7 @@ final class FFIQuicTransportTest: XCTestCase {
         // Test basic NodeInfo creation
         let testPublicKey = Data([1, 2, 3, 4, 5]) // Dummy key for testing
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: testPublicKey)
-        let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
         XCTAssertFalse(nodeInfoCbor.isEmpty, "NodeInfo CBOR should not be empty")
         print("   ✅ NodeInfo CBOR encoding works")
@@ -64,39 +65,39 @@ final class FFIQuicTransportTest: XCTestCase {
     /// Test basic transport creation and connection between two nodes
     /// This mirrors the main test_quic_transport scenario from Rust
     /// Note: This test currently fails due to certificate requirements
-    func testBasicTransportConnection() throws {
+    func testBasicTransportConnection() async throws {
         print("🚀 Starting Basic Transport Connection test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("connection-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("connection-test")
 
         // Create two key managers for two nodes
-        let keys1 = try NodeKeyManager()
+        let keys1 = try await NodeKeyManager()
 
-        let keys2 = try NodeKeyManager()
+        let keys2 = try await NodeKeyManager()
 
         print("   ✅ Created two key managers")
 
         // Create transport options for both nodes
         let transportOptions1 = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor1 = try CBORHelper.encodeTransportOptions(transportOptions1)
+        let optionsCbor1 = try await CBORHelper.encodeTransportOptions(transportOptions1)
 
         let transportOptions2 = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor2 = try CBORHelper.encodeTransportOptions(transportOptions2)
+        let optionsCbor2 = try await CBORHelper.encodeTransportOptions(transportOptions2)
 
         // Create node info for both nodes
-        let nodePublicKey1 = try keys1.getNodePublicKey()
+        let nodePublicKey1 = try await keys1.getNodePublicKey()
         let nodeInfo1 = CBORHelper.createMinimalNodeInfo(nodePublicKey: nodePublicKey1)
-        let nodeInfoCbor1 = try CBORHelper.encodeNodeInfo(nodeInfo1)
+        let nodeInfoCbor1 = try await CBORHelper.encodeNodeInfo(nodeInfo1)
 
-        let nodePublicKey2 = try keys2.getNodePublicKey()
+        let nodePublicKey2 = try await keys2.getNodePublicKey()
         let nodeInfo2 = CBORHelper.createMinimalNodeInfo(nodePublicKey: nodePublicKey2)
-        let nodeInfoCbor2 = try CBORHelper.encodeNodeInfo(nodeInfo2)
+        let nodeInfoCbor2 = try await CBORHelper.encodeNodeInfo(nodeInfo2)
 
         // Set local node info for both keys
-        try keys1.setLocalNodeInfo(nodeInfoCbor1)
-        try keys2.setLocalNodeInfo(nodeInfoCbor2)
+        try await keys1.setLocalNodeInfo(nodeInfoCbor1)
+        try await keys2.setLocalNodeInfo(nodeInfoCbor2)
 
         print("   ✅ Set local node info for both nodes")
 
@@ -124,27 +125,27 @@ final class FFIQuicTransportTest: XCTestCase {
     /// Test transport start/stop idempotence
     /// This mirrors the test_transport_start_stop_idempotence scenario from Rust
     /// Note: This test currently fails due to certificate requirements
-    func testTransportStartStopIdempotence() throws {
+    func testTransportStartStopIdempotence() async throws {
         print("🚀 Starting Transport Start/Stop Idempotence test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("idempotence-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("idempotence-test")
 
         // Create keys for the transport
-        let keys = try NodeKeyManager()
+        let keys = try await NodeKeyManager()
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
+        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         // Create node info
-        let nodePublicKey = try keys.getNodePublicKey()
+        let nodePublicKey = try await keys.getNodePublicKey()
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: nodePublicKey)
-        let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
         // Set local node info
-        try keys.setLocalNodeInfo(nodeInfoCbor)
+        try await keys.setLocalNodeInfo(nodeInfoCbor)
 
         print("   ✅ Created keys and transport options")
 
@@ -169,104 +170,104 @@ final class FFIQuicTransportTest: XCTestCase {
 
     /// Simple transport test to verify basic functionality
     /// This tests the basic transport creation and connection without complex request/response
-    func testSimpleTransportConnection() throws {
+    func testSimpleTransportConnection() async throws {
         print("🚀 Starting Simple Transport Connection test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("simple-transport-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("simple-transport-test")
 
         // Create two node key managers (A and B)
-        let keysA = try NodeKeyManager()
+        let keysA = try await NodeKeyManager()
 
-        let keysB = try NodeKeyManager()
+        let keysB = try await NodeKeyManager()
 
         print("   ✅ Created two node key managers")
 
         // Create mobile key manager for CA (Certificate Authority)
-        let keysCA = try MobileKeyManager()
+        let keysCA = try await MobileKeyManager()
 
         print("   ✅ Created mobile CA key manager")
 
         // Set node info for both nodes
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try keysA.setLocalNodeInfo(nodeInfoCbor)
-        try keysB.setLocalNodeInfo(nodeInfoCbor)
+        try await keysA.setLocalNodeInfo(nodeInfoCbor)
+        try await keysB.setLocalNodeInfo(nodeInfoCbor)
 
         print("   ✅ Set local node info for both nodes")
 
         // Generate CSR for node A
-        let csrA = try keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken()
         print("   ✅ Generated CSR for node A")
 
         // Process CSR through mobile CA to get certificate
-        let certA = try keysCA.processSetupToken(csrA)
+        let certA = try await keysCA.processSetupToken(csrA)
         print("   ✅ Processed CSR for node A through CA")
 
         // Install certificate in node A
-        try keysA.installCertificate(certA)
+        try await keysA.installCertificate(certA)
         print("   ✅ Installed certificate in node A")
 
         // Generate CSR for node B
-        let csrB = try keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken()
         print("   ✅ Generated CSR for node B")
 
         // Process CSR through mobile CA to get certificate
-        let certB = try keysCA.processSetupToken(csrB)
+        let certB = try await keysCA.processSetupToken(csrB)
         print("   ✅ Processed CSR for node B through CA")
 
         // Install certificate in node B
-        try keysB.installCertificate(certB)
+        try await keysB.installCertificate(certB)
         print("   ✅ Installed certificate in node B")
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
+        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         print("   ✅ Created transport options")
 
         // Create transport A
-        let transportA = try TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
-        try transportA.start()
+        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
+        try await transportA.start()
         print("   ✅ Created and started transport A")
 
         // Get local address for transport A
-        let localAddrA = try transportA.getLocalAddr()
+        let localAddrA = try await transportA.getLocalAddr()
         print("   ✅ Transport A local address: \(localAddrA)")
 
         // Create transport B
-        let transportB = try TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
-        try transportB.start()
+        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
+        try await transportB.start()
         print("   ✅ Created and started transport B")
 
         // Get public key for node A
-        let publicKeyA = try keysA.getNodePublicKey()
+        let publicKeyA = try await keysA.getNodePublicKey()
         print("   ✅ Retrieved public key for node A")
 
         // Create peer info for connection
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
-        let peerInfoCbor = try CBORHelper.encodePeerInfo(peerInfo)
+        let peerInfoCbor = try await CBORHelper.encodePeerInfo(peerInfo)
 
         // Connect transport B to transport A
-        try transportB.connectPeer(peerInfoCbor: peerInfoCbor)
+        try await transportB.connectPeer(peerInfoCbor: peerInfoCbor)
         print("   ✅ Connected transport B to transport A")
 
         // Wait a bit for connection to establish
-        Thread.sleep(forTimeInterval: 0.5)
+        try await Task.sleep(nanoseconds: UInt64(0.5 * 1_000_000_000))
 
         // Check if connection is established
         do {
-            let isConnected = try transportB.isConnected(peerNodeId: "test-peer-id")
+            let isConnected = try await transportB.isConnected(peerNodeId: "test-peer-id")
             print("   📡 Connection status: \(isConnected)")
         } catch {
             print("   📡 Connection check failed: \(error)")
         }
 
         // Cleanup
-        try transportA.stop()
-        try transportB.stop()
+        try await transportA.stop()
+        try await transportB.stop()
         print("   ✅ Stopped both transports")
 
         print("\n🎉 SIMPLE TRANSPORT CONNECTION TEST COMPLETED SUCCESSFULLY!")
@@ -278,109 +279,109 @@ final class FFIQuicTransportTest: XCTestCase {
 
     /// Basic transport test to verify connection establishment
     /// This tests the basic transport creation and connection without complex request/response
-    func testBasicTransportConnectionWithCertificates() throws {
+    func testBasicTransportConnectionWithCertificates() async throws {
         print("🚀 Starting Basic Transport Connection test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("basic-transport-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("basic-transport-test")
 
         // Create two node key managers (A and B)
-        let keysA = try NodeKeyManager()
+        let keysA = try await NodeKeyManager()
 
-        let keysB = try NodeKeyManager()
+        let keysB = try await NodeKeyManager()
 
         print("   ✅ Created two node key managers")
 
         // Create mobile key manager for CA (Certificate Authority)
-        let keysCA = try MobileKeyManager()
+        let keysCA = try await MobileKeyManager()
 
         print("   ✅ Created mobile CA key manager")
 
         // Set node info for both nodes
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try keysA.setLocalNodeInfo(nodeInfoCbor)
-        try keysB.setLocalNodeInfo(nodeInfoCbor)
+        try await keysA.setLocalNodeInfo(nodeInfoCbor)
+        try await keysB.setLocalNodeInfo(nodeInfoCbor)
 
         print("   ✅ Set local node info for both nodes")
 
         // Generate CSR for node A
-        let csrA = try keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken()
         print("   ✅ Generated CSR for node A")
 
         // Process CSR through mobile CA to get certificate
-        let certA = try keysCA.processSetupToken(csrA)
+        let certA = try await keysCA.processSetupToken(csrA)
         print("   ✅ Processed CSR for node A through CA")
 
         // Install certificate in node A
-        try keysA.installCertificate(certA)
+        try await keysA.installCertificate(certA)
         print("   ✅ Installed certificate in node A")
 
         // Generate CSR for node B
-        let csrB = try keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken()
         print("   ✅ Generated CSR for node B")
 
         // Process CSR through mobile CA to get certificate
-        let certB = try keysCA.processSetupToken(csrB)
+        let certB = try await keysCA.processSetupToken(csrB)
         print("   ✅ Processed CSR for node B through CA")
 
         // Install certificate in node B
-        try keysB.installCertificate(certB)
+        try await keysB.installCertificate(certB)
         print("   ✅ Installed certificate in node B")
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
+        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         print("   ✅ Created transport options")
 
         // Create transport A
-        let transportA = try TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
-        try transportA.start()
+        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
+        try await transportA.start()
         print("   ✅ Created and started transport A")
 
         // Get local address for transport A
-        let localAddrA = try transportA.getLocalAddr()
+        let localAddrA = try await transportA.getLocalAddr()
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
         print("   ✅ Transport A local address: \(localAddrA)")
 
         // Create transport B
-        let transportB = try TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
-        try transportB.start()
+        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
+        try await transportB.start()
         print("   ✅ Created and started transport B")
 
         // Get public key for node A
-        let publicKeyA = try keysA.getNodePublicKey()
+        let publicKeyA = try await keysA.getNodePublicKey()
         print("   ✅ Retrieved public key for node A")
 
         // Generate peer ID using compact ID (matching Rust implementation)
-        let peerId = try keysA.getCompactId(for: publicKeyA)
+        let peerId = try await keysA.getCompactId(for: publicKeyA)
         print("   ✅ Generated peer ID: \(peerId)")
 
         // Create peer info for connection
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
-        let peerInfoCbor = try CBORHelper.encodePeerInfo(peerInfo)
+        let peerInfoCbor = try await CBORHelper.encodePeerInfo(peerInfo)
 
         // Connect transport B to transport A
-        try transportB.connectPeer(peerInfoCbor: peerInfoCbor)
+        try await transportB.connectPeer(peerInfoCbor: peerInfoCbor)
         print("   ✅ Connected transport B to transport A")
 
         // Wait a bit for connection to establish
-        Thread.sleep(forTimeInterval: 0.1)
+        try await Task.sleep(nanoseconds: UInt64(0.1 * 1_000_000_000))
 
         // Check if connection is established
         do {
-            let isConnected = try transportB.isConnected(peerNodeId: peerId)
+            let isConnected = try await transportB.isConnected(peerNodeId: peerId)
             print("   📡 Connection status: \(isConnected)")
         } catch {
             print("   📡 Connection check failed: \(error)")
         }
 
         // Cleanup
-        try transportA.stop()
-        try transportB.stop()
+        try await transportA.stop()
+        try await transportB.stop()
         print("   ✅ Stopped both transports")
 
         print("\n🎉 BASIC TRANSPORT CONNECTION TEST COMPLETED SUCCESSFULLY!")
@@ -392,120 +393,128 @@ final class FFIQuicTransportTest: XCTestCase {
 
     /// Complete end-to-end transport test with certificates
     /// This mirrors the Rust ffi_transport_test.rs two_transports_request_response test
-    func testTwoTransportsRequestResponse() throws {
+    func testTwoTransportsRequestResponse() async throws {
         print("🚀 Starting Two Transports Request/Response test")
 
-        // Set up logging
-        try FFILogger.setLogLevel(.trace)
-        try FFILogger.setLoggerNodeId("two-transports-test")
+        // Set up logging with maximum detail
+        try await FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLoggerNodeId("two-transports-test")
+        print("🔍 DEBUG: Logging set to TRACE level for detailed comparison with Rust")
 
         // Create two node key managers (A and B)
-        let keysA = try NodeKeyManager()
+        let keysA = try await NodeKeyManager()
 
-        let keysB = try NodeKeyManager()
+        let keysB = try await NodeKeyManager()
 
         print("   ✅ Created two node key managers")
 
         // Create mobile key manager for CA (Certificate Authority)
-        let keysCA = try MobileKeyManager()
+        let keysCA = try await MobileKeyManager()
 
         print("   ✅ Created mobile CA key manager")
 
         // Set node info for both nodes
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try keysA.setLocalNodeInfo(nodeInfoCbor)
-        try keysB.setLocalNodeInfo(nodeInfoCbor)
+        try await keysA.setLocalNodeInfo(nodeInfoCbor)
+        try await keysB.setLocalNodeInfo(nodeInfoCbor)
 
         print("   ✅ Set local node info for both nodes")
 
         // Generate CSR for node A
-        let csrA = try keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken()
         print("   ✅ Generated CSR for node A")
 
         // Process CSR through mobile CA to get certificate
-        let certA = try keysCA.processSetupToken(csrA)
+        let certA = try await keysCA.processSetupToken(csrA)
         print("   ✅ Processed CSR for node A through CA")
 
         // Install certificate in node A
-        try keysA.installCertificate(certA)
+        try await keysA.installCertificate(certA)
         print("   ✅ Installed certificate in node A")
 
         // Generate CSR for node B
-        let csrB = try keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken()
         print("   ✅ Generated CSR for node B")
 
         // Process CSR through mobile CA to get certificate
-        let certB = try keysCA.processSetupToken(csrB)
+        let certB = try await keysCA.processSetupToken(csrB)
         print("   ✅ Processed CSR for node B through CA")
 
         // Install certificate in node B
-        try keysB.installCertificate(certB)
+        try await keysB.installCertificate(certB)
         print("   ✅ Installed certificate in node B")
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
+        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         print("   ✅ Created transport options")
 
         // Create transport A
-        let transportA = try TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
-        try transportA.start()
+        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
+        try await transportA.start()
         print("   ✅ Created and started transport A")
 
         // Get local address for transport A
-        let localAddrA = try transportA.getLocalAddr()
+        let localAddrA = try await transportA.getLocalAddr()
         print("   ✅ Transport A local address: \(localAddrA)")
 
         // Create transport B
-        let transportB = try TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
-        try transportB.start()
+        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
+        try await transportB.start()
         print("   ✅ Created and started transport B")
 
         // Get public key for node A
-        let publicKeyA = try keysA.getNodePublicKey()
+        let publicKeyA = try await keysA.getNodePublicKey()
         print("   ✅ Retrieved public key for node A")
 
         // Generate peer ID using compact ID (matching Rust implementation)
-        let peerId = try keysA.getCompactId(for: publicKeyA)
+        let peerId = try await keysA.getCompactId(for: publicKeyA)
         print("   ✅ Generated peer ID: \(peerId)")
 
         // Create peer info for connection
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
-        let peerInfoCbor = try CBORHelper.encodePeerInfo(peerInfo)
+        let peerInfoCbor = try await CBORHelper.encodePeerInfo(peerInfo)
 
         // Connect transport B to transport A
-        try transportB.connectPeer(peerInfoCbor: peerInfoCbor)
+        try await transportB.connectPeer(peerInfoCbor: peerInfoCbor)
         print("   ✅ Connected transport B to transport A")
 
         // Wait a bit for connection to establish
-        Thread.sleep(forTimeInterval: 0.1)
+        try await Task.sleep(nanoseconds: UInt64(0.1 * 1_000_000_000))
 
         // Check if connection is established
         do {
-            let isConnected = try transportB.isConnected(peerNodeId: peerId)
+            let isConnected = try await transportB.isConnected(peerNodeId: peerId)
             print("   📡 Connection status: \(isConnected)")
         } catch {
             print("   📡 Connection check failed: \(error)")
         }
 
         // Create request parameters with the correct peer ID
+        print("🔍 DEBUG: Creating request parameters...")
         let requestParams = TransportRequestParams(
             path: "/echo",
             correlationId: "c1",
             payload: Data("hello".utf8),
             destPeerId: peerId
         )
-        let requestParamsCbor = try CBORHelper.encodeTransportRequestParams(requestParams)
+        print("🔍 DEBUG: Request params - path: \(requestParams.path), correlationId: \(requestParams.correlationId), payload: \(requestParams.payload.count) bytes, destPeerId: \(requestParams.destPeerId)")
+        
+        let requestParamsCbor = try await CBORHelper.encodeTransportRequestParams(requestParams)
+        print("🔍 DEBUG: Request CBOR encoded - \(requestParamsCbor.count) bytes")
+        print("🔍 DEBUG: Request CBOR hex: \(requestParamsCbor.map { String(format: "%02x", $0) }.joined(separator: " "))")
 
         // Send request from transport B
+        print("🔍 DEBUG: Attempting to send request from transport B...")
         do {
-            try transportB.request(requestCbor: requestParamsCbor)
+            try await transportB.request(requestCbor: requestParamsCbor)
             print("   ✅ Sent request from transport B")
         } catch {
             print("   ❌ Failed to send request from transport B: \(error)")
+            print("🔍 DEBUG: Error details: \(error.localizedDescription)")
             throw error
         }
 
@@ -514,14 +523,14 @@ final class FFIQuicTransportTest: XCTestCase {
         print("   📨 Starting to poll for events on transport A...")
         for i in 0 ... 50 {
             do {
-                if let eventData = try transportA.pollEvent() {
+                if let eventData = try await transportA.pollEvent() {
                     print("   📨 Transport A received event \(i): \(eventData.count) bytes")
                     print("   📨 Raw event data: \(eventData.map { String(format: "%02x", $0) }.joined(separator: " "))")
 
                     // Parse event using CBOR like Rust does
                     do {
                         let decoder = CodableCBORDecoder()
-                        let event = try decoder.decode(TransportEvent.self, from: eventData)
+                        let event = try await decoder.decode(TransportEvent.self, from: eventData)
                         print("   📨 Event CBOR: \(event)")
 
                         if event.type == "RequestReceived" {
@@ -555,7 +564,7 @@ final class FFIQuicTransportTest: XCTestCase {
             } catch {
                 print("   📨 Error polling events on iteration \(i): \(error)")
             }
-            Thread.sleep(forTimeInterval: 0.05) // 50ms
+            try await Task.sleep(nanoseconds: UInt64(0.05 * 1_000_000_000)) // 50ms
         }
 
         XCTAssertNotNil(requestId, "Should have received request on transport A")
@@ -566,18 +575,18 @@ final class FFIQuicTransportTest: XCTestCase {
             requestId: requestId!,
             responsePayload: Data("world".utf8)
         )
-        let completeParamsCbor = try CBORHelper.encodeTransportCompleteRequestParams(completeParams)
+        let completeParamsCbor = try await CBORHelper.encodeTransportCompleteRequestParams(completeParams)
 
-        try transportA.completeRequest(completeCbor: completeParamsCbor)
+        try await transportA.completeRequest(completeCbor: completeParamsCbor)
         print("   ✅ Completed request on transport A")
 
         // Poll for response on transport B
         var gotResponse = false
         for _ in 0 ... 50 {
-            if let eventData = try transportB.pollEvent() {
+            if let eventData = try await transportB.pollEvent() {
                 do {
                     let decoder = CodableCBORDecoder()
-                    let event = try decoder.decode(TransportEvent.self, from: eventData)
+                    let event = try await decoder.decode(TransportEvent.self, from: eventData)
 
                     if event.type == "ResponseReceived" {
                         gotResponse = true
@@ -594,15 +603,15 @@ final class FFIQuicTransportTest: XCTestCase {
                     }
                 }
             }
-            Thread.sleep(forTimeInterval: 0.05) // 50ms
+            try await Task.sleep(nanoseconds: UInt64(0.05 * 1_000_000_000)) // 50ms
         }
 
         XCTAssertTrue(gotResponse, "Should have received response on transport B")
         print("   ✅ Received response on transport B")
 
         // Cleanup
-        try transportA.stop()
-        try transportB.stop()
+        try await transportA.stop()
+        try await transportB.stop()
         print("   ✅ Stopped both transports")
 
         print("\n🎉 TWO TRANSPORTS REQUEST/RESPONSE TEST COMPLETED SUCCESSFULLY!")

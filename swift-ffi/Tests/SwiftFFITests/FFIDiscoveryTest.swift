@@ -14,17 +14,18 @@ import XCTest
 /// - Integration with transport layer
 @testable import SwiftFFI
 
+@MainActor
 final class FFIDiscoveryTest: XCTestCase {
     /// Test basic discovery setup and configuration
-    func testBasicDiscoverySetup() throws {
+    func testBasicDiscoverySetup() async throws {
         print("🚀 Starting Basic Discovery Setup test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("discovery-setup-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("discovery-setup-test")
 
         // Create keys for discovery
-        let keys = try NodeKeyManager()
+        let keys = try await NodeKeyManager()
 
         print("   ✅ Created keys for discovery")
 
@@ -38,22 +39,22 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Encode options to CBOR
         let encoder = CodableCBOREncoder()
-        let optionsCbor = try encoder.encode(discoveryOptions)
+        let optionsCbor = try await encoder.encode(discoveryOptions)
 
         print("   ✅ Created and encoded discovery options")
 
         // Create discovery instance
-        let discovery = try DiscoveryHandle.create(keys: keys, optionsCbor: optionsCbor)
+        let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: optionsCbor)
 
         print("   ✅ Created discovery instance")
 
         // Initialize discovery
-        try discovery.initialize(optionsCbor: optionsCbor)
+        try await discovery.initialize(optionsCbor: optionsCbor)
 
         print("   ✅ Initialized discovery")
 
         // Shutdown discovery
-        try discovery.shutdown()
+        try await discovery.shutdown()
 
         print("   ✅ Shutdown discovery")
 
@@ -66,55 +67,55 @@ final class FFIDiscoveryTest: XCTestCase {
     }
 
     /// Test discovery with transport integration
-    func testDiscoveryWithTransport() throws {
+    func testDiscoveryWithTransport() async throws {
         print("🚀 Starting Discovery with Transport test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("discovery-transport-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("discovery-transport-test")
 
         // Create two node key managers (A and B)
-        let keysA = try NodeKeyManager()
+        let keysA = try await NodeKeyManager()
 
-        let keysB = try NodeKeyManager()
+        let keysB = try await NodeKeyManager()
 
         print("   ✅ Created two node key managers")
 
         // Create mobile key manager for CA (Certificate Authority)
-        let keysCA = try MobileKeyManager()
+        let keysCA = try await MobileKeyManager()
 
         print("   ✅ Created mobile CA key manager")
 
         // Set node info for both nodes
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try keysA.setLocalNodeInfo(nodeInfoCbor)
-        try keysB.setLocalNodeInfo(nodeInfoCbor)
+        try await keysA.setLocalNodeInfo(nodeInfoCbor)
+        try await keysB.setLocalNodeInfo(nodeInfoCbor)
 
         print("   ✅ Set local node info for both nodes")
 
         // Generate and install certificates for both nodes
-        let csrA = try keysA.generateCsrSetupToken()
-        let certA = try keysCA.processSetupToken(csrA)
-        try keysA.installCertificate(certA)
+        let csrA = try await keysA.generateCsrSetupToken()
+        let certA = try await keysCA.processSetupToken(csrA)
+        try await keysA.installCertificate(certA)
 
-        let csrB = try keysB.generateCsrSetupToken()
-        let certB = try keysCA.processSetupToken(csrB)
-        try keysB.installCertificate(certB)
+        let csrB = try await keysB.generateCsrSetupToken()
+        let certB = try await keysCA.processSetupToken(csrB)
+        try await keysB.installCertificate(certB)
 
         print("   ✅ Generated and installed certificates for both nodes")
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let transportOptionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
+        let transportOptionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         // Create transports
-        let transportA = try TransportHandle.create(keys: keysA, optionsCbor: transportOptionsCbor)
-        try transportA.start()
+        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: transportOptionsCbor)
+        try await transportA.start()
 
-        let transportB = try TransportHandle.create(keys: keysB, optionsCbor: transportOptionsCbor)
-        try transportB.start()
+        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: transportOptionsCbor)
+        try await transportB.start()
 
         print("   ✅ Created and started both transports")
 
@@ -128,70 +129,70 @@ final class FFIDiscoveryTest: XCTestCase {
         )
 
         let encoder = CodableCBOREncoder()
-        let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
+        let discoveryOptionsCbor = try await encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
-        try discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
+        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
-        try discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
+        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         print("   ✅ Created and initialized discovery instances")
 
         // Bind discovery events to transports
-        try discoveryA.bindEventsToTransport(transport: transportA)
-        try discoveryB.bindEventsToTransport(transport: transportB)
+        try await discoveryA.bindEventsToTransport(transport: transportA)
+        try await discoveryB.bindEventsToTransport(transport: transportB)
 
         print("   ✅ Bound discovery events to transports")
 
         // Get local addresses
-        let localAddrA = try transportA.getLocalAddr()
-        let localAddrB = try transportB.getLocalAddr()
+        let localAddrA = try await transportA.getLocalAddr()
+        let localAddrB = try await transportB.getLocalAddr()
 
         print("   ✅ Transport A local address: \(localAddrA)")
         print("   ✅ Transport B local address: \(localAddrB)")
 
         // Create peer info for both nodes
-        let publicKeyA = try keysA.getNodePublicKey()
-        let publicKeyB = try keysB.getNodePublicKey()
+        let publicKeyA = try await keysA.getNodePublicKey()
+        let publicKeyB = try await keysB.getNodePublicKey()
 
         let peerInfoA = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
         let peerInfoB = PeerInfo(publicKey: publicKeyB, addresses: [localAddrB])
 
-        let peerInfoACbor = try CBORHelper.encodePeerInfo(peerInfoA)
-        let peerInfoBCbor = try CBORHelper.encodePeerInfo(peerInfoB)
+        let peerInfoACbor = try await CBORHelper.encodePeerInfo(peerInfoA)
+        let peerInfoBCbor = try await CBORHelper.encodePeerInfo(peerInfoB)
 
         // Update local peer info in discovery
-        try discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)
-        try discoveryB.updateLocalPeerInfo(peerInfoCbor: peerInfoBCbor)
+        try await discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)
+        try await discoveryB.updateLocalPeerInfo(peerInfoCbor: peerInfoBCbor)
 
         print("   ✅ Updated local peer info in discovery")
 
         // Start announcing
-        try discoveryA.startAnnouncing()
-        try discoveryB.startAnnouncing()
+        try await discoveryA.startAnnouncing()
+        try await discoveryB.startAnnouncing()
 
         print("   ✅ Started announcing on both discovery instances")
 
         // Wait a bit for discovery to work
-        Thread.sleep(forTimeInterval: 2.0)
+        try await Task.sleep(nanoseconds: UInt64(2.0 * 1_000_000_000))
 
         // Stop announcing
-        try discoveryA.stopAnnouncing()
-        try discoveryB.stopAnnouncing()
+        try await discoveryA.stopAnnouncing()
+        try await discoveryB.stopAnnouncing()
 
         print("   ✅ Stopped announcing on both discovery instances")
 
         // Shutdown discovery
-        try discoveryA.shutdown()
-        try discoveryB.shutdown()
+        try await discoveryA.shutdown()
+        try await discoveryB.shutdown()
 
         print("   ✅ Shutdown discovery instances")
 
         // Stop transports
-        try transportA.stop()
-        try transportB.stop()
+        try await transportA.stop()
+        try await transportB.stop()
 
         print("   ✅ Stopped transports")
 
@@ -206,51 +207,51 @@ final class FFIDiscoveryTest: XCTestCase {
     }
 
     /// Test discovery TTL and debounce functionality
-    func testDiscoveryTTLAndDebounce() throws {
+    func testDiscoveryTTLAndDebounce() async throws {
         print("🚀 Starting Discovery TTL and Debounce test")
 
         // Set up logging
-        try FFILogger.setLogLevel(.debug)
-        try FFILogger.setLoggerNodeId("discovery-ttl-test")
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("discovery-ttl-test")
 
         // Create two node key managers (A and B)
-        let keysA = try NodeKeyManager()
+        let keysA = try await NodeKeyManager()
 
-        let keysB = try NodeKeyManager()
+        let keysB = try await NodeKeyManager()
 
         print("   ✅ Created two node key managers")
 
         // Create mobile key manager for CA
-        let keysCA = try MobileKeyManager()
+        let keysCA = try await MobileKeyManager()
 
         // Generate and install certificates
-        let csrA = try keysA.generateCsrSetupToken()
-        let certA = try keysCA.processSetupToken(csrA)
-        try keysA.installCertificate(certA)
+        let csrA = try await keysA.generateCsrSetupToken()
+        let certA = try await keysCA.processSetupToken(csrA)
+        try await keysA.installCertificate(certA)
 
-        let csrB = try keysB.generateCsrSetupToken()
-        let certB = try keysCA.processSetupToken(csrB)
-        try keysB.installCertificate(certB)
+        let csrB = try await keysB.generateCsrSetupToken()
+        let certB = try await keysCA.processSetupToken(csrB)
+        try await keysB.installCertificate(certB)
 
         print("   ✅ Generated and installed certificates")
 
         // Set node info
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        let nodeInfoCbor = try CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try keysA.setLocalNodeInfo(nodeInfoCbor)
-        try keysB.setLocalNodeInfo(nodeInfoCbor)
+        try await keysA.setLocalNodeInfo(nodeInfoCbor)
+        try await keysB.setLocalNodeInfo(nodeInfoCbor)
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let transportOptionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
+        let transportOptionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         // Create transports
-        let transportA = try TransportHandle.create(keys: keysA, optionsCbor: transportOptionsCbor)
-        try transportA.start()
+        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: transportOptionsCbor)
+        try await transportA.start()
 
-        let transportB = try TransportHandle.create(keys: keysB, optionsCbor: transportOptionsCbor)
-        try transportB.start()
+        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: transportOptionsCbor)
+        try await transportB.start()
 
         print("   ✅ Created and started transports")
 
@@ -264,61 +265,61 @@ final class FFIDiscoveryTest: XCTestCase {
         )
 
         let encoder = CodableCBOREncoder()
-        let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
+        let discoveryOptionsCbor = try await encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
-        try discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
+        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
-        try discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
+        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Bind discovery events to transports
-        try discoveryA.bindEventsToTransport(transport: transportA)
-        try discoveryB.bindEventsToTransport(transport: transportB)
+        try await discoveryA.bindEventsToTransport(transport: transportA)
+        try await discoveryB.bindEventsToTransport(transport: transportB)
 
         print("   ✅ Created discovery instances and bound to transports")
 
         // Get local addresses and create peer info
-        let localAddrA = try transportA.getLocalAddr()
-        let localAddrB = try transportB.getLocalAddr()
+        let localAddrA = try await transportA.getLocalAddr()
+        let localAddrB = try await transportB.getLocalAddr()
 
-        let publicKeyA = try keysA.getNodePublicKey()
-        let publicKeyB = try keysB.getNodePublicKey()
+        let publicKeyA = try await keysA.getNodePublicKey()
+        let publicKeyB = try await keysB.getNodePublicKey()
 
         let peerInfoA = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
         let peerInfoB = PeerInfo(publicKey: publicKeyB, addresses: [localAddrB])
 
-        let peerInfoACbor = try CBORHelper.encodePeerInfo(peerInfoA)
-        let peerInfoBCbor = try CBORHelper.encodePeerInfo(peerInfoB)
+        let peerInfoACbor = try await CBORHelper.encodePeerInfo(peerInfoA)
+        let peerInfoBCbor = try await CBORHelper.encodePeerInfo(peerInfoB)
 
         // Update local peer info
-        try discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)
-        try discoveryB.updateLocalPeerInfo(peerInfoCbor: peerInfoBCbor)
+        try await discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)
+        try await discoveryB.updateLocalPeerInfo(peerInfoCbor: peerInfoBCbor)
 
         // Start announcing
-        try discoveryA.startAnnouncing()
-        try discoveryB.startAnnouncing()
+        try await discoveryA.startAnnouncing()
+        try await discoveryB.startAnnouncing()
 
         print("   ✅ Started announcing on both nodes")
 
         // Wait for discovery to work
-        Thread.sleep(forTimeInterval: 1.0)
+        try await Task.sleep(nanoseconds: UInt64(1.0 * 1_000_000_000))
 
         // Stop node B's discovery (simulate TTL expiry)
-        try discoveryB.stopAnnouncing()
-        try discoveryB.shutdown()
-        try transportB.stop()
+        try await discoveryB.stopAnnouncing()
+        try await discoveryB.shutdown()
+        try await transportB.stop()
 
         print("   ✅ Stopped node B (simulating TTL expiry)")
 
         // Wait for TTL cleanup
-        Thread.sleep(forTimeInterval: 2.0)
+        try await Task.sleep(nanoseconds: UInt64(2.0 * 1_000_000_000))
 
         // Stop node A
-        try discoveryA.stopAnnouncing()
-        try discoveryA.shutdown()
-        try transportA.stop()
+        try await discoveryA.stopAnnouncing()
+        try await discoveryA.shutdown()
+        try await transportA.stop()
 
         print("   ✅ Stopped node A")
 

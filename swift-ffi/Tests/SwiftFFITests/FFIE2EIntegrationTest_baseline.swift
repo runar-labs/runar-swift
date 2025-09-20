@@ -68,6 +68,7 @@ import XCTest
 /// 6. Rate limiting over FFI with REAL QUIC mTLS
 /// 7. Token revocation over FFI with REAL QUIC mTLS
 @available(macOS 11.0, *)
+@MainActor
 final class FFIE2EIntegrationTestBaseline: XCTestCase {
     // MARK: - Test Helper Functions
 
@@ -106,30 +107,30 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     // MARK: - Main E2E Test
 
     /// Test basic EA key functionality using secure architecture
-    func testBasicEaKeyFunctionality() throws {
+    func testBasicEaKeyFunctionality() async throws {
         print("\n🚀 Starting basic EA key functionality test")
 
         // Test EA key pair creation
         let eaKeyManager = EAKeyManager(logger: createTestLogger())
-        let eaKeyHandle = try eaKeyManager.createKeyPair()
+        let eaKeyHandle = try await eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
 
         // Test EA public key retrieval
-        let publicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
+        let publicKey = try await eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved: \(publicKey.count) bytes")
 
         // Test enrollment token creation
-        let enrollmentToken = try createEnrollmentToken(networkId: "test_network", tokenId: "test_token_001")
+        let enrollmentToken = try await createEnrollmentToken(networkId: "test_network", tokenId: "test_token_001")
         print("   ✅ Enrollment token created: \(enrollmentToken.count) bytes")
 
         print("\n🎉 Basic EA key functionality test completed successfully!")
     }
 
     /// Create enrollment token using secure FFI
-    func createEnrollmentToken(networkId: String, tokenId: String) throws -> Data {
+    func createEnrollmentToken(networkId: String, tokenId: String) async throws -> Data {
         let eaKeyManager = EAKeyManager(logger: createTestLogger())
-        let eaKeyHandle = try eaKeyManager.createKeyPair()
+        let eaKeyHandle = try await eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
 
         let now = UInt64(Date().timeIntervalSince1970)
@@ -152,18 +153,18 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             capabilities: capabilities
         )
 
-        return try eaKeyManager.generateEnrollmentToken(params: params)
+        return try await eaKeyManager.generateEnrollmentToken(params: params)
     }
 
     /// Test CA Node creation only
-    func testCANodeCreation() throws {
+    func testCANodeCreation() async throws {
         print("\n🚀 Starting CA Node creation test")
 
         // Create test logger
         let testLogger = createTestLogger()
 
         // Create CA Node
-        let caNode = try CANode.create()
+        let caNode = try await CANode.create()
         print("   ✅ CA Node created")
 
         // Clean up
@@ -173,24 +174,24 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     }
 
     /// Test CA Node + EA Key creation
-    func testCANodeWithEAKey() throws {
+    func testCANodeWithEAKey() async throws {
         print("\n🚀 Starting CA Node + EA Key test")
 
         // Create test logger
         let testLogger = createTestLogger()
 
         // Create CA Node
-        let caNode = try CANode.create()
+        let caNode = try await CANode.create()
         print("   ✅ CA Node created")
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
-        let eaKeyHandle = try eaKeyManager.createKeyPair()
+        let eaKeyHandle = try await eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
 
         // Get EA public key
-        let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
 
         // Clean up
@@ -200,24 +201,24 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     }
 
     /// Test CA Node + EA Key + Setup
-    func testCANodeWithEASetup() throws {
+    func testCANodeWithEASetup() async throws {
         print("\n🚀 Starting CA Node + EA Key + Setup test")
 
         // Create test logger
         let testLogger = createTestLogger()
 
         // Create CA Node
-        let caNode = try CANode.create()
+        let caNode = try await CANode.create()
         print("   ✅ CA Node created")
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
-        let eaKeyHandle = try eaKeyManager.createKeyPair()
+        let eaKeyHandle = try await eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
 
         // Get EA public key
-        let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
 
         // Complete CA setup
@@ -231,7 +232,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: networkId
         )
-        try caNode.setupComplete(params: setupParams)
+        try await caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
 
         // Clean up
@@ -241,24 +242,24 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     }
 
     /// Test CA Node + EA Key + Setup + Shared CA Node
-    func testCANodeWithShared() throws {
+    func testCANodeWithShared() async throws {
         print("\n🚀 Starting CA Node + EA Key + Setup + Shared test")
 
         // Create test logger
         let testLogger = createTestLogger()
 
         // Create CA Node
-        let caNode = try CANode.create()
+        let caNode = try await CANode.create()
         print("   ✅ CA Node created")
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
-        let eaKeyHandle = try eaKeyManager.createKeyPair()
+        let eaKeyHandle = try await eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
 
         // Get EA public key
-        let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
 
         // Complete CA setup
@@ -272,11 +273,11 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: networkId
         )
-        try caNode.setupComplete(params: setupParams)
+        try await caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
 
         // Create shared CA Node reference
-        let sharedCaNode = try caNode.createShared()
+        let sharedCaNode = try await caNode.createShared()
         print("   ✅ Shared CA Node created")
 
         // Clean up
@@ -287,24 +288,24 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     }
 
     /// Test CA Node + EA Key + Setup + Shared CA Node + Server Creation
-    func testCANodeWithServer() throws {
+    func testCANodeWithServer() async throws {
         print("\n🚀 Starting CA Node + EA Key + Setup + Shared + Server test")
 
         // Create test logger
         let testLogger = createTestLogger()
 
         // Create CA Node
-        let caNode = try CANode.create()
+        let caNode = try await CANode.create()
         print("   ✅ CA Node created")
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
-        let eaKeyHandle = try eaKeyManager.createKeyPair()
+        let eaKeyHandle = try await eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
 
         // Get EA public key
-        let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
 
         // Complete CA setup
@@ -318,15 +319,15 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: networkId
         )
-        try caNode.setupComplete(params: setupParams)
+        try await caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
 
         // Create shared CA Node reference
-        let sharedCaNode = try caNode.createShared()
+        let sharedCaNode = try await caNode.createShared()
         print("   ✅ Shared CA Node created")
 
         // Create CA Server (EXACTLY like Rust)
-        let caServer = try CAServer.create(
+        let caServer = try await CAServer.create(
             config: CaServerConfig(
                 bootstrapBind: "127.0.0.1:0",
                 authenticatedBind: "127.0.0.1:0",
@@ -339,7 +340,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("   ✅ CA Server created")
 
         // Clean up
-        try caServer.stop()
+        try await caServer.stop()
         CANode.freeShared(sharedCaNode)
         print("   ✅ Cleanup complete")
 
@@ -347,24 +348,24 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     }
 
     /// Test minimal CA setup to isolate the segfault issue
-    func testMinimalCASetup() throws {
+    func testMinimalCASetup() async throws {
         print("\n🚀 Starting minimal CA setup test")
 
         // Create test logger
         let testLogger = createTestLogger()
 
         // Create CA Node
-        let caNode = try CANode.create()
+        let caNode = try await CANode.create()
         print("   ✅ CA Node created")
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: testLogger)
-        let eaKeyHandle = try eaKeyManager.createKeyPair()
+        let eaKeyHandle = try await eaKeyManager.createKeyPair()
         defer { EAKeyManager.free(eaKeyHandle) }
         print("   ✅ EA key pair created")
 
         // Get EA public key
-        let eaPublicKey = try eaKeyManager.getPublicKey(eaKeyHandle)
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyHandle)
         print("   ✅ EA public key retrieved (\(eaPublicKey.count) bytes)")
 
         // Complete CA Node setup
@@ -378,11 +379,11 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             eaPublicKeys: eaPublicKey, // Already CBOR-encoded by the FFI function
             networkId: networkId
         )
-        try caNode.setupComplete(params: setupParams)
+        try await caNode.setupComplete(params: setupParams)
         print("   ✅ CA Node setup complete")
 
         // Try to create shared CA Node reference
-        let sharedCaNode = try caNode.createShared()
+        let sharedCaNode = try await caNode.createShared()
         print("   ✅ Shared CA Node created")
 
         // Clean up
@@ -404,7 +405,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
     /// 5. Profile key interop over FFI with REAL QUIC mTLS
     /// 6. Rate limiting over FFI with REAL QUIC mTLS
     /// 7. Token revocation over FFI with REAL QUIC mTLS
-    func testFFIFullTransportE2EQuicMtls() throws {
+    func testFFIFullTransportE2EQuicMtls() async throws {
         print("\n🚀 Starting FFI Full-transport E2E QUIC mTLS test")
 
         // ==========================================
@@ -413,7 +414,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("\n🏗️  PHASE 1: Setup")
 
         // Set log level to TRACE for detailed debugging
-        try FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLogLevel(.trace)
         print("   🔧 Set log level to TRACE for detailed debugging")
 
         // Initialize rustls crypto provider
@@ -584,7 +585,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
         print("   ✅ CA Server started")
 
         // Wait a moment for server to fully start
-        Thread.sleep(forTimeInterval: 0.1)
+        try await Task.sleep(nanoseconds: UInt64(0.1 * 1_000_000_000))
 
         // Get server addresses (EXACTLY like Rust)
         var bootstrapAddrPtr: UnsafeMutablePointer<CChar>?
@@ -818,9 +819,9 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
 
         // DUMP: Save baseline test data for comparison
         // let projectPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        // try enrollRequest.write(to: projectPath.appendingPathComponent("enroll_baseline.cbor"))
-        // try csrDer.write(to: projectPath.appendingPathComponent("csr_baseline.der"))
-        // try enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_baseline.cbor"))
+        // try await enrollRequest.write(to: projectPath.appendingPathComponent("enroll_baseline.cbor"))
+        // try await csrDer.write(to: projectPath.appendingPathComponent("csr_baseline.der"))
+        // try await enrollmentTokenCbor.write(to: projectPath.appendingPathComponent("token_baseline.cbor"))
         // print("   📁 DUMP: Saved baseline test data to project directory")
         // print("      - enroll_baseline.cbor: \(enrollRequest.count) bytes")
         // print("      - csr_baseline.der: \(csrDer.count) bytes")
@@ -1473,7 +1474,7 @@ final class FFIE2EIntegrationTestBaseline: XCTestCase {
             }
 
             // Add a small delay to ensure rate limiting works properly
-            Thread.sleep(forTimeInterval: 0.01)
+            try await Task.sleep(nanoseconds: UInt64(0.01 * 1_000_000_000))
         }
 
         // ==========================================

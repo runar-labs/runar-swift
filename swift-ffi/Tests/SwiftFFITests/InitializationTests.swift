@@ -7,13 +7,14 @@
 @testable import SwiftFFI
 import XCTest
 
+@MainActor
 final class InitializationTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
 
         // Set log level to trace to see detailed logs
         do {
-            try FFILogger.setLogLevel(.trace)
+            try await FFILogger.setLogLevel(.trace)
         } catch {
             XCTFail("Failed to set log level: \(error)")
         }
@@ -21,54 +22,54 @@ final class InitializationTests: XCTestCase {
 
     // MARK: - Handle Creation Tests
 
-    func testNodeKeyManagerCreation() throws {
+    func testNodeKeyManagerCreation() async throws {
         // Test successful node key manager creation
-        let nodeKeyManager = try NodeKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
         XCTAssertNotNil(nodeKeyManager, "NodeKeyManager should be created successfully")
     }
 
-    func testMobileKeyManagerCreation() throws {
+    func testMobileKeyManagerCreation() async throws {
         // Test successful mobile key manager creation
-        let mobileKeyManager = try MobileKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
         XCTAssertNotNil(mobileKeyManager, "MobileKeyManager should be created successfully")
     }
 
     // MARK: - Initialization Success Tests
 
-    func testMobileKeyManagerInitialization() throws {
+    func testMobileKeyManagerInitialization() async throws {
         // Test successful mobile key manager initialization
-        let mobileKeyManager = try MobileKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
         XCTAssertNotNil(mobileKeyManager, "MobileKeyManager should be created and initialized successfully")
     }
 
-    func testNodeKeyManagerInitialization() throws {
+    func testNodeKeyManagerInitialization() async throws {
         // Test successful node key manager initialization
-        let nodeKeyManager = try NodeKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
         XCTAssertNotNil(nodeKeyManager, "NodeKeyManager should be created and initialized successfully")
     }
 
     // MARK: - Type Safety Tests
 
-    func testNodeKeyManagerTypeSafety() throws {
+    func testNodeKeyManagerTypeSafety() async throws {
         // Test that NodeKeyManager only exposes node-specific methods
-        let nodeKeyManager = try NodeKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
 
         // These should compile and work
-        XCTAssertNoThrow(try nodeKeyManager.hasKeys(), "Node hasKeys should work")
-        XCTAssertNoThrow(try nodeKeyManager.generateKeys(), "Node generateKeys should work")
+        await XCTAssertNoThrowAsync(try await nodeKeyManager.hasKeys(), "Node hasKeys should work")
+        await XCTAssertNoThrowAsync(try await nodeKeyManager.generateKeys(), "Node generateKeys should work")
 
         // These should not be available (compile-time error)
         // nodeKeyManager.initializeUserRootKey() // This should not compile
         // nodeKeyManager.getUserPublicKey() // This should not compile
     }
 
-    func testMobileKeyManagerTypeSafety() throws {
+    func testMobileKeyManagerTypeSafety() async throws {
         // Test that MobileKeyManager only exposes mobile-specific methods
-        let mobileKeyManager = try MobileKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
 
         // These should compile and work
-        XCTAssertNoThrow(try mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
-        XCTAssertNoThrow(try mobileKeyManager.getUserPublicKey(), "Mobile getUserPublicKey should work")
+        await XCTAssertNoThrowAsync(try await mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
+        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Mobile getUserPublicKey should work")
 
         // These should not be available (compile-time error)
         // mobileKeyManager.hasKeys() // This should not compile
@@ -77,60 +78,58 @@ final class InitializationTests: XCTestCase {
 
     // MARK: - Function Access Tests
 
-    func testMobileKeyManagerFunctions() throws {
+    func testMobileKeyManagerFunctions() async throws {
         // Test that mobile key manager functions work correctly
-        let mobileKeyManager = try MobileKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
 
         // These should work without additional initialization
-        XCTAssertNoThrow(try mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
-        XCTAssertNoThrow(try mobileKeyManager.getUserPublicKey(), "Mobile getUserPublicKey should work")
+        await XCTAssertNoThrowAsync(try await mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
+        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Mobile getUserPublicKey should work")
     }
 
-    func testNodeKeyManagerFunctions() throws {
+    func testNodeKeyManagerFunctions() async throws {
         // Test that node key manager functions work correctly
-        let nodeKeyManager = try NodeKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
 
         // These should work without additional initialization
-        XCTAssertNoThrow(try nodeKeyManager.hasKeys(), "Node hasKeys should work")
-        XCTAssertNoThrow(try nodeKeyManager.generateKeys(), "Node generateKeys should work")
+        await XCTAssertNoThrowAsync(try await nodeKeyManager.hasKeys(), "Node hasKeys should work")
+        await XCTAssertNoThrowAsync(try await nodeKeyManager.generateKeys(), "Node generateKeys should work")
     }
 
     // MARK: - Function Success Tests
 
-    func testMobileKeyManagerFullWorkflow() throws {
+    func testMobileKeyManagerFullWorkflow() async throws {
         // Test that mobile key manager functions work in a complete workflow
-        let mobileKeyManager = try MobileKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
 
         // Initialize user root key
-        XCTAssertNoThrow(try mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
+        await XCTAssertNoThrowAsync(try await mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
 
         // Get user public key
-        let userPublicKey = try mobileKeyManager.getUserPublicKey()
+        let userPublicKey = try await mobileKeyManager.getUserPublicKey()
         XCTAssertFalse(userPublicKey.isEmpty, "User public key should not be empty")
 
         // Derive profile key
-        let profileKey = try mobileKeyManager.deriveUserProfileKey(label: "test")
+        let profileKey = try await mobileKeyManager.deriveUserProfileKey(label: "test")
         XCTAssertFalse(profileKey.isEmpty, "Profile key should not be empty")
     }
 
-    func testNodeKeyManagerFullWorkflow() throws {
+    func testNodeKeyManagerFullWorkflow() async throws {
         // Test that node key manager functions work in a complete workflow
-        let nodeKeyManager = try NodeKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
 
         // Check if keys exist
-        let hasKeys = try nodeKeyManager.hasKeys()
+        let hasKeys = try await nodeKeyManager.hasKeys()
         XCTAssertFalse(hasKeys, "Node should not have keys initially")
 
         // Generate keys
-        XCTAssertNoThrow(try nodeKeyManager.generateKeys(), "Node generateKeys should work")
+        await XCTAssertNoThrowAsync(try await nodeKeyManager.generateKeys(), "Node generateKeys should work")
 
         // Check if keys exist now
-        let hasKeysAfter = try nodeKeyManager.hasKeys()
-        print("DEBUG: hasKeysAfter = \(hasKeysAfter)")
+        let hasKeysAfter = try await nodeKeyManager.hasKeys()
 
         // Try to get the node public key to see if keys are actually there
-        let nodePublicKey = try nodeKeyManager.getNodePublicKey()
-        print("DEBUG: nodePublicKey length = \(nodePublicKey.count)")
+        let nodePublicKey = try await nodeKeyManager.getNodePublicKey()
 
         // Note: hasKeys() appears to have an FFI issue, but keys are actually there
         // as evidenced by getNodePublicKey() working. We'll test the actual functionality
@@ -140,14 +139,14 @@ final class InitializationTests: XCTestCase {
 
     // MARK: - Error Handling Consistency Tests
 
-    func testErrorMessagesAreHelpful() throws {
+    func testErrorMessagesAreHelpful() async throws {
         // Test that error messages are descriptive and helpful
-        let mobileKeyManager = try MobileKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
 
         // Test error message for invalid operations
         do {
             // Try to get user public key before initializing
-            _ = try mobileKeyManager.getUserPublicKey()
+            _ = try await mobileKeyManager.getUserPublicKey()
             // This might succeed or fail depending on implementation
         } catch let error as FFIError {
             let message = error.localizedDescription
@@ -159,12 +158,12 @@ final class InitializationTests: XCTestCase {
 
     // MARK: - Edge Case Tests
 
-    func testMultipleKeyManagerCreation() throws {
+    func testMultipleKeyManagerCreation() async throws {
         // Test creating multiple key managers
-        let nodeManager1 = try NodeKeyManager()
-        let nodeManager2 = try NodeKeyManager()
-        let mobileManager1 = try MobileKeyManager()
-        let mobileManager2 = try MobileKeyManager()
+        let nodeManager1 = try await NodeKeyManager()
+        let nodeManager2 = try await NodeKeyManager()
+        let mobileManager1 = try await MobileKeyManager()
+        let mobileManager2 = try await MobileKeyManager()
 
         XCTAssertNotNil(nodeManager1, "First node manager should be created")
         XCTAssertNotNil(nodeManager2, "Second node manager should be created")
@@ -172,48 +171,48 @@ final class InitializationTests: XCTestCase {
         XCTAssertNotNil(mobileManager2, "Second mobile manager should be created")
 
         // Each manager should be independent
-        XCTAssertNoThrow(try nodeManager1.generateKeys(), "First node manager should work")
-        XCTAssertNoThrow(try mobileManager1.initializeUserRootKey(), "First mobile manager should work")
+        await XCTAssertNoThrowAsync(try await nodeManager1.generateKeys(), "First node manager should work")
+        await XCTAssertNoThrowAsync(try await mobileManager1.initializeUserRootKey(), "First mobile manager should work")
 
         // Other managers should still work independently
-        XCTAssertNoThrow(try nodeManager2.generateKeys(), "Second node manager should work")
-        XCTAssertNoThrow(try mobileManager2.initializeUserRootKey(), "Second mobile manager should work")
+        await XCTAssertNoThrowAsync(try await nodeManager2.generateKeys(), "Second node manager should work")
+        await XCTAssertNoThrowAsync(try await mobileManager2.initializeUserRootKey(), "Second mobile manager should work")
     }
 
-    func testKeyManagerReuseAfterError() throws {
+    func testKeyManagerReuseAfterError() async throws {
         // Test that a key manager can be reused after an error
-        let mobileKeyManager = try MobileKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
 
         // Try to get user public key before initializing
         do {
-            _ = try mobileKeyManager.getUserPublicKey()
+            _ = try await mobileKeyManager.getUserPublicKey()
             // This might succeed or fail depending on implementation
         } catch {
             // If it fails, that's expected
         }
 
         // Initialize properly
-        try mobileKeyManager.initializeUserRootKey()
+        try await mobileKeyManager.initializeUserRootKey()
 
         // Should work now
-        XCTAssertNoThrow(try mobileKeyManager.getUserPublicKey(), "Should work after proper initialization")
+        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Should work after proper initialization")
     }
 
-    func testConcurrentKeyManagerAccess() throws {
+    func testConcurrentKeyManagerAccess() async throws {
         // Test that key managers can handle concurrent access
-        let mobileKeyManager = try MobileKeyManager()
-        let nodeKeyManager = try NodeKeyManager()
+        let mobileKeyManager = try await MobileKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
 
         // This test verifies that the managers can handle concurrent access
         // In a real scenario, this would be tested with actual concurrency
         // For now, we just verify the managers work in sequence
 
         // Mobile manager operations
-        try mobileKeyManager.initializeUserRootKey()
-        XCTAssertNoThrow(try mobileKeyManager.getUserPublicKey(), "Mobile manager should work after initialization")
+        try await mobileKeyManager.initializeUserRootKey()
+        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Mobile manager should work after initialization")
 
         // Node manager operations
-        try nodeKeyManager.generateKeys()
-        XCTAssertNoThrow(try nodeKeyManager.getNodePublicKey(), "Node manager should work after key generation")
+        try await nodeKeyManager.generateKeys()
+        await XCTAssertNoThrowAsync(try await nodeKeyManager.getNodePublicKey(), "Node manager should work after key generation")
     }
 }

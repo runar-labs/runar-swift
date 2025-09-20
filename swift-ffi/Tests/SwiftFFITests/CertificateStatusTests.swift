@@ -6,22 +6,23 @@ import XCTest
 
 /// Tests for certificate status functionality
 /// Tests certificate status/serial via keys; peer certificate validation
+@MainActor
 final class CertificateStatusTests: XCTestCase {
     private var nodeKeys: NodeKeyManager!
     private var caNode: CANode!
     private var caServer: CAServer!
     private var caClient: CAClient!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
 
         // Create node keys handle
         do {
-            nodeKeys = try NodeKeyManager()
-            try nodeKeys.generateKeys()
+            nodeKeys = try await NodeKeyManager()
+            try await nodeKeys.generateKeys()
 
             // Create CA node for testing
-            caNode = try CANode.create()
+            caNode = try await CANode.create()
         } catch {
             XCTFail("Failed to set up test: \(error)")
         }
@@ -36,8 +37,8 @@ final class CertificateStatusTests: XCTestCase {
         )
 
         do {
-            let sharedCaNode = try caNode.createShared()
-            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+            let sharedCaNode = try await caNode.createShared()
+            caServer = try await CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
 
             // Set up CA client for testing
             let caClientConfig = CaClientConfigAll(
@@ -50,46 +51,46 @@ final class CertificateStatusTests: XCTestCase {
                 issuing_ca_der: Data()
             )
 
-            caClient = try CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+            caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
         } catch {
             XCTFail("Failed to set up CA components: \(error)")
         }
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         caClient = nil
         caServer = nil
         caNode = nil
         nodeKeys = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Certificate Status Tests
 
-    func testGetCertificateStatus() throws {
+    func testGetCertificateStatus() async throws {
         // Test getting certificate status
-        let status = try nodeKeys.getCertificateStatus()
+        let status = try await nodeKeys.getCertificateStatus()
 
         // Verify status is returned (specific values depend on implementation)
         XCTAssertNotNil(status, "Certificate status should be returned")
     }
 
-    func testGetCertificateStatusAfterInstallation() throws {
+    func testGetCertificateStatusAfterInstallation() async throws {
         // Generate CSR and install certificate
-        let csrData = try nodeKeys.generateCsrSetupToken()
+        let csrData = try await nodeKeys.generateCsrSetupToken()
 
         // For this test, we'll just verify the status can be retrieved
         // In a real scenario, we would process the CSR through the CA
-        let status = try nodeKeys.getCertificateStatus()
+        let status = try await nodeKeys.getCertificateStatus()
         XCTAssertNotNil(status, "Certificate status should be available after CSR generation")
     }
 
     // MARK: - Certificate Serial Tests
 
-    func testGetCertificateSerial() throws {
+    func testGetCertificateSerial() async throws {
         // Test getting certificate serial
         do {
-            let serial = try nodeKeys.getCertificateSerial()
+            let serial = try await nodeKeys.getCertificateSerial()
             XCTAssertFalse(serial.isEmpty, "Certificate serial should not be empty")
         } catch {
             // Might fail if no certificate is installed
@@ -97,13 +98,13 @@ final class CertificateStatusTests: XCTestCase {
         }
     }
 
-    func testGetCertificateSerialAfterInstallation() throws {
+    func testGetCertificateSerialAfterInstallation() async throws {
         // Generate CSR
-        let csrData = try nodeKeys.generateCsrSetupToken()
+        let csrData = try await nodeKeys.generateCsrSetupToken()
 
         // Try to get serial (might fail if certificate not installed)
         do {
-            let serial = try nodeKeys.getCertificateSerial()
+            let serial = try await nodeKeys.getCertificateSerial()
             XCTAssertFalse(serial.isEmpty, "Certificate serial should not be empty")
         } catch {
             // Expected if no certificate is installed
@@ -113,13 +114,13 @@ final class CertificateStatusTests: XCTestCase {
 
     // MARK: - Peer Certificate Validation Tests
 
-    func testValidatePeerCertificate() throws {
+    func testValidatePeerCertificate() async throws {
         // Get node's own certificate for testing
-        let nodeCertificate = try nodeKeys.getNodeCertificate()
+        let nodeCertificate = try await nodeKeys.getNodeCertificate()
 
         // Validate peer certificate (using own certificate for testing)
         do {
-            try nodeKeys.validatePeerCertificate(nodeCertificate)
+            try await nodeKeys.validatePeerCertificate(nodeCertificate)
             // Should succeed if certificate is valid
         } catch {
             // Might fail depending on certificate validity
@@ -127,24 +128,24 @@ final class CertificateStatusTests: XCTestCase {
         }
     }
 
-    func testValidatePeerCertificateWithInvalidData() throws {
+    func testValidatePeerCertificateWithInvalidData() async throws {
         // Test with invalid certificate data
         let invalidCertificate = Data([0x01, 0x02, 0x03, 0x04]) // Invalid certificate data
 
         do {
-            try nodeKeys.validatePeerCertificate(invalidCertificate)
+            try await nodeKeys.validatePeerCertificate(invalidCertificate)
             XCTFail("Should have thrown error for invalid certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
         }
     }
 
-    func testValidatePeerCertificateWithEmptyData() throws {
+    func testValidatePeerCertificateWithEmptyData() async throws {
         // Test with empty certificate data
         let emptyCertificate = Data()
 
         do {
-            try nodeKeys.validatePeerCertificate(emptyCertificate)
+            try await nodeKeys.validatePeerCertificate(emptyCertificate)
             XCTFail("Should have thrown error for empty certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
@@ -153,43 +154,43 @@ final class CertificateStatusTests: XCTestCase {
 
     // MARK: - Certificate Utilities Tests
 
-    func testExtractSkiFromCertificate() throws {
+    func testExtractSkiFromCertificate() async throws {
         // Get node certificate
-        let nodeCertificate = try nodeKeys.getNodeCertificate()
+        let nodeCertificate = try await nodeKeys.getNodeCertificate()
 
         // Extract SKI
-        let ski = try CertificateUtils.extractSki(from: nodeCertificate)
+        let ski = try await CertificateUtils.extractSki(from: nodeCertificate)
 
         // Verify SKI is extracted
         XCTAssertFalse(ski.isEmpty, "SKI should not be empty")
         XCTAssertGreaterThan(ski.count, 0, "SKI should have content")
     }
 
-    func testGetSerialHexFromCertificate() throws {
+    func testGetSerialHexFromCertificate() async throws {
         // Get node certificate
-        let nodeCertificate = try nodeKeys.getNodeCertificate()
+        let nodeCertificate = try await nodeKeys.getNodeCertificate()
 
         // Get serial hex
-        let serialHex = try CertificateUtils.getSerialHex(from: nodeCertificate)
+        let serialHex = try await CertificateUtils.getSerialHex(from: nodeCertificate)
 
         // Verify serial hex is extracted
         XCTAssertFalse(serialHex.isEmpty, "Serial hex should not be empty")
         XCTAssertGreaterThan(serialHex.count, 0, "Serial hex should have content")
     }
 
-    func testCertificateUtilitiesWithInvalidData() throws {
+    func testCertificateUtilitiesWithInvalidData() async throws {
         // Test certificate utilities with invalid data
         let invalidCertificate = Data([0x01, 0x02, 0x03, 0x04]) // Invalid certificate data
 
         do {
-            _ = try CertificateUtils.extractSki(from: invalidCertificate)
+            _ = try await CertificateUtils.extractSki(from: invalidCertificate)
             XCTFail("Should have thrown error for invalid certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
         }
 
         do {
-            _ = try CertificateUtils.getSerialHex(from: invalidCertificate)
+            _ = try await CertificateUtils.getSerialHex(from: invalidCertificate)
             XCTFail("Should have thrown error for invalid certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
@@ -198,20 +199,20 @@ final class CertificateStatusTests: XCTestCase {
 
     // MARK: - Certificate Lifecycle Tests
 
-    func testCertificateLifecycle() throws {
+    func testCertificateLifecycle() async throws {
         // Test complete certificate lifecycle
 
         // 1. Generate CSR
-        let csrData = try nodeKeys.generateCsrSetupToken()
+        let csrData = try await nodeKeys.generateCsrSetupToken()
         XCTAssertFalse(csrData.isEmpty, "CSR should be generated")
 
         // 2. Get initial certificate status
-        let initialStatus = try nodeKeys.getCertificateStatus()
+        let initialStatus = try await nodeKeys.getCertificateStatus()
         XCTAssertNotNil(initialStatus, "Initial certificate status should be available")
 
         // 3. Try to get certificate serial (might fail if no certificate)
         do {
-            let serial = try nodeKeys.getCertificateSerial()
+            let serial = try await nodeKeys.getCertificateSerial()
             XCTAssertFalse(serial.isEmpty, "Certificate serial should be available")
         } catch {
             // Expected if no certificate is installed
@@ -219,16 +220,16 @@ final class CertificateStatusTests: XCTestCase {
         }
 
         // 4. Get QUIC certificate config
-        let quicConfig = try nodeKeys.getQuicCertificateConfig()
+        let quicConfig = try await nodeKeys.getQuicCertificateConfig()
         XCTAssertFalse(quicConfig.isEmpty, "QUIC certificate config should be available")
 
         // 5. Get node certificate
-        let nodeCertificate = try nodeKeys.getNodeCertificate()
+        let nodeCertificate = try await nodeKeys.getNodeCertificate()
         XCTAssertFalse(nodeCertificate.isEmpty, "Node certificate should be available")
 
         // 6. Validate the certificate
         do {
-            try nodeKeys.validatePeerCertificate(nodeCertificate)
+            try await nodeKeys.validatePeerCertificate(nodeCertificate)
             // Should succeed if certificate is valid
         } catch {
             // Might fail depending on certificate validity
@@ -238,52 +239,52 @@ final class CertificateStatusTests: XCTestCase {
 
     // MARK: - Multiple Certificate Tests
 
-    func testMultipleCertificates() throws {
+    func testMultipleCertificates() async throws {
         // Test handling multiple certificates
 
         // Create multiple node keys handles
-        let nodeKeys1 = try NodeKeyManager()
-        try nodeKeys1.generateKeys()
+        let nodeKeys1 = try await NodeKeyManager()
+        try await nodeKeys1.generateKeys()
 
-        let nodeKeys2 = try NodeKeyManager()
-        try nodeKeys2.generateKeys()
+        let nodeKeys2 = try await NodeKeyManager()
+        try await nodeKeys2.generateKeys()
 
         // Get certificates from both
-        let certificate1 = try nodeKeys1.getNodeCertificate()
-        let certificate2 = try nodeKeys2.getNodeCertificate()
+        let certificate1 = try await nodeKeys1.getNodeCertificate()
+        let certificate2 = try await nodeKeys2.getNodeCertificate()
 
         // Verify certificates are different
         XCTAssertNotEqual(certificate1, certificate2, "Different nodes should have different certificates")
 
         // Test certificate utilities on both
-        let ski1 = try CertificateUtils.extractSki(from: certificate1)
-        let ski2 = try CertificateUtils.extractSki(from: certificate2)
+        let ski1 = try await CertificateUtils.extractSki(from: certificate1)
+        let ski2 = try await CertificateUtils.extractSki(from: certificate2)
 
         XCTAssertNotEqual(ski1, ski2, "Different certificates should have different SKIs")
 
-        let serial1 = try CertificateUtils.getSerialHex(from: certificate1)
-        let serial2 = try CertificateUtils.getSerialHex(from: certificate2)
+        let serial1 = try await CertificateUtils.getSerialHex(from: certificate1)
+        let serial2 = try await CertificateUtils.getSerialHex(from: certificate2)
 
         XCTAssertNotEqual(serial1, serial2, "Different certificates should have different serials")
     }
 
     // MARK: - Certificate Status Edge Cases
 
-    func testCertificateStatusEdgeCases() throws {
+    func testCertificateStatusEdgeCases() async throws {
         // Test various edge cases for certificate status
 
         // Test with uninitialized keys
-        let uninitializedKeys = try NodeKeyManager()
+        let uninitializedKeys = try await NodeKeyManager()
 
         do {
-            _ = try uninitializedKeys.getCertificateStatus()
+            _ = try await uninitializedKeys.getCertificateStatus()
             XCTFail("Should have thrown error for uninitialized keys")
         } catch {
             XCTAssertTrue(error is FFIError)
         }
 
         do {
-            _ = try uninitializedKeys.getCertificateSerial()
+            _ = try await uninitializedKeys.getCertificateSerial()
             XCTFail("Should have thrown error for uninitialized keys")
         } catch {
             XCTAssertTrue(error is FFIError)
@@ -292,59 +293,59 @@ final class CertificateStatusTests: XCTestCase {
 
     // MARK: - Concurrent Certificate Operations
 
-    func testConcurrentCertificateOperations() throws {
+    func testConcurrentCertificateOperations() async throws {
         // Test concurrent certificate operations
-
-        let expectation = XCTestExpectation(description: "Concurrent certificate operations")
-        expectation.expectedFulfillmentCount = 3
-
-        // Run concurrent operations
-        DispatchQueue.global().async {
-            do {
-                let status = try self.nodeKeys.getCertificateStatus()
-                XCTAssertNotNil(status)
-                expectation.fulfill()
-            } catch {
-                XCTFail("Concurrent get certificate status failed: \(error)")
-            }
+        guard let nodeKeys = self.nodeKeys else {
+            XCTFail("Node keys not initialized")
+            return
         }
-
-        DispatchQueue.global().async {
-            do {
-                let certificate = try self.nodeKeys.getNodeCertificate()
-                XCTAssertFalse(certificate.isEmpty)
-                expectation.fulfill()
-            } catch {
-                XCTFail("Concurrent get node certificate failed: \(error)")
+        
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                do {
+                    let status = try await nodeKeys.getCertificateStatus()
+                    XCTAssertNotNil(status)
+                } catch {
+                    XCTFail("Concurrent get certificate status failed: \(error)")
+                }
             }
-        }
 
-        DispatchQueue.global().async {
-            do {
-                let quicConfig = try self.nodeKeys.getQuicCertificateConfig()
-                XCTAssertFalse(quicConfig.isEmpty)
-                expectation.fulfill()
-            } catch {
-                XCTFail("Concurrent get QUIC certificate config failed: \(error)")
+            group.addTask {
+                do {
+                    let certificate = try await nodeKeys.getNodeCertificate()
+                    XCTAssertFalse(certificate.isEmpty)
+                } catch {
+                    XCTFail("Concurrent get node certificate failed: \(error)")
+                }
             }
-        }
 
-        wait(for: [expectation], timeout: 5.0)
+            group.addTask {
+                do {
+                    let quicConfig = try await nodeKeys.getQuicCertificateConfig()
+                    XCTAssertFalse(quicConfig.isEmpty)
+                } catch {
+                    XCTFail("Concurrent get QUIC certificate config failed: \(error)")
+                }
+            }
+
+            // Wait for all tasks to complete
+            for await _ in group {}
+        }
     }
 
     // MARK: - Certificate Validation Performance
 
-    func testCertificateValidationPerformance() throws {
+    func testCertificateValidationPerformance() async throws {
         // Test performance of certificate validation operations
 
-        let nodeCertificate = try nodeKeys.getNodeCertificate()
+        let nodeCertificate = try await nodeKeys.getNodeCertificate()
         let iterations = 100
 
         // Measure certificate validation performance
         let validationStartTime = CFAbsoluteTimeGetCurrent()
         for _ in 0 ..< iterations {
             do {
-                try nodeKeys.validatePeerCertificate(nodeCertificate)
+                try await nodeKeys.validatePeerCertificate(nodeCertificate)
             } catch {
                 // Ignore validation errors for performance testing
             }
@@ -354,14 +355,14 @@ final class CertificateStatusTests: XCTestCase {
         // Measure SKI extraction performance
         let skiStartTime = CFAbsoluteTimeGetCurrent()
         for _ in 0 ..< iterations {
-            _ = try CertificateUtils.extractSki(from: nodeCertificate)
+            _ = try await CertificateUtils.extractSki(from: nodeCertificate)
         }
         let skiTime = CFAbsoluteTimeGetCurrent() - skiStartTime
 
         // Measure serial extraction performance
         let serialStartTime = CFAbsoluteTimeGetCurrent()
         for _ in 0 ..< iterations {
-            _ = try CertificateUtils.getSerialHex(from: nodeCertificate)
+            _ = try await CertificateUtils.getSerialHex(from: nodeCertificate)
         }
         let serialTime = CFAbsoluteTimeGetCurrent() - serialStartTime
 
@@ -378,28 +379,28 @@ final class CertificateStatusTests: XCTestCase {
 
     // MARK: - Certificate Error Handling
 
-    func testCertificateErrorHandling() throws {
+    func testCertificateErrorHandling() async throws {
         // Test various error conditions for certificate operations
 
         // Test with corrupted certificate data
         let corruptedCertificate = Data([0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA])
 
         do {
-            try nodeKeys.validatePeerCertificate(corruptedCertificate)
+            try await nodeKeys.validatePeerCertificate(corruptedCertificate)
             XCTFail("Should have thrown error for corrupted certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
         }
 
         do {
-            _ = try CertificateUtils.extractSki(from: corruptedCertificate)
+            _ = try await CertificateUtils.extractSki(from: corruptedCertificate)
             XCTFail("Should have thrown error for corrupted certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
         }
 
         do {
-            _ = try CertificateUtils.getSerialHex(from: corruptedCertificate)
+            _ = try await CertificateUtils.getSerialHex(from: corruptedCertificate)
             XCTFail("Should have thrown error for corrupted certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
@@ -408,19 +409,19 @@ final class CertificateStatusTests: XCTestCase {
 
     // MARK: - Certificate Status Consistency
 
-    func testCertificateStatusConsistency() throws {
+    func testCertificateStatusConsistency() async throws {
         // Test that certificate status is consistent across multiple calls
 
-        let status1 = try nodeKeys.getCertificateStatus()
-        let status2 = try nodeKeys.getCertificateStatus()
+        let status1 = try await nodeKeys.getCertificateStatus()
+        let status2 = try await nodeKeys.getCertificateStatus()
 
         // Status should be consistent (same value)
         XCTAssertEqual(status1, status2, "Certificate status should be consistent across multiple calls")
 
         // Test after some operations
-        _ = try nodeKeys.generateCsrSetupToken()
+        _ = try await nodeKeys.generateCsrSetupToken()
 
-        let status3 = try nodeKeys.getCertificateStatus()
+        let status3 = try await nodeKeys.getCertificateStatus()
         // Status might change after CSR generation, but should still be valid
         XCTAssertNotNil(status3, "Certificate status should still be valid after CSR generation")
     }
