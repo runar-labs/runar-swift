@@ -277,7 +277,6 @@ final class SymmetricKeyTests: XCTestCase {
         } catch {
             // If persistence is not implemented, this is expected to fail
             // We'll just log it and continue
-            print("Symmetric key persistence not implemented: \(error)")
         }
     }
 
@@ -329,7 +328,5 @@ final class SymmetricKeyTests: XCTestCase {
         XCTAssertLessThan(encryptionTime, 1.0, "Encryption should be fast")
         XCTAssertLessThan(decryptionTime, 1.0, "Decryption should be fast")
         
-        print("Encryption time for 100 operations: \(encryptionTime)s")
-        print("Decryption time for 100 operations: \(decryptionTime)s")
     }
 }

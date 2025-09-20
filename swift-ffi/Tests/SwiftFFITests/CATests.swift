@@ -540,7 +540,6 @@ final class CATests: XCTestCase {
         let averageTime = totalTime / Double(iterations)
 
         XCTAssertGreaterThan(totalTime, 0, "CA node creation should take some time")
-        print("Average CA node creation time: \(averageTime) seconds")
     }
 
     func testEaKeyPairCreationPerformance() async throws {
@@ -559,6 +558,5 @@ final class CATests: XCTestCase {
         let averageTime = totalTime / Double(iterations)
 
         XCTAssertGreaterThan(totalTime, 0, "EA key pair creation should take some time")
-        print("Average EA key pair creation time: \(averageTime) seconds")
     }
 }

@@ -23,6 +23,8 @@ The current `KeysHandle` exposes mixed node and mobile methods and inconsistent 
 - All public API methods are `async throws`. Cross-actor calls require `await`, removing the need for `@unchecked Sendable`.
 - FFI calls remain synchronous internally but are isolated within actor execution, ensuring thread safety of the underlying handle.
 
+> Swift 6 FFI Concurrency Guidance (see section below) governs how we write actor methods and FFI helpers to satisfy strict concurrency rules while safely calling C/Rust.
+
 ## Proposed Swift API
 
 ### Common Key Manager (shared by both roles)
@@ -62,6 +64,7 @@ public protocol CommonKeyManager {
 
 Notes:
 - `encryptLocalData`/`decryptLocalData` do not take a key name because the underlying FFI operates on the default symmetric key. `ensureSymmetricKey(name:)` can be used to ensure existence, but subsequent local data operations do not select by name.
+- Actor methods must not suspend during FFI pointer usage; see Swift 6 guidance below.
 
 ### Node-only API
 
@@ -93,6 +96,8 @@ public protocol NodeOnly: CommonKeyManager {
     func decryptMessageFromMobile(encryptedData: Data) async throws -> Data
 }
 ```
+
+> Implementation note: obtain `let handle = self.handle` up-front and pass that local to nonisolated FFI helpers. Do not reference `self` inside closures passed to FFI wrappers.
 
 ### Mobile-only API
 
@@ -143,6 +148,49 @@ Initialization:
 - `MobileKeyManager` initializes the FFI handle then calls `rn_keys_init_as_mobile`.
 
 No type exposes APIs from the opposite role, so misuse is prevented at compile-time.
+
+## Swift 6 FFI Concurrency Guidance
+
+This section defines mandatory rules for calling C/Rust FFI from actor methods under Swift 6 strict concurrency.
+
+1) No suspension during FFI pointer usage
+- Actor methods may be `async` but must not call `await` between:
+  - preparing arguments and pointers
+  - invoking `rn_*` functions
+  - copying and freeing outputs
+- All FFI work happens in a single synchronous region.
+
+2) Never capture `self` in FFI closures
+- Copy the handle at method start: `let handle = self.handle`.
+- Pass only local variables into closures for `withRnErrorCode` and `withUnsafeBytes`.
+- Do not reference `self` inside non-escaping closures used for FFI.
+
+3) Use nonisolated FFI helper functions
+- Implement internal `nonisolated` free/static functions (or top-level funcs) like:
+  - `func ffi_encrypt_with_envelope(_ handle: UnsafeMutableRawPointer, ...) throws -> Data`
+- These helpers perform the `rn_*` call inside `withRnErrorCode`, copy results to `Data`, and free via `rn_free`/`rn_string_free`.
+- Actor methods obtain locals, then call helpers. This avoids capturing actor state in closures and keeps concurrency annotations simple.
+
+4) Only pass stack-local pointers to FFI
+- Allocate `var outPtr`, `var outLen` as locals, pass them to FFI once, and immediately copy-and-free results.
+- For inputs, use `withUnsafeBytes` with non-escaping closure and ensure the call occurs inside the closure.
+- Never store or return raw pointers; only return Swift `Data`/`String`.
+
+5) Enforce one-handle-per-actor and no sharing
+- The FFI handle is owned by the actor. Do not share it across actors or threads.
+- If a raw handle must be exposed to other wrappers (e.g., transport), pass it transiently in the same synchronous call path.
+
+6) No @unchecked Sendable anywhere
+- Protocols should not require `Sendable`.
+- Actors provide isolation; do not mark actor state as Sendable.
+
+7) Logging and error translation
+- No `print()` in production. Use the shared logger (`RunarLogger`) if logging is needed around FFI calls.
+- Translate `RnError` to `FFIError` synchronously; do not suspend while accessing error message pointers; free message strings immediately.
+
+8) Validation boundaries
+- Validate Swift inputs before FFI call (non-empty, size limits, string lengths) to avoid undefined behavior inside Rust.
+- Do not call FFI with null/fake handles. If testing invalid-handle paths is required, add Swift-side guards to throw deterministically.
 
 ## FFI Mapping
 
@@ -230,6 +278,7 @@ let plain = try await km.decryptEnvelope(envelopeData: eed)
 2. Implement `public actor NodeKeyManager` and `public actor MobileKeyManager`:
    - Own FFI handle lifecycle (`rn_keys_new`/`rn_keys_free`), init as node/mobile.
    - Implement common and role-specific methods; all FFI calls executed within actor context.
+   - Follow the Swift 6 FFI Concurrency Guidance for all methods and helpers.
 3. Remove `KeysHandle` entirely. Replace all usages with role-specific actors or `CommonKeyManager` where appropriate.
 4. Unify method names: remove `mobile*` prefixes. Provide only the common names on respective actors.
 5. Update transport/discovery and other helpers to accept the appropriate role-specific actor or `CommonKeyManager`.

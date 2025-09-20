@@ -372,9 +372,6 @@ final class CertificateStatusTests: XCTestCase {
         XCTAssertGreaterThan(serialTime, 0, "Serial extraction should take some time")
 
         // Log performance metrics (optional)
-        print("Certificate validation time for \(iterations) iterations: \(validationTime) seconds")
-        print("SKI extraction time for \(iterations) iterations: \(skiTime) seconds")
-        print("Serial extraction time for \(iterations) iterations: \(serialTime) seconds")
     }
 
     // MARK: - Certificate Error Handling

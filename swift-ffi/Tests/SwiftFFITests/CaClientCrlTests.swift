@@ -283,7 +283,6 @@ final class CaClientCrlTests: XCTestCase {
             XCTAssertGreaterThan(totalTime, 0, "CRL retrieval should take some time")
 
             // Log performance metrics (optional)
-            print("Average CRL retrieval time: \(averageTime) seconds")
         } catch {
             // Might fail if server is not running
             XCTAssertTrue(error is FFIError)

@@ -13,21 +13,17 @@ final class FFIE2EIntegrationTest: XCTestCase {
     func decode<T: Codable>(_ type: T.Type, from data: Data) throws -> T { try CodableCBORDecoder().decode(type, from: data) }
 
     func testWrapperFullTransportE2EQuicMtls() async throws {
-        print("\n🚀 Starting WRAPPER Full-transport E2E QUIC mTLS test")
         let logger = createLogger()
 
         // ==========================================
         // Phase 1: Setup
         // ==========================================
-        print("\n🏗️  PHASE 1 (WRAPPER): Setup")
         let nodeKeys = try await NodeKeyManager()
         let mobileKeys = try await MobileKeyManager()
-        print("   ✅ (WRAPPER) Keys handles created and initialized")
 
         // ==========================================
         // Phase 2: CA Node and Server
         // ==========================================
-        print("\n🏗️  PHASE 2 (WRAPPER): CA Node and Server")
         let caNode = try await CANode.create()
         let eaManager = EAKeyManager(logger: logger)
         let eaHandle = try await eaManager.createKeyPair()
@@ -45,7 +41,6 @@ final class FFIE2EIntegrationTest: XCTestCase {
             networkId: networkId
         )
         try await caNode.setupComplete(params: setupParams)
-        print("   ✅ (WRAPPER) CA Node setup complete")
 
         let shared = try await caNode.createSharedWrapped()
         let server = try await CAServer.create(
@@ -61,14 +56,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
         try await server.start()
         let bootstrapAddr = try await server.bootstrapAddress()
         let authenticatedAddr = try await server.authenticatedAddress()
-        print("   ✅ (WRAPPER) CA Server started with addresses")
-        print("      Bootstrap: \(bootstrapAddr)")
-        print("      Authenticated: \(authenticatedAddr)")
 
         // ==========================================
         // Phase 3: Mobile Node CSR and Enrollment
         // ==========================================
-        print("\n📱 PHASE 3 (WRAPPER): Mobile Node CSR and Enrollment")
         let setupTokenCbor = try await nodeKeys.generateCsrSetupToken()
         let setupToken: SetupToken = try decode(SetupToken.self, from: setupTokenCbor)
         let csrDer = setupToken.csr_der
@@ -111,12 +102,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let certMsg = try await mobileKeys.fromEnrollResponse(enrollResp)
         try await nodeKeys.installCertificate(certMsg)
         let quicConfig = try await nodeKeys.getQuicCertificateConfig()
-        print("   ✅ (WRAPPER) Enrollment successful; QUIC config bytes: \(quicConfig.count)")
 
         // ==========================================
         // Phase 4: Certificate Renewal via REAL QUIC mTLS
         // ==========================================
-        print("\n🔄 PHASE 4 (WRAPPER): Certificate Renewal via REAL QUIC mTLS")
         let renewalSetupTokenCbor = try await nodeKeys.generateCsrSetupToken()
         let renewalSetupToken: SetupToken = try decode(SetupToken.self, from: renewalSetupTokenCbor)
         let renewReq = RenewRequest(network_id: networkId, csr_der: renewalSetupToken.csr_der)
@@ -124,12 +113,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let renewResp = try await client.renew(authenticatedAddress: authenticatedAddr, request: renewReqCbor)
         let renewalCertMsg = try await mobileKeys.fromRenewResponse(renewResp)
         try await nodeKeys.installCertificate(renewalCertMsg)
-        print("   ✅ (WRAPPER) Renewal successful and certificate installed")
 
         // ==========================================
         // Phase 5: Certificate Revocation + CRL-lite via REAL QUIC mTLS
         // ==========================================
-        print("\n🚫 PHASE 5 (WRAPPER): Certificate Revocation + CRL-lite via REAL QUIC mTLS")
         let nodeCert = try await nodeKeys.getNodeCertificate()
         let ski = try await CertificateUtils.extractSki(from: nodeCert)
         try await shared.addAdminSki(ski)
@@ -141,20 +128,16 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let revokeReqCbor = try encode(revokeReq)
         _ = try await client.revoke(authenticatedAddress: authenticatedAddr, request: revokeReqCbor)
         let crl = try await caNode.handleCRL(networkId: networkId)
-        print("   ✅ (WRAPPER) Certificate revoked; CRL-lite bytes: \(crl.count)")
 
         // ==========================================
         // Phase 6: Status and Chain via REAL QUIC mTLS
         // ==========================================
-        print("\n📊 PHASE 6 (WRAPPER): Status and Chain via REAL QUIC mTLS")
         let status = try await client.getStatus(authenticatedAddress: authenticatedAddr, networkId: networkId)
         let chain = try await client.getChain(bootstrapAddress: bootstrapAddr, networkId: networkId)
-        print("   ✅ (WRAPPER) Status bytes: \(status.count), Chain bytes: \(chain.count)")
 
         // ==========================================
         // Phase 7: Profile Key Functionality via REAL QUIC mTLS
         // ==========================================
-        print("\n🔑 PHASE 7 (WRAPPER): Profile Key Functionality via REAL QUIC mTLS")
         let personalKey = try await nodeKeys.deriveUserProfileKey(label: "personal")
         let workKey = try await nodeKeys.deriveUserProfileKey(label: "work")
         let personalId = try await nodeKeys.getCompactId(for: personalKey)
@@ -162,12 +145,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let envelope = try await nodeKeys.encryptWithEnvelope(data: testData, networkPublicKey: nil, profilePublicKeys: [personalKey])
         let decrypted = try await nodeKeys.decryptWithProfile(envelopeData: envelope, profileId: personalId)
         XCTAssertEqual(decrypted, testData)
-        print("   ✅ (WRAPPER) Profile key envelope roundtrip succeeded")
 
         // ==========================================
         // Phase 8: Rate Limiting via REAL QUIC mTLS
         // ==========================================
-        print("\n⏱️  PHASE 8 (WRAPPER): Rate Limiting via REAL QUIC mTLS")
         for _ in 1 ... 3 {
             let setupCbor = try await nodeKeys.generateCsrSetupToken()
             let setup: SetupToken = try decode(SetupToken.self, from: setupCbor)
@@ -176,13 +157,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
             do {
                 _ = try await client.enroll(bootstrapAddress: bootstrapAddr, request: reqCbor)
                 // May occasionally pass depending on rate limits; not a hard assert here
-            } catch { print("   ✅ (WRAPPER) Rate limited as expected") }
         }
 
         // ==========================================
         // Phase 9: Token Revocation via REAL QUIC mTLS
         // ==========================================
-        print("\n🔒 PHASE 9 (WRAPPER): Token Revocation via REAL QUIC mTLS")
         try await caNode.revokeToken("test_token_001")
         do {
             let sCbor = try await nodeKeys.generateCsrSetupToken()
@@ -191,12 +170,10 @@ final class FFIE2EIntegrationTest: XCTestCase {
             let reqCbor = try encode(req)
             _ = try await client.enroll(bootstrapAddress: bootstrapAddr, request: reqCbor)
             XCTFail("Revoked token should be rejected")
-        } catch { print("   ✅ (WRAPPER) Revoked token rejected as expected") }
 
         // ==========================================
         // Phase 10: Negative Cases via REAL QUIC mTLS
         // ==========================================
-        print("\n❌ PHASE 10 (WRAPPER): Negative Cases via REAL QUIC mTLS")
         // Invalid token network id
         let badParams = EAKeyManager.EnrollmentTokenParams(
             eaKeyHandle: eaHandle,
@@ -217,7 +194,6 @@ final class FFIE2EIntegrationTest: XCTestCase {
         do {
             _ = try await client.enroll(bootstrapAddress: bootstrapAddr, request: badReqCbor)
             XCTFail("Invalid token should be rejected")
-        } catch { print("   ✅ (WRAPPER) Invalid token rejected as expected") }
 
         // Unauthorized renewal (new node)
         let unauthorizedKeys = try await NodeKeyManager()
@@ -228,18 +204,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
         do {
             _ = try await client.renew(authenticatedAddress: authenticatedAddr, request: unauthorizedReqCbor)
             XCTFail("Unauthorized renewal should be rejected")
-        } catch { print("   ✅ (WRAPPER) Unauthorized renewal rejected as expected") }
 
         // ==========================================
         // Cleanup
         // ==========================================
-        print("\n🧹 CLEANUP (WRAPPER): Freeing resources")
         try await server.stop()
         _ = workKey // keep references used
         _ = envelope
         _ = personalId
-        print("   ✅ (WRAPPER) Cleanup complete")
-        print("\n🎉 WRAPPER FULL-TRANSPORT E2E TEST COMPLETED SUCCESSFULLY!")
     }
 
     private func validateCertificates(rootCa: Data, issuingCa: Data) throws {
