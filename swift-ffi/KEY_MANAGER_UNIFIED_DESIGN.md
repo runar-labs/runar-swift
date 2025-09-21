@@ -192,6 +192,15 @@ This section defines mandatory rules for calling C/Rust FFI from actor methods u
 - Validate Swift inputs before FFI call (non-empty, size limits, string lengths) to avoid undefined behavior inside Rust.
 - Do not call FFI with null/fake handles. If testing invalid-handle paths is required, add Swift-side guards to throw deterministically.
 
+9) Do not return non-Sendable classes across actor boundaries
+- Never return a reference type (e.g., `CAClient`) from an actor-isolated method to a nonisolated context.
+- If an actor needs to create a wrapper object, return a raw handle (`UnsafeMutableRawPointer`) or a value type, and construct the class on the caller side.
+- Alternatively, execute the FFI creation in a `nonisolated` helper and keep object construction in the same isolation domain.
+
+10) CA wrappers concurrency model
+- `CANode`, `CAServer`, `SharedCANode` are plain classes (not actors, not `@MainActor`). All their instance methods that touch FFI are `nonisolated` and follow rules 1–4.
+- `CAClient` is an ACTOR to enable actor-to-actor factory construction from `NodeKeyManager` and avoid returning non-Sendable across isolation.
+
 ## FFI Mapping
 
 ### CommonKeyManager (both types)

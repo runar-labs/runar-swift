@@ -214,4 +214,12 @@ final class InitializationTests: XCTestCase {
         try await nodeKeyManager.generateKeys()
         do { _ = try await nodeKeyManager.getNodePublicKey() } catch { XCTFail("getNodePublicKey failed: \(error)") }
     }
+
+    func testEmitFfiTypesVectors() async throws {
+        let outDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("target")
+            .appendingPathComponent("ffi-types-vectors-swift")
+        try FFITypesVectors.writeAll(to: outDir)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outDir.path))
+    }
 }

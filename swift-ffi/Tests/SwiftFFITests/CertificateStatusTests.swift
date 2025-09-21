@@ -1,6 +1,7 @@
 import SwiftCommon
 import SwiftFFI
 import XCTest
+import SwiftCBOR
 
 @testable import SwiftFFI
 
@@ -30,16 +31,13 @@ final class CertificateStatusTests: XCTestCase {
         let caServerConfig = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
-            networkId: "test-network",
+            networkId: "test_network",
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
 
         do {
-            let sharedCaNode = try await caNode.createShared()
-            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
-
-            // Set up CA client for testing with real certs
+            // Configure CA node first (before creating shared/server) to ensure server uses the configured CAs
             let eaManager = EAKeyManager(logger: RunarLogger(component: .custom))
             let eaHandle = try await eaManager.createKeyPair()
             let eaPublicKey = try await eaManager.getPublicKey(eaHandle)
@@ -55,9 +53,19 @@ final class CertificateStatusTests: XCTestCase {
             try await caNode.setupComplete(params: setupParams)
             let rootCa = try await caNode.getRootCACertificate()
             let issuingCa = try await caNode.getIssuingCACertificate()
+
+            // Now create shared and server using the configured CA node
+            let sharedCaNode = try await caNode.createShared()
+            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+            
+            // Start CA server and fetch real addresses
+            try await caServer.start()
+            let bootstrapAddr = try await caServer.bootstrapAddress()
+            let authenticatedAddr = try await caServer.authenticatedAddress()
+            
             let caClientConfig = CaClientConfigAll(
-                bootstrap_server: "127.0.0.1:0",
-                authenticated_server: "127.0.0.1:0",
+                bootstrap_server: bootstrapAddr,
+                authenticated_server: authenticatedAddr,
                 network_id: "test-network",
                 request_timeout_seconds: 30,
                 max_retries: 3,
@@ -65,7 +73,32 @@ final class CertificateStatusTests: XCTestCase {
                 issuing_ca_der: issuingCa
             )
 
-            caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+            caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+
+            // Perform real enrollment to install a certificate
+            let now = UInt64(Date().timeIntervalSince1970)
+            let tokenParams = EAKeyManager.EnrollmentTokenParams(
+                eaKeyHandle: eaHandle,
+                tokenId: "cert_status_tests_token",
+                networkId: "test_network",
+                subject: "CN=test-node,O=Runar,C=US",
+                validFrom: now - 60,
+                validUntil: now + 3600,
+                nonce: Data((0..<16).map { _ in UInt8.random(in: 0...255) }),
+                capabilities: ["enroll"]
+            )
+            let tokenData = try await eaManager.generateEnrollmentToken(params: tokenParams)
+            let enrollmentToken = try CodableCBORDecoder().decode(EnrollmentToken.self, from: tokenData)
+            let csr = try await nodeKeys.generateCSR()
+            let enrollReq = CsrEnrollRequest(
+                network_id: "test_network",
+                csr_der: csr,
+                enrollment_token: enrollmentToken
+            )
+            let enrollReqData = try CodableCBOREncoder().encode(enrollReq)
+            let enrollResp = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: enrollReqData)
+            let certMsg = try await MobileKeyManager().fromEnrollResponse(enrollResp)
+            try await nodeKeys.installCertificate(certMsg)
         } catch {
             XCTFail("Failed to set up CA components: \(error)")
         }

@@ -70,7 +70,7 @@ final class CaClientCrlTests: XCTestCase {
                 issuing_ca_der: issuingCa
             )
 
-            caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+            caClient = try await nodeKeys.createCAClient(config: caClientConfig)
         } catch {
             XCTFail("Failed to set up CA components: \(error)")
         }
@@ -256,7 +256,7 @@ final class CaClientCrlTests: XCTestCase {
             issuing_ca_der: try await caNode.getIssuingCACertificate()
         )
 
-        let caClient2 = try await CAClient(config: caClientConfig2, nodeKeys: nodeKeys)
+        let caClient2 = try await nodeKeys.createCAClient(config: caClientConfig2)
 
         do {
             let crl1 = try await caClient.getCrl(
@@ -383,10 +383,11 @@ final class CaClientCrlTests: XCTestCase {
             return
         }
 
+        let clientForGroup = caClient
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 do {
-                    let crlData = try await caClient.getCrl(
+                    let crlData = try await clientForGroup.getCrl(
                         authenticatedAddress: authenticatedAddress,
                         networkId: networkId
                     )
@@ -399,7 +400,7 @@ final class CaClientCrlTests: XCTestCase {
 
             group.addTask {
                 do {
-                    let crlData = try await caClient.getCrl(
+                    let crlData = try await clientForGroup.getCrl(
                         authenticatedAddress: authenticatedAddress,
                         networkId: networkId
                     )
@@ -412,7 +413,7 @@ final class CaClientCrlTests: XCTestCase {
 
             group.addTask {
                 do {
-                    let crlData = try await caClient.getCrl(
+                    let crlData = try await clientForGroup.getCrl(
                         authenticatedAddress: authenticatedAddress,
                         networkId: networkId
                     )

@@ -51,7 +51,7 @@ public protocol CommonKeyManager {
 }
 
 /// Node-specific key manager operations
-///
+/// 
 /// This protocol defines operations that are only available to node key managers,
 /// including certificate management, profile key operations, and network key handling.
 public protocol NodeOnly: CommonKeyManager {
@@ -59,11 +59,11 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Returns: True if keys exist, false otherwise
     /// - Throws: FFIError if the operation fails
     func hasKeys() async throws -> Bool
-
+    
     /// Generate keys for the node
     /// - Throws: FFIError if key generation fails
     func generateKeys() async throws
-
+    
     /// Generate CSR setup token for certificate enrollment
     /// - Returns: CSR setup token data
     /// - Throws: FFIError if generation fails
@@ -73,33 +73,33 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Returns: CSR data
     /// - Throws: FFIError if generation fails
     func generateCSR() async throws -> Data
-
+    
     /// Install certificate from CA response
     /// - Parameter certMessage: Certificate message data
     /// - Throws: FFIError if installation fails
     func installCertificate(_ certMessage: Data) async throws
-
+    
     /// Get QUIC certificate configuration
     /// - Returns: QUIC certificate configuration data
     /// - Throws: FFIError if the operation fails
     func getQuicCertificateConfig() async throws -> Data
-
+    
     /// Get node certificate
     /// - Returns: Node certificate data
     /// - Throws: FFIError if the operation fails
     func getNodeCertificate() async throws -> Data
-
+    
     /// Get node public key
     /// - Returns: Node public key data
     /// - Throws: FFIError if the operation fails
     func getNodePublicKey() async throws -> Data
-
+    
     /// Derive user profile key for given label
     /// - Parameter label: Profile label (e.g., "personal", "work")
     /// - Returns: Derived profile key data
     /// - Throws: FFIError if derivation fails
     func deriveUserProfileKey(label: String) async throws -> Data
-
+    
     /// Decrypt envelope data using specific profile
     /// - Parameters:
     ///   - envelopeData: Encrypted envelope data
@@ -107,44 +107,44 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Returns: Decrypted data
     /// - Throws: FFIError if decryption fails
     func decryptWithProfile(envelopeData: Data, profileId: String) async throws -> Data
-
+    
     /// Install profile public key
     /// - Parameter publicKey: Profile public key data
     /// - Throws: FFIError if installation fails
     func installProfilePublicKey(_ publicKey: Data) async throws
-
+    
     /// Get profile public key by label
     /// - Parameter label: Profile label
     /// - Returns: Tuple containing public key data and existence flag
     /// - Throws: FFIError if the operation fails
     func getProfilePublicKey(label: String) async throws -> (publicKey: Data?, exists: Bool)
-
+    
     /// Get certificate status
     /// - Returns: Certificate status code
     /// - Throws: FFIError if the operation fails
     func getCertificateStatus() async throws -> Int32
-
+    
     /// Get certificate serial number
     /// - Returns: Certificate serial number string
     /// - Throws: FFIError if the operation fails
     func getCertificateSerial() async throws -> String
-
+    
     /// Validate peer certificate
     /// - Parameter cert: Peer certificate data
     /// - Throws: FFIError if validation fails
     func validatePeerCertificate(_ cert: Data) async throws
-
+    
     /// Install network key from message
     /// - Parameter networkKeyMessage: Network key message data
     /// - Throws: FFIError if installation fails
     func installNetworkKey(_ networkKeyMessage: Data) async throws
-
+    
     /// Get network agreement for given network public key
     /// - Parameter networkPublicKey: Network public key
     /// - Returns: Network agreement data
     /// - Throws: FFIError if the operation fails
     func getNetworkAgreement(networkPublicKey: Data) async throws -> Data
-
+    
     /// Check if node has network private key for given public key
     /// - Parameter networkPublicKey: Network public key to check
     /// - Returns: True if private key exists, false otherwise
@@ -183,25 +183,25 @@ public protocol NodeOnly: CommonKeyManager {
 }
 
 /// Mobile-specific key manager operations
-///
+/// 
 /// This protocol defines operations that are only available to mobile key managers,
 /// including user key initialization, network key exchange, and certificate processing.
 public protocol MobileOnly: CommonKeyManager {
     /// Initialize user root key for mobile device
     /// - Throws: FFIError if initialization fails
     func initializeUserRootKey() async throws
-
+    
     /// Get user public key
     /// - Returns: User public key data
     /// - Throws: FFIError if the operation fails
     func getUserPublicKey() async throws -> Data
-
+    
     /// Derive user profile key for given label
     /// - Parameter label: Profile label (e.g., "personal", "work")
     /// - Returns: Derived profile key data
     /// - Throws: FFIError if derivation fails
     func deriveUserProfileKey(label: String) async throws -> Data
-
+    
     /// Install network public key
     /// - Parameter networkPublicKey: Network public key data
     /// - Throws: FFIError if installation fails
@@ -216,18 +216,18 @@ public protocol MobileOnly: CommonKeyManager {
     /// - Parameter certMessage: Certificate message data
     /// - Throws: FFIError if installation fails
     func installCertificate(_ certMessage: Data) async throws
-
+    
     /// Generate network data key
     /// - Returns: Generated network data key
     /// - Throws: FFIError if generation fails
     func generateNetworkDataKey() async throws -> Data
-
+    
     /// Check if mobile has network private key for given public key
     /// - Parameter networkPublicKey: Network public key to check
     /// - Returns: True if private key exists, false otherwise
     /// - Throws: FFIError if the operation fails
     func hasNetworkPrivateKey(networkPublicKey: Data) async throws -> Bool
-
+    
     /// Create network key message for key exchange
     /// - Parameters:
     ///   - networkPublicKey: Network public key
@@ -235,19 +235,19 @@ public protocol MobileOnly: CommonKeyManager {
     /// - Returns: Network key message data
     /// - Throws: FFIError if creation fails
     func createNetworkKeyMessage(networkPublicKey: Data, nodeAgreementPublicKey: Data) async throws -> Data
-
+    
     /// Process setup token (CSR) to create certificate
     /// - Parameter setupToken: Certificate signing request data
     /// - Returns: Certificate message data
     /// - Throws: FFIError if processing fails
     func processSetupToken(_ setupToken: Data) async throws -> Data
-
+    
     /// Process enroll response from CA
     /// - Parameter response: Enroll response data
     /// - Returns: Processed response data
     /// - Throws: FFIError if processing fails
     func fromEnrollResponse(_ response: Data) async throws -> Data
-
+    
     /// Process renew response from CA
     /// - Parameter response: Renew response data
     /// - Returns: Processed response data
@@ -1496,7 +1496,7 @@ public struct SetupToken: Codable {
         self.node_agreement_public_key = node_agreement_public_key
         self.csr_der = csr_der
     }
-    
+
     public init(from cbor: CBOR) throws {
         guard case .map(let map) = cbor else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Expected CBOR map"))
@@ -1598,6 +1598,34 @@ public struct CsrEnrollRequest: Codable {
         try container.encode(network_id, forKey: .network_id)
         try container.encode(Array(csr_der), forKey: .csr_der)
         try container.encode(enrollment_token, forKey: .enrollment_token)
+    }
+}
+
+public struct CsrEnrollResponse: Codable {
+    public let network_id: String
+    public let certificate_der: [UInt8]
+    public let issuing_ca_der: [UInt8]
+    public let root_ca_der: [UInt8]?
+    public let expires_at: UInt64
+    
+    enum CodingKeys: String, CodingKey {
+        case network_id
+        case certificate_der
+        case issuing_ca_der
+        case root_ca_der
+        case expires_at
+    }
+}
+
+public struct CaErrorResponse: Codable {
+    public let code: String
+    public let message: String
+    public let reason: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case code
+        case message
+        case reason
     }
 }
 
@@ -2884,25 +2912,16 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     
     // MARK: - Helper Methods for External Objects
     
-    /// Create a CA client with this node's handle
-    public func createCAClient(config: CaClientConfigAll) async throws -> CAClient {
-        print("DEBUG: NodeKeyManager.createCAClient() - Starting")
-        print("DEBUG: NodeKeyManager.createCAClient() - Config: bootstrap=\(config.bootstrap_server), auth=\(config.authenticated_server)")
-        print("DEBUG: NodeKeyManager.createCAClient() - Root CA: \(config.root_ca_der.count) bytes, Issuing CA: \(config.issuing_ca_der.count) bytes")
-        
-        // Copy handle to local to avoid capturing actor state in closures
-        let handle = self.handle
-        print("DEBUG: NodeKeyManager.createCAClient() - Handle copied to local: \(handle)")
-
-        // Call nonisolated helper - no suspension during FFI
-        print("DEBUG: NodeKeyManager.createCAClient() - About to encode config to CBOR")
-        let cbor = try await ffi_encode_ca_client_config(config)
-        print("DEBUG: NodeKeyManager.createCAClient() - Config encoded to CBOR: \(cbor.count) bytes")
-        
-        print("DEBUG: NodeKeyManager.createCAClient() - About to call ffi_create_ca_client")
-        let clientHandle = try ffi_create_ca_client(handle, configCbor: cbor)
-        print("DEBUG: NodeKeyManager.createCAClient() - CA client created successfully")
-        
+    /// Actor-safe factory: create a CAClient instance
+    public func createCAClient(config: CaClientConfigAll, configCbor: Data? = nil) async throws -> CAClient {
+        let cbor: Data
+        if let provided = configCbor {
+            cbor = provided
+        } else {
+            cbor = try await ffi_encode_ca_client_config(config)
+        }
+        let nodeHandle = self.handle
+        let clientHandle = try ffi_create_ca_client(nodeHandle, configCbor: cbor)
         return CAClient(handle: clientHandle)
     }
     
@@ -3157,7 +3176,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to enable auto-persistence") }
     }
-
+    
     /// Wipe persistence data
     /// - Throws: FFIError if the operation fails
     public func wipePersistence() async throws {
@@ -3180,7 +3199,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to get keystore capabilities") }
         return KeystoreCapabilities(version: caps.version, flags: caps.flags)
     }
-
+    
     /// Flush state to persistence
     /// - Throws: FFIError if the operation fails
     public func flushState() async throws {
@@ -3190,7 +3209,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to flush state") }
     }
-
+    
     /// Register Apple device keystore
     /// - Parameter label: Keystore label
     /// - Throws: FFIError if the operation fails
@@ -3318,42 +3337,13 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
 
 // MARK: - CA Client Wrapper
 
-@MainActor
-public final class CAClient {
-    public var handle: UnsafeMutableRawPointer { _handle }
-    nonisolated(unsafe) private let _handle: UnsafeMutableRawPointer
+public final class CAClient: Sendable {
+    private let _handleWrapper: SendableHandle
+    var handle: UnsafeMutableRawPointer { _handleWrapper.handle }
 
-    @MainActor
-    public init(config: CaClientConfigAll, nodeKeys: NodeKeyManager) async throws {
-        print("DEBUG: CAClient.init() - Starting constructor")
-        print("DEBUG: CAClient.init() - Config: bootstrap=\(config.bootstrap_server), auth=\(config.authenticated_server)")
-        print("DEBUG: CAClient.init() - Root CA: \(config.root_ca_der.count) bytes, Issuing CA: \(config.issuing_ca_der.count) bytes")
-        
-        // Validate certificates are not empty
-        guard !config.root_ca_der.isEmpty else {
-            print("DEBUG: CAClient.init() - ERROR: Root CA certificate is empty")
-            throw FFIError.operationFailed("Root CA certificate is empty; ensure CA node setup completed successfully")
-        }
-        guard !config.issuing_ca_der.isEmpty else {
-            print("DEBUG: CAClient.init() - ERROR: Issuing CA certificate is empty")
-            throw FFIError.operationFailed("Issuing CA certificate is empty; ensure CA node setup completed successfully")
-        }
-        
-        print("DEBUG: CAClient.init() - Certificates validated successfully")
-        
-        let logger = RunarLogger(component: .custom)
-        logger.debug("CAClient.init() - Creating client with Root CA: \(config.root_ca_der.count) bytes, Issuing CA: \(config.issuing_ca_der.count) bytes")
-        
-        print("DEBUG: CAClient.init() - About to call nodeKeys.createCAClient")
-        let caClient = try await nodeKeys.createCAClient(config: config)
-        print("DEBUG: CAClient.init() - nodeKeys.createCAClient completed successfully")
-        
-        self._handle = caClient.handle
-        print("DEBUG: CAClient.init() - Constructor completed successfully")
-    }
-    
-    nonisolated public init(handle: UnsafeMutableRawPointer) {
-        self._handle = handle
+    // Use NodeKeyManager factory to create instances; keep this internal
+    internal init(handle: UnsafeMutableRawPointer) {
+        self._handleWrapper = SendableHandle(handle)
     }
     
     public func enroll(bootstrapAddress: String, request: Data) async throws -> Data {
@@ -3486,8 +3476,8 @@ public final class CAClient {
         return try copyBytesAndFree(outPtr, outLen)
     }
 
-    nonisolated deinit {
-        rn_transport_ca_client_free(_handle)
+    deinit {
+        rn_transport_ca_client_free(_handleWrapper.handle)
     }
 }
 
@@ -3518,6 +3508,10 @@ public enum CertificateUtils {
         return try copyCStringAndFree(outPtr)
     }
 }
+
+// MARK: - Hex Utilities
+
+// keep using the existing Data.init?(hexString:) declared earlier (at ~1362)
 
 // MARK: - Enrollment Token Utilities
 
@@ -4473,6 +4467,72 @@ public class TransportHandle: @unchecked Sendable {
 /// Type alias for backward compatibility with serializer
 /// This allows the serializer to continue using EnvelopeCrypto while we transition to CommonKeyManager
 public typealias EnvelopeCrypto = CommonKeyManager
+
+public enum FFITypesVectors {
+    public static func writeAll(to base: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: base, withIntermediateDirectories: true)
+
+        // Match Rust example vectors exactly
+        let body = EnrollmentTokenBody(
+            token_id: "test_token_001",
+            network_id: "test_network",
+            subject_hint: "test_subject",
+            not_before: 1757890822,
+            expires_at: 1757894422,
+            nonce: Data([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]),
+            permissions: ["enroll"]
+        )
+        try CodableCBOREncoder().encode(body)
+            .write(to: base.appendingPathComponent("enrollment_token_body_basic.bin"))
+
+        let token = EnrollmentToken(
+            body: body,
+            signature: Data([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70]),
+            signer_id: "test_signer_001"
+        )
+        try CodableCBOREncoder().encode(token)
+            .write(to: base.appendingPathComponent("enrollment_token_basic.bin"))
+
+        let setup = SetupToken(
+            node_id: "test_node_001",
+            node_public_key: Array(repeating: 1, count: 65),
+            node_agreement_public_key: Array(repeating: 2, count: 65),
+            csr_der: Array(repeating: 3, count: 318)
+        )
+        try CodableCBOREncoder().encode(setup)
+            .write(to: base.appendingPathComponent("setup_token_basic.bin"))
+
+        // For CSR request, Rust uses a token with 70 bytes of value 1 for signature
+        let tokenForRequest = EnrollmentToken(
+            body: body,
+            signature: Data(Array(repeating: 1, count: 70)),
+            signer_id: "test_signer_001"
+        )
+        let csrReq = CsrEnrollRequest(
+            network_id: "test_network",
+            csr_der: Data(Array(repeating: 7, count: 318)),
+            enrollment_token: tokenForRequest
+        )
+        try CodableCBOREncoder().encode(csrReq)
+            .write(to: base.appendingPathComponent("csr_enroll_request_basic.bin"))
+
+        // Add response/error vectors to fully validate parity
+        let enrollResp = CsrEnrollResponse(
+            network_id: "test_network",
+            certificate_der: Array(repeating: 9, count: 1024),
+            issuing_ca_der: Array(repeating: 10, count: 512),
+            root_ca_der: Array(repeating: 11, count: 256),
+            expires_at: 1757894422
+        )
+        try CodableCBOREncoder().encode(enrollResp)
+            .write(to: base.appendingPathComponent("csr_enroll_response_basic.bin"))
+
+        let caError = CaErrorResponse(code: "unauthorized", message: "Invalid enrollment token", reason: nil)
+        try CodableCBOREncoder().encode(caError)
+            .write(to: base.appendingPathComponent("ca_error_response_basic.bin"))
+    }
+}
 
 
 

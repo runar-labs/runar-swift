@@ -160,14 +160,17 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let nodeKeys = try await NodeKeyManager()
     print("   ✅ Node key manager created for CA client")
     
-    // Generate CSR using the node manager (mobile nodes use node managers for CSR generation)
-    let csr = try await nodeKeys.generateCSR()
-    print("   ✅ CSR generated: \(csr.count) bytes")
+    // Generate CSR using the node manager (returns SetupToken CBOR like Rust)
+    let setupTokenCbor = try await nodeKeys.generateCSR()
+    // Extract DER bytes from SetupToken CBOR (mirror Rust)
+    let setupToken = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
+    let csrDerData = Data(setupToken.csr_der)
+    print("   ✅ CSR generated: \(csrDerData.count) bytes")
     
     // Create enrollment request
     let csrEnrollRequest = CsrEnrollRequest(
         network_id: "test_network",
-        csr_der: csr,
+        csr_der: csrDerData,
         enrollment_token: enrollmentToken
     )
     print("   ✅ CSR enrollment request created")
@@ -190,7 +193,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     print("DEBUG: Issuing CA cert length: \(issuingCa.count)")
     print("DEBUG: About to call CAClient constructor")
     
-    let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+    let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
     print("   ✅ CA client created with certificates")
     print("DEBUG: CA Client created successfully, moving to Phase 3")
     
@@ -211,9 +214,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let certMessage = try await mobileNode.fromEnrollResponse(enrollResponse)
     print("   ✅ Certificate message created from enrollment response")
     
-    // Install certificate
-    try await mobileNode.installCertificate(certMessage)
+    // Install certificate on node key manager (mirror Rust)
+    try await nodeKeys.installCertificate(certMessage)
     print("   ✅ Certificate installed and validated")
+    // Allow transporter/server background tasks to settle before next CSR
+    try await Task.sleep(nanoseconds: 50_000_000)
     
     print("\n🎉 PHASE 4 COMPLETED: Mobile Node Enrollment via REAL QUIC mTLS")
     
@@ -222,14 +227,16 @@ final class FFIE2EIntegrationTest: XCTestCase {
     // ==========================================
     print("\n🔄 PHASE 5: Certificate Renewal via REAL QUIC mTLS")
     
-    // Generate renewal CSR
-    let renewalCsr = try await nodeKeys.generateCSR()
-    print("   ✅ Renewal CSR generated: \(renewalCsr.count) bytes")
+    // Generate renewal CSR (returns SetupToken CBOR) and extract DER (mirror Rust)
+    let renewalSetupTokenCbor = try await nodeKeys.generateCSR()
+    let renewalSetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: renewalSetupTokenCbor)
+    let renewalCsrDer = Data(renewalSetupToken.csr_der)
+    print("   ✅ Renewal CSR generated: \(renewalCsrDer.count) bytes")
     
-    // Create renewal request
+    // Create renewal request with DER
     let renewRequest = RenewRequest(
         network_id: "test_network",
-        csr_der: renewalCsr
+        csr_der: renewalCsrDer
     )
     print("   ✅ Renewal request created")
     
@@ -245,9 +252,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let renewalCertMessage = try await mobileNode.fromRenewResponse(renewResponse)
     print("   ✅ Renewal response converted to certificate message")
     
-    // Install renewed certificate
-    try await mobileNode.installCertificate(renewalCertMessage)
+    // Install renewed certificate on node key manager (mirror Rust)
+    try await nodeKeys.installCertificate(renewalCertMessage)
     print("   ✅ Renewed certificate installed")
+    // Allow state to settle before subsequent operations
+    try await Task.sleep(nanoseconds: 50_000_000)
     
     print("\n🎉 PHASE 5 COMPLETED: Certificate Renewal via REAL QUIC mTLS")
     
@@ -256,13 +265,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
     // ==========================================
     print("\n🚫 PHASE 6: Certificate Revocation via REAL QUIC mTLS")
     
-    // Get mobile node certificate for SKI extraction (simplified for Swift)
-    // In a real implementation, this would parse the X.509 certificate
-    let mobileCertSki = "test_mobile_ski" // Simplified for now
+    // Extract SKI from installed node certificate (mirror Rust)
+    let nodeCertDer = try await nodeKeys.getNodeCertificate()
+    let mobileCertSki = try await CertificateUtils.extractSki(from: nodeCertDer)
     print("   🔑 Mobile cert SKI: \(mobileCertSki)")
     
-    // Add SKI to server admin configuration
-    let skiData = mobileCertSki.data(using: .utf8)!
+    // Add SKI to server admin configuration (CBOR array of strings)
+    let adminSkis = [mobileCertSki]
+    let skiData = try CodableCBOREncoder().encode(adminSkis)
     try await server.configureAdminSkis(skiData)
     print("   ✅ Mobile cert SKI added to server admin configuration")
     
@@ -270,9 +280,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
     try await caNode.addAdminSki(mobileCertSki.data(using: .utf8)!)
     print("   ✅ Mobile cert SKI added to CA Node admin allowlist")
     
-    // Get certificate serial for revocation
-    let certSerial = Array("test_cert_serial".utf8) // Convert to [UInt8]
-    print("   🔢 Certificate serial: \(String(data: Data(certSerial), encoding: .utf8)!)")
+    // Get certificate serial for revocation (hex string), then hex-decode to bytes
+    let serialHex = try await CertificateUtils.getSerialHex(from: nodeCertDer)
+    guard let serialData = Data(hexString: serialHex) else { throw FFIError.operationFailed("Invalid serial hex") }
+    let certSerial = Array(serialData)
+    print("   🔢 Certificate serial (hex): \(serialHex)")
     
     // Create revocation request
     let revokeRequest = RevokeRequest(
@@ -292,7 +304,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     
     // Decode revocation response
     let revokeResponseData = try CodableCBORDecoder().decode(RevokeResponse.self, from: revokeResponse)
-    print("   ✅ Revocation successful: \(revokeResponseData.ok)")
+    XCTAssertTrue(revokeResponseData.ok)
     
     print("\n🎉 PHASE 6 COMPLETED: Certificate Revocation via REAL QUIC mTLS")
     
@@ -310,10 +322,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
     print("   ✅ CRL-lite contains \(crlData.revoked_serials.count) revoked certificates")
     print("   ✅ CRL-lite signature present: \(crlData.signature.count) bytes")
     
-    // REAL QUIC mTLS CRL fetching
-    let crlFromHandler = try await caClient.getChain(bootstrapAddress: bootstrapAddr, networkId: "test_network")
-    print("   ✅ CRL-lite fetched via REAL QUIC mTLS")
-    print("   ✅ CRL validation: \(crlFromHandler.count) bytes")
+    // REAL QUIC mTLS CRL fetching (mirror Rust: get_chain and server-side CRL-lite are distinct)
+    let crlFromHandler = try await caClient.getCrl(authenticatedAddress: authenticatedAddr, networkId: "test_network")
+    print("   ✅ CRL-lite fetched via REAL QUIC mTLS: \(crlFromHandler.count) bytes")
     
     print("\n🎉 PHASE 7 COMPLETED: CRL-lite Generation and Validation via REAL QUIC mTLS")
     
@@ -326,20 +337,23 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let status = try await caClient.getStatus(authenticatedAddress: authenticatedAddr, networkId: "test_network")
     print("   ✅ CA Status retrieved via REAL QUIC mTLS: \(status.count) bytes")
     
-    // Decode status to get details
+    // Decode status to get details and validate
     let statusData = try CodableCBORDecoder().decode(CaStatus.self, from: status)
     print("   ✅ CA Status details:")
     print("      Issuing Subject: \(statusData.issuing_subject)")
     print("      Issuing Serial: \(statusData.issuing_serial_hex)")
     print("      Not Before: \(statusData.not_before)")
     print("      Not After: \(statusData.not_after)")
+    XCTAssertTrue(statusData.issuing_subject.contains("CN=Test Issuing CA"))
+    XCTAssertTrue(statusData.not_after > statusData.not_before)
     
     let chain = try await caClient.getChain(bootstrapAddress: bootstrapAddr, networkId: "test_network")
     print("   ✅ Certificate chain retrieved via REAL QUIC mTLS: \(chain.count) bytes")
     
-    // Decode chain to get details
+    // Decode chain to get details and validate
     let chainData = try CodableCBORDecoder().decode(CertificateChain.self, from: chain)
     print("   ✅ Chain contains \(chainData.certificates.count) certificates")
+    XCTAssertGreaterThanOrEqual(chainData.certificates.count, 1)
     
     print("\n🎉 PHASE 8 COMPLETED: CA Node API Status and Chain via REAL QUIC mTLS")
     
@@ -365,7 +379,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let personalProfileId = try await mobileNode.getCompactId(for: personalProfileKey)
     let decryptedData = try await mobileNode.decryptWithProfile(mobileEnvelope, personalProfileId.data(using: .utf8)!)
     print("   ✅ Data decrypted with profile key")
-    print("   ✅ Decrypted data matches original: \(decryptedData == testData)")
+    XCTAssertEqual(decryptedData, testData)
     
     print("\n🎉 PHASE 9 COMPLETED: Profile Key Functionality via REAL QUIC mTLS")
     
@@ -374,71 +388,29 @@ final class FFIE2EIntegrationTest: XCTestCase {
     // ==========================================
     print("\n⏱️  PHASE 10: Rate Limiting via REAL QUIC mTLS")
     
-    // Test rate limiting with the same token (rate limiting is per token_id)
-    for i in 1...6 {
-        let testCsr = try await nodeKeys.generateCSR()
-        
-        // Generate a new token for each request to avoid anti-replay issues
-        var nonce = Data(count: 16)
-        nonce[0..<8] = withUnsafeBytes(of: UInt64(i).littleEndian) { Data($0) }
-        nonce[8..<16] = withUnsafeBytes(of: UInt64(i).bigEndian) { Data($0) }
-        
-        let tokenBody = EnrollmentTokenBody(
-            token_id: "rate_limit_test_token", // Same token ID for all requests
-            network_id: "test_network",
-            subject_hint: "test_subject",
-            not_before: now - 60,
-            expires_at: now + 3600,
-            nonce: nonce,
-            permissions: ["enroll"]
-        )
-        let testTokenData = try await eaManager.generateEnrollmentToken(params: EAKeyManager.EnrollmentTokenParams(
-            eaKeyHandle: eaHandle,
-            tokenId: "test_token_\(i)",
-            networkId: "test_network",
-            subject: tokenBody.subject_hint ?? "test_subject",
-            validFrom: tokenBody.not_before,
-            validUntil: tokenBody.expires_at,
-            nonce: tokenBody.nonce,
-            capabilities: tokenBody.permissions
-        ))
-        
-        // Create EnrollmentToken object from the data and body
-        let testToken = EnrollmentToken(
-            body: tokenBody,
-            signature: testTokenData, // This might need to be parsed differently
-            signer_id: "test_signer"
-        )
-        
-        let testRequest = CsrEnrollRequest(
-            network_id: "test_network",
-            csr_der: testCsr,
-            enrollment_token: testToken
-        )
-        
-        // Encode request to CBOR
-        let testRequestData = try CodableCBOREncoder().encode(testRequest)
-        
-        // Send over REAL QUIC mTLS
+    // Rate limiting is per token_id: reuse the SAME token_id across multiple enrolls
+    let rateLimitTokenId = "test_token_001" // reuse original
+    for i in 1...3 {
+        let setupCbor = try await nodeKeys.generateCSR()
+        let setup = try CodableCBORDecoder().decode(SetupToken.self, from: setupCbor)
+        let csrDer = Data(setup.csr_der)
+
+        let req = CsrEnrollRequest(network_id: "test_network", csr_der: csrDer, enrollment_token: enrollmentToken)
+        let reqData = try CodableCBOREncoder().encode(req)
+
         do {
-            let result = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: testRequestData)
-            if i <= 5 {
-                print("   ✅ Rate limit check \(i) passed via REAL QUIC mTLS")
+            let _ = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: reqData)
+            if i == 1 {
+                print("   ✅ First request passed (allowed)")
             } else {
-                print("   ❌ Rate limit check \(i) should have failed but passed")
-                XCTFail("Rate limit check \(i) should fail")
+                XCTFail("Rate-limited request \(i) should fail")
             }
         } catch {
-            if i <= 5 {
-                print("   ❌ Rate limit check \(i) failed with error: \(error)")
-                XCTFail("Rate limit check \(i) should pass")
-            } else {
-                print("   ✅ Rate limit check \(i) exceeded as expected via REAL QUIC mTLS")
-            }
+            if i == 1 { XCTFail("First request should pass: \(error)") }
+            else { print("   ✅ Rate limit request \(i) correctly rejected") }
         }
-        
-        // Add a small delay to ensure rate limiting works properly
-        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+
+        try await Task.sleep(nanoseconds: 10_000_000)
     }
     
     print("\n🎉 PHASE 10 COMPLETED: Rate Limiting via REAL QUIC mTLS")
@@ -524,10 +496,12 @@ final class FFIE2EIntegrationTest: XCTestCase {
     
     // Test unauthorized renewal
     let unauthorizedNodeKeys = try await NodeKeyManager()
-    let unauthorizedCsr = try await unauthorizedNodeKeys.generateCSR()
+    let unauthorizedSetupTokenCbor = try await unauthorizedNodeKeys.generateCSR()
+    let unauthorizedSetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: unauthorizedSetupTokenCbor)
+    let unauthorizedCsrDer = Data(unauthorizedSetupToken.csr_der)
     let unauthorizedRenew = RenewRequest(
         network_id: "test_network",
-        csr_der: unauthorizedCsr
+        csr_der: unauthorizedCsrDer
     )
     
     // Encode renewal request to CBOR

@@ -100,7 +100,7 @@ final class CANodeSetupTests: XCTestCase {
         
         // This should fail with a descriptive error
         do {
-            _ = try await CAClient(config: emptyConfig, nodeKeys: nodeKeys)
+            _ = try await nodeKeys.createCAClient(config: emptyConfig)
             XCTFail("CAClient creation should have failed with empty certificates")
         } catch {
             // Should fail with a descriptive error about empty certificates

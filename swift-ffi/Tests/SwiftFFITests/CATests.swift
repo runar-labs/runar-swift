@@ -206,7 +206,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
         XCTAssertNotNil(caClient, "CA client should be created successfully")
     }
 
@@ -241,7 +241,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
 
         // Test enrollment (may fail if server not running, which is expected)
         do {
@@ -285,7 +285,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
 
         // Test renewal (may fail if server not running, which is expected)
         do {
@@ -329,7 +329,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
 
         // Test revocation (may fail if server not running, which is expected)
         do {
@@ -373,7 +373,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
 
         // Test chain retrieval (may fail if server not running, which is expected)
         do {
@@ -417,7 +417,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
 
         // Test status retrieval (may fail if server not running, which is expected)
         do {
@@ -529,7 +529,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
 
         // Test with empty address
         await XCTAssertThrowsErrorAsync(try await caClient.enroll(
@@ -639,7 +639,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: issuingCa
         )
 
-        let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
         XCTAssertNotNil(caClient, "CA client should be created successfully")
 
         // Test that both client and server were created successfully

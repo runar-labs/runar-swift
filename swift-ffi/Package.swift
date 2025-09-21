@@ -32,6 +32,9 @@ let package = Package(
                 // Search path for the built FFI library in the workspace
                 .unsafeFlags(["-Xlinker", "-L", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release"]),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release"]),
+                // Also include the Cargo deps folder where the cdylib often resides
+                .unsafeFlags(["-Xlinker", "-L", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release/deps"]),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release/deps"]),
             ]
         ),
         .testTarget(
