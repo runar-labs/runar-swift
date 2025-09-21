@@ -2,7 +2,7 @@
 
 ## Goal
 
-Design and specify a Swift-only Label Resolver that mirrors the Rust `runar-serializer` behavior exactly. The resolver maps human-readable labels (e.g., "system", "user") to concrete recipients expressed as actual public key bytes required by the FFI envelope encryption APIs. No FFI label APIs exist; all resolution happens in Swift.
+Design and specify a Swift-only Label Resolver that mirrors the Rust `runar-serializer` behavior exactly. The resolver maps human-readable labels (e.g., "system", "user") to concrete recipients expressed as actual public key bytes required by the CommonKeyManager envelope encryption APIs. No CommonKeyManager label APIs exist; all resolution happens in Swift.
 
 ## Rust Parity Summary
 
@@ -42,7 +42,7 @@ public struct LabelResolverConfig: Sendable, Equatable {
 }
 ```
 
-- All keys are raw public key bytes (Data). No IDs, no lookups by name at FFI.
+- All keys are raw public key bytes (Data). No IDs, no lookups by name at CommonKeyManager.
 - Labels are case-sensitive and must match exactly.
 
 ### Errors
@@ -134,7 +134,7 @@ private func validatePublicKeys(networkKey: Data?, profileKeys: [Data], label: S
 ```
 
 Notes:
-- Adjust lengths and algorithm checks to the actual key types enforced by the FFI keystore. The validation logic should be centralized and reused across call sites.
+- Adjust lengths and algorithm checks to the actual key types enforced by the CommonKeyManager keystore. The validation logic should be centralized and reused across call sites.
 
 // (Caching moved to Future (Node-only) section below)
 
@@ -145,7 +145,7 @@ Notes:
 
 ## Integration with Encryption
 
-- `encryptLabelGroup` consumes `LabelResolver` to obtain `LabelKeyInfo` with pre-resolved recipients, then calls `EnvelopeCrypto.encryptWithEnvelope(data:networkPublicKey:profilePublicKeys:)` (API naming adjusted to actual FFI).
+- `encryptLabelGroup` consumes `LabelResolver` to obtain `LabelKeyInfo` with pre-resolved recipients, then calls `CommonKeyManager.encryptWithEnvelope(data:networkPublicKey:profilePublicKeys:)` (API naming adjusted to actual CommonKeyManager).
 - Missing label → omit group (store `nil` envelope) by contract in the higher-level orchestration.
 
 Example usage:
@@ -173,7 +173,7 @@ if resolver.canResolve("system") {
 - System config must contain at least one mapping.
 - Each label must specify at least one of `networkPublicKey` or `userKeySpec` (or both). Network-only and profile-only labels are valid. A label with neither is invalid.
 - `userKeySpec.custom(String)` is allowed only if the calling layer has pre-resolved the custom selector to concrete public keys before factory invocation (i.e., system-specific policy). The provided design throws otherwise to avoid implicit fallbacks.
-- Key byte lengths are validated according to the crypto suite (typically 32 bytes for x25519/ed25519). This must be kept in sync with the FFI.
+- Key byte lengths are validated according to the crypto suite (typically 32 bytes for x25519/ed25519). This must be kept in sync with the CommonKeyManager.
 
 ## Thread-Safety and Performance
 

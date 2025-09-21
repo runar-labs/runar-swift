@@ -45,7 +45,6 @@ public protocol CommonKeyManager {
     func registerAppleDeviceKeystore(label: String) async throws
 
     // General message crypto (role-agnostic FFI)
-    func encryptForPublicKey(data: Data, publicKey: Data) async throws -> Data
     func encryptForNetwork(data: Data, networkPublicKey: Data) async throws -> Data
     func decryptNetworkData(encryptedEnvelope: Data) async throws -> Data
 }
@@ -929,30 +928,6 @@ internal func ffi_decrypt_local_data(
     return try copyBytesAndFree(outPtr, outLen)
 }
 
-/// Nonisolated helper for encrypting for public key (common)
-@inline(__always)
-internal func ffi_encrypt_for_public_key(
-    _ handle: UnsafeMutableRawPointer,
-    data: Data,
-    publicKey: Data
-) throws -> Data {
-    // Copy handle to local to avoid capturing actor state in closures
-    let nodeHandle = handle
-    var outPtr: UnsafeMutablePointer<UInt8>?
-    var outLen = 0
-    
-    let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            publicKey.withUnsafeBytes { keyRaw in
-                rn_keys_encrypt_for_public_key(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, publicKey.count, &outPtr, &outLen, errPtr)
-            }
-        }
-    }
-    
-    if let error = err { throw error }
-    guard code == 0 else { throw FFIError.operationFailed("Failed to encrypt for public key") }
-    return try copyBytesAndFree(outPtr, outLen)
-}
 
 /// Nonisolated helper for encrypting for network (common)
 @inline(__always)
@@ -1254,30 +1229,31 @@ internal func ffi_create_ca_client(
     _ handle: UnsafeMutableRawPointer,
     configCbor: Data
 ) throws -> UnsafeMutableRawPointer {
-    print("DEBUG: ffi_create_ca_client() - Creating CA client")
-    print("DEBUG: ffi_create_ca_client() - Config CBOR length: \(configCbor.count)")
+    let logger = RunarLogger(component: .custom)
+    logger.info("ffi_create_ca_client() - Creating CA client")
+    logger.debug("ffi_create_ca_client() - Config CBOR length: \(configCbor.count)")
     
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var out: UnsafeMutableRawPointer?
-
+    
     let (code, err) = withRnErrorCode { errPtr in
         configCbor.withUnsafeBytes { raw in
-            print("DEBUG: ffi_create_ca_client() - About to call rn_transport_ca_client_new_with_config")
+            logger.trace("ffi_create_ca_client() - About to call rn_transport_ca_client_new_with_config")
             return rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, configCbor.count, nodeHandle, &out, errPtr)
         }
     }
-
-    print("DEBUG: ffi_create_ca_client() - FFI call completed, code: \(code)")
+    
+    logger.debug("ffi_create_ca_client() - FFI call completed, code: \(code)")
     if let error = err { 
-        print("DEBUG: ffi_create_ca_client() - FFI error: \(error)")
+        logger.error("ffi_create_ca_client() - FFI error: \(error)")
         throw error 
     }
     guard code == 0, let clientHandle = out else { 
-        print("DEBUG: ffi_create_ca_client() - FFI operation failed with code: \(code)")
+        logger.error("ffi_create_ca_client() - FFI operation failed with code: \(code)")
         throw FFIError.operationFailed("Failed to create CA client") 
     }
-    print("DEBUG: ffi_create_ca_client() - CA client created successfully")
+    logger.info("ffi_create_ca_client() - CA client created successfully")
     return clientHandle
 }
 
@@ -1922,7 +1898,7 @@ public class EAKeyManager {
         guard code == 0 else {
             throw FFIError.operationFailed("Failed to generate enrollment token")
         }
-        return try await copyBytesAndFree(tokenPtr, tokenLen)
+        return try copyBytesAndFree(tokenPtr, tokenLen)
     }
     
     public static func free(_ handle: UnsafeMutableRawPointer) {
@@ -1940,31 +1916,32 @@ public class CANode {
     }
     
     public nonisolated static func create() throws -> CANode {
-        print("DEBUG: CANode.create() - Starting CA Node creation")
+        let logger = RunarLogger(component: .custom)
+        logger.info("CANode.create() - Starting CA Node creation")
         var handle: UnsafeMutableRawPointer?
-        print("DEBUG: CANode.create() - About to call rn_keys_ca_node_new")
+        logger.trace("CANode.create() - About to call rn_keys_ca_node_new")
         let (code, err) = withRnErrorCode { errPtr in
-            print("DEBUG: CANode.create() - Inside withRnErrorCode closure")
+            logger.trace("CANode.create() - Inside withRnErrorCode closure")
             let result = rn_keys_ca_node_new(&handle, errPtr)
-            print("DEBUG: CANode.create() - rn_keys_ca_node_new returned: \(result)")
+            logger.debug("CANode.create() - rn_keys_ca_node_new returned: \(result)")
             return result
         }
-        print("DEBUG: CANode.create() - withRnErrorCode completed, code: \(code)")
+        logger.debug("CANode.create() - withRnErrorCode completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: CANode.create() - FFI error: \(error)")
-            throw error 
+        logger.error("CANode.create() - FFI error: \(error)")
+        throw error
         }
         guard code == 0, let out = handle else {
-            print("DEBUG: CANode.create() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
+            logger.error("CANode.create() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
             throw FFIError.operationFailed("Failed to create CA Node")
         }
-        print("DEBUG: CANode.create() - CA Node created successfully")
+        logger.info("CANode.create() - CA Node created successfully")
         return CANode(ffiHandle: out)
     }
     
     public nonisolated func setupComplete(params: CANodeManager.CANodeSetupParams) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("CANode.setupComplete() - Starting setup with params")
+        logger.info("CANode.setupComplete() - Starting setup with params")
         logger.debug("CANode.setupComplete() - Root CA Subject: \(params.rootCaSubject)")
         logger.debug("CANode.setupComplete() - Issuing CA Subject: \(params.issuingCaSubject)")
         logger.debug("CANode.setupComplete() - Validity Days: \(params.validityDays)")
@@ -1997,14 +1974,14 @@ public class CANode {
             }
         }
         if let error = err { 
-            logger.debug("CANode.setupComplete() - FFI error: \(error)")
+            logger.error("CANode.setupComplete() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.debug("CANode.setupComplete() - FFI operation failed with code: \(code)")
+            logger.error("CANode.setupComplete() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to setup CA Node") 
         }
-        logger.debug("CANode.setupComplete() - Setup completed successfully")
+        logger.info("CANode.setupComplete() - Setup completed successfully")
     }
     
     public nonisolated func createShared() async throws -> UnsafeMutableRawPointer {
@@ -2207,16 +2184,16 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            logger.debug("CANode.getRootCACertificate() - About to call rn_keys_ca_node_get_root_ca_certificate")
+            logger.trace("CANode.getRootCACertificate() - About to call rn_keys_ca_node_get_root_ca_certificate")
             return rn_keys_ca_node_get_root_ca_certificate(caHandle, &outPtr, &outLen, errPtr)
         }
         logger.debug("CANode.getRootCACertificate() - FFI call completed, code: \(code), outLen: \(outLen)")
         if let error = err { 
-            logger.debug("CANode.getRootCACertificate() - FFI error: \(error)")
+            logger.error("CANode.getRootCACertificate() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.debug("CANode.getRootCACertificate() - FFI operation failed with code: \(code)")
+            logger.error("CANode.getRootCACertificate() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to get Root CA certificate") 
         }
         logger.debug("CANode.getRootCACertificate() - Root CA certificate retrieved successfully, length: \(outLen)")
@@ -2237,16 +2214,16 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            logger.debug("CANode.getIssuingCACertificate() - About to call rn_keys_ca_node_get_issuing_ca_certificate")
+            logger.trace("CANode.getIssuingCACertificate() - About to call rn_keys_ca_node_get_issuing_ca_certificate")
             return rn_keys_ca_node_get_issuing_ca_certificate(caHandle, &outPtr, &outLen, errPtr)
         }
         logger.debug("CANode.getIssuingCACertificate() - FFI call completed, code: \(code), outLen: \(outLen)")
         if let error = err { 
-            logger.debug("CANode.getIssuingCACertificate() - FFI error: \(error)")
+            logger.error("CANode.getIssuingCACertificate() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.debug("CANode.getIssuingCACertificate() - FFI operation failed with code: \(code)")
+            logger.error("CANode.getIssuingCACertificate() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to get Issuing CA certificate") 
         }
         logger.debug("CANode.getIssuingCACertificate() - Issuing CA certificate retrieved successfully, length: \(outLen)")
@@ -2308,14 +2285,14 @@ public extension CANode {
         }
         logger.debug("CANode.configureEnrollmentAuthority() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.debug("CANode.configureEnrollmentAuthority() - FFI error: \(error)")
+            logger.error("CANode.configureEnrollmentAuthority() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.debug("CANode.configureEnrollmentAuthority() - FFI operation failed with code: \(code)")
+            logger.error("CANode.configureEnrollmentAuthority() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to configure enrollment authority") 
         }
-        logger.debug("CANode.configureEnrollmentAuthority() - EA configuration completed successfully")
+        logger.info("CANode.configureEnrollmentAuthority() - EA configuration completed successfully")
     }
     
     /// Handle enrollment request (serverless)
@@ -2850,19 +2827,6 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to register Apple device keystore") }
     }
     
-    /// Encrypt data for public key
-    /// - Parameters:
-    ///   - data: Data to encrypt
-    ///   - publicKey: Public key to encrypt for
-    /// - Returns: Encrypted data
-    /// - Throws: FFIError if encryption fails
-    public func encryptForPublicKey(data: Data, publicKey: Data) async throws -> Data {
-        // Copy handle to local to avoid capturing actor state in closures
-        let handle = self.handle
-        
-        // Call nonisolated helper - no suspension during FFI
-        return try ffi_encrypt_for_public_key(handle, data: data, publicKey: publicKey)
-    }
     
     /// Encrypt data for network
     /// - Parameters:
@@ -3231,19 +3195,6 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to register Apple device keystore") }
     }
 
-    /// Encrypt data for public key
-    /// - Parameters:
-    ///   - data: Data to encrypt
-    ///   - publicKey: Public key to encrypt for
-    /// - Returns: Encrypted data
-    /// - Throws: FFIError if encryption fails
-    public func encryptForPublicKey(data: Data, publicKey: Data) async throws -> Data {
-        // Copy handle to local to avoid capturing actor state in closures
-        let handle = self.handle
-        
-        // Call nonisolated helper - no suspension during FFI
-        return try ffi_encrypt_for_public_key(handle, data: data, publicKey: publicKey)
-    }
 
     /// Encrypt data for network
     /// - Parameters:
@@ -3355,37 +3306,38 @@ public final class CAClient: Sendable {
     }
     
     public func enroll(bootstrapAddress: String, request: Data) async throws -> Data {
-        print("DEBUG: CAClient.enroll() - Starting enrollment")
-        print("DEBUG: CAClient.enroll() - Bootstrap address: \(bootstrapAddress)")
-        print("DEBUG: CAClient.enroll() - Request data length: \(request.count)")
+        let logger = RunarLogger(component: .custom)
+        logger.info("CAClient.enroll() - Starting enrollment")
+        logger.debug("CAClient.enroll() - Bootstrap address: \(bootstrapAddress)")
+        logger.debug("CAClient.enroll() - Request data length: \(request.count)")
         
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        print("DEBUG: CAClient.enroll() - Handle copied to local")
+        logger.debug("CAClient.enroll() - Handle copied to local")
         
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
-        print("DEBUG: CAClient.enroll() - About to call FFI function")
+        logger.trace("CAClient.enroll() - About to call FFI function")
         let (code, err) = withRnErrorCode { errPtr in
             bootstrapAddress.withCString { cAddr in
                 request.withUnsafeBytes { raw in
-                    print("DEBUG: CAClient.enroll() - Inside FFI call")
+                    logger.trace("CAClient.enroll() - Inside FFI call")
                     return rn_transport_ca_client_enroll(handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
                 }
             }
         }
-        print("DEBUG: CAClient.enroll() - FFI call completed, code: \(code)")
+        logger.debug("CAClient.enroll() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: CAClient.enroll() - FFI error: \(error)")
+            logger.error("CAClient.enroll() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: CAClient.enroll() - FFI operation failed with code: \(code)")
+            logger.error("CAClient.enroll() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to enroll") 
         }
-        print("DEBUG: CAClient.enroll() - About to copy and free result")
+        logger.debug("CAClient.enroll() - About to copy and free result")
         let result = try copyBytesAndFree(outPtr, outLen)
-        print("DEBUG: CAClient.enroll() - Enrollment completed successfully, result length: \(result.count)")
+        logger.debug("CAClient.enroll() - Enrollment completed successfully, result length: \(result.count)")
         return result
     }
 
@@ -4171,107 +4123,111 @@ public class TransportHandle: @unchecked Sendable {
     /// Start the transport
     /// - Throws: FFIError if start fails
     public func start() async throws {
-        print("DEBUG: TransportHandle.start() - Starting transport")
+        let logger = RunarLogger(component: .custom)
+        logger.info("TransportHandle.start() - Starting transport")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
-        print("DEBUG: TransportHandle.start() - Handle copied to local")
+        logger.debug("TransportHandle.start() - Handle copied to local")
         let (code, err) = withRnErrorCode { errPtr in
-            print("DEBUG: TransportHandle.start() - About to call rn_transport_start")
+            logger.trace("TransportHandle.start() - About to call rn_transport_start")
             return rn_transport_start(transportHandle, errPtr)
         }
-        print("DEBUG: TransportHandle.start() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.start() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.start() - FFI error: \(error)")
+            logger.error("TransportHandle.start() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.start() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.start() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to start transport") 
         }
-        print("DEBUG: TransportHandle.start() - Transport started successfully")
+        logger.info("TransportHandle.start() - Transport started successfully")
     }
     
     /// Poll for events
     /// - Returns: Event data if available, nil if no events
     /// - Throws: FFIError if polling fails
     public func pollEvent() async throws -> Data? {
-        print("DEBUG: TransportHandle.pollEvent() - Polling for events")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.pollEvent() - Polling for events")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         var outEvent: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            print("DEBUG: TransportHandle.pollEvent() - About to call rn_transport_poll_event")
+            logger.trace("TransportHandle.pollEvent() - About to call rn_transport_poll_event")
             return rn_transport_poll_event(transportHandle, &outEvent, &outLen, errPtr)
         }
-        print("DEBUG: TransportHandle.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
+        logger.debug("TransportHandle.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
         if let error = err { 
-            print("DEBUG: TransportHandle.pollEvent() - FFI error: \(error)")
+            logger.error("TransportHandle.pollEvent() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.pollEvent() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.pollEvent() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to poll event") 
         }
         
         if outLen == 0 {
-            print("DEBUG: TransportHandle.pollEvent() - No events available")
+            logger.debug("TransportHandle.pollEvent() - No events available")
             return nil
         }
         
-        print("DEBUG: TransportHandle.pollEvent() - Event available, copying data")
-        return try await copyBytesAndFree(outEvent, outLen)
+        logger.debug("TransportHandle.pollEvent() - Event available, copying data")
+        return try copyBytesAndFree(outEvent, outLen)
     }
     
     /// Connect to a peer
     /// - Parameter peerInfoCbor: Peer information in CBOR format
     /// - Throws: FFIError if connection fails
     public func connectPeer(peerInfoCbor: Data) async throws {
-        print("DEBUG: TransportHandle.connectPeer() - Connecting to peer")
-        print("DEBUG: TransportHandle.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.connectPeer() - Connecting to peer")
+        logger.debug("TransportHandle.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             peerInfoCbor.withUnsafeBytes { raw in
-                print("DEBUG: TransportHandle.connectPeer() - About to call rn_transport_connect_peer")
+                logger.trace("TransportHandle.connectPeer() - About to call rn_transport_connect_peer")
                 return rn_transport_connect_peer(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, peerInfoCbor.count, errPtr)
             }
         }
-        print("DEBUG: TransportHandle.connectPeer() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.connectPeer() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.connectPeer() - FFI error: \(error)")
+            logger.error("TransportHandle.connectPeer() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.connectPeer() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.connectPeer() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to connect to peer") 
         }
-        print("DEBUG: TransportHandle.connectPeer() - Peer connected successfully")
+        logger.info("TransportHandle.connectPeer() - Peer connected successfully")
     }
     
     /// Disconnect from a peer
     /// - Parameter peerNodeId: Node ID of the peer to disconnect
     /// - Throws: FFIError if disconnection fails
     public func disconnectPeer(peerNodeId: String) async throws {
-        print("DEBUG: TransportHandle.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
-                print("DEBUG: TransportHandle.disconnectPeer() - About to call rn_transport_disconnect_peer")
+                logger.trace("TransportHandle.disconnectPeer() - About to call rn_transport_disconnect_peer")
                 return rn_transport_disconnect_peer(transportHandle, cString, errPtr)
             }
         }
-        print("DEBUG: TransportHandle.disconnectPeer() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.disconnectPeer() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.disconnectPeer() - FFI error: \(error)")
+            logger.error("TransportHandle.disconnectPeer() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.disconnectPeer() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.disconnectPeer() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to disconnect from peer") 
         }
-        print("DEBUG: TransportHandle.disconnectPeer() - Peer disconnected successfully")
+        logger.info("TransportHandle.disconnectPeer() - Peer disconnected successfully")
     }
     
     /// Check if connected to a peer
@@ -4279,26 +4235,27 @@ public class TransportHandle: @unchecked Sendable {
     /// - Returns: True if connected, false otherwise
     /// - Throws: FFIError if check fails
     public func isConnected(peerNodeId: String) async throws -> Bool {
-        print("DEBUG: TransportHandle.isConnected() - Checking connection to peer: \(peerNodeId)")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.isConnected() - Checking connection to peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         var outConnected = false
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
-                print("DEBUG: TransportHandle.isConnected() - About to call rn_transport_is_connected")
+                logger.trace("TransportHandle.isConnected() - About to call rn_transport_is_connected")
                 return rn_transport_is_connected(transportHandle, cString, &outConnected, errPtr)
             }
         }
-        print("DEBUG: TransportHandle.isConnected() - FFI call completed, code: \(code), connected: \(outConnected)")
+        logger.debug("TransportHandle.isConnected() - FFI call completed, code: \(code), connected: \(outConnected)")
         if let error = err { 
-            print("DEBUG: TransportHandle.isConnected() - FFI error: \(error)")
+            logger.error("TransportHandle.isConnected() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.isConnected() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.isConnected() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to check connection status") 
         }
-        print("DEBUG: TransportHandle.isConnected() - Connection check completed: \(outConnected)")
+        logger.debug("TransportHandle.isConnected() - Connection check completed: \(outConnected)")
         return outConnected
     }
     
@@ -4306,148 +4263,154 @@ public class TransportHandle: @unchecked Sendable {
     /// - Parameter nodeInfoCbor: Node information in CBOR format
     /// - Throws: FFIError if update fails
     public func updateLocalNodeInfo(nodeInfoCbor: Data) async throws {
-        print("DEBUG: TransportHandle.updateLocalNodeInfo() - Updating local node info")
-        print("DEBUG: TransportHandle.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.updateLocalNodeInfo() - Updating local node info")
+        logger.debug("TransportHandle.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             nodeInfoCbor.withUnsafeBytes { raw in
-                print("DEBUG: TransportHandle.updateLocalNodeInfo() - About to call rn_transport_update_local_node_info")
+                logger.trace("TransportHandle.updateLocalNodeInfo() - About to call rn_transport_update_local_node_info")
                 return rn_transport_update_local_node_info(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
             }
         }
-        print("DEBUG: TransportHandle.updateLocalNodeInfo() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.updateLocalNodeInfo() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.updateLocalNodeInfo() - FFI error: \(error)")
+            logger.error("TransportHandle.updateLocalNodeInfo() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.updateLocalNodeInfo() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.updateLocalNodeInfo() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to update local node info") 
         }
-        print("DEBUG: TransportHandle.updateLocalNodeInfo() - Local node info updated successfully")
+        logger.info("TransportHandle.updateLocalNodeInfo() - Local node info updated successfully")
     }
     
     /// Send a request
     /// - Parameter requestCbor: Request data in CBOR format
     /// - Throws: FFIError if request fails
     public func request(requestCbor: Data) async throws {
-        print("DEBUG: TransportHandle.request() - Sending request")
-        print("DEBUG: TransportHandle.request() - Request CBOR length: \(requestCbor.count)")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.request() - Sending request")
+        logger.debug("TransportHandle.request() - Request CBOR length: \(requestCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             requestCbor.withUnsafeBytes { raw in
-                print("DEBUG: TransportHandle.request() - About to call rn_transport_request")
+                logger.trace("TransportHandle.request() - About to call rn_transport_request")
                 return rn_transport_request(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, requestCbor.count, errPtr)
             }
         }
-        print("DEBUG: TransportHandle.request() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.request() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.request() - FFI error: \(error)")
+            logger.error("TransportHandle.request() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.request() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.request() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to send request") 
         }
-        print("DEBUG: TransportHandle.request() - Request sent successfully")
+        logger.info("TransportHandle.request() - Request sent successfully")
     }
     
     /// Publish an event
     /// - Parameter publishCbor: Event data in CBOR format
     /// - Throws: FFIError if publish fails
     public func publish(publishCbor: Data) async throws {
-        print("DEBUG: TransportHandle.publish() - Publishing event")
-        print("DEBUG: TransportHandle.publish() - Publish CBOR length: \(publishCbor.count)")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.publish() - Publishing event")
+        logger.debug("TransportHandle.publish() - Publish CBOR length: \(publishCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             publishCbor.withUnsafeBytes { raw in
-                print("DEBUG: TransportHandle.publish() - About to call rn_transport_publish")
+                logger.trace("TransportHandle.publish() - About to call rn_transport_publish")
                 return rn_transport_publish(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, publishCbor.count, errPtr)
             }
         }
-        print("DEBUG: TransportHandle.publish() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.publish() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.publish() - FFI error: \(error)")
+            logger.error("TransportHandle.publish() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.publish() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.publish() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to publish event") 
         }
-        print("DEBUG: TransportHandle.publish() - Event published successfully")
+        logger.info("TransportHandle.publish() - Event published successfully")
     }
     
     /// Complete a request
     /// - Parameter completeCbor: Completion data in CBOR format
     /// - Throws: FFIError if completion fails
     public func completeRequest(completeCbor: Data) async throws {
-        print("DEBUG: TransportHandle.completeRequest() - Completing request")
-        print("DEBUG: TransportHandle.completeRequest() - Complete CBOR length: \(completeCbor.count)")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.completeRequest() - Completing request")
+        logger.debug("TransportHandle.completeRequest() - Complete CBOR length: \(completeCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             completeCbor.withUnsafeBytes { raw in
-                print("DEBUG: TransportHandle.completeRequest() - About to call rn_transport_complete_request")
+                logger.trace("TransportHandle.completeRequest() - About to call rn_transport_complete_request")
                 return rn_transport_complete_request(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, completeCbor.count, errPtr)
             }
         }
-        print("DEBUG: TransportHandle.completeRequest() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.completeRequest() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.completeRequest() - FFI error: \(error)")
+            logger.error("TransportHandle.completeRequest() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.completeRequest() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.completeRequest() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to complete request") 
         }
-        print("DEBUG: TransportHandle.completeRequest() - Request completed successfully")
+        logger.info("TransportHandle.completeRequest() - Request completed successfully")
     }
     
     /// Stop the transport
     /// - Throws: FFIError if stop fails
     public func stop() async throws {
-        print("DEBUG: TransportHandle.stop() - Stopping transport")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.stop() - Stopping transport")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            print("DEBUG: TransportHandle.stop() - About to call rn_transport_stop")
+            logger.trace("TransportHandle.stop() - About to call rn_transport_stop")
             return rn_transport_stop(transportHandle, errPtr)
         }
-        print("DEBUG: TransportHandle.stop() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.stop() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.stop() - FFI error: \(error)")
+            logger.error("TransportHandle.stop() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.stop() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.stop() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to stop transport") 
         }
-        print("DEBUG: TransportHandle.stop() - Transport stopped successfully")
+        logger.info("TransportHandle.stop() - Transport stopped successfully")
     }
     
     /// Get local address
     /// - Returns: Local address string
     /// - Throws: FFIError if getting address fails
     public func getLocalAddr() async throws -> String {
-        print("DEBUG: TransportHandle.getLocalAddr() - Getting local address")
+        let logger = RunarLogger(component: .custom)
+        logger.debug("TransportHandle.getLocalAddr() - Getting local address")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         var outStr: UnsafeMutablePointer<CChar>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            print("DEBUG: TransportHandle.getLocalAddr() - About to call rn_transport_local_addr")
+            logger.trace("TransportHandle.getLocalAddr() - About to call rn_transport_local_addr")
             return rn_transport_local_addr(transportHandle, &outStr, &outLen, errPtr)
         }
-        print("DEBUG: TransportHandle.getLocalAddr() - FFI call completed, code: \(code)")
+        logger.debug("TransportHandle.getLocalAddr() - FFI call completed, code: \(code)")
         if let error = err { 
-            print("DEBUG: TransportHandle.getLocalAddr() - FFI error: \(error)")
+            logger.error("TransportHandle.getLocalAddr() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            print("DEBUG: TransportHandle.getLocalAddr() - FFI operation failed with code: \(code)")
+            logger.error("TransportHandle.getLocalAddr() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to get local address") 
         }
         
@@ -4458,11 +4421,11 @@ public class TransportHandle: @unchecked Sendable {
         }
         
         guard let str = outStr else { 
-            print("DEBUG: TransportHandle.getLocalAddr() - No local address returned")
+            logger.debug("TransportHandle.getLocalAddr() - No local address returned")
             throw FFIError.operationFailed("No local address returned") 
         }
         let address = String(cString: str)
-        print("DEBUG: TransportHandle.getLocalAddr() - Local address: \(address)")
+        logger.debug("TransportHandle.getLocalAddr() - Local address: \(address)")
         return address
     }
 }

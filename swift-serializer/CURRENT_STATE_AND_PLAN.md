@@ -11,7 +11,7 @@
 
 - Swift packages: `swift-serializer`, `swift-serializer-macros`.
 - Rust references: `runar-rust/runar-serializer`, `runar-rust/runar-serializer-macros`.
-- Crypto via FFI: `swift-ffi` EnvelopeCrypto (mobile/node keystores). Swift must present actual public keys to FFI, not labels.
+- Crypto via FFI: `swift-ffi` CommonKeyManager (mobile/node keystores). Swift must present actual public keys to FFI, not labels.
 
 ## Current State (Swift)
 
@@ -19,6 +19,7 @@
 - CBOR stack: Uses SwiftCBOR with deterministic encoding in hot paths.
 - Registry: `SerializationRegistry` actor implemented with wire-name, encryptor/decryptor/decoder/JSON converter maps and a sync cache for wire-name lookups.
 - Envelope encryption utilities: Present and working for envelopes; CBOR (de)serialization helpers provided.
+- Keystore integration: Uses CommonKeyManager actor interface for encryption/decryption operations.
 - Macros: Implemented but generate code that relies on resolver/encryption orchestration not yet available at runtime. Registration is currently non-deterministic (fire-and-forget) in some methods.
 - Tests: Non-macro tests largely pass; macro-driven encrypted flows are pending due to missing runtime support and async registration guarantees.
 
@@ -33,7 +34,7 @@
 
 - Single path for encryption: When `SerializationContext` is provided, `AnyValue` must use the registry encryptor for the boxed struct value, compute the encrypted wire-name, and set the header `encrypted` flag. If any prerequisite is missing, throw a strict error.
 - Single path for decoding: For non-primitive/container wire names, the registry decoder must exist. If the decoder returns an encrypted companion type while the caller expects the plain type and provides a keystore, perform decrypt-then-decode. Otherwise, throw.
-- Label resolution: Must deliver actual key material references (network id and multiple profile ids) required by FFI keystore APIs. No string-only shortcuts.
+- Label resolution: Must deliver actual key material references (network id and multiple profile ids) required by CommonKeyManager APIs. No string-only shortcuts.
 - Async-first macros: Public macro-generated APIs await deterministic `_ensureRegistered()`; no background registration tasks.
 
 ## Detailed Plan
@@ -53,12 +54,12 @@ Outcome: Deterministic, context-aware, pre-resolved key info for label-group enc
 
 Create `LabelGroupEncryption.swift`:
 - `struct EncryptedLabelGroup { let label: String; let envelope: EnvelopeEncryptedData? }`.
-- `func encryptLabelGroup<T: Codable>(label: String, fieldsStruct: T, keystore: EnvelopeCrypto, resolver: LabelResolver) throws -> EncryptedLabelGroup`:
+- `func encryptLabelGroup<T: Codable>(label: String, fieldsStruct: T, keystore: CommonKeyManager, resolver: LabelResolver) async throws -> EncryptedLabelGroup`:
   - Encode `fieldsStruct` to CBOR using SwiftCBOR Codable encoder with canonical options (stable maps, deterministic ordering).
   - If `resolver.canResolve(label)` is false, return `EncryptedLabelGroup(label, envelope: nil)` (expected partial-access case).
   - Otherwise, `let info = try resolver.resolveLabelInfo(label)` and call `keystore.encryptWithEnvelope(data:plainBytes, networkPublicKey: info.networkPublicKey, profilePublicKeys: info.profilePublicKeys)`.
   - Return `EncryptedLabelGroup(label: label, envelope: envelope)`.
-- `func decryptLabelGroup<T: Codable & RunarDefault>(encryptedGroup: EncryptedLabelGroup, keystore: EnvelopeCrypto) throws -> T`:
+- `func decryptLabelGroup<T: Codable & RunarDefault>(encryptedGroup: EncryptedLabelGroup, keystore: CommonKeyManager) async throws -> T`:
   - If `encryptedGroup.envelope == nil`, return `T.runarDefaultValue`.
   - Else, decrypt with `keystore.decryptWithNetwork` or `decryptWithProfile` per keystore capabilities; then CBOR-decode bytes to `T`.
   - Decrypt errors due to missing keys are contained and result in `T.runarDefaultValue`. Malformed envelopes or CBOR decode errors throw `SerializerError.deserializationFailed`.
@@ -99,7 +100,7 @@ Outcome: Generated code compiles and honors runtime contracts.
 
 ### 5) Tests (Real Implementations, No Mocks)
 
-- Use `swift-test-utils` fixtures to construct real keystores and a configurable resolver matching Rust semantics.
+- Use `swift-test-utils` fixtures to construct real CommonKeyManager instances and a configurable resolver matching Rust semantics.
 - Add encryption integration tests:
   - Per-label encryption presence/absence via `canResolve` logic.
   - Node vs Mobile keystores verify partial access semantics.
@@ -145,6 +146,6 @@ Outcome: Generated code compiles and honors runtime contracts.
 
 ## Notes on FFI Alignment
 
-- FFI exposes only keystore encryption/decryption with public keys (envelope crypto). It does not and will not provide label resolution APIs.
-- The Swift-side `LabelResolver` must map labels to actual recipients: `networkPublicKey` and `profilePublicKeys` as raw bytes, pre-resolved before invoking FFI.
-- Ensure EnvelopeCrypto is fed with these pre-resolved recipients exactly once per operation; avoid any hidden defaults or fallbacks.
+- CommonKeyManager exposes only keystore encryption/decryption with public keys (envelope crypto). It does not and will not provide label resolution APIs.
+- The Swift-side `LabelResolver` must map labels to actual recipients: `networkPublicKey` and `profilePublicKeys` as raw bytes, pre-resolved before invoking CommonKeyManager.
+- Ensure CommonKeyManager is fed with these pre-resolved recipients exactly once per operation; avoid any hidden defaults or fallbacks.

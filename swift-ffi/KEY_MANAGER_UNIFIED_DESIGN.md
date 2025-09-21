@@ -56,7 +56,6 @@ public protocol CommonKeyManager {
     func registerAppleDeviceKeystore(label: String) async throws
 
     // General message crypto (role-agnostic FFI)
-    func encryptForPublicKey(data: Data, publicKey: Data) async throws -> Data
     func encryptForNetwork(data: Data, networkPublicKey: Data) async throws -> Data
     func decryptNetworkData(encryptedEnvelope: Data) async throws -> Data
 }
@@ -223,7 +222,6 @@ This section defines mandatory rules for calling C/Rust FFI from actor methods u
   - registerAppleDeviceKeystore → `rn_keys_register_apple_device_keystore`
 
 - General message crypto
-  - encryptForPublicKey → `rn_keys_encrypt_for_public_key`
   - encryptForNetwork → `rn_keys_encrypt_for_network`
   - decryptNetworkData → `rn_keys_decrypt_network_data`
 

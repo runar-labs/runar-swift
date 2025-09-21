@@ -107,47 +107,6 @@ final class MessageCryptoInteropTests: XCTestCase {
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
     }
 
-    // MARK: - Public Key Encryption Tests
-
-    func testEncryptForPublicKey() async throws {
-        // Test encrypting for public key using CommonKeyManager
-        let testData = Data("Hello encrypted for public key".utf8)
-        
-        // Get mobile public key
-        let mobilePublicKey = try await mobileKeys.getUserPublicKey()
-        XCTAssertFalse(mobilePublicKey.isEmpty, "Mobile public key should not be empty")
-        
-        // Encrypt for public key using node keys
-        let encryptedData = try await nodeKeys.encryptForPublicKey(data: testData, publicKey: mobilePublicKey)
-        XCTAssertFalse(encryptedData.isEmpty, "Encrypted data should not be empty")
-        XCTAssertNotEqual(encryptedData, testData, "Encrypted data should be different from original")
-        
-        // Note: decryptForPublicKey is not implemented in the current design
-        // This test verifies that encryption works
-    }
-
-    func testEncryptForPublicKeyWithDifferentKeys() async throws {
-        // Test encrypting for public key with different key pairs
-        let testData = Data("Hello encrypted for different public key".utf8)
-        
-        // Get mobile public key
-        let mobilePublicKey = try await mobileKeys.getUserPublicKey()
-        XCTAssertFalse(mobilePublicKey.isEmpty, "Mobile public key should not be empty")
-        
-        // Encrypt for public key using node keys
-        let encryptedData1 = try await nodeKeys.encryptForPublicKey(data: testData, publicKey: mobilePublicKey)
-        XCTAssertFalse(encryptedData1.isEmpty, "Encrypted data should not be empty")
-        
-        // Note: Mobile keys can't encrypt for public key (only node keys can)
-        // This is expected behavior based on the FFI function being role-specific
-        do {
-            _ = try await mobileKeys.encryptForPublicKey(data: testData, publicKey: mobilePublicKey)
-            XCTFail("Mobile keys should not be able to encrypt for public key")
-        } catch {
-            // Expected to throw an error
-            XCTAssertTrue(error is FFIError, "Should throw FFIError for mobile keys encrypting for public key")
-        }
-    }
 
     // MARK: - Network Encryption Tests
 
