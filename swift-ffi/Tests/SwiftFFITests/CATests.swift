@@ -196,7 +196,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
@@ -231,7 +231,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
@@ -275,7 +275,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
@@ -319,7 +319,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
@@ -363,7 +363,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
@@ -407,7 +407,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
@@ -519,7 +519,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
@@ -629,7 +629,7 @@ final class CATests: XCTestCase {
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
 
-        let caClientConfig = CaClientConfigAll(
+        let caClientConfig = try CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",

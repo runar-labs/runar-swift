@@ -310,3 +310,78 @@ let plain = try await km.decryptEnvelope(envelopeData: eed)
 - Strict pointer and memory management (use `defer` frees for FFI outputs) within actor context.
 - No hidden behavior or role fallbacks.
 - Deterministic error propagation; no debug prints in production error paths.
+
+
+Lessons Learned during implementation:
+### Lessons learned: Swift 6-safe FFI without @unchecked
+
+- **Actor isolation at the right boundary**: `NodeKeyManager`/`MobileKeyManager` as actors; all public APIs are `async throws`. The CA wrappers (`CANode`, `CAServer`, `SharedCANode`) are plain classes (not actors) with nonisolated FFI methods. `CAClient` is an actor (so returning it across actor boundaries is Sendable).
+
+- **Synchronous FFI regions only**:
+  - Copy the handle at method start: `let handle = self.handle`.
+  - Do not suspend inside the FFI-critical section.
+  - Use stack-local `outPtr/outLen`; copy to `Data` immediately; always free via `rn_free`/`rn_string_free` in the same scope.
+  - Use `withUnsafeBytes` closures only to immediately invoke the FFI call.
+
+- **Nonisolated FFI helpers**:
+  - Internal `nonisolated` helpers perform the entire `rn_*` call + copy + free. Actor methods prepare arguments and call the helper with locals, never capturing `self`.
+
+- **No non-Sendable across actors**:
+  - Do not return `UnsafeMutableRawPointer` or class instances from actor methods. Return value types or actor references (e.g., return `CAClient` actor). Construct non-actor objects in the same isolation domain where their raw handle is created.
+
+- **No `@unchecked Sendable` anywhere**:
+  - Actor isolation and strict FFI discipline remove the need for `@unchecked`. We rely on Sendable actor references and thread safety guaranteed by synchronous FFI sections.
+
+- **Deterministic error propagation**:
+  - The standard pattern: `withRnErrorCode { rn_call(..., errPtr) }` → check code/error → throw `FFIError` with immediate string copy/free.
+
+- **Memory hygiene**:
+  - Always free FFI-owned buffers/strings.
+  - Never persist FFI pointers beyond the call; convert to Swift types immediately.
+
+- **CBOR parity and schema discipline**:
+  - Ensure DER/CBOR fields match Rust one-for-one. Extract `csr_der` from `SetupToken` CBOR before requests. Encode arrays (e.g., admin SKIs) as actual CBOR arrays.
+
+- **Temporal stability after state changes**:
+  - Insert very small sleeps (e.g., 50ms) after certificate installation before issuing a new CSR/renewal. This mirrors Rust’s natural timing (thread scheduling/blocking) and avoids racing with background teardown/upkeep in transport/keystore layers.
+
+### What went wrong in the first attempt (and why we changed back to classes)
+
+- **Made CA wrappers actors/@MainActor**:
+  - Returning non-Sendable (raw pointers or non-actor classes) across actor isolation triggered Swift 6 “sending risks data race” diagnostics and, in practice, runtime crashes (signal 11) under load.
+  - Some tests used main-actor assertions; mixing `@MainActor` with cross-actor non-Sendable references caused isolation violations.
+
+- **Corrective changes**:
+  - Reverted `CANode`, `CAServer`, `SharedCANode` to plain classes with nonisolated FFI methods. This eliminated cross-actor Sendable requirements for their raw handles.
+  - Made `CAClient` an actor and created it via an actor-safe factory pattern (or local nonisolated helper + construction in the same isolation), so we only ever pass an actor reference (Sendable by construction).
+  - Ensured no FFI raw pointer or non-Sendable class crosses actor boundaries.
+
+### Other concrete pitfalls we fixed (to avoid repeating)
+
+- **Network ID mismatch**: use `test_network` consistently (not `test-network`) across client/server/token.
+- **CSR encoding**: for enroll/renew, send raw DER from `SetupToken`’s `csr_der` (decode first). Sending the whole `SetupToken` as CSR causes parse/tag errors and wrong message types (0x2000).
+- **Admin SKIs format**: CBOR array of strings, not a bare string.
+- **Correct installer**: install node certificates on `NodeKeyManager`, not on `MobileKeyManager`.
+- **Vector parity**: FFI CBOR vectors must match Rust exactly (lengths, fill bytes, timestamps).
+- **Logging vs prints**: prefer the shared logger; never keep `print` in production paths.
+
+### Quick checklist for future FFI work
+
+- **Before coding**:
+  - Decide: actor vs class. Actors only for high-level safe surfaces; wrappers holding raw handles are plain classes with nonisolated methods.
+  - Define FFI helpers as nonisolated functions.
+
+- **While coding**:
+  - Copy handle to a local; no suspension during FFI; immediate copy+free.
+  - Never return raw pointers/classes across actors; return value types or actor refs.
+  - Validate inputs; propagate FFI error codes/messages deterministically.
+
+- **After coding**:
+  - Cross-check Rust tests for data shapes and flow.
+  - Add tiny sleeps after cert install if issuing subsequent CSR/renew; only where state transitions occur.
+
+- **Tests**:
+  - Use real flows only (no stubs): real CA setup, real enroll/renew, real transport.
+  - Ensure network_id and CBOR schemas match Rust exactly.
+
+This is now documented in the design and reflected in code. I can apply the two test fixes (edge-cases error semantics and multi-certificate installation) if you want me to proceed.

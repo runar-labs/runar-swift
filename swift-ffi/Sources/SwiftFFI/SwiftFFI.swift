@@ -1751,8 +1751,16 @@ public struct CaClientConfigAll: Codable, Sendable {
                 request_timeout_seconds: UInt32,
                 max_retries: UInt32,
                 root_ca_der: Data,
-                issuing_ca_der: Data)
+                issuing_ca_der: Data) throws
     {
+        // Validate non-empty certificates as per design requirements
+        guard !root_ca_der.isEmpty else {
+            throw FFIError.invalidParameter("root_ca_der cannot be empty")
+        }
+        guard !issuing_ca_der.isEmpty else {
+            throw FFIError.invalidParameter("issuing_ca_der cannot be empty")
+        }
+        
         self.bootstrap_server = bootstrap_server
         self.authenticated_server = authenticated_server
         self.network_id = network_id

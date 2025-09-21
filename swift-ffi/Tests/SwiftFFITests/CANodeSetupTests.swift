@@ -88,24 +88,22 @@ final class CANodeSetupTests: XCTestCase {
         // Test that CAClient creation fails with empty certificates
         let nodeKeys = try await NodeKeyManager()
         
-        let emptyConfig = CaClientConfigAll(
-            bootstrap_server: "127.0.0.1:8080",
-            authenticated_server: "127.0.0.1:8081",
-            network_id: "test_network",
-            request_timeout_seconds: 30,
-            max_retries: 3,
-            root_ca_der: Data(), // Empty certificate
-            issuing_ca_der: Data() // Empty certificate
-        )
-        
-        // This should fail with a descriptive error
+        // This should fail with a descriptive error during config creation
         do {
-            _ = try await nodeKeys.createCAClient(config: emptyConfig)
-            XCTFail("CAClient creation should have failed with empty certificates")
+            let emptyConfig = try CaClientConfigAll(
+                bootstrap_server: "127.0.0.1:8080",
+                authenticated_server: "127.0.0.1:8081",
+                network_id: "test_network",
+                request_timeout_seconds: 30,
+                max_retries: 3,
+                root_ca_der: Data(), // Empty certificate
+                issuing_ca_der: Data() // Empty certificate
+            )
+            XCTFail("CaClientConfigAll creation should have failed with empty certificates")
         } catch {
             // Should fail with a descriptive error about empty certificates
             let errorMessage = error.localizedDescription
-            XCTAssertTrue(errorMessage.contains("empty") || errorMessage.contains("certificate"), 
+            XCTAssertTrue(errorMessage.contains("root_ca_der") || errorMessage.contains("issuing_ca_der") || errorMessage.contains("empty"), 
                          "Error should mention empty certificate issue: \(errorMessage)")
         }
     }

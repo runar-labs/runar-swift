@@ -176,7 +176,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     print("   ✅ CSR enrollment request created")
     
     // Create CA client with the certificates from the CA node
-    let caClientConfig = CaClientConfigAll(
+    let caClientConfig = try CaClientConfigAll(
         bootstrap_server: bootstrapAddr,
         authenticated_server: authenticatedAddr,
         network_id: "test_network",

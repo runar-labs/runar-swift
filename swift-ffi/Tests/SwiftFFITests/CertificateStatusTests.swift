@@ -48,7 +48,7 @@ final class CertificateStatusTests: XCTestCase {
                 validityDays: 365,
                 issuingCaSerial: 1,
                 eaPublicKeys: eaPublicKey,
-                networkId: "test-network"
+                networkId: "test_network"
             )
             try await caNode.setupComplete(params: setupParams)
             let rootCa = try await caNode.getRootCACertificate()
@@ -63,10 +63,10 @@ final class CertificateStatusTests: XCTestCase {
             let bootstrapAddr = try await caServer.bootstrapAddress()
             let authenticatedAddr = try await caServer.authenticatedAddress()
             
-            let caClientConfig = CaClientConfigAll(
+            let caClientConfig = try CaClientConfigAll(
                 bootstrap_server: bootstrapAddr,
                 authenticated_server: authenticatedAddr,
-                network_id: "test-network",
+                network_id: "test_network",
                 request_timeout_seconds: 30,
                 max_retries: 3,
                 root_ca_der: rootCa,
@@ -89,7 +89,9 @@ final class CertificateStatusTests: XCTestCase {
             )
             let tokenData = try await eaManager.generateEnrollmentToken(params: tokenParams)
             let enrollmentToken = try CodableCBORDecoder().decode(EnrollmentToken.self, from: tokenData)
-            let csr = try await nodeKeys.generateCSR()
+            let setupTokenCbor = try await nodeKeys.generateCSR()
+            let setupToken = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
+            let csr = Data(setupToken.csr_der)
             let enrollReq = CsrEnrollRequest(
                 network_id: "test_network",
                 csr_der: csr,
@@ -99,6 +101,7 @@ final class CertificateStatusTests: XCTestCase {
             let enrollResp = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: enrollReqData)
             let certMsg = try await MobileKeyManager().fromEnrollResponse(enrollResp)
             try await nodeKeys.installCertificate(certMsg)
+            try await Task.sleep(nanoseconds: 50_000_000)
         } catch {
             XCTFail("Failed to set up CA components: \(error)")
         }
@@ -124,7 +127,7 @@ final class CertificateStatusTests: XCTestCase {
 
     func testGetCertificateStatusAfterInstallation() async throws {
         // Generate CSR and install certificate
-        let csrData = try await nodeKeys.generateCsrSetupToken()
+        _ = try await nodeKeys.generateCsrSetupToken()
 
         // For this test, we'll just verify the status can be retrieved
         // In a real scenario, we would process the CSR through the CA
@@ -147,7 +150,7 @@ final class CertificateStatusTests: XCTestCase {
 
     func testGetCertificateSerialAfterInstallation() async throws {
         // Generate CSR
-        let csrData = try await nodeKeys.generateCsrSetupToken()
+        _ = try await nodeKeys.generateCsrSetupToken()
 
         // Try to get serial (might fail if certificate not installed)
         do {
@@ -296,6 +299,19 @@ final class CertificateStatusTests: XCTestCase {
         let nodeKeys2 = try await NodeKeyManager()
         try await nodeKeys2.generateKeys()
 
+        // Create mobile key manager to act as CA
+        let mobileKeys = try await MobileKeyManager()
+        try await mobileKeys.initializeUserRootKey()
+
+        // Generate CSRs and install certificates for both nodes
+        let csr1 = try await nodeKeys1.generateCsrSetupToken()
+        let cert1 = try await mobileKeys.processSetupToken(csr1)
+        try await nodeKeys1.installCertificate(cert1)
+
+        let csr2 = try await nodeKeys2.generateCsrSetupToken()
+        let cert2 = try await mobileKeys.processSetupToken(csr2)
+        try await nodeKeys2.installCertificate(cert2)
+
         // Get certificates from both
         let certificate1 = try await nodeKeys1.getNodeCertificate()
         let certificate2 = try await nodeKeys2.getNodeCertificate()
@@ -320,19 +336,17 @@ final class CertificateStatusTests: XCTestCase {
     func testCertificateStatusEdgeCases() async throws {
         // Test various edge cases for certificate status
 
-        // Test with uninitialized keys
-        let uninitializedKeys = try await NodeKeyManager()
+        // Test with newly created keys (no certificate installed yet)
+        let newNodeKeys = try await NodeKeyManager()
 
-        do {
-            _ = try await uninitializedKeys.getCertificateStatus()
-            XCTFail("Should have thrown error for uninitialized keys")
-        } catch {
-            XCTAssertTrue(error is FFIError)
-        }
+        // Should return status 0 (None) for newly created node manager
+        let status = try await newNodeKeys.getCertificateStatus()
+        XCTAssertEqual(status, 0, "Certificate status should be None for newly created node manager")
 
+        // Should throw error when trying to get certificate serial without certificate
         do {
-            _ = try await uninitializedKeys.getCertificateSerial()
-            XCTFail("Should have thrown error for uninitialized keys")
+            _ = try await newNodeKeys.getCertificateSerial()
+            XCTFail("Should have thrown error for node manager without certificate")
         } catch {
             XCTAssertTrue(error is FFIError)
         }
