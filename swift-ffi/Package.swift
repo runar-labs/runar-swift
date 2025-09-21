@@ -36,7 +36,8 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftFFITests",
-            dependencies: ["SwiftFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR")]
+            dependencies: ["SwiftFFI", .product(name: "SwiftCBOR", package: "SwiftCBOR")],
+            exclude: ["SwiftFFITests/FFIE2EIntegrationTest_baseline.swift.disabled"]
         ),
     ]
 )

@@ -7,7 +7,6 @@ import XCTest
 /// Comprehensive CA Tests
 /// Tests for CA Node, CA Server, and CA Client functionality
 /// Mirrors the comprehensive FFI tests from Rust
-@MainActor
 final class CATests: XCTestCase {
     private var nodeKeys: NodeKeyManager!
     private var caNode: CANode!
@@ -41,14 +40,14 @@ final class CATests: XCTestCase {
 
     func testCaNodeNewHappyPath() async throws {
         // Test successful CA node creation
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
         XCTAssertNotNil(caNode, "CA node should be created successfully")
     }
 
 
     func testCaNodeSetupCompleteHappyPath() async throws {
         // Test CA node setup with proper configuration
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
 
         // Create EA key pair for testing
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
@@ -63,10 +62,10 @@ final class CATests: XCTestCase {
             validityDays: 365,
             issuingCaSerial: 1,
             eaPublicKeys: eaPublicKey,
-            networkId: "test_network"
+            networkId: "test-network"
         )
 
-        await XCTAssertNoThrowAsync(try await caNode.setupComplete(params: setupParams), "CA node setup should succeed")
+        try await caNode.setupComplete(params: setupParams)
 
         // Clean up
         EAKeyManager.free(eaKeyPair)
@@ -75,7 +74,7 @@ final class CATests: XCTestCase {
 
     func testCaNodeCreateShared() async throws {
         // Test creating shared CA node
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
         let sharedCaNode = try await caNode.createShared()
         XCTAssertNotNil(sharedCaNode, "Shared CA node should be created successfully")
 
@@ -88,7 +87,7 @@ final class CATests: XCTestCase {
 
     func testCaServerNewStub() async throws {
         // Test CA server creation
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
         let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -97,7 +96,7 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try await CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
         XCTAssertNotNil(caServer, "CA server should be created successfully")
 
         // Clean up
@@ -107,7 +106,7 @@ final class CATests: XCTestCase {
 
     func testCaServerStartStop() async throws {
         // Test CA server start and stop
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
         let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -116,10 +115,10 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try await CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
 
-        await XCTAssertNoThrowAsync(try await caServer.start(), "CA server should start successfully")
-        await XCTAssertNoThrowAsync(try await caServer.stop(), "CA server should stop successfully")
+        try await caServer.start()
+        try await caServer.stop()
 
         // Clean up
         CANode.freeShared(sharedCaNode)
@@ -127,7 +126,7 @@ final class CATests: XCTestCase {
 
     func testCaServerBootstrapAddress() async throws {
         // Test getting bootstrap address
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
         let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -136,12 +135,12 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try await CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
 
         // Start the server first
         try await caServer.start()
 
-        await XCTAssertNoThrowAsync(try await caServer.bootstrapAddress(), "Should get bootstrap address")
+        _ = try await caServer.bootstrapAddress()
 
         // Stop the server
         try await caServer.stop()
@@ -152,7 +151,7 @@ final class CATests: XCTestCase {
 
     func testCaServerAuthenticatedAddress() async throws {
         // Test getting authenticated address
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
         let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -161,12 +160,12 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try await CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
 
         // Start the server first
         try await caServer.start()
 
-        await XCTAssertNoThrowAsync(try await caServer.authenticatedAddress(), "Should get authenticated address")
+        _ = try await caServer.authenticatedAddress()
 
         // Stop the server
         try await caServer.stop()
@@ -179,14 +178,32 @@ final class CATests: XCTestCase {
 
     func testCaClientNewStub() async throws {
         // Test CA client creation
+        // Prepare CA certificates like Rust test
+        let caNode = try CANode.create()
+        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyPair = try await eaKeyManager.createKeyPair()
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.ffiHandle,
+            rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+            issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+            validityDays: 365,
+            issuingCaSerial: 1,
+            eaPublicKeys: eaPublicKey,
+            networkId: "test-network"
+        )
+        try await caNode.setupComplete(params: setupParams)
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -196,14 +213,32 @@ final class CATests: XCTestCase {
 
     func testCaClientEnroll() async throws {
         // Test CA client enrollment
+        // Prepare CA certs
+        let caNode = try CANode.create()
+        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyPair = try await eaKeyManager.createKeyPair()
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.ffiHandle,
+            rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+            issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+            validityDays: 365,
+            issuingCaSerial: 1,
+            eaPublicKeys: eaPublicKey,
+            networkId: "test-network"
+        )
+        try await caNode.setupComplete(params: setupParams)
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -222,14 +257,32 @@ final class CATests: XCTestCase {
 
     func testCaClientRenew() async throws {
         // Test CA client renewal
+        // Prepare CA certs
+        let caNode = try CANode.create()
+        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyPair = try await eaKeyManager.createKeyPair()
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.ffiHandle,
+            rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+            issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+            validityDays: 365,
+            issuingCaSerial: 1,
+            eaPublicKeys: eaPublicKey,
+            networkId: "test-network"
+        )
+        try await caNode.setupComplete(params: setupParams)
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -248,14 +301,32 @@ final class CATests: XCTestCase {
 
     func testCaClientRevoke() async throws {
         // Test CA client revocation
+        // Prepare CA certs
+        let caNode = try CANode.create()
+        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyPair = try await eaKeyManager.createKeyPair()
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.ffiHandle,
+            rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+            issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+            validityDays: 365,
+            issuingCaSerial: 1,
+            eaPublicKeys: eaPublicKey,
+            networkId: "test-network"
+        )
+        try await caNode.setupComplete(params: setupParams)
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -274,14 +345,32 @@ final class CATests: XCTestCase {
 
     func testCaClientGetChain() async throws {
         // Test CA client chain retrieval
+        // Prepare CA certs
+        let caNode = try CANode.create()
+        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyPair = try await eaKeyManager.createKeyPair()
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.ffiHandle,
+            rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+            issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+            validityDays: 365,
+            issuingCaSerial: 1,
+            eaPublicKeys: eaPublicKey,
+            networkId: "test-network"
+        )
+        try await caNode.setupComplete(params: setupParams)
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -300,14 +389,32 @@ final class CATests: XCTestCase {
 
     func testCaClientGetStatus() async throws {
         // Test CA client status retrieval
+        // Prepare CA certs
+        let caNode = try CANode.create()
+        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyPair = try await eaKeyManager.createKeyPair()
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.ffiHandle,
+            rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+            issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+            validityDays: 365,
+            issuingCaSerial: 1,
+            eaPublicKeys: eaPublicKey,
+            networkId: "test-network"
+        )
+        try await caNode.setupComplete(params: setupParams)
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -375,7 +482,7 @@ final class CATests: XCTestCase {
 
     func testCaNodeErrorHandling() async throws {
         // Test CA node error handling with invalid parameters
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
 
         // Test with empty EA public keys
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -389,19 +496,37 @@ final class CATests: XCTestCase {
         )
 
         // This should fail with empty EA public keys
-        await XCTAssertThrowsErrorAsync(try await caNode.setupComplete(params: setupParams), "Should fail with empty EA public keys")
+        do { try await caNode.setupComplete(params: setupParams); XCTFail("Should fail with empty EA public keys") } catch { XCTAssertTrue(error is FFIError) }
     }
 
     func testCaClientErrorHandling() async throws {
         // Test CA client error handling with invalid parameters
+        // Prepare CA certs
+        let caNode = try CANode.create()
+        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyPair = try await eaKeyManager.createKeyPair()
+        let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
+        let setupParams = CANodeManager.CANodeSetupParams(
+            caNode: caNode.ffiHandle,
+            rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+            issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+            validityDays: 365,
+            issuingCaSerial: 1,
+            eaPublicKeys: eaPublicKey,
+            networkId: "test-network"
+        )
+        try await caNode.setupComplete(params: setupParams)
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -423,7 +548,7 @@ final class CATests: XCTestCase {
 
     func testCaNodeServerIntegration() async throws {
         // Test CA node and server integration
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
@@ -455,7 +580,7 @@ final class CATests: XCTestCase {
             rateLimitPerHour: 1000
         )
 
-        let caServer = try await CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
         XCTAssertNotNil(caServer, "CA server should be created with shared CA node")
 
         // Clean up
@@ -465,7 +590,7 @@ final class CATests: XCTestCase {
 
     func testCaClientServerIntegration() async throws {
         // Test CA client and server integration - simplified to avoid crashes
-        let caNode = try await CANode.create()
+        let caNode = try CANode.create()
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
@@ -497,18 +622,21 @@ final class CATests: XCTestCase {
             rateLimitPerHour: 1000
         )
 
-        let caServer = try await CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
         XCTAssertNotNil(caServer, "CA server should be created successfully")
 
-        // Create CA client
+        // Create CA client using the same CA node certs
+        let rootCa = try await caNode.getRootCACertificate()
+        let issuingCa = try await caNode.getIssuingCACertificate()
+
         let caClientConfig = CaClientConfigAll(
             bootstrap_server: "127.0.0.1:0",
             authenticated_server: "127.0.0.1:0",
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: rootCa,
+            issuing_ca_der: issuingCa
         )
 
         let caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)

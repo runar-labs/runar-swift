@@ -68,6 +68,11 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Returns: CSR setup token data
     /// - Throws: FFIError if generation fails
     func generateCsrSetupToken() async throws -> Data
+    
+    /// Generate CSR for certificate enrollment
+    /// - Returns: CSR data
+    /// - Throws: FFIError if generation fails
+    func generateCSR() async throws -> Data
 
     /// Install certificate from CA response
     /// - Parameter certMessage: Certificate message data
@@ -201,6 +206,16 @@ public protocol MobileOnly: CommonKeyManager {
     /// - Parameter networkPublicKey: Network public key data
     /// - Throws: FFIError if installation fails
     func installNetworkPublicKey(_ networkPublicKey: Data) async throws
+    
+    /// Generate CSR for certificate enrollment
+    /// - Returns: CSR data
+    /// - Throws: FFIError if generation fails
+    func generateCSR() async throws -> Data
+    
+    /// Install certificate from CA response
+    /// - Parameter certMessage: Certificate message data
+    /// - Throws: FFIError if installation fails
+    func installCertificate(_ certMessage: Data) async throws
 
     /// Generate network data key
     /// - Returns: Generated network data key
@@ -480,6 +495,8 @@ internal func ffi_node_encrypt_with_envelope(
     networkPublicKey: Data?,
     profilePublicKeys: [Data]
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
@@ -500,7 +517,7 @@ internal func ffi_node_encrypt_with_envelope(
                     if let networkKey = networkPublicKey {
                         networkKey.withUnsafeBytes { networkRaw in
                             rn_keys_node_encrypt_with_envelope(
-                                handle,
+                                nodeHandle,
                                 dataRaw.bindMemory(to: UInt8.self).baseAddress,
                                 data.count,
                                 networkRaw.bindMemory(to: UInt8.self).baseAddress,
@@ -515,7 +532,7 @@ internal func ffi_node_encrypt_with_envelope(
                         }
                     } else {
                         rn_keys_node_encrypt_with_envelope(
-                            handle,
+                            nodeHandle,
                             dataRaw.bindMemory(to: UInt8.self).baseAddress,
                             data.count,
                             nil,
@@ -545,6 +562,8 @@ internal func ffi_mobile_encrypt_with_envelope(
     networkPublicKey: Data?,
     profilePublicKeys: [Data]
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
@@ -565,7 +584,7 @@ internal func ffi_mobile_encrypt_with_envelope(
                     if let networkKey = networkPublicKey {
                         networkKey.withUnsafeBytes { networkRaw in
                             rn_keys_mobile_encrypt_with_envelope(
-                                handle,
+                                mobileHandle,
                                 dataRaw.bindMemory(to: UInt8.self).baseAddress,
                                 data.count,
                                 networkRaw.bindMemory(to: UInt8.self).baseAddress,
@@ -580,7 +599,7 @@ internal func ffi_mobile_encrypt_with_envelope(
                         }
                     } else {
                         rn_keys_mobile_encrypt_with_envelope(
-                            handle,
+                            mobileHandle,
                             dataRaw.bindMemory(to: UInt8.self).baseAddress,
                             data.count,
                             nil,
@@ -609,12 +628,14 @@ internal func ffi_node_decrypt_envelope(
     _ handle: UnsafeMutableRawPointer,
     envelopeData: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         envelopeData.withUnsafeBytes { raw in
-            rn_keys_node_decrypt_envelope(handle, raw.bindMemory(to: UInt8.self).baseAddress, envelopeData.count, &outPtr, &outLen, errPtr)
+            rn_keys_node_decrypt_envelope(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, envelopeData.count, &outPtr, &outLen, errPtr)
         }
     }
     
@@ -628,11 +649,13 @@ internal func ffi_node_decrypt_envelope(
 internal func ffi_node_generate_csr(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_generate_csr(handle, &outPtr, &outLen, errPtr)
+        rn_keys_node_generate_csr(nodeHandle, &outPtr, &outLen, errPtr)
     }
     
     if let error = err { throw error }
@@ -645,11 +668,13 @@ internal func ffi_node_generate_csr(
 internal func ffi_node_get_quic_certificate_config(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_quic_certificate_config(handle, &outPtr, &outLen, errPtr)
+        rn_keys_node_get_quic_certificate_config(nodeHandle, &outPtr, &outLen, errPtr)
     }
     
     if let error = err { throw error }
@@ -662,11 +687,13 @@ internal func ffi_node_get_quic_certificate_config(
 internal func ffi_node_get_node_certificate(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_node_certificate(handle, &outPtr, &outLen, errPtr)
+        rn_keys_node_get_node_certificate(nodeHandle, &outPtr, &outLen, errPtr)
     }
     
     if let error = err { throw error }
@@ -679,11 +706,13 @@ internal func ffi_node_get_node_certificate(
 internal func ffi_node_get_public_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_public_key(handle, &outPtr, &outLen, errPtr)
+        rn_keys_node_get_public_key(nodeHandle, &outPtr, &outLen, errPtr)
     }
     
     if let error = err { throw error }
@@ -697,12 +726,14 @@ internal func ffi_node_derive_user_profile_key(
     _ handle: UnsafeMutableRawPointer,
     label: String
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         label.withCString { cLabel in
-            rn_keys_node_derive_user_profile_key(handle, cLabel, &outPtr, &outLen, errPtr)
+            rn_keys_node_derive_user_profile_key(nodeHandle, cLabel, &outPtr, &outLen, errPtr)
         }
     }
     
@@ -718,6 +749,8 @@ internal func ffi_node_decrypt_with_profile(
     envelopeData: Data,
     profileId: String
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
@@ -725,7 +758,7 @@ internal func ffi_node_decrypt_with_profile(
         envelopeData.withUnsafeBytes { raw in
             profileId.withCString { cId in
                 rn_keys_node_decrypt_with_profile(
-                    handle,
+                    nodeHandle,
                     raw.bindMemory(to: UInt8.self).baseAddress,
                     envelopeData.count,
                     cId,
@@ -748,13 +781,15 @@ internal func ffi_node_get_profile_public_key_by_label(
     _ handle: UnsafeMutableRawPointer,
     label: String
 ) throws -> (publicKey: Data?, exists: Bool) {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     var hasKey: Int32 = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         label.withCString { cLabel in
-            rn_keys_node_get_profile_public_key_by_label(handle, cLabel, &outPtr, &outLen, &hasKey, errPtr)
+            rn_keys_node_get_profile_public_key_by_label(nodeHandle, cLabel, &outPtr, &outLen, &hasKey, errPtr)
         }
     }
     
@@ -774,10 +809,12 @@ internal func ffi_node_get_profile_public_key_by_label(
 internal func ffi_node_get_certificate_serial(
     _ handle: UnsafeMutableRawPointer
 ) throws -> String {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<CChar>?
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_certificate_serial(handle, &outPtr, errPtr)
+        rn_keys_node_get_certificate_serial(nodeHandle, &outPtr, errPtr)
     }
     
     if let error = err { throw error }
@@ -791,12 +828,14 @@ internal func ffi_node_get_network_agreement(
     _ handle: UnsafeMutableRawPointer,
     networkPublicKey: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         networkPublicKey.withUnsafeBytes { raw in
-            rn_keys_node_get_network_agreement(handle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
+            rn_keys_node_get_network_agreement(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
         }
     }
     
@@ -810,11 +849,13 @@ internal func ffi_node_get_network_agreement(
 internal func ffi_node_get_agreement_public_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_agreement_public_key(handle, &outPtr, &outLen, errPtr)
+        rn_keys_node_get_agreement_public_key(nodeHandle, &outPtr, &outLen, errPtr)
     }
     
     if let error = err { throw error }
@@ -828,12 +869,14 @@ internal func ffi_ensure_symmetric_key(
     _ handle: UnsafeMutableRawPointer,
     name: String
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         name.withCString { namePtr in
-            rn_keys_ensure_symmetric_key(handle, namePtr, &outPtr, &outLen, errPtr)
+            rn_keys_ensure_symmetric_key(nodeHandle, namePtr, &outPtr, &outLen, errPtr)
         }
     }
     
@@ -848,12 +891,14 @@ internal func ffi_encrypt_local_data(
     _ handle: UnsafeMutableRawPointer,
     data: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         data.withUnsafeBytes { dataRaw in
-            rn_keys_encrypt_local_data(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, &outPtr, &outLen, errPtr)
+            rn_keys_encrypt_local_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, &outPtr, &outLen, errPtr)
         }
     }
     
@@ -868,12 +913,14 @@ internal func ffi_decrypt_local_data(
     _ handle: UnsafeMutableRawPointer,
     encryptedData: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         encryptedData.withUnsafeBytes { dataRaw in
-            rn_keys_decrypt_local_data(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+            rn_keys_decrypt_local_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
         }
     }
     
@@ -889,13 +936,15 @@ internal func ffi_encrypt_for_public_key(
     data: Data,
     publicKey: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         data.withUnsafeBytes { dataRaw in
             publicKey.withUnsafeBytes { keyRaw in
-                rn_keys_encrypt_for_public_key(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, publicKey.count, &outPtr, &outLen, errPtr)
+                rn_keys_encrypt_for_public_key(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, publicKey.count, &outPtr, &outLen, errPtr)
             }
         }
     }
@@ -912,13 +961,15 @@ internal func ffi_encrypt_for_network(
     data: Data,
     networkPublicKey: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         data.withUnsafeBytes { dataRaw in
             networkPublicKey.withUnsafeBytes { keyRaw in
-                rn_keys_encrypt_for_network(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
+                rn_keys_encrypt_for_network(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
             }
         }
     }
@@ -934,12 +985,14 @@ internal func ffi_decrypt_network_data(
     _ handle: UnsafeMutableRawPointer,
     encryptedEnvelope: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
         encryptedEnvelope.withUnsafeBytes { dataRaw in
-            rn_keys_decrypt_network_data(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedEnvelope.count, &outPtr, &outLen, errPtr)
+            rn_keys_decrypt_network_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedEnvelope.count, &outPtr, &outLen, errPtr)
         }
     }
     
@@ -954,11 +1007,13 @@ internal func ffi_decrypt_network_data(
 internal func ffi_mobile_get_user_public_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_mobile_get_user_public_key(handle, &outPtr, &outLen, errPtr)
+        rn_keys_mobile_get_user_public_key(mobileHandle, &outPtr, &outLen, errPtr)
     }
 
     if let error = err { throw error }
@@ -971,12 +1026,14 @@ internal func ffi_mobile_derive_user_profile_key(
     _ handle: UnsafeMutableRawPointer,
     label: String
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
         label.withCString { cLabel in
-            rn_keys_mobile_derive_user_profile_key(handle, cLabel, &outPtr, &outLen, errPtr)
+            rn_keys_mobile_derive_user_profile_key(mobileHandle, cLabel, &outPtr, &outLen, errPtr)
         }
     }
 
@@ -989,11 +1046,13 @@ internal func ffi_mobile_derive_user_profile_key(
 internal func ffi_mobile_generate_network_data_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_mobile_generate_network_data_key(handle, &outPtr, &outLen, errPtr)
+        rn_keys_mobile_generate_network_data_key(mobileHandle, &outPtr, &outLen, errPtr)
     }
 
     if let error = err { throw error }
@@ -1063,12 +1122,14 @@ internal func ffi_mobile_from_enroll_response(
     _ handle: UnsafeMutableRawPointer,
     response: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
         response.withUnsafeBytes { raw in
-            rn_keys_mobile_from_enroll_response(handle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+            rn_keys_mobile_from_enroll_response(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
         }
     }
 
@@ -1082,12 +1143,14 @@ internal func ffi_mobile_from_renew_response(
     _ handle: UnsafeMutableRawPointer,
     response: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
         response.withUnsafeBytes { raw in
-            rn_keys_mobile_from_renew_response(handle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+            rn_keys_mobile_from_renew_response(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
         }
     }
 
@@ -1145,13 +1208,15 @@ internal func ffi_encrypt_message_for_node(
     data: Data,
     nodeAgreementPublicKey: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
         data.withUnsafeBytes { dataRaw in
             nodeAgreementPublicKey.withUnsafeBytes { keyRaw in
-                rn_keys_encrypt_message_for_node(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, nodeAgreementPublicKey.count, &outPtr, &outLen, errPtr)
+                rn_keys_encrypt_message_for_node(mobileHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, nodeAgreementPublicKey.count, &outPtr, &outLen, errPtr)
             }
         }
     }
@@ -1166,12 +1231,14 @@ internal func ffi_mobile_decrypt_message_from_node(
     _ handle: UnsafeMutableRawPointer,
     encryptedData: Data
 ) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
         encryptedData.withUnsafeBytes { dataRaw in
-            rn_keys_mobile_decrypt_message_from_node(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+            rn_keys_mobile_decrypt_message_from_node(mobileHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
         }
     }
 
@@ -1187,16 +1254,30 @@ internal func ffi_create_ca_client(
     _ handle: UnsafeMutableRawPointer,
     configCbor: Data
 ) throws -> UnsafeMutableRawPointer {
+    print("DEBUG: ffi_create_ca_client() - Creating CA client")
+    print("DEBUG: ffi_create_ca_client() - Config CBOR length: \(configCbor.count)")
+    
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var out: UnsafeMutableRawPointer?
 
     let (code, err) = withRnErrorCode { errPtr in
         configCbor.withUnsafeBytes { raw in
-            rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, configCbor.count, handle, &out, errPtr)
+            print("DEBUG: ffi_create_ca_client() - About to call rn_transport_ca_client_new_with_config")
+            return rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, configCbor.count, nodeHandle, &out, errPtr)
         }
     }
 
-    if let error = err { throw error }
-    guard code == 0, let clientHandle = out else { throw FFIError.operationFailed("Failed to create CA client") }
+    print("DEBUG: ffi_create_ca_client() - FFI call completed, code: \(code)")
+    if let error = err { 
+        print("DEBUG: ffi_create_ca_client() - FFI error: \(error)")
+        throw error 
+    }
+    guard code == 0, let clientHandle = out else { 
+        print("DEBUG: ffi_create_ca_client() - FFI operation failed with code: \(code)")
+        throw FFIError.operationFailed("Failed to create CA client") 
+    }
+    print("DEBUG: ffi_create_ca_client() - CA client created successfully")
     return clientHandle
 }
 
@@ -1230,11 +1311,13 @@ internal func ffi_create_transport(
     _ handle: UnsafeMutableRawPointer,
     optionsCbor: Data
 ) throws -> UnsafeMutableRawPointer {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
     var outTransport: UnsafeMutableRawPointer?
 
     let (code, err) = withRnErrorCode { errPtr in
         optionsCbor.withUnsafeBytes { raw in
-            rn_transport_new_with_keys(handle, raw.bindMemory(to: UInt8.self).baseAddress, optionsCbor.count, &outTransport, errPtr)
+            rn_transport_new_with_keys(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, optionsCbor.count, &outTransport, errPtr)
         }
     }
 
@@ -1318,7 +1401,7 @@ public struct EnrollmentToken: Codable {
         self.signer_id = signer_id
     }
 
-    public init(from decoder: Decoder) async throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         body = try container.decode(EnrollmentTokenBody.self, forKey: .body)
         // Support both CBOR byte string and array<u8>
@@ -1330,7 +1413,7 @@ public struct EnrollmentToken: Codable {
         signer_id = try container.decode(String.self, forKey: .signer_id)
     }
 
-    public func encode(to encoder: Encoder) async throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(body, forKey: .body)
         try container.encode(Array(signature), forKey: .signature)
@@ -1367,7 +1450,7 @@ public struct EnrollmentTokenBody: Codable {
         self.permissions = permissions
     }
 
-    public init(from decoder: Decoder) async throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         token_id = try container.decode(String.self, forKey: .token_id)
         network_id = try container.decode(String.self, forKey: .network_id)
@@ -1382,7 +1465,7 @@ public struct EnrollmentTokenBody: Codable {
         permissions = try container.decode([String].self, forKey: .permissions)
     }
 
-    public func encode(to encoder: Encoder) async throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(token_id, forKey: .token_id)
         try container.encode(network_id, forKey: .network_id)
@@ -1396,9 +1479,9 @@ public struct EnrollmentTokenBody: Codable {
 
 public struct SetupToken: Codable {
     public let node_id: String
-    public let node_public_key: Data
-    public let node_agreement_public_key: Data
-    public let csr_der: Data
+    public let node_public_key: [UInt8]
+    public let node_agreement_public_key: [UInt8]
+    public let csr_der: [UInt8]
     
     enum CodingKeys: String, CodingKey {
         case node_id
@@ -1407,39 +1490,78 @@ public struct SetupToken: Codable {
         case csr_der
     }
 
-    public init(node_id: String, node_public_key: Data, node_agreement_public_key: Data, csr_der: Data) {
+    public init(node_id: String, node_public_key: [UInt8], node_agreement_public_key: [UInt8], csr_der: [UInt8]) {
         self.node_id = node_id
         self.node_public_key = node_public_key
         self.node_agreement_public_key = node_agreement_public_key
         self.csr_der = csr_der
     }
-
-    public init(from decoder: Decoder) async throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        node_id = try container.decode(String.self, forKey: .node_id)
-        if let pkBytes = try? container.decode([UInt8].self, forKey: .node_public_key) {
-            node_public_key = Data(pkBytes)
-        } else {
-            node_public_key = try container.decode(Data.self, forKey: .node_public_key)
+    
+    public init(from cbor: CBOR) throws {
+        guard case .map(let map) = cbor else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Expected CBOR map"))
         }
-        if let agreeBytes = try? container.decode([UInt8].self, forKey: .node_agreement_public_key) {
-            node_agreement_public_key = Data(agreeBytes)
-        } else {
-            node_agreement_public_key = try container.decode(Data.self, forKey: .node_agreement_public_key)
+        
+        // Extract node_id
+        guard let nodeIdCbor = map[CBOR.utf8String("node_id")],
+              case .utf8String(let nodeId) = nodeIdCbor else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_id"))
         }
-        if let csrBytes = try? container.decode([UInt8].self, forKey: .csr_der) {
-            csr_der = Data(csrBytes)
-        } else {
-            csr_der = try container.decode(Data.self, forKey: .csr_der)
+        self.node_id = nodeId
+        
+        // Extract node_public_key (CBOR array of bytes)
+        guard let nodePublicKeyCbor = map[CBOR.utf8String("node_public_key")],
+              case .array(let nodePublicKeyArray) = nodePublicKeyCbor else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_public_key"))
+        }
+        self.node_public_key = try nodePublicKeyArray.map { byteCbor in
+            guard case .unsignedInt(let byte) = byteCbor else {
+                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in node_public_key array"))
+            }
+            return UInt8(byte)
+        }
+        
+        // Extract node_agreement_public_key (CBOR array of bytes)
+        guard let nodeAgreementPublicKeyCbor = map[CBOR.utf8String("node_agreement_public_key")],
+              case .array(let nodeAgreementPublicKeyArray) = nodeAgreementPublicKeyCbor else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_agreement_public_key"))
+        }
+        self.node_agreement_public_key = try nodeAgreementPublicKeyArray.map { byteCbor in
+            guard case .unsignedInt(let byte) = byteCbor else {
+                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in node_agreement_public_key array"))
+            }
+            return UInt8(byte)
+        }
+        
+        // Extract csr_der (CBOR array of bytes)
+        guard let csrDerCbor = map[CBOR.utf8String("csr_der")],
+              case .array(let csrDerArray) = csrDerCbor else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid csr_der"))
+        }
+        self.csr_der = try csrDerArray.map { byteCbor in
+            guard case .unsignedInt(let byte) = byteCbor else {
+                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in csr_der array"))
+            }
+            return UInt8(byte)
         }
     }
 
-    public func encode(to encoder: Encoder) async throws {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        node_id = try container.decode(String.self, forKey: .node_id)
+        
+        // Decode binary fields as [UInt8] directly from CBOR arrays
+        node_public_key = try container.decode([UInt8].self, forKey: .node_public_key)
+        node_agreement_public_key = try container.decode([UInt8].self, forKey: .node_agreement_public_key)
+        csr_der = try container.decode([UInt8].self, forKey: .csr_der)
+    }
+
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(node_id, forKey: .node_id)
-        try container.encode(Array(node_public_key), forKey: .node_public_key)
-        try container.encode(Array(node_agreement_public_key), forKey: .node_agreement_public_key)
-        try container.encode(Array(csr_der), forKey: .csr_der)
+        try container.encode(node_public_key, forKey: .node_public_key)
+        try container.encode(node_agreement_public_key, forKey: .node_agreement_public_key)
+        try container.encode(csr_der, forKey: .csr_der)
     }
 }
 
@@ -1460,7 +1582,7 @@ public struct CsrEnrollRequest: Codable {
         self.enrollment_token = enrollment_token
     }
 
-    public init(from decoder: Decoder) async throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         network_id = try container.decode(String.self, forKey: .network_id)
         if let csrBytes = try? container.decode([UInt8].self, forKey: .csr_der) {
@@ -1471,7 +1593,7 @@ public struct CsrEnrollRequest: Codable {
         enrollment_token = try container.decode(EnrollmentToken.self, forKey: .enrollment_token)
     }
 
-    public func encode(to encoder: Encoder) async throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(network_id, forKey: .network_id)
         try container.encode(Array(csr_der), forKey: .csr_der)
@@ -1493,7 +1615,7 @@ public struct RenewRequest: Codable {
         self.csr_der = csr_der
     }
 
-    public init(from decoder: Decoder) async throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         network_id = try container.decode(String.self, forKey: .network_id)
         if let csrBytes = try? container.decode([UInt8].self, forKey: .csr_der) {
@@ -1503,7 +1625,7 @@ public struct RenewRequest: Codable {
         }
     }
 
-    public func encode(to encoder: Encoder) async throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(network_id, forKey: .network_id)
         try container.encode(Array(csr_der), forKey: .csr_der)
@@ -1519,6 +1641,54 @@ public struct RevokeRequest: Codable {
         case network_id
         case certificate_serial
         case reason
+    }
+}
+
+/// Revocation response structure
+public struct RevokeResponse: Codable {
+    public let ok: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case ok
+    }
+}
+
+/// CRL-lite structure
+public struct CrlLite: Codable {
+    public let network_id: String
+    public let revoked_serials: [[UInt8]]
+    public let signature: Data
+    public let issuing_ca_serial_hex: String
+    
+    enum CodingKeys: String, CodingKey {
+        case network_id
+        case revoked_serials
+        case signature
+        case issuing_ca_serial_hex
+    }
+}
+
+/// CA Status structure
+public struct CaStatus: Codable {
+    public let issuing_subject: String
+    public let issuing_serial_hex: String
+    public let not_before: UInt64
+    public let not_after: UInt64
+    
+    enum CodingKeys: String, CodingKey {
+        case issuing_subject
+        case issuing_serial_hex
+        case not_before
+        case not_after
+    }
+}
+
+/// Certificate chain structure
+public struct CertificateChain: Codable {
+    public let certificates: [Data]
+    
+    enum CodingKeys: String, CodingKey {
+        case certificates
     }
 }
 
@@ -1724,9 +1894,8 @@ public class EAKeyManager {
     }
 }
 
-@MainActor
 public class CANode {
-    public let ffiHandle: UnsafeMutableRawPointer
+    public nonisolated(unsafe) let ffiHandle: UnsafeMutableRawPointer
     nonisolated(unsafe) private let _ffiHandle: UnsafeMutableRawPointer
     
     public init(ffiHandle: UnsafeMutableRawPointer) {
@@ -1734,26 +1903,49 @@ public class CANode {
         self._ffiHandle = ffiHandle
     }
     
-    public static func create() throws -> CANode {
+    public nonisolated static func create() throws -> CANode {
+        print("DEBUG: CANode.create() - Starting CA Node creation")
         var handle: UnsafeMutableRawPointer?
+        print("DEBUG: CANode.create() - About to call rn_keys_ca_node_new")
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_ca_node_new(&handle, errPtr)
+            print("DEBUG: CANode.create() - Inside withRnErrorCode closure")
+            let result = rn_keys_ca_node_new(&handle, errPtr)
+            print("DEBUG: CANode.create() - rn_keys_ca_node_new returned: \(result)")
+            return result
         }
-        if let error = err { throw error }
+        print("DEBUG: CANode.create() - withRnErrorCode completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: CANode.create() - FFI error: \(error)")
+            throw error 
+        }
         guard code == 0, let out = handle else {
+            print("DEBUG: CANode.create() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
             throw FFIError.operationFailed("Failed to create CA Node")
         }
+        print("DEBUG: CANode.create() - CA Node created successfully")
         return CANode(ffiHandle: out)
     }
     
-    public func setupComplete(params: CANodeManager.CANodeSetupParams) async throws {
+    public nonisolated func setupComplete(params: CANodeManager.CANodeSetupParams) async throws {
+        let logger = RunarLogger(component: .custom)
+        logger.debug("CANode.setupComplete() - Starting setup with params")
+        logger.debug("CANode.setupComplete() - Root CA Subject: \(params.rootCaSubject)")
+        logger.debug("CANode.setupComplete() - Issuing CA Subject: \(params.issuingCaSubject)")
+        logger.debug("CANode.setupComplete() - Validity Days: \(params.validityDays)")
+        logger.debug("CANode.setupComplete() - Issuing CA Serial: \(params.issuingCaSerial)")
+        logger.debug("CANode.setupComplete() - EA Public Keys Length: \(params.eaPublicKeys.count)")
+        logger.debug("CANode.setupComplete() - EA Public Keys first 20 bytes: \(Array(params.eaPublicKeys.prefix(20)))")
+        logger.debug("CANode.setupComplete() - Network ID: \(params.networkId)")
+        
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             params.rootCaSubject.withCString { cRoot in
                 params.issuingCaSubject.withCString { cIssuing in
                     params.networkId.withCString { cNetworkId in
                         params.eaPublicKeys.withUnsafeBytes { raw in
                             rn_keys_ca_node_setup_complete(
-                                self.ffiHandle,
+                                caHandle,
                                 cRoot,
                                 cIssuing,
                                 UInt32(params.validityDays),
@@ -1768,14 +1960,23 @@ public class CANode {
                 }
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to setup CA Node") }
+        if let error = err { 
+            logger.debug("CANode.setupComplete() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            logger.debug("CANode.setupComplete() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to setup CA Node") 
+        }
+        logger.debug("CANode.setupComplete() - Setup completed successfully")
     }
     
-    public func createShared() async throws -> UnsafeMutableRawPointer {
+    public nonisolated func createShared() async throws -> UnsafeMutableRawPointer {
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         var shared: UnsafeMutableRawPointer?
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_ca_node_create_shared(self.ffiHandle, &shared, errPtr)
+            rn_keys_ca_node_create_shared(caHandle, &shared, errPtr)
         }
         if let error = err { throw error }
         guard code == 0, let out = shared else {
@@ -1788,7 +1989,21 @@ public class CANode {
         rn_keys_ca_node_free_shared(handle)
     }
 
-    nonisolated deinit {
+    /// Add admin SKI to CA Node
+    public nonisolated func addAdminSki(_ ski: Data) async throws {
+        let caHandle = self.ffiHandle
+        let skiString = String(data: ski, encoding: .utf8) ?? ""
+        let (code, err) = withRnErrorCode { errPtr in
+            skiString.withCString { cSki in
+                rn_keys_ca_node_add_admin_ski(caHandle, cSki, errPtr)
+            }
+        }
+        
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to add admin SKI") }
+    }
+
+    deinit {
         rn_keys_ca_node_free(_ffiHandle)
     }
 }
@@ -1805,9 +2020,8 @@ public class CANodeManager {
     }
 }
 
-@MainActor
 public class CAServer {
-    private var handle: UnsafeMutableRawPointer?
+    private nonisolated(unsafe) var handle: UnsafeMutableRawPointer?
     nonisolated(unsafe) private var _handle: UnsafeMutableRawPointer?
     
     public init(handle: UnsafeMutableRawPointer) {
@@ -1815,7 +2029,7 @@ public class CAServer {
         self._handle = handle
     }
     
-    public static func create(config: CaServerConfig, sharedCaNode: UnsafeMutableRawPointer) throws -> CAServer {
+    public nonisolated static func create(config: CaServerConfig, sharedCaNode: UnsafeMutableRawPointer) throws -> CAServer {
         // Encode to the CBOR config expected by rn_transport_ca_server_new
         let cborConfig = CustomCaServerConfig(
             bootstrap_bind: config.bootstrapBind,
@@ -1844,52 +2058,62 @@ public class CAServer {
         return CAServer(handle: out)
     }
     
-    public func stop() async throws {
+    public nonisolated func stop() async throws {
         guard let server = handle else { return }
+        // Copy handle to local to avoid capturing actor state in closures
+        let serverHandle = server
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_ca_server_stop(server, errPtr)
+            rn_transport_ca_server_stop(serverHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to stop CA Server") }
     }
 
-    public func start() async throws {
+    public nonisolated func start() async throws {
         guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        // Copy handle to local to avoid capturing actor state in closures
+        let serverHandle = server
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_ca_server_start(server, errPtr)
+            rn_transport_ca_server_start(serverHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to start CA Server") }
     }
 
-    public func bootstrapAddress() async throws -> String {
+    public nonisolated func bootstrapAddress() async throws -> String {
         guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        // Copy handle to local to avoid capturing actor state in closures
+        let serverHandle = server
         var out: UnsafeMutablePointer<CChar>?
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_ca_server_get_bootstrap_addr(server, &out, errPtr)
+            rn_transport_ca_server_get_bootstrap_addr(serverHandle, &out, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to get bootstrap address") }
-        return try await copyCStringAndFree(out)
+        return try copyCStringAndFree(out)
     }
 
-    public func authenticatedAddress() async throws -> String {
+    public nonisolated func authenticatedAddress() async throws -> String {
         guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        // Copy handle to local to avoid capturing actor state in closures
+        let serverHandle = server
         var out: UnsafeMutablePointer<CChar>?
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_ca_server_get_authenticated_addr(server, &out, errPtr)
+            rn_transport_ca_server_get_authenticated_addr(serverHandle, &out, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to get authenticated address") }
-        return try await copyCStringAndFree(out)
+        return try copyCStringAndFree(out)
     }
 
-    public func configureAdminSkis(_ skisCbor: Data) async throws {
+    public nonisolated func configureAdminSkis(_ skisCbor: Data) async throws {
         guard let server = handle else { throw FFIError.invalidParameter("Server handle not initialized") }
+        // Copy handle to local to avoid capturing actor state in closures
+        let serverHandle = server
         let (code, err) = withRnErrorCode { errPtr in
             skisCbor.withUnsafeBytes { raw in
                 rn_transport_ca_server_configure_admin_skis(
-                    server,
+                    serverHandle,
                     raw.bindMemory(to: UInt8.self).baseAddress,
                     skisCbor.count,
                     errPtr
@@ -1910,9 +2134,8 @@ public class CAServer {
 
 // MARK: - Shared CA Node Wrapper
 
-@MainActor
 public final class SharedCANode {
-    public let handle: UnsafeMutableRawPointer
+    public nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     nonisolated(unsafe) private let _handle: UnsafeMutableRawPointer
 
     public init(handle: UnsafeMutableRawPointer) {
@@ -1921,9 +2144,11 @@ public final class SharedCANode {
     }
 
     public func addAdminSki(_ ski: String) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             ski.withCString { cSki in
-                rn_keys_ca_node_add_admin_ski(self.handle, cSki, errPtr)
+                rn_keys_ca_node_add_admin_ski(nodeHandle, cSki, errPtr)
             }
         }
         if let error = err { throw error }
@@ -1939,24 +2164,62 @@ public final class SharedCANode {
 
 public extension CANode {
     func getRootCACertificate() async throws -> Data {
+        let logger = RunarLogger(component: .custom)
+        logger.debug("CANode.getRootCACertificate() - Getting Root CA certificate")
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_ca_node_get_root_ca_certificate(self.ffiHandle, &outPtr, &outLen, errPtr)
+            logger.debug("CANode.getRootCACertificate() - About to call rn_keys_ca_node_get_root_ca_certificate")
+            return rn_keys_ca_node_get_root_ca_certificate(caHandle, &outPtr, &outLen, errPtr)
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to get Root CA certificate") }
+        logger.debug("CANode.getRootCACertificate() - FFI call completed, code: \(code), outLen: \(outLen)")
+        if let error = err { 
+            logger.debug("CANode.getRootCACertificate() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            logger.debug("CANode.getRootCACertificate() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to get Root CA certificate") 
+        }
+        logger.debug("CANode.getRootCACertificate() - Root CA certificate retrieved successfully, length: \(outLen)")
+        
+        // Defensive check: fail fast if certificate is empty
+        guard outLen > 0 else {
+            throw FFIError.operationFailed("CA root certificate is empty; verify EA keys CBOR array and setup sequence - ensure configureEnrollmentAuthority was called before setupComplete")
+        }
+        
         return try copyBytesAndFree(outPtr, outLen)
     }
 
     func getIssuingCACertificate() async throws -> Data {
+        let logger = RunarLogger(component: .custom)
+        logger.debug("CANode.getIssuingCACertificate() - Getting Issuing CA certificate")
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_ca_node_get_issuing_ca_certificate(self.ffiHandle, &outPtr, &outLen, errPtr)
+            logger.debug("CANode.getIssuingCACertificate() - About to call rn_keys_ca_node_get_issuing_ca_certificate")
+            return rn_keys_ca_node_get_issuing_ca_certificate(caHandle, &outPtr, &outLen, errPtr)
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to get Issuing CA certificate") }
+        logger.debug("CANode.getIssuingCACertificate() - FFI call completed, code: \(code), outLen: \(outLen)")
+        if let error = err { 
+            logger.debug("CANode.getIssuingCACertificate() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            logger.debug("CANode.getIssuingCACertificate() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to get Issuing CA certificate") 
+        }
+        logger.debug("CANode.getIssuingCACertificate() - Issuing CA certificate retrieved successfully, length: \(outLen)")
+        
+        // Defensive check: fail fast if certificate is empty
+        guard outLen > 0 else {
+            throw FFIError.operationFailed("CA issuing certificate is empty; verify EA keys CBOR array and setup sequence - ensure configureEnrollmentAuthority was called before setupComplete")
+        }
+        
         return try copyBytesAndFree(outPtr, outLen)
     }
 
@@ -1966,11 +2229,13 @@ public extension CANode {
     }
 
     func handleCRL(networkId: String) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
             networkId.withCString { cNet in
-                rn_keys_ca_node_handle_crl(self.ffiHandle, cNet, &outPtr, &outLen, errPtr)
+                rn_keys_ca_node_handle_crl(caHandle, cNet, &outPtr, &outLen, errPtr)
             }
         }
         if let error = err { throw error }
@@ -1979,9 +2244,11 @@ public extension CANode {
     }
 
     func revokeToken(_ tokenId: String) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             tokenId.withCString { cToken in
-                rn_keys_ca_node_revoke_token(self.ffiHandle, cToken, errPtr)
+                rn_keys_ca_node_revoke_token(caHandle, cToken, errPtr)
             }
         }
         if let error = err { throw error }
@@ -1992,13 +2259,27 @@ public extension CANode {
     /// - Parameter eaPublicKeys: Enrollment authority public keys data
     /// - Throws: FFIError if the operation fails
     func configureEnrollmentAuthority(eaPublicKeys: Data) async throws {
+        let logger = RunarLogger(component: .custom)
+        logger.debug("CANode.configureEnrollmentAuthority() - Configuring EA with keys length: \(eaPublicKeys.count)")
+        
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
-            eaPublicKeys.withUnsafeBytes { raw in
-                rn_keys_ca_node_configure_enrollment_authority(self.ffiHandle, raw.bindMemory(to: UInt8.self).baseAddress, eaPublicKeys.count, errPtr)
+            logger.debug("CANode.configureEnrollmentAuthority() - Calling FFI function")
+            return eaPublicKeys.withUnsafeBytes { raw in
+                rn_keys_ca_node_configure_enrollment_authority(caHandle, raw.bindMemory(to: UInt8.self).baseAddress, eaPublicKeys.count, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to configure enrollment authority") }
+        logger.debug("CANode.configureEnrollmentAuthority() - FFI call completed, code: \(code)")
+        if let error = err { 
+            logger.debug("CANode.configureEnrollmentAuthority() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            logger.debug("CANode.configureEnrollmentAuthority() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to configure enrollment authority") 
+        }
+        logger.debug("CANode.configureEnrollmentAuthority() - EA configuration completed successfully")
     }
     
     /// Handle enrollment request (serverless)
@@ -2010,10 +2291,12 @@ public extension CANode {
     func handleEnroll(request: Data, remoteAddress: String) async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             request.withUnsafeBytes { raw in
                 remoteAddress.withCString { cAddr in
-                    rn_keys_ca_node_handle_enroll(self.ffiHandle, raw.bindMemory(to: UInt8.self).baseAddress, request.count, cAddr, &outPtr, &outLen, errPtr)
+                    rn_keys_ca_node_handle_enroll(caHandle, raw.bindMemory(to: UInt8.self).baseAddress, request.count, cAddr, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -2031,10 +2314,12 @@ public extension CANode {
     func handleRenew(request: Data, peerCertificate: Data) async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             request.withUnsafeBytes { reqRaw in
                 peerCertificate.withUnsafeBytes { certRaw in
-                    rn_keys_ca_node_handle_renew(self.ffiHandle, reqRaw.bindMemory(to: UInt8.self).baseAddress, request.count, certRaw.bindMemory(to: UInt8.self).baseAddress, peerCertificate.count, &outPtr, &outLen, errPtr)
+                    rn_keys_ca_node_handle_renew(caHandle, reqRaw.bindMemory(to: UInt8.self).baseAddress, request.count, certRaw.bindMemory(to: UInt8.self).baseAddress, peerCertificate.count, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -2052,10 +2337,12 @@ public extension CANode {
     func handleRevoke(request: Data, adminSki: String) async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             request.withUnsafeBytes { raw in
                 adminSki.withCString { cSki in
-                    rn_keys_ca_node_handle_revoke(self.ffiHandle, raw.bindMemory(to: UInt8.self).baseAddress, request.count, cSki, &outPtr, &outLen, errPtr)
+                    rn_keys_ca_node_handle_revoke(caHandle, raw.bindMemory(to: UInt8.self).baseAddress, request.count, cSki, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -2071,9 +2358,11 @@ public extension CANode {
     func handleChain(networkId: String) async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             networkId.withCString { cNet in
-                rn_keys_ca_node_handle_chain(self.ffiHandle, cNet, &outPtr, &outLen, errPtr)
+                rn_keys_ca_node_handle_chain(caHandle, cNet, &outPtr, &outLen, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2088,9 +2377,11 @@ public extension CANode {
     func handleStatus(networkId: String) async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             networkId.withCString { cNet in
-                rn_keys_ca_node_handle_status(self.ffiHandle, cNet, &outPtr, &outLen, errPtr)
+                rn_keys_ca_node_handle_status(caHandle, cNet, &outPtr, &outLen, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2104,8 +2395,10 @@ public extension CANode {
     func generateCrlLite() async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        // Copy handle to local to avoid capturing actor state in closures
+        let caHandle = self.ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_ca_node_generate_crl_lite(self.ffiHandle, &outPtr, &outLen, errPtr)
+            rn_keys_ca_node_generate_crl_lite(caHandle, &outPtr, &outLen, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to generate CRL-lite") }
@@ -2159,8 +2452,10 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         self._handle = SendableHandle(handle)
 
         // Initialize as node
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         let (initCode, initErr) = withRnErrorCode { errPtr in
-            rn_keys_init_as_node(self.handle, errPtr)
+            rn_keys_init_as_node(nodeHandle, errPtr)
         }
         if let error = initErr { throw error }
         guard initCode == 0 else { throw FFIError.operationFailed("Failed to initialize as node") }
@@ -2191,9 +2486,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     // MARK: - NodeOnly Implementation
 
     public func hasKeys() async throws -> Bool {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         var hasKeys: Int32 = 0
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_node_has_keys(self.handle, &hasKeys, errPtr)
+            rn_keys_node_has_keys(nodeHandle, &hasKeys, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to check if node has keys") }
@@ -2201,14 +2498,24 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     public func generateKeys() async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_node_generate_keys(self.handle, errPtr)
+            rn_keys_node_generate_keys(nodeHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to generate node keys") }
     }
 
     public func generateCsrSetupToken() async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+        
+        // Call nonisolated helper - no suspension during FFI
+        return try ffi_node_generate_csr(handle)
+    }
+    
+    public func generateCSR() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
         
@@ -2272,9 +2579,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     public func installProfilePublicKey(_ publicKey: Data) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             publicKey.withUnsafeBytes { raw in
-                rn_keys_node_install_profile_public_key(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, publicKey.count, errPtr)
+                rn_keys_node_install_profile_public_key(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, publicKey.count, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2290,9 +2599,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     public func getCertificateStatus() async throws -> Int32 {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         var status: Int32 = 0
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_node_get_certificate_status(self.handle, &status, errPtr)
+            rn_keys_node_get_certificate_status(nodeHandle, &status, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to get certificate status") }
@@ -2308,9 +2619,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     public func validatePeerCertificate(_ cert: Data) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             cert.withUnsafeBytes { raw in
-                rn_keys_node_validate_peer_certificate(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, cert.count, errPtr)
+                rn_keys_node_validate_peer_certificate(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, cert.count, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2318,9 +2631,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     public func installNetworkKey(_ networkKeyMessage: Data) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             networkKeyMessage.withUnsafeBytes { raw in
-                rn_keys_node_install_network_key(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, networkKeyMessage.count, errPtr)
+                rn_keys_node_install_network_key(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkKeyMessage.count, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2336,10 +2651,12 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
     
     public func hasNetworkPrivateKey(networkPublicKey: Data) async throws -> Bool {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         var hasKey: Int32 = 0
         let (_, err) = withRnErrorCode { errPtr in
             networkPublicKey.withUnsafeBytes { raw in
-                rn_keys_node_has_network_private_key(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &hasKey, errPtr)
+                rn_keys_node_has_network_private_key(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &hasKey, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2362,9 +2679,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     public func setLocalNodeInfo(_ nodeInfoCbor: Data) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             nodeInfoCbor.withUnsafeBytes { raw in
-                rn_keys_set_local_node_info(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
+                rn_keys_set_local_node_info(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2567,12 +2886,23 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     
     /// Create a CA client with this node's handle
     public func createCAClient(config: CaClientConfigAll) async throws -> CAClient {
+        print("DEBUG: NodeKeyManager.createCAClient() - Starting")
+        print("DEBUG: NodeKeyManager.createCAClient() - Config: bootstrap=\(config.bootstrap_server), auth=\(config.authenticated_server)")
+        print("DEBUG: NodeKeyManager.createCAClient() - Root CA: \(config.root_ca_der.count) bytes, Issuing CA: \(config.issuing_ca_der.count) bytes")
+        
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
+        print("DEBUG: NodeKeyManager.createCAClient() - Handle copied to local: \(handle)")
 
         // Call nonisolated helper - no suspension during FFI
+        print("DEBUG: NodeKeyManager.createCAClient() - About to encode config to CBOR")
         let cbor = try await ffi_encode_ca_client_config(config)
+        print("DEBUG: NodeKeyManager.createCAClient() - Config encoded to CBOR: \(cbor.count) bytes")
+        
+        print("DEBUG: NodeKeyManager.createCAClient() - About to call ffi_create_ca_client")
         let clientHandle = try ffi_create_ca_client(handle, configCbor: cbor)
+        print("DEBUG: NodeKeyManager.createCAClient() - CA client created successfully")
+        
         return CAClient(handle: clientHandle)
     }
     
@@ -2626,8 +2956,10 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         self._handle = SendableHandle(handle)
 
         // Initialize as mobile
+        // Copy handle to local to avoid capturing actor state in closures
+        let mobileHandle = self.handle
         let (initCode, initErr) = withRnErrorCode { errPtr in
-            rn_keys_init_as_mobile(self.handle, errPtr)
+            rn_keys_init_as_mobile(mobileHandle, errPtr)
         }
         if let error = initErr { throw error }
         guard initCode == 0 else { throw FFIError.operationFailed("Failed to initialize as mobile") }
@@ -2658,8 +2990,10 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     // MARK: - MobileOnly Implementation
 
     public func initializeUserRootKey() async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let mobileHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_mobile_initialize_user_root_key(self.handle, errPtr)
+            rn_keys_mobile_initialize_user_root_key(mobileHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to initialize user root key") }
@@ -2682,9 +3016,11 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     }
     
     public func installNetworkPublicKey(_ networkPublicKey: Data) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let mobileHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             networkPublicKey.withUnsafeBytes { raw in
-                rn_keys_mobile_install_network_public_key(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, errPtr)
+                rn_keys_mobile_install_network_public_key(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2700,10 +3036,12 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     }
     
     public func hasNetworkPrivateKey(networkPublicKey: Data) async throws -> Bool {
+        // Copy handle to local to avoid capturing actor state in closures
+        let mobileHandle = self.handle
         var hasKey: Int32 = 0
         let (_, err) = withRnErrorCode { errPtr in
             networkPublicKey.withUnsafeBytes { raw in
-                rn_keys_mobile_has_network_private_key(self.handle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &hasKey, errPtr)
+                rn_keys_mobile_has_network_private_key(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &hasKey, errPtr)
             }
         }
         if let error = err { throw error }
@@ -2933,6 +3271,49 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_decrypt_message_from_node(handle, encryptedData: encryptedData)
     }
+    
+    /// Generate CSR for certificate enrollment
+    /// - Returns: CSR data
+    /// - Throws: FFIError if generation fails
+    public func generateCSR() async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+        
+        // Call nonisolated helper - no suspension during FFI
+        return try ffi_node_generate_csr(handle)
+    }
+    
+    /// Install certificate from CA response
+    /// - Parameter certMessage: Certificate message data
+    /// - Throws: FFIError if installation fails
+    public func installCertificate(_ certMessage: Data) async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let mobileHandle = self.handle
+        let (code, err) = withRnErrorCode { errPtr in
+            certMessage.withUnsafeBytes { raw in
+                rn_keys_node_install_certificate(
+                    mobileHandle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    certMessage.count,
+                    errPtr
+                )
+            }
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to install certificate") }
+    }
+    
+    /// Decrypt data with profile key
+    /// - Parameters:
+    ///   - data: Encrypted data
+    ///   - profileId: Profile ID
+    /// - Returns: Decrypted data
+    /// - Throws: FFIError if decryption fails
+    public func decryptWithProfile(_ data: Data, _ profileId: Data) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let mobileHandle = self.handle
+        return try ffi_node_decrypt_with_profile(mobileHandle, envelopeData: data, profileId: String(data: profileId, encoding: .utf8) ?? "")
+    }
 }
 
 // MARK: - CA Client Wrapper
@@ -2944,8 +3325,31 @@ public final class CAClient {
 
     @MainActor
     public init(config: CaClientConfigAll, nodeKeys: NodeKeyManager) async throws {
+        print("DEBUG: CAClient.init() - Starting constructor")
+        print("DEBUG: CAClient.init() - Config: bootstrap=\(config.bootstrap_server), auth=\(config.authenticated_server)")
+        print("DEBUG: CAClient.init() - Root CA: \(config.root_ca_der.count) bytes, Issuing CA: \(config.issuing_ca_der.count) bytes")
+        
+        // Validate certificates are not empty
+        guard !config.root_ca_der.isEmpty else {
+            print("DEBUG: CAClient.init() - ERROR: Root CA certificate is empty")
+            throw FFIError.operationFailed("Root CA certificate is empty; ensure CA node setup completed successfully")
+        }
+        guard !config.issuing_ca_der.isEmpty else {
+            print("DEBUG: CAClient.init() - ERROR: Issuing CA certificate is empty")
+            throw FFIError.operationFailed("Issuing CA certificate is empty; ensure CA node setup completed successfully")
+        }
+        
+        print("DEBUG: CAClient.init() - Certificates validated successfully")
+        
+        let logger = RunarLogger(component: .custom)
+        logger.debug("CAClient.init() - Creating client with Root CA: \(config.root_ca_der.count) bytes, Issuing CA: \(config.issuing_ca_der.count) bytes")
+        
+        print("DEBUG: CAClient.init() - About to call nodeKeys.createCAClient")
         let caClient = try await nodeKeys.createCAClient(config: config)
+        print("DEBUG: CAClient.init() - nodeKeys.createCAClient completed successfully")
+        
         self._handle = caClient.handle
+        print("DEBUG: CAClient.init() - Constructor completed successfully")
     }
     
     nonisolated public init(handle: UnsafeMutableRawPointer) {
@@ -2953,27 +3357,50 @@ public final class CAClient {
     }
     
     public func enroll(bootstrapAddress: String, request: Data) async throws -> Data {
+        print("DEBUG: CAClient.enroll() - Starting enrollment")
+        print("DEBUG: CAClient.enroll() - Bootstrap address: \(bootstrapAddress)")
+        print("DEBUG: CAClient.enroll() - Request data length: \(request.count)")
+        
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+        print("DEBUG: CAClient.enroll() - Handle copied to local")
+        
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        print("DEBUG: CAClient.enroll() - About to call FFI function")
         let (code, err) = withRnErrorCode { errPtr in
             bootstrapAddress.withCString { cAddr in
                 request.withUnsafeBytes { raw in
-                    rn_transport_ca_client_enroll(self.handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
+                    print("DEBUG: CAClient.enroll() - Inside FFI call")
+                    return rn_transport_ca_client_enroll(handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
                 }
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to enroll") }
-        return try copyBytesAndFree(outPtr, outLen)
+        print("DEBUG: CAClient.enroll() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: CAClient.enroll() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: CAClient.enroll() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to enroll") 
+        }
+        print("DEBUG: CAClient.enroll() - About to copy and free result")
+        let result = try copyBytesAndFree(outPtr, outLen)
+        print("DEBUG: CAClient.enroll() - Enrollment completed successfully, result length: \(result.count)")
+        return result
     }
 
     public func renew(authenticatedAddress: String, request: Data) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+        
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
             authenticatedAddress.withCString { cAddr in
                 request.withUnsafeBytes { raw in
-                    rn_transport_ca_client_renew(self.handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
+                    rn_transport_ca_client_renew(handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -2983,12 +3410,15 @@ public final class CAClient {
     }
 
     public func revoke(authenticatedAddress: String, request: Data) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+        
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
             authenticatedAddress.withCString { cAddr in
                 request.withUnsafeBytes { raw in
-                    rn_transport_ca_client_revoke(self.handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
+                    rn_transport_ca_client_revoke(handle, cAddr, raw.bindMemory(to: UInt8.self).baseAddress, request.count, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -2998,12 +3428,15 @@ public final class CAClient {
     }
 
     public func getStatus(authenticatedAddress: String, networkId: String) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+        
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
             authenticatedAddress.withCString { cAddr in
                 networkId.withCString { cNet in
-                    rn_transport_ca_client_get_status(self.handle, cAddr, cNet, &outPtr, &outLen, errPtr)
+                    rn_transport_ca_client_get_status(handle, cAddr, cNet, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -3013,12 +3446,15 @@ public final class CAClient {
     }
 
     public func getChain(bootstrapAddress: String, networkId: String) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+        
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
             bootstrapAddress.withCString { cAddr in
                 networkId.withCString { cNet in
-                    rn_transport_ca_client_get_chain(self.handle, cAddr, cNet, &outPtr, &outLen, errPtr)
+                    rn_transport_ca_client_get_chain(handle, cAddr, cNet, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -3036,10 +3472,12 @@ public final class CAClient {
     public func getCrl(authenticatedAddress: String, networkId: String) async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
+        // Copy handle to local to avoid capturing actor state in closures
+        let clientHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             authenticatedAddress.withCString { cAddr in
                 networkId.withCString { cNet in
-                    rn_transport_ca_client_get_crl(self.handle, cAddr, cNet, &outPtr, &outLen, errPtr)
+                    rn_transport_ca_client_get_crl(clientHandle, cAddr, cNet, &outPtr, &outLen, errPtr)
                 }
             }
         }
@@ -3651,8 +4089,10 @@ public class DiscoveryHandle: @unchecked Sendable {
     
     /// Start announcing this node
     public func startAnnouncing() async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let discoveryHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            rn_discovery_start_announcing(self.handle, errPtr)
+            rn_discovery_start_announcing(discoveryHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to start announcing") }
@@ -3660,8 +4100,10 @@ public class DiscoveryHandle: @unchecked Sendable {
     
     /// Stop announcing this node
     public func stopAnnouncing() async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let discoveryHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            rn_discovery_stop_announcing(self.handle, errPtr)
+            rn_discovery_stop_announcing(discoveryHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to stop announcing") }
@@ -3669,8 +4111,10 @@ public class DiscoveryHandle: @unchecked Sendable {
     
     /// Shutdown discovery
     public func shutdown() async throws {
+        // Copy handle to local to avoid capturing actor state in closures
+        let discoveryHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            rn_discovery_shutdown(self.handle, errPtr)
+            rn_discovery_shutdown(discoveryHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to shutdown discovery") }
@@ -3725,29 +4169,55 @@ public class TransportHandle: @unchecked Sendable {
     /// Start the transport
     /// - Throws: FFIError if start fails
     public func start() async throws {
+        print("DEBUG: TransportHandle.start() - Starting transport")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
+        print("DEBUG: TransportHandle.start() - Handle copied to local")
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_start(handle, errPtr)
+            print("DEBUG: TransportHandle.start() - About to call rn_transport_start")
+            return rn_transport_start(transportHandle, errPtr)
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to start transport") }
+        print("DEBUG: TransportHandle.start() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.start() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.start() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to start transport") 
+        }
+        print("DEBUG: TransportHandle.start() - Transport started successfully")
     }
     
     /// Poll for events
     /// - Returns: Event data if available, nil if no events
     /// - Throws: FFIError if polling fails
     public func pollEvent() async throws -> Data? {
+        print("DEBUG: TransportHandle.pollEvent() - Polling for events")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         var outEvent: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_poll_event(handle, &outEvent, &outLen, errPtr)
+            print("DEBUG: TransportHandle.pollEvent() - About to call rn_transport_poll_event")
+            return rn_transport_poll_event(transportHandle, &outEvent, &outLen, errPtr)
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to poll event") }
+        print("DEBUG: TransportHandle.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.pollEvent() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.pollEvent() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to poll event") 
+        }
         
         if outLen == 0 {
+            print("DEBUG: TransportHandle.pollEvent() - No events available")
             return nil
         }
         
+        print("DEBUG: TransportHandle.pollEvent() - Event available, copying data")
         return try await copyBytesAndFree(outEvent, outLen)
     }
     
@@ -3755,26 +4225,51 @@ public class TransportHandle: @unchecked Sendable {
     /// - Parameter peerInfoCbor: Peer information in CBOR format
     /// - Throws: FFIError if connection fails
     public func connectPeer(peerInfoCbor: Data) async throws {
+        print("DEBUG: TransportHandle.connectPeer() - Connecting to peer")
+        print("DEBUG: TransportHandle.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             peerInfoCbor.withUnsafeBytes { raw in
-                rn_transport_connect_peer(handle, raw.bindMemory(to: UInt8.self).baseAddress, peerInfoCbor.count, errPtr)
+                print("DEBUG: TransportHandle.connectPeer() - About to call rn_transport_connect_peer")
+                return rn_transport_connect_peer(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, peerInfoCbor.count, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to connect to peer") }
+        print("DEBUG: TransportHandle.connectPeer() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.connectPeer() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.connectPeer() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to connect to peer") 
+        }
+        print("DEBUG: TransportHandle.connectPeer() - Peer connected successfully")
     }
     
     /// Disconnect from a peer
     /// - Parameter peerNodeId: Node ID of the peer to disconnect
     /// - Throws: FFIError if disconnection fails
     public func disconnectPeer(peerNodeId: String) async throws {
+        print("DEBUG: TransportHandle.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
-                rn_transport_disconnect_peer(handle, cString, errPtr)
+                print("DEBUG: TransportHandle.disconnectPeer() - About to call rn_transport_disconnect_peer")
+                return rn_transport_disconnect_peer(transportHandle, cString, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to disconnect from peer") }
+        print("DEBUG: TransportHandle.disconnectPeer() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.disconnectPeer() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.disconnectPeer() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to disconnect from peer") 
+        }
+        print("DEBUG: TransportHandle.disconnectPeer() - Peer disconnected successfully")
     }
     
     /// Check if connected to a peer
@@ -3782,14 +4277,26 @@ public class TransportHandle: @unchecked Sendable {
     /// - Returns: True if connected, false otherwise
     /// - Throws: FFIError if check fails
     public func isConnected(peerNodeId: String) async throws -> Bool {
+        print("DEBUG: TransportHandle.isConnected() - Checking connection to peer: \(peerNodeId)")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         var outConnected = false
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
-                rn_transport_is_connected(handle, cString, &outConnected, errPtr)
+                print("DEBUG: TransportHandle.isConnected() - About to call rn_transport_is_connected")
+                return rn_transport_is_connected(transportHandle, cString, &outConnected, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to check connection status") }
+        print("DEBUG: TransportHandle.isConnected() - FFI call completed, code: \(code), connected: \(outConnected)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.isConnected() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.isConnected() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to check connection status") 
+        }
+        print("DEBUG: TransportHandle.isConnected() - Connection check completed: \(outConnected)")
         return outConnected
     }
     
@@ -3797,75 +4304,150 @@ public class TransportHandle: @unchecked Sendable {
     /// - Parameter nodeInfoCbor: Node information in CBOR format
     /// - Throws: FFIError if update fails
     public func updateLocalNodeInfo(nodeInfoCbor: Data) async throws {
+        print("DEBUG: TransportHandle.updateLocalNodeInfo() - Updating local node info")
+        print("DEBUG: TransportHandle.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             nodeInfoCbor.withUnsafeBytes { raw in
-                rn_transport_update_local_node_info(handle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
+                print("DEBUG: TransportHandle.updateLocalNodeInfo() - About to call rn_transport_update_local_node_info")
+                return rn_transport_update_local_node_info(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to update local node info") }
+        print("DEBUG: TransportHandle.updateLocalNodeInfo() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.updateLocalNodeInfo() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.updateLocalNodeInfo() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to update local node info") 
+        }
+        print("DEBUG: TransportHandle.updateLocalNodeInfo() - Local node info updated successfully")
     }
     
     /// Send a request
     /// - Parameter requestCbor: Request data in CBOR format
     /// - Throws: FFIError if request fails
     public func request(requestCbor: Data) async throws {
+        print("DEBUG: TransportHandle.request() - Sending request")
+        print("DEBUG: TransportHandle.request() - Request CBOR length: \(requestCbor.count)")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             requestCbor.withUnsafeBytes { raw in
-                rn_transport_request(handle, raw.bindMemory(to: UInt8.self).baseAddress, requestCbor.count, errPtr)
+                print("DEBUG: TransportHandle.request() - About to call rn_transport_request")
+                return rn_transport_request(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, requestCbor.count, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to send request") }
+        print("DEBUG: TransportHandle.request() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.request() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.request() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to send request") 
+        }
+        print("DEBUG: TransportHandle.request() - Request sent successfully")
     }
     
     /// Publish an event
     /// - Parameter publishCbor: Event data in CBOR format
     /// - Throws: FFIError if publish fails
     public func publish(publishCbor: Data) async throws {
+        print("DEBUG: TransportHandle.publish() - Publishing event")
+        print("DEBUG: TransportHandle.publish() - Publish CBOR length: \(publishCbor.count)")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             publishCbor.withUnsafeBytes { raw in
-                rn_transport_publish(handle, raw.bindMemory(to: UInt8.self).baseAddress, publishCbor.count, errPtr)
+                print("DEBUG: TransportHandle.publish() - About to call rn_transport_publish")
+                return rn_transport_publish(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, publishCbor.count, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to publish event") }
+        print("DEBUG: TransportHandle.publish() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.publish() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.publish() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to publish event") 
+        }
+        print("DEBUG: TransportHandle.publish() - Event published successfully")
     }
     
     /// Complete a request
     /// - Parameter completeCbor: Completion data in CBOR format
     /// - Throws: FFIError if completion fails
     public func completeRequest(completeCbor: Data) async throws {
+        print("DEBUG: TransportHandle.completeRequest() - Completing request")
+        print("DEBUG: TransportHandle.completeRequest() - Complete CBOR length: \(completeCbor.count)")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             completeCbor.withUnsafeBytes { raw in
-                rn_transport_complete_request(handle, raw.bindMemory(to: UInt8.self).baseAddress, completeCbor.count, errPtr)
+                print("DEBUG: TransportHandle.completeRequest() - About to call rn_transport_complete_request")
+                return rn_transport_complete_request(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, completeCbor.count, errPtr)
             }
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to complete request") }
+        print("DEBUG: TransportHandle.completeRequest() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.completeRequest() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.completeRequest() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to complete request") 
+        }
+        print("DEBUG: TransportHandle.completeRequest() - Request completed successfully")
     }
     
     /// Stop the transport
     /// - Throws: FFIError if stop fails
     public func stop() async throws {
+        print("DEBUG: TransportHandle.stop() - Stopping transport")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_stop(handle, errPtr)
+            print("DEBUG: TransportHandle.stop() - About to call rn_transport_stop")
+            return rn_transport_stop(transportHandle, errPtr)
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to stop transport") }
+        print("DEBUG: TransportHandle.stop() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.stop() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.stop() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to stop transport") 
+        }
+        print("DEBUG: TransportHandle.stop() - Transport stopped successfully")
     }
     
     /// Get local address
     /// - Returns: Local address string
     /// - Throws: FFIError if getting address fails
     public func getLocalAddr() async throws -> String {
+        print("DEBUG: TransportHandle.getLocalAddr() - Getting local address")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = self.handle
         var outStr: UnsafeMutablePointer<CChar>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            rn_transport_local_addr(handle, &outStr, &outLen, errPtr)
+            print("DEBUG: TransportHandle.getLocalAddr() - About to call rn_transport_local_addr")
+            return rn_transport_local_addr(transportHandle, &outStr, &outLen, errPtr)
         }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to get local address") }
+        print("DEBUG: TransportHandle.getLocalAddr() - FFI call completed, code: \(code)")
+        if let error = err { 
+            print("DEBUG: TransportHandle.getLocalAddr() - FFI error: \(error)")
+            throw error 
+        }
+        guard code == 0 else { 
+            print("DEBUG: TransportHandle.getLocalAddr() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to get local address") 
+        }
         
         defer {
             if let str = outStr {
@@ -3873,8 +4455,13 @@ public class TransportHandle: @unchecked Sendable {
             }
         }
         
-        guard let str = outStr else { throw FFIError.operationFailed("No local address returned") }
-        return String(cString: str)
+        guard let str = outStr else { 
+            print("DEBUG: TransportHandle.getLocalAddr() - No local address returned")
+            throw FFIError.operationFailed("No local address returned") 
+        }
+        let address = String(cString: str)
+        print("DEBUG: TransportHandle.getLocalAddr() - Local address: \(address)")
+        return address
     }
 }
 
@@ -3886,3 +4473,13 @@ public class TransportHandle: @unchecked Sendable {
 /// Type alias for backward compatibility with serializer
 /// This allows the serializer to continue using EnvelopeCrypto while we transition to CommonKeyManager
 public typealias EnvelopeCrypto = CommonKeyManager
+
+
+
+
+
+
+
+
+
+

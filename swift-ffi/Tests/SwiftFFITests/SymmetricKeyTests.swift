@@ -2,7 +2,6 @@
 import XCTest
 
 /// Tests ensure_symmetric_key + encrypt/decrypt local data
-@MainActor
 final class SymmetricKeyTests: XCTestCase {
     private var keysHandle: NodeKeyManager!
 
@@ -190,7 +189,7 @@ final class SymmetricKeyTests: XCTestCase {
         _ = try await keysHandle.ensureSymmetricKey(name: keyName)
         
         // This should throw an error
-        await XCTAssertThrowsErrorAsync(try await keysHandle.decryptLocalData(encryptedData: invalidData), "Decrypting invalid data should throw an error")
+        do { _ = try await keysHandle.decryptLocalData(encryptedData: invalidData); XCTFail("Expected decryptLocalData to throw") } catch { XCTAssertTrue(error is FFIError) }
     }
 
     func testSymmetricKeyOperationsWithoutInitialization() async throws {

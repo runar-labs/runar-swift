@@ -7,7 +7,6 @@
 @testable import SwiftFFI
 import XCTest
 
-@MainActor
 final class InitializationTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
@@ -55,8 +54,8 @@ final class InitializationTests: XCTestCase {
         let nodeKeyManager = try await NodeKeyManager()
 
         // These should compile and work
-        await XCTAssertNoThrowAsync(try await nodeKeyManager.hasKeys(), "Node hasKeys should work")
-        await XCTAssertNoThrowAsync(try await nodeKeyManager.generateKeys(), "Node generateKeys should work")
+        do { _ = try await nodeKeyManager.hasKeys() } catch { XCTFail("Node hasKeys failed: \(error)") }
+        do { try await nodeKeyManager.generateKeys() } catch { XCTFail("Node generateKeys failed: \(error)") }
 
         // These should not be available (compile-time error)
         // nodeKeyManager.initializeUserRootKey() // This should not compile
@@ -68,8 +67,8 @@ final class InitializationTests: XCTestCase {
         let mobileKeyManager = try await MobileKeyManager()
 
         // These should compile and work
-        await XCTAssertNoThrowAsync(try await mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
-        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Mobile getUserPublicKey should work")
+        do { try await mobileKeyManager.initializeUserRootKey() } catch { XCTFail("initializeUserRootKey failed: \(error)") }
+        do { _ = try await mobileKeyManager.getUserPublicKey() } catch { XCTFail("getUserPublicKey failed: \(error)") }
 
         // These should not be available (compile-time error)
         // mobileKeyManager.hasKeys() // This should not compile
@@ -83,8 +82,8 @@ final class InitializationTests: XCTestCase {
         let mobileKeyManager = try await MobileKeyManager()
 
         // These should work without additional initialization
-        await XCTAssertNoThrowAsync(try await mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
-        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Mobile getUserPublicKey should work")
+        do { try await mobileKeyManager.initializeUserRootKey() } catch { XCTFail("initializeUserRootKey failed: \(error)") }
+        do { _ = try await mobileKeyManager.getUserPublicKey() } catch { XCTFail("getUserPublicKey failed: \(error)") }
     }
 
     func testNodeKeyManagerFunctions() async throws {
@@ -92,8 +91,8 @@ final class InitializationTests: XCTestCase {
         let nodeKeyManager = try await NodeKeyManager()
 
         // These should work without additional initialization
-        await XCTAssertNoThrowAsync(try await nodeKeyManager.hasKeys(), "Node hasKeys should work")
-        await XCTAssertNoThrowAsync(try await nodeKeyManager.generateKeys(), "Node generateKeys should work")
+        do { _ = try await nodeKeyManager.hasKeys() } catch { XCTFail("Node hasKeys failed: \(error)") }
+        do { try await nodeKeyManager.generateKeys() } catch { XCTFail("Node generateKeys failed: \(error)") }
     }
 
     // MARK: - Function Success Tests
@@ -103,7 +102,7 @@ final class InitializationTests: XCTestCase {
         let mobileKeyManager = try await MobileKeyManager()
 
         // Initialize user root key
-        await XCTAssertNoThrowAsync(try await mobileKeyManager.initializeUserRootKey(), "Mobile initializeUserRootKey should work")
+        do { try await mobileKeyManager.initializeUserRootKey() } catch { XCTFail("initializeUserRootKey failed: \(error)") }
 
         // Get user public key
         let userPublicKey = try await mobileKeyManager.getUserPublicKey()
@@ -171,12 +170,12 @@ final class InitializationTests: XCTestCase {
         XCTAssertNotNil(mobileManager2, "Second mobile manager should be created")
 
         // Each manager should be independent
-        await XCTAssertNoThrowAsync(try await nodeManager1.generateKeys(), "First node manager should work")
-        await XCTAssertNoThrowAsync(try await mobileManager1.initializeUserRootKey(), "First mobile manager should work")
+        do { try await nodeManager1.generateKeys() } catch { XCTFail("nodeManager1.generateKeys failed: \(error)") }
+        do { try await mobileManager1.initializeUserRootKey() } catch { XCTFail("mobileManager1.initializeUserRootKey failed: \(error)") }
 
         // Other managers should still work independently
-        await XCTAssertNoThrowAsync(try await nodeManager2.generateKeys(), "Second node manager should work")
-        await XCTAssertNoThrowAsync(try await mobileManager2.initializeUserRootKey(), "Second mobile manager should work")
+        do { try await nodeManager2.generateKeys() } catch { XCTFail("nodeManager2.generateKeys failed: \(error)") }
+        do { try await mobileManager2.initializeUserRootKey() } catch { XCTFail("mobileManager2.initializeUserRootKey failed: \(error)") }
     }
 
     func testKeyManagerReuseAfterError() async throws {
@@ -195,7 +194,7 @@ final class InitializationTests: XCTestCase {
         try await mobileKeyManager.initializeUserRootKey()
 
         // Should work now
-        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Should work after proper initialization")
+        do { _ = try await mobileKeyManager.getUserPublicKey() } catch { XCTFail("getUserPublicKey after init failed: \(error)") }
     }
 
     func testConcurrentKeyManagerAccess() async throws {
@@ -209,10 +208,10 @@ final class InitializationTests: XCTestCase {
 
         // Mobile manager operations
         try await mobileKeyManager.initializeUserRootKey()
-        await XCTAssertNoThrowAsync(try await mobileKeyManager.getUserPublicKey(), "Mobile manager should work after initialization")
+        do { _ = try await mobileKeyManager.getUserPublicKey() } catch { XCTFail("getUserPublicKey failed: \(error)") }
 
         // Node manager operations
         try await nodeKeyManager.generateKeys()
-        await XCTAssertNoThrowAsync(try await nodeKeyManager.getNodePublicKey(), "Node manager should work after key generation")
+        do { _ = try await nodeKeyManager.getNodePublicKey() } catch { XCTFail("getNodePublicKey failed: \(error)") }
     }
 }

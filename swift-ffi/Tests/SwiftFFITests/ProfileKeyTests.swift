@@ -7,7 +7,6 @@
 @testable import SwiftFFI
 import XCTest
 
-@MainActor
 final class ProfileKeyTests: XCTestCase {
     var nodeKeys: NodeKeyManager!
     var mobileKeys: MobileKeyManager!
@@ -120,7 +119,7 @@ final class ProfileKeyTests: XCTestCase {
         // Test successful profile public key installation
         let testPublicKey = createTestPublicKey()
 
-        await XCTAssertNoThrowAsync(try await nodeKeys.installProfilePublicKey(testPublicKey))
+        do { try await nodeKeys.installProfilePublicKey(testPublicKey) } catch { XCTFail("installProfilePublicKey failed: \(error)") }
     }
 
     func testInstallProfilePublicKeyInvalidLength() async throws {
@@ -160,7 +159,7 @@ final class ProfileKeyTests: XCTestCase {
         let uninitializedKeys = try await NodeKeyManager()
         let testPublicKey = createTestPublicKey()
 
-        await XCTAssertNoThrowAsync(try await uninitializedKeys.installProfilePublicKey(testPublicKey), "Profile key installation should work even without explicit initialization")
+        do { try await uninitializedKeys.installProfilePublicKey(testPublicKey) } catch { XCTFail("installProfilePublicKey on uninitialized failed: \(error)") }
     }
 
     // MARK: - Profile Key Retrieval Tests
@@ -245,14 +244,14 @@ final class ProfileKeyTests: XCTestCase {
         // Test decryption with invalid envelope data
         let invalidEnvelope = Data(repeating: 0, count: 100)
 
-        await XCTAssertThrowsErrorAsync(try await nodeKeys.decryptEnvelope(envelopeData: invalidEnvelope))
+        do { _ = try await nodeKeys.decryptEnvelope(envelopeData: invalidEnvelope); XCTFail("Expected decryptEnvelope to throw") } catch { XCTAssertTrue(error is FFIError) }
     }
 
     func testDecryptWithProfileEmptyEnvelopeData() async throws {
         // Test decryption with empty envelope data
         let emptyEnvelope = Data()
 
-        await XCTAssertThrowsErrorAsync(try await nodeKeys.decryptEnvelope(envelopeData: emptyEnvelope))
+        do { _ = try await nodeKeys.decryptEnvelope(envelopeData: emptyEnvelope); XCTFail("Expected decryptEnvelope to throw") } catch { XCTAssertTrue(error is FFIError) }
     }
 
     func testDecryptWithProfileWrongManagerType() async throws {
@@ -262,7 +261,7 @@ final class ProfileKeyTests: XCTestCase {
         let testData = "Hello, Profile Key!".data(using: .utf8)!
         let encryptedData = try await mobileKeys.encryptWithEnvelope(data: testData, networkPublicKey: nil, profilePublicKeys: [profileKey])
 
-        await XCTAssertThrowsErrorAsync(try await nodeKeys.decryptEnvelope(envelopeData: encryptedData))
+        do { _ = try await nodeKeys.decryptEnvelope(envelopeData: encryptedData); XCTFail("Expected decryptEnvelope to throw") } catch { XCTAssertTrue(error is FFIError) }
     }
 
     func testDecryptWithProfileNotInitialized() async throws {
@@ -270,7 +269,7 @@ final class ProfileKeyTests: XCTestCase {
         let uninitializedKeys = try await NodeKeyManager()
         let testEnvelope = Data(repeating: 0, count: 100)
 
-        await XCTAssertThrowsErrorAsync(try await uninitializedKeys.decryptEnvelope(envelopeData: testEnvelope))
+        do { _ = try await uninitializedKeys.decryptEnvelope(envelopeData: testEnvelope); XCTFail("Expected decryptEnvelope to throw") } catch { XCTAssertTrue(error is FFIError) }
     }
 
     // MARK: - Profile Key Workflow Tests
@@ -284,7 +283,7 @@ final class ProfileKeyTests: XCTestCase {
         XCTAssertFalse(profileKey.isEmpty, "Profile key should be derived")
 
         // 2. Install profile key
-        await XCTAssertNoThrowAsync(try await nodeKeys.installProfilePublicKey(profileKey))
+        do { try await nodeKeys.installProfilePublicKey(profileKey) } catch { XCTFail("installProfilePublicKey failed: \(error)") }
 
         // 3. Retrieve profile key
         let (retrievedKey, exists) = try await nodeKeys.getProfilePublicKey(label: label)
@@ -343,11 +342,11 @@ final class ProfileKeyTests: XCTestCase {
         let invalidLabel = String(repeating: "a", count: 10000) // Very long label
 
         // All operations should handle errors consistently
-        await XCTAssertNoThrowAsync(try await nodeKeys.deriveUserProfileKey(label: invalidLabel))
+        do { _ = try await nodeKeys.deriveUserProfileKey(label: invalidLabel) } catch { XCTFail("deriveUserProfileKey failed: \(error)") }
 
         // In the new unified design, installProfilePublicKey with empty key might not throw an error
         let emptyKey = Data()
-        await XCTAssertNoThrowAsync(try await nodeKeys.installProfilePublicKey(emptyKey), "Empty key installation should not throw error in new unified design")
+        do { try await nodeKeys.installProfilePublicKey(emptyKey) } catch { XCTFail("installProfilePublicKey(empty) failed: \(error)") }
 
         let nonExistentLabel = "non-existent-label"
         let (retrievedKey, exists) = try await nodeKeys.getProfilePublicKey(label: nonExistentLabel)

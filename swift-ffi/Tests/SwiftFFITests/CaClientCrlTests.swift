@@ -6,7 +6,6 @@ import XCTest
 
 /// Tests for CA Client CRL functionality
 /// Tests get_crl parity and rejection scenarios
-@MainActor
 final class CaClientCrlTests: XCTestCase {
     private var nodeKeys: NodeKeyManager!
     private var caNode: CANode!
@@ -22,7 +21,7 @@ final class CaClientCrlTests: XCTestCase {
             try await nodeKeys.generateKeys()
 
             // Create CA node for testing
-            caNode = try await CANode.create()
+            caNode = try CANode.create()
         } catch {
             XCTFail("Failed to set up test: \(error)")
         }
@@ -37,18 +36,38 @@ final class CaClientCrlTests: XCTestCase {
         )
 
         do {
+            // Configure CA node exactly like Rust test: create EA pair, get EA pub key CBOR, pass directly to setupComplete
+            let eaManager = EAKeyManager(logger: RunarLogger(component: .custom))
+            let eaHandle = try await eaManager.createKeyPair()
+            defer { EAKeyManager.free(eaHandle) }
+            let eaPublicKeyCbor = try await eaManager.getPublicKey(eaHandle)
+
+            let setupParams = CANodeManager.CANodeSetupParams(
+                caNode: caNode.ffiHandle,
+                rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+                issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+                validityDays: 365,
+                issuingCaSerial: 1,
+                eaPublicKeys: eaPublicKeyCbor,
+                networkId: "test-network"
+            )
+            try await caNode.setupComplete(params: setupParams)
+
+            // Create shared node and server
             let sharedCaNode = try await caNode.createShared()
-            caServer = try await CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
 
             // Set up CA client for testing
+            let rootCa = try await caNode.getRootCACertificate()
+            let issuingCa = try await caNode.getIssuingCACertificate()
             let caClientConfig = CaClientConfigAll(
                 bootstrap_server: "127.0.0.1:0",
                 authenticated_server: "127.0.0.1:0",
                 network_id: "test-network",
                 request_timeout_seconds: 30,
                 max_retries: 3,
-                root_ca_der: Data(),
-                issuing_ca_der: Data()
+                root_ca_der: rootCa,
+                issuing_ca_der: issuingCa
             )
 
             caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
@@ -233,8 +252,8 @@ final class CaClientCrlTests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data(),
-            issuing_ca_der: Data()
+            root_ca_der: try await caNode.getRootCACertificate(),
+            issuing_ca_der: try await caNode.getIssuingCACertificate()
         )
 
         let caClient2 = try await CAClient(config: caClientConfig2, nodeKeys: nodeKeys)

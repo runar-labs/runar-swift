@@ -3,7 +3,6 @@ import XCTest
 /// Helper functions for async testing
 extension XCTestCase {
     /// Assert that an async throwing expression does not throw
-    @MainActor
     func XCTAssertNoThrowAsync<T>(
         _ expression: @autoclosure () async throws -> T,
         _ message: @autoclosure () -> String = "",
@@ -18,7 +17,6 @@ extension XCTestCase {
     }
     
     /// Assert that an async throwing expression throws an error
-    @MainActor
     func XCTAssertThrowsErrorAsync<T>(
         _ expression: @autoclosure () async throws -> T,
         _ message: @autoclosure () -> String = "",

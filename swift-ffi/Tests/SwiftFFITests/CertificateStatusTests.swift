@@ -6,7 +6,6 @@ import XCTest
 
 /// Tests for certificate status functionality
 /// Tests certificate status/serial via keys; peer certificate validation
-@MainActor
 final class CertificateStatusTests: XCTestCase {
     private var nodeKeys: NodeKeyManager!
     private var caNode: CANode!
@@ -22,7 +21,7 @@ final class CertificateStatusTests: XCTestCase {
             try await nodeKeys.generateKeys()
 
             // Create CA node for testing
-            caNode = try await CANode.create()
+            caNode = try CANode.create()
         } catch {
             XCTFail("Failed to set up test: \(error)")
         }
@@ -38,17 +37,32 @@ final class CertificateStatusTests: XCTestCase {
 
         do {
             let sharedCaNode = try await caNode.createShared()
-            caServer = try await CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
 
-            // Set up CA client for testing
+            // Set up CA client for testing with real certs
+            let eaManager = EAKeyManager(logger: RunarLogger(component: .custom))
+            let eaHandle = try await eaManager.createKeyPair()
+            let eaPublicKey = try await eaManager.getPublicKey(eaHandle)
+            let setupParams = CANodeManager.CANodeSetupParams(
+                caNode: caNode.ffiHandle,
+                rootCaSubject: "CN=Test Root CA,O=Test,C=US",
+                issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US",
+                validityDays: 365,
+                issuingCaSerial: 1,
+                eaPublicKeys: eaPublicKey,
+                networkId: "test-network"
+            )
+            try await caNode.setupComplete(params: setupParams)
+            let rootCa = try await caNode.getRootCACertificate()
+            let issuingCa = try await caNode.getIssuingCACertificate()
             let caClientConfig = CaClientConfigAll(
                 bootstrap_server: "127.0.0.1:0",
                 authenticated_server: "127.0.0.1:0",
                 network_id: "test-network",
                 request_timeout_seconds: 30,
                 max_retries: 3,
-                root_ca_der: Data(),
-                issuing_ca_der: Data()
+                root_ca_der: rootCa,
+                issuing_ca_der: issuingCa
             )
 
             caClient = try await CAClient(config: caClientConfig, nodeKeys: nodeKeys)
