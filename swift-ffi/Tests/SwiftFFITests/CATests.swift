@@ -75,11 +75,9 @@ final class CATests: XCTestCase {
     func testCaNodeCreateShared() async throws {
         // Test creating shared CA node
         let caNode = try CANode.create()
-        let sharedCaNode = try await caNode.createShared()
-        XCTAssertNotNil(sharedCaNode, "Shared CA node should be created successfully")
-
-        // Clean up
-        CANode.freeShared(sharedCaNode)
+        // Since CANode.create() now creates shared handles directly,
+        // we can use the handle directly for server creation
+        XCTAssertNotNil(caNode.ffiHandle, "CA node should have a valid shared handle")
     }
 
 
@@ -88,7 +86,6 @@ final class CATests: XCTestCase {
     func testCaServerNewStub() async throws {
         // Test CA server creation
         let caNode = try CANode.create()
-        let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
@@ -96,18 +93,14 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: caNode.ffiHandle)
         XCTAssertNotNil(caServer, "CA server should be created successfully")
-
-        // Clean up
-        CANode.freeShared(sharedCaNode)
     }
 
 
     func testCaServerStartStop() async throws {
         // Test CA server start and stop
         let caNode = try CANode.create()
-        let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
@@ -115,19 +108,15 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: caNode.ffiHandle)
 
         try await caServer.start()
         try await caServer.stop()
-
-        // Clean up
-        CANode.freeShared(sharedCaNode)
     }
 
     func testCaServerBootstrapAddress() async throws {
         // Test getting bootstrap address
         let caNode = try CANode.create()
-        let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
@@ -135,7 +124,7 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: caNode.ffiHandle)
 
         // Start the server first
         try await caServer.start()
@@ -144,15 +133,11 @@ final class CATests: XCTestCase {
 
         // Stop the server
         try await caServer.stop()
-
-        // Clean up
-        CANode.freeShared(sharedCaNode)
     }
 
     func testCaServerAuthenticatedAddress() async throws {
         // Test getting authenticated address
         let caNode = try CANode.create()
-        let sharedCaNode = try await caNode.createShared()
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
@@ -160,7 +145,7 @@ final class CATests: XCTestCase {
             rateLimitPerMinute: 100,
             rateLimitPerHour: 1000
         )
-        let caServer = try CAServer.create(config: config, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: config, sharedCaNode: caNode.ffiHandle)
 
         // Start the server first
         try await caServer.start()
@@ -169,9 +154,6 @@ final class CATests: XCTestCase {
 
         // Stop the server
         try await caServer.stop()
-
-        // Clean up
-        CANode.freeShared(sharedCaNode)
     }
 
     // MARK: - CA Client Tests
@@ -568,9 +550,6 @@ final class CATests: XCTestCase {
 
         try await caNode.setupComplete(params: setupParams)
 
-        // Create shared CA node
-        let sharedCaNode = try await caNode.createShared()
-
         // Create CA server with shared CA node
         let caServerConfig = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -580,11 +559,8 @@ final class CATests: XCTestCase {
             rateLimitPerHour: 1000
         )
 
-        let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: caNode.ffiHandle)
         XCTAssertNotNil(caServer, "CA server should be created with shared CA node")
-
-        // Clean up
-        CANode.freeShared(sharedCaNode)
         EAKeyManager.free(eaKeyPair)
     }
 
@@ -610,9 +586,6 @@ final class CATests: XCTestCase {
 
         try await caNode.setupComplete(params: setupParams)
 
-        // Create shared CA node
-        let sharedCaNode = try await caNode.createShared()
-
         // Create CA server (but don't start it to avoid crashes)
         let caServerConfig = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -622,7 +595,7 @@ final class CATests: XCTestCase {
             rateLimitPerHour: 1000
         )
 
-        let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+        let caServer = try CAServer.create(config: caServerConfig, sharedCaNode: caNode.ffiHandle)
         XCTAssertNotNil(caServer, "CA server should be created successfully")
 
         // Create CA client using the same CA node certs
@@ -647,7 +620,6 @@ final class CATests: XCTestCase {
         XCTAssertTrue(true, "CA client and server integration test completed successfully")
 
         // Clean up
-        CANode.freeShared(sharedCaNode)
         EAKeyManager.free(eaKeyPair)
     }
 

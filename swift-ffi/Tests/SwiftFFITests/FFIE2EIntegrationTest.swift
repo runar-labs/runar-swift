@@ -5,6 +5,55 @@ import SwiftCommon
 import XCTest
 
 final class FFIE2EIntegrationTest: XCTestCase {
+    // Test resources that need cleanup
+    private var caNode: CANode?
+    private var server: CAServer?
+    private var caClient: CAClient?
+    private var mobileNode: MobileKeyManager?
+    private var nodeKeys: NodeKeyManager?
+    private var eaManager: EAKeyManager?
+    private var eaHandle: UnsafeMutableRawPointer?
+    
+    override func setUp() async throws {
+        try await super.setUp()
+        // Initialize all resources to nil
+        caNode = nil
+        server = nil
+        caClient = nil
+        mobileNode = nil
+        nodeKeys = nil
+        eaManager = nil
+        eaHandle = nil
+    }
+    
+    override func tearDown() async throws {
+        // Clean up resources in reverse order of creation
+        if let handle = eaHandle {
+            EAKeyManager.free(handle)
+            eaHandle = nil
+        }
+        
+        eaManager = nil
+        nodeKeys = nil
+        mobileNode = nil
+        caClient = nil
+        
+        // Stop server if it's running
+        if let server = server {
+            do {
+                try await server.stop()
+                try await Task.sleep(nanoseconds: 100_000_000) // 100ms delay for cleanup
+            } catch {
+                // Log but don't fail the test
+                print("⚠️ Server stop encountered error during cleanup: \(error)")
+            }
+        }
+        server = nil
+        caNode = nil
+        
+        try await super.tearDown()
+    }
+    
     func createLogger() -> RunarLogger { RunarLogger(component: .custom) }
 
     func encode<T: Codable>(_ value: T) throws -> Data { try CodableCBOREncoder().encode(value) }
@@ -33,19 +82,18 @@ final class FFIE2EIntegrationTest: XCTestCase {
         
         // Create CA Node
         logger.debug("🔧 STEP 1: Creating CA Node...")
-        let caNode = try await CANode.create()
+        caNode = try await CANode.create()
         logger.debug("   ✅ CA Node created successfully")
         
         // Create EA Key Manager and generate EA key pair
         logger.debug("🔧 STEP 2: Creating EA Key Manager and generating key pair...")
-        let eaManager = EAKeyManager(logger: createLogger())
-        let eaHandle = try await eaManager.createKeyPair()
-        defer { EAKeyManager.free(eaHandle) }
+        eaManager = EAKeyManager(logger: createLogger())
+        eaHandle = try await eaManager!.createKeyPair()
         logger.debug("   ✅ EA Key Manager created and key pair generated")
         
         // Get EA public key CBOR (public-only) EXACTLY as Rust does and pass directly to setup_complete
         logger.debug("🔧 STEP 3: Getting EA public key (CBOR blob) for setup_complete...")
-        let eaPublicKeyCbor = try await eaManager.getPublicKey(eaHandle)
+        let eaPublicKeyCbor = try await eaManager!.getPublicKey(eaHandle!)
         logger.debug("   📊 EA public key CBOR length: \(eaPublicKeyCbor.count) bytes")
         logger.debug("   ✅ EA public key retrieved (will be passed directly to setup_complete)")
         
@@ -53,7 +101,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("🔧 STEP 5: Setting up CA Node with network ID...")
         let networkId = "test_network"
         let setupParams = CANodeManager.CANodeSetupParams(
-            caNode: caNode.ffiHandle,
+            caNode: caNode!.ffiHandle,
             rootCaSubject: "CN=Test Root CA,O=Test,C=US",
             issuingCaSubject: "CN=Test Issuing CA,O=Test,C=US", 
             validityDays: 365,
@@ -62,14 +110,14 @@ final class FFIE2EIntegrationTest: XCTestCase {
             networkId: networkId
         )
         logger.debug("   📊 Setup params: networkId=\(networkId), eaKeysLength=\(eaPublicKeyCbor.count)")
-        logger.debug("   🔧 Calling caNode.setupComplete() - this should trigger Rust FFI logs...")
-        try await caNode.setupComplete(params: setupParams)
+        logger.debug("   🔧 Calling caNode!.setupComplete() - this should trigger Rust FFI logs...")
+        try await caNode!.setupComplete(params: setupParams)
         logger.debug("   ✅ CA Node setup completed successfully")
         
         // Validate CA certificates were generated
         logger.debug("   🔍 Fetching CA certificates after setup...")
-        let rootCa = try await caNode.getRootCACertificate()
-        let issuingCa = try await caNode.getIssuingCACertificate()
+        let rootCa = try await caNode!.getRootCACertificate()
+        let issuingCa = try await caNode!.getIssuingCACertificate()
         
         logger.debug("   📊 Certificate lengths - Root: \(rootCa.count) bytes, Issuing: \(issuingCa.count) bytes")
         
@@ -87,11 +135,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("\n🌐 PHASE 2: REAL QUIC Transport Setup")
         
         // Create shared CA node reference
-        let shared = try await caNode.createSharedWrapped()
+        let shared = try await caNode!.createSharedWrapped()
         logger.debug("   ✅ Shared CA node reference created")
         
         // Create and start CA Server
-        let server = try await CAServer.create(
+        server = try await CAServer.create(
             config: CaServerConfig(
                 bootstrapBind: "127.0.0.1:0",
                 authenticatedBind: "127.0.0.1:0",
@@ -103,11 +151,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
         )
         logger.debug("   ✅ CA Server created")
         
-        try await server.start()
+        try await server!.start()
         logger.debug("   ✅ CA Server started")
         
-        let bootstrapAddr = try await server.bootstrapAddress()
-        let authenticatedAddr = try await server.authenticatedAddress()
+        let bootstrapAddr = try await server!.bootstrapAddress()
+        let authenticatedAddr = try await server!.authenticatedAddress()
         logger.debug("   ✅ Server addresses - Bootstrap: \(bootstrapAddr), Authenticated: \(authenticatedAddr)")
         
         // ==========================================
@@ -127,8 +175,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
             permissions: ["enroll"]
         )
         
-        let enrollmentTokenData = try await eaManager.generateEnrollmentToken(params: EAKeyManager.EnrollmentTokenParams(
-            eaKeyHandle: eaHandle,
+        let enrollmentTokenData = try await eaManager!.generateEnrollmentToken(params: EAKeyManager.EnrollmentTokenParams(
+            eaKeyHandle: eaHandle!,
             tokenId: "test_token_001",
             networkId: "test_network",
             subject: "test_subject",
@@ -153,15 +201,15 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n📱 PHASE 4: Mobile Node Enrollment via REAL QUIC mTLS")
     
     // Create mobile node key manager
-    let mobileNode = try await MobileKeyManager()
+    mobileNode = try await MobileKeyManager()
     logger.debug("   ✅ Mobile node key manager created")
     
     // Create node key manager for CA client
-    let nodeKeys = try await NodeKeyManager()
+    nodeKeys = try await NodeKeyManager()
     logger.debug("   ✅ Node key manager created for CA client")
     
     // Generate CSR using the node manager (returns SetupToken CBOR like Rust)
-    let setupTokenCbor = try await nodeKeys.generateCSR()
+    let setupTokenCbor = try await nodeKeys!.generateCSR()
     // Extract DER bytes from SetupToken CBOR (mirror Rust)
     let setupToken = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
     let csrDerData = Data(setupToken.csr_der)
@@ -193,7 +241,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("DEBUG: Issuing CA cert length: \(issuingCa.count)")
     logger.debug("DEBUG: About to call CAClient constructor")
     
-    let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+    caClient = try await nodeKeys!.createCAClient(config: caClientConfig)
     logger.debug("   ✅ CA client created with certificates")
     logger.debug("DEBUG: CA Client created successfully, moving to Phase 3")
     
@@ -207,18 +255,18 @@ final class FFIE2EIntegrationTest: XCTestCase {
     // Encode the enrollment request to CBOR
     let enrollRequestData = try CodableCBOREncoder().encode(csrEnrollRequest)
     
-    let enrollResponse = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: enrollRequestData)
+    let enrollResponse = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: enrollRequestData)
     logger.debug("   ✅ Enrollment response received: \(enrollResponse.count) bytes")
     
     // Convert response to NodeCertificateMessage
-    let certMessage = try await mobileNode.fromEnrollResponse(enrollResponse)
+    let certMessage = try await mobileNode!.fromEnrollResponse(enrollResponse)
     logger.debug("   ✅ Certificate message created from enrollment response")
     
     // Install certificate on node key manager (mirror Rust)
-    try await nodeKeys.installCertificate(certMessage)
+    try await nodeKeys!.installCertificate(certMessage)
     logger.debug("   ✅ Certificate installed and validated")
     // Allow transporter/server background tasks to settle before next CSR
-    try await Task.sleep(nanoseconds: 50_000_000)
+    try await Task.sleep(nanoseconds: 150_000_000)
     
     logger.debug("\n🎉 PHASE 4 COMPLETED: Mobile Node Enrollment via REAL QUIC mTLS")
     
@@ -228,7 +276,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n🔄 PHASE 5: Certificate Renewal via REAL QUIC mTLS")
     
     // Generate renewal CSR (returns SetupToken CBOR) and extract DER (mirror Rust)
-    let renewalSetupTokenCbor = try await nodeKeys.generateCSR()
+    let renewalSetupTokenCbor = try await nodeKeys!.generateCSR()
     let renewalSetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: renewalSetupTokenCbor)
     let renewalCsrDer = Data(renewalSetupToken.csr_der)
     logger.debug("   ✅ Renewal CSR generated: \(renewalCsrDer.count) bytes")
@@ -245,18 +293,18 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("   ✅ Renewal request encoded to CBOR: \(renewRequestData.count) bytes")
     
     // REAL QUIC mTLS renewal
-    let renewResponse = try await caClient.renew(authenticatedAddress: authenticatedAddr, request: renewRequestData)
+    let renewResponse = try await caClient!.renew(authenticatedAddress: authenticatedAddr, request: renewRequestData)
     logger.debug("   ✅ Certificate renewed via REAL QUIC mTLS")
     
     // Convert response to NodeCertificateMessage
-    let renewalCertMessage = try await mobileNode.fromRenewResponse(renewResponse)
+    let renewalCertMessage = try await mobileNode!.fromRenewResponse(renewResponse)
     logger.debug("   ✅ Renewal response converted to certificate message")
     
     // Install renewed certificate on node key manager (mirror Rust)
-    try await nodeKeys.installCertificate(renewalCertMessage)
+    try await nodeKeys!.installCertificate(renewalCertMessage)
     logger.debug("   ✅ Renewed certificate installed")
     // Allow state to settle before subsequent operations
-    try await Task.sleep(nanoseconds: 50_000_000)
+    try await Task.sleep(nanoseconds: 150_000_000)
     
     logger.debug("\n🎉 PHASE 5 COMPLETED: Certificate Renewal via REAL QUIC mTLS")
     
@@ -266,18 +314,18 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n🚫 PHASE 6: Certificate Revocation via REAL QUIC mTLS")
     
     // Extract SKI from installed node certificate (mirror Rust)
-    let nodeCertDer = try await nodeKeys.getNodeCertificate()
+    let nodeCertDer = try await nodeKeys!.getNodeCertificate()
     let mobileCertSki = try await CertificateUtils.extractSki(from: nodeCertDer)
     logger.debug("   🔑 Mobile cert SKI: \(mobileCertSki)")
     
     // Add SKI to server admin configuration (CBOR array of strings)
     let adminSkis = [mobileCertSki]
     let skiData = try CodableCBOREncoder().encode(adminSkis)
-    try await server.configureAdminSkis(skiData)
+    try await server!.configureAdminSkis(skiData)
     logger.debug("   ✅ Mobile cert SKI added to server admin configuration")
     
     // Add SKI to CA Node's admin allowlist
-    try await caNode.addAdminSki(mobileCertSki.data(using: .utf8)!)
+    try await caNode!.addAdminSki(mobileCertSki.data(using: .utf8)!)
     logger.debug("   ✅ Mobile cert SKI added to CA Node admin allowlist")
     
     // Get certificate serial for revocation (hex string), then hex-decode to bytes
@@ -299,7 +347,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("   ✅ Revocation request encoded to CBOR: \(revokeRequestData.count) bytes")
     
     // REAL QUIC mTLS revocation
-    let revokeResponse = try await caClient.revoke(authenticatedAddress: authenticatedAddr, request: revokeRequestData)
+    let revokeResponse = try await caClient!.revoke(authenticatedAddress: authenticatedAddr, request: revokeRequestData)
     logger.debug("   ✅ Certificate revoked via REAL QUIC mTLS")
     
     // Decode revocation response
@@ -314,7 +362,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n📋 PHASE 7: CRL-lite Generation and Validation via REAL QUIC mTLS")
     
     // Generate CRL-lite
-    let crl = try await caNode.generateCrlLite()
+    let crl = try await caNode!.generateCrlLite()
     logger.debug("   ✅ CRL-lite generated: \(crl.count) bytes")
     
     // Decode CRL-lite to get details
@@ -323,7 +371,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("   ✅ CRL-lite signature present: \(crlData.signature.count) bytes")
     
     // REAL QUIC mTLS CRL fetching (mirror Rust: get_chain and server-side CRL-lite are distinct)
-    let crlFromHandler = try await caClient.getCrl(authenticatedAddress: authenticatedAddr, networkId: "test_network")
+    let crlFromHandler = try await caClient!.getCrl(authenticatedAddress: authenticatedAddr, networkId: "test_network")
     logger.debug("   ✅ CRL-lite fetched via REAL QUIC mTLS: \(crlFromHandler.count) bytes")
     
     logger.debug("\n🎉 PHASE 7 COMPLETED: CRL-lite Generation and Validation via REAL QUIC mTLS")
@@ -334,7 +382,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n📊 PHASE 8: CA Node API Status and Chain via REAL QUIC mTLS")
     
     // REAL QUIC mTLS status/chain requests
-    let status = try await caClient.getStatus(authenticatedAddress: authenticatedAddr, networkId: "test_network")
+    let status = try await caClient!.getStatus(authenticatedAddress: authenticatedAddr, networkId: "test_network")
     logger.debug("   ✅ CA Status retrieved via REAL QUIC mTLS: \(status.count) bytes")
     
     // Decode status to get details and validate
@@ -347,7 +395,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     XCTAssertTrue(statusData.issuing_subject.contains("CN=Test Issuing CA"))
     XCTAssertTrue(statusData.not_after > statusData.not_before)
     
-    let chain = try await caClient.getChain(bootstrapAddress: bootstrapAddr, networkId: "test_network")
+    let chain = try await caClient!.getChain(bootstrapAddress: bootstrapAddr, networkId: "test_network")
     logger.debug("   ✅ Certificate chain retrieved via REAL QUIC mTLS: \(chain.count) bytes")
     
     // Decode chain to get details and validate
@@ -363,21 +411,21 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n🔑 PHASE 9: Profile Key Functionality via REAL QUIC mTLS")
     
     // Test profile key functionality on the mobile node
-    let personalProfileKey = try await mobileNode.deriveUserProfileKey(label: "personal")
-    let workProfileKey = try await mobileNode.deriveUserProfileKey(label: "work")
+    let personalProfileKey = try await mobileNode!.deriveUserProfileKey(label: "personal")
+    let workProfileKey = try await mobileNode!.deriveUserProfileKey(label: "work")
     logger.debug("   📱 Mobile node derived profile keys")
     
     // Test envelope encryption/decryption with profile keys
     let testData = Data("Hello, encrypted world!".utf8)
-    let mobileEnvelope = try await mobileNode.encryptWithEnvelope(
+    let mobileEnvelope = try await mobileNode!.encryptWithEnvelope(
         data: testData,
         networkPublicKey: nil,
         profilePublicKeys: [personalProfileKey, workProfileKey]
     )
     logger.debug("   ✅ Data encrypted with profile keys")
     
-    let personalProfileId = try await mobileNode.getCompactId(for: personalProfileKey)
-    let decryptedData = try await mobileNode.decryptWithProfile(mobileEnvelope, personalProfileId.data(using: .utf8)!)
+    let personalProfileId = try await mobileNode!.getCompactId(for: personalProfileKey)
+    let decryptedData = try await mobileNode!.decryptWithProfile(mobileEnvelope, personalProfileId.data(using: .utf8)!)
     logger.debug("   ✅ Data decrypted with profile key")
     XCTAssertEqual(decryptedData, testData)
     
@@ -391,7 +439,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     // Rate limiting is per token_id: reuse the SAME token_id across multiple enrolls
     let rateLimitTokenId = "test_token_001" // reuse original
     for i in 1...3 {
-        let setupCbor = try await nodeKeys.generateCSR()
+        let setupCbor = try await nodeKeys!.generateCSR()
         let setup = try CodableCBORDecoder().decode(SetupToken.self, from: setupCbor)
         let csrDer = Data(setup.csr_der)
 
@@ -399,7 +447,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let reqData = try CodableCBOREncoder().encode(req)
 
         do {
-            let _ = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: reqData)
+            let _ = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: reqData)
             if i == 1 {
                 logger.debug("   ✅ First request passed (allowed)")
             } else {
@@ -421,11 +469,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n🔒 PHASE 11: Token Revocation via REAL QUIC mTLS")
     
     // Revoke the original enrollment token
-    try await caNode.revokeToken("test_token_001")
+    try await caNode!.revokeToken("test_token_001")
     logger.debug("   ✅ Enrollment token revoked via REAL QUIC mTLS")
     
     // Try to use revoked token
-    let testCsr = try await nodeKeys.generateCSR()
+    let testCsr = try await nodeKeys!.generateCSR()
     let revokedRequest = CsrEnrollRequest(
         network_id: "test_network",
         csr_der: testCsr,
@@ -436,7 +484,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let revokedRequestData = try CodableCBOREncoder().encode(revokedRequest)
     
     do {
-        let result = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: revokedRequestData)
+        let result = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: revokedRequestData)
         XCTFail("Revoked token should be rejected")
     } catch {
         logger.debug("   ✅ Revoked token correctly rejected via REAL QUIC mTLS")
@@ -459,8 +507,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         nonce: Data([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]),
         permissions: ["enroll"]
     )
-    let invalidTokenData = try await eaManager.generateEnrollmentToken(params: EAKeyManager.EnrollmentTokenParams(
-        eaKeyHandle: eaHandle,
+    let invalidTokenData = try await eaManager!.generateEnrollmentToken(params: EAKeyManager.EnrollmentTokenParams(
+        eaKeyHandle: eaHandle!,
         tokenId: "invalid_token",
         networkId: "test_network",
         subject: invalidTokenBody.subject_hint ?? "invalid_subject",
@@ -477,7 +525,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         signer_id: "invalid_signer"
     )
     
-    let invalidCsr = try await nodeKeys.generateCSR()
+    let invalidCsr = try await nodeKeys!.generateCSR()
     let invalidRequest = CsrEnrollRequest(
         network_id: "test_network",
         csr_der: invalidCsr,
@@ -488,7 +536,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let invalidRequestData = try CodableCBOREncoder().encode(invalidRequest)
     
     do {
-        let result = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: invalidRequestData)
+        let result = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: invalidRequestData)
         XCTFail("Invalid token should be rejected")
     } catch {
         logger.debug("   ✅ Invalid enrollment token rejected via REAL QUIC mTLS")
@@ -508,7 +556,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
     let unauthorizedRenewData = try CodableCBOREncoder().encode(unauthorizedRenew)
     
     do {
-        let result = try await caClient.renew(authenticatedAddress: authenticatedAddr, request: unauthorizedRenewData)
+        let result = try await caClient!.renew(authenticatedAddress: authenticatedAddr, request: unauthorizedRenewData)
         XCTFail("Unauthorized renewal should be rejected")
     } catch {
         logger.debug("   ✅ Unauthorized renewal rejected via REAL QUIC mTLS")
@@ -517,5 +565,13 @@ final class FFIE2EIntegrationTest: XCTestCase {
     logger.debug("\n🎉 PHASE 12 COMPLETED: Error Handling via REAL QUIC mTLS")
     
     logger.debug("\n🎉🎉🎉 ALL PHASES COMPLETED: Full Transport E2E Test via REAL QUIC mTLS 🎉🎉🎉")
+
+    // Explicit cleanup to avoid races during teardown: stop server before freeing resources
+    do {
+        try await server?.stop()
+        try await Task.sleep(nanoseconds: 50_000_000)
+    } catch {
+        logger.debug("⚠️ Server stop encountered error: \(error)")
+    }
     }
 }

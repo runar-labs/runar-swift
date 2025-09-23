@@ -53,9 +53,8 @@ final class CaClientCrlTests: XCTestCase {
             )
             try await caNode.setupComplete(params: setupParams)
 
-            // Create shared node and server
-            let sharedCaNode = try await caNode.createShared()
-            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+            // Create server
+            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: caNode.ffiHandle)
 
             // Set up CA client for testing
             let rootCa = try await caNode.getRootCACertificate()

@@ -54,9 +54,8 @@ final class CertificateStatusTests: XCTestCase {
             let rootCa = try await caNode.getRootCACertificate()
             let issuingCa = try await caNode.getIssuingCACertificate()
 
-            // Now create shared and server using the configured CA node
-            let sharedCaNode = try await caNode.createShared()
-            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: sharedCaNode)
+            // Now create server using the configured CA node
+            caServer = try CAServer.create(config: caServerConfig, sharedCaNode: caNode.ffiHandle)
             
             // Start CA server and fetch real addresses
             try await caServer.start()

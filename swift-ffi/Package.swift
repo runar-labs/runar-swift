@@ -28,11 +28,12 @@ let package = Package(
             swiftSettings: [],
             linkerSettings: [
                 .linkedLibrary("runar_ffi"),
-                // Prefer the FFI crate output directory (release); harmless if absent (CI)
-                // Search path for the built FFI library in the workspace
+                // Use the copied library in the Swift package
+                .unsafeFlags(["-Xlinker", "-L", "-Xlinker", "./lib"]),
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "./lib"]),
+                // Fallback to Rust workspace (for development)
                 .unsafeFlags(["-Xlinker", "-L", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release"]),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release"]),
-                // Also include the Cargo deps folder where the cdylib often resides
                 .unsafeFlags(["-Xlinker", "-L", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release/deps"]),
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/Users/rafael/dev/runar-rust/target/release/deps"]),
             ]

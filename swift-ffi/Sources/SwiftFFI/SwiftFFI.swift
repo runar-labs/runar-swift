@@ -1,7 +1,37 @@
 import CRunarFFI
 import Foundation
+import Darwin
 import SwiftCBOR
 import SwiftCommon
+
+// MARK: - Handle Lock Registry
+
+/// Thread-safe registry for managing locks on FFI handles
+internal final class HandleLockRegistry {
+    nonisolated(unsafe) static let shared = HandleLockRegistry()
+    private let tableLock = NSLock()
+    private var locks: [UInt: NSLock] = [:]
+    
+    private init() {}
+    
+    private func lockFor(_ rawHandle: UnsafeMutableRawPointer) -> NSLock {
+        let key = UInt(bitPattern: rawHandle)
+        tableLock.lock()
+        defer { tableLock.unlock() }
+        if let l = locks[key] { return l }
+        let l = NSLock()
+        locks[key] = l
+        return l
+    }
+    
+    @inline(__always)
+    func withLock<T>(for rawHandle: UnsafeMutableRawPointer, _ body: () throws -> T) rethrows -> T {
+        let l = lockFor(rawHandle)
+        l.lock()
+        defer { l.unlock() }
+        return try body()
+    }
+}
 
 // MARK: - Sendable Handle Wrapper
 
@@ -461,7 +491,6 @@ private func validateNonEmptyArray<T>(_ array: [T], parameterName: String) async
 private func buildError(from err: CRunarFFI.RnError) -> Error {
     if let msgPtr = err.message {
         let message = String(cString: msgPtr)
-        rn_string_free(msgPtr)
         return FFIError.operationFailed(message)
     }
     return FFIError.operationFailed("Unknown FFI error")
@@ -473,8 +502,18 @@ func withRnErrorCode(_ body: (UnsafeMutablePointer<CRunarFFI.RnError>) -> Int32)
     let code = withUnsafeMutablePointer(to: &err) { errPtr in
         body(errPtr)
     }
-    if code != 0 { 
-        return (code, buildError(from: err)) 
+    if code != 0 {
+        // Copy error message (if any) and immediately free it at the FFI layer
+        var errorMessage: String?
+        if err.message != nil {
+            errorMessage = String(cString: err.message!)
+            // Free and null the message via centralized API
+            withUnsafeMutablePointer(to: &err) { errPtr in
+                rn_error_free(errPtr)
+            }
+        }
+        let swiftError = FFIError.operationFailed(errorMessage ?? "Unknown FFI error")
+        return (code, swiftError)
     }
     return (code, nil)
 }
@@ -500,27 +539,43 @@ internal func ffi_node_encrypt_with_envelope(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            var keyPointers: [UnsafePointer<UInt8>?] = []
-            var keyLengths: [Int] = []
-            keyPointers.reserveCapacity(profilePublicKeys.count)
-            keyLengths.reserveCapacity(profilePublicKeys.count)
-            for key in profilePublicKeys {
-                key.withUnsafeBytes { keyRaw in
-                    keyPointers.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
-                    keyLengths.append(key.count)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            data.withUnsafeBytes { dataRaw in
+                var keyPointers: [UnsafePointer<UInt8>?] = []
+                var keyLengths: [Int] = []
+                keyPointers.reserveCapacity(profilePublicKeys.count)
+                keyLengths.reserveCapacity(profilePublicKeys.count)
+                for key in profilePublicKeys {
+                    key.withUnsafeBytes { keyRaw in
+                        keyPointers.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
+                        keyLengths.append(key.count)
+                    }
                 }
-            }
-            return keyPointers.withUnsafeBufferPointer { keysPtr in
-                keyLengths.withUnsafeBufferPointer { lensPtr in
-                    if let networkKey = networkPublicKey {
-                        networkKey.withUnsafeBytes { networkRaw in
+                return keyPointers.withUnsafeBufferPointer { keysPtr in
+                    keyLengths.withUnsafeBufferPointer { lensPtr in
+                        if let networkKey = networkPublicKey {
+                            networkKey.withUnsafeBytes { networkRaw in
+                                rn_keys_node_encrypt_with_envelope(
+                                    nodeHandle,
+                                    dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                    data.count,
+                                    networkRaw.bindMemory(to: UInt8.self).baseAddress,
+                                    networkKey.count,
+                                    keysPtr.baseAddress,
+                                    lensPtr.baseAddress,
+                                    profilePublicKeys.count,
+                                    &outPtr,
+                                    &outLen,
+                                    errPtr
+                                )
+                            }
+                        } else {
                             rn_keys_node_encrypt_with_envelope(
                                 nodeHandle,
                                 dataRaw.bindMemory(to: UInt8.self).baseAddress,
                                 data.count,
-                                networkRaw.bindMemory(to: UInt8.self).baseAddress,
-                                networkKey.count,
+                                nil,
+                                0,
                                 keysPtr.baseAddress,
                                 lensPtr.baseAddress,
                                 profilePublicKeys.count,
@@ -529,20 +584,6 @@ internal func ffi_node_encrypt_with_envelope(
                                 errPtr
                             )
                         }
-                    } else {
-                        rn_keys_node_encrypt_with_envelope(
-                            nodeHandle,
-                            dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
-                            nil,
-                            0,
-                            keysPtr.baseAddress,
-                            lensPtr.baseAddress,
-                            profilePublicKeys.count,
-                            &outPtr,
-                            &outLen,
-                            errPtr
-                        )
                     }
                 }
             }
@@ -567,27 +608,43 @@ internal func ffi_mobile_encrypt_with_envelope(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            var keyPointers: [UnsafePointer<UInt8>?] = []
-            var keyLengths: [Int] = []
-            keyPointers.reserveCapacity(profilePublicKeys.count)
-            keyLengths.reserveCapacity(profilePublicKeys.count)
-            for key in profilePublicKeys {
-                key.withUnsafeBytes { keyRaw in
-                    keyPointers.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
-                    keyLengths.append(key.count)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            data.withUnsafeBytes { dataRaw in
+                var keyPointers: [UnsafePointer<UInt8>?] = []
+                var keyLengths: [Int] = []
+                keyPointers.reserveCapacity(profilePublicKeys.count)
+                keyLengths.reserveCapacity(profilePublicKeys.count)
+                for key in profilePublicKeys {
+                    key.withUnsafeBytes { keyRaw in
+                        keyPointers.append(keyRaw.bindMemory(to: UInt8.self).baseAddress)
+                        keyLengths.append(key.count)
+                    }
                 }
-            }
-            return keyPointers.withUnsafeBufferPointer { keysPtr in
-                keyLengths.withUnsafeBufferPointer { lensPtr in
-                    if let networkKey = networkPublicKey {
-                        networkKey.withUnsafeBytes { networkRaw in
+                return keyPointers.withUnsafeBufferPointer { keysPtr in
+                    keyLengths.withUnsafeBufferPointer { lensPtr in
+                        if let networkKey = networkPublicKey {
+                            networkKey.withUnsafeBytes { networkRaw in
+                                rn_keys_mobile_encrypt_with_envelope(
+                                    mobileHandle,
+                                    dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                                    data.count,
+                                    networkRaw.bindMemory(to: UInt8.self).baseAddress,
+                                    networkKey.count,
+                                    keysPtr.baseAddress,
+                                    lensPtr.baseAddress,
+                                    profilePublicKeys.count,
+                                    &outPtr,
+                                    &outLen,
+                                    errPtr
+                                )
+                            }
+                        } else {
                             rn_keys_mobile_encrypt_with_envelope(
                                 mobileHandle,
                                 dataRaw.bindMemory(to: UInt8.self).baseAddress,
                                 data.count,
-                                networkRaw.bindMemory(to: UInt8.self).baseAddress,
-                                networkKey.count,
+                                nil,
+                                0,
                                 keysPtr.baseAddress,
                                 lensPtr.baseAddress,
                                 profilePublicKeys.count,
@@ -596,20 +653,6 @@ internal func ffi_mobile_encrypt_with_envelope(
                                 errPtr
                             )
                         }
-                    } else {
-                        rn_keys_mobile_encrypt_with_envelope(
-                            mobileHandle,
-                            dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
-                            nil,
-                            0,
-                            keysPtr.baseAddress,
-                            lensPtr.baseAddress,
-                            profilePublicKeys.count,
-                            &outPtr,
-                            &outLen,
-                            errPtr
-                        )
                     }
                 }
             }
@@ -633,8 +676,10 @@ internal func ffi_node_decrypt_envelope(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        envelopeData.withUnsafeBytes { raw in
-            rn_keys_node_decrypt_envelope(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, envelopeData.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            envelopeData.withUnsafeBytes { raw in
+                rn_keys_node_decrypt_envelope(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, envelopeData.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
     
@@ -652,13 +697,22 @@ internal func ffi_node_generate_csr(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
+    let logger = RunarLogger(component: .custom)
+    let threadId = pthread_mach_thread_np(pthread_self())
+    logger.trace("ffi_node_generate_csr: ENTER thread=\(threadId) nodeHandle=\(nodeHandle)")
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_generate_csr(nodeHandle, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            rn_keys_node_generate_csr(nodeHandle, &outPtr, &outLen, errPtr)
+        }
     }
     
-    if let error = err { throw error }
+    if let error = err {
+        logger.trace("ffi_node_generate_csr: ERROR thread=\(threadId) nodeHandle=\(nodeHandle) code=\(code) err=\(error)")
+        throw error
+    }
     guard code == 0 else { throw FFIError.operationFailed("Failed to generate CSR setup token") }
+    logger.trace("ffi_node_generate_csr: SUCCESS thread=\(threadId) nodeHandle=\(nodeHandle) outPtr=\(String(describing: outPtr)) outLen=\(outLen)")
     return try copyBytesAndFree(outPtr, outLen)
 }
 
@@ -673,7 +727,9 @@ internal func ffi_node_get_quic_certificate_config(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_quic_certificate_config(nodeHandle, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            rn_keys_node_get_quic_certificate_config(nodeHandle, &outPtr, &outLen, errPtr)
+        }
     }
     
     if let error = err { throw error }
@@ -692,7 +748,9 @@ internal func ffi_node_get_node_certificate(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_node_certificate(nodeHandle, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            rn_keys_node_get_node_certificate(nodeHandle, &outPtr, &outLen, errPtr)
+        }
     }
     
     if let error = err { throw error }
@@ -711,7 +769,9 @@ internal func ffi_node_get_public_key(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_public_key(nodeHandle, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            rn_keys_node_get_public_key(nodeHandle, &outPtr, &outLen, errPtr)
+        }
     }
     
     if let error = err { throw error }
@@ -731,8 +791,10 @@ internal func ffi_node_derive_user_profile_key(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        label.withCString { cLabel in
-            rn_keys_node_derive_user_profile_key(nodeHandle, cLabel, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            label.withCString { cLabel in
+                rn_keys_node_derive_user_profile_key(nodeHandle, cLabel, &outPtr, &outLen, errPtr)
+            }
         }
     }
     
@@ -754,17 +816,19 @@ internal func ffi_node_decrypt_with_profile(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        envelopeData.withUnsafeBytes { raw in
-            profileId.withCString { cId in
-                rn_keys_node_decrypt_with_profile(
-                    nodeHandle,
-                    raw.bindMemory(to: UInt8.self).baseAddress,
-                    envelopeData.count,
-                    cId,
-                    &outPtr,
-                    &outLen,
-                    errPtr
-                )
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            envelopeData.withUnsafeBytes { raw in
+                profileId.withCString { cId in
+                    rn_keys_node_decrypt_with_profile(
+                        nodeHandle,
+                        raw.bindMemory(to: UInt8.self).baseAddress,
+                        envelopeData.count,
+                        cId,
+                        &outPtr,
+                        &outLen,
+                        errPtr
+                    )
+                }
             }
         }
     }
@@ -787,8 +851,10 @@ internal func ffi_node_get_profile_public_key_by_label(
     var hasKey: Int32 = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        label.withCString { cLabel in
-            rn_keys_node_get_profile_public_key_by_label(nodeHandle, cLabel, &outPtr, &outLen, &hasKey, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            label.withCString { cLabel in
+                rn_keys_node_get_profile_public_key_by_label(nodeHandle, cLabel, &outPtr, &outLen, &hasKey, errPtr)
+            }
         }
     }
     
@@ -813,7 +879,9 @@ internal func ffi_node_get_certificate_serial(
     var outPtr: UnsafeMutablePointer<CChar>?
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_certificate_serial(nodeHandle, &outPtr, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            rn_keys_node_get_certificate_serial(nodeHandle, &outPtr, errPtr)
+        }
     }
     
     if let error = err { throw error }
@@ -833,8 +901,10 @@ internal func ffi_node_get_network_agreement(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        networkPublicKey.withUnsafeBytes { raw in
-            rn_keys_node_get_network_agreement(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            networkPublicKey.withUnsafeBytes { raw in
+                rn_keys_node_get_network_agreement(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
     
@@ -854,7 +924,9 @@ internal func ffi_node_get_agreement_public_key(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_node_get_agreement_public_key(nodeHandle, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            rn_keys_node_get_agreement_public_key(nodeHandle, &outPtr, &outLen, errPtr)
+        }
     }
     
     if let error = err { throw error }
@@ -874,8 +946,10 @@ internal func ffi_ensure_symmetric_key(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        name.withCString { namePtr in
-            rn_keys_ensure_symmetric_key(nodeHandle, namePtr, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            name.withCString { namePtr in
+                rn_keys_ensure_symmetric_key(nodeHandle, namePtr, &outPtr, &outLen, errPtr)
+            }
         }
     }
     
@@ -896,8 +970,10 @@ internal func ffi_encrypt_local_data(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            rn_keys_encrypt_local_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            data.withUnsafeBytes { dataRaw in
+                rn_keys_encrypt_local_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
     
@@ -918,8 +994,10 @@ internal func ffi_decrypt_local_data(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        encryptedData.withUnsafeBytes { dataRaw in
-            rn_keys_decrypt_local_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            encryptedData.withUnsafeBytes { dataRaw in
+                rn_keys_decrypt_local_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
     
@@ -942,9 +1020,11 @@ internal func ffi_encrypt_for_network(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            networkPublicKey.withUnsafeBytes { keyRaw in
-                rn_keys_encrypt_for_network(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            data.withUnsafeBytes { dataRaw in
+                networkPublicKey.withUnsafeBytes { keyRaw in
+                    rn_keys_encrypt_for_network(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, &outPtr, &outLen, errPtr)
+                }
             }
         }
     }
@@ -966,8 +1046,10 @@ internal func ffi_decrypt_network_data(
     var outLen = 0
     
     let (code, err) = withRnErrorCode { errPtr in
-        encryptedEnvelope.withUnsafeBytes { dataRaw in
-            rn_keys_decrypt_network_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedEnvelope.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            encryptedEnvelope.withUnsafeBytes { dataRaw in
+                rn_keys_decrypt_network_data(nodeHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedEnvelope.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
     
@@ -988,7 +1070,9 @@ internal func ffi_mobile_get_user_public_key(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_mobile_get_user_public_key(mobileHandle, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            rn_keys_mobile_get_user_public_key(mobileHandle, &outPtr, &outLen, errPtr)
+        }
     }
 
     if let error = err { throw error }
@@ -1007,8 +1091,10 @@ internal func ffi_mobile_derive_user_profile_key(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        label.withCString { cLabel in
-            rn_keys_mobile_derive_user_profile_key(mobileHandle, cLabel, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            label.withCString { cLabel in
+                rn_keys_mobile_derive_user_profile_key(mobileHandle, cLabel, &outPtr, &outLen, errPtr)
+            }
         }
     }
 
@@ -1027,7 +1113,9 @@ internal func ffi_mobile_generate_network_data_key(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        rn_keys_mobile_generate_network_data_key(mobileHandle, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            rn_keys_mobile_generate_network_data_key(mobileHandle, &outPtr, &outLen, errPtr)
+        }
     }
 
     if let error = err { throw error }
@@ -1045,18 +1133,20 @@ internal func ffi_mobile_create_network_key_message(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            nodeAgreementPublicKey.withUnsafeBytes { nodeRaw in
-                rn_keys_mobile_create_network_key_message(
-                    handle,
-                    dataRaw.bindMemory(to: UInt8.self).baseAddress,
-                    data.count,
-                    nodeRaw.bindMemory(to: UInt8.self).baseAddress,
-                    nodeAgreementPublicKey.count,
-                    &outPtr,
-                    &outLen,
-                    errPtr
-                )
+        HandleLockRegistry.shared.withLock(for: handle) {
+            data.withUnsafeBytes { dataRaw in
+                nodeAgreementPublicKey.withUnsafeBytes { nodeRaw in
+                    rn_keys_mobile_create_network_key_message(
+                        handle,
+                        dataRaw.bindMemory(to: UInt8.self).baseAddress,
+                        data.count,
+                        nodeRaw.bindMemory(to: UInt8.self).baseAddress,
+                        nodeAgreementPublicKey.count,
+                        &outPtr,
+                        &outLen,
+                        errPtr
+                    )
+                }
             }
         }
     }
@@ -1075,15 +1165,17 @@ internal func ffi_mobile_process_setup_token(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        setupToken.withUnsafeBytes { raw in
-            rn_keys_mobile_process_setup_token(
-                handle,
-                raw.bindMemory(to: UInt8.self).baseAddress,
-                setupToken.count,
-                &outPtr,
-                &outLen,
-                errPtr
-            )
+        HandleLockRegistry.shared.withLock(for: handle) {
+            setupToken.withUnsafeBytes { raw in
+                rn_keys_mobile_process_setup_token(
+                    handle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    setupToken.count,
+                    &outPtr,
+                    &outLen,
+                    errPtr
+                )
+            }
         }
     }
 
@@ -1103,8 +1195,10 @@ internal func ffi_mobile_from_enroll_response(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        response.withUnsafeBytes { raw in
-            rn_keys_mobile_from_enroll_response(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            response.withUnsafeBytes { raw in
+                rn_keys_mobile_from_enroll_response(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
 
@@ -1124,8 +1218,10 @@ internal func ffi_mobile_from_renew_response(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        response.withUnsafeBytes { raw in
-            rn_keys_mobile_from_renew_response(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            response.withUnsafeBytes { raw in
+                rn_keys_mobile_from_renew_response(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, response.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
 
@@ -1146,9 +1242,11 @@ internal func ffi_encrypt_message_for_mobile(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            mobilePublicKey.withUnsafeBytes { keyRaw in
-                rn_keys_encrypt_message_for_mobile(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, mobilePublicKey.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: handle) {
+            data.withUnsafeBytes { dataRaw in
+                mobilePublicKey.withUnsafeBytes { keyRaw in
+                    rn_keys_encrypt_message_for_mobile(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, mobilePublicKey.count, &outPtr, &outLen, errPtr)
+                }
             }
         }
     }
@@ -1167,8 +1265,10 @@ internal func ffi_decrypt_message_from_mobile(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        encryptedData.withUnsafeBytes { dataRaw in
-            rn_keys_decrypt_message_from_mobile(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: handle) {
+            encryptedData.withUnsafeBytes { dataRaw in
+                rn_keys_decrypt_message_from_mobile(handle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
 
@@ -1189,9 +1289,11 @@ internal func ffi_encrypt_message_for_node(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        data.withUnsafeBytes { dataRaw in
-            nodeAgreementPublicKey.withUnsafeBytes { keyRaw in
-                rn_keys_encrypt_message_for_node(mobileHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, nodeAgreementPublicKey.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            data.withUnsafeBytes { dataRaw in
+                nodeAgreementPublicKey.withUnsafeBytes { keyRaw in
+                    rn_keys_encrypt_message_for_node(mobileHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, data.count, keyRaw.bindMemory(to: UInt8.self).baseAddress, nodeAgreementPublicKey.count, &outPtr, &outLen, errPtr)
+                }
             }
         }
     }
@@ -1212,8 +1314,10 @@ internal func ffi_mobile_decrypt_message_from_node(
     var outLen = 0
 
     let (code, err) = withRnErrorCode { errPtr in
-        encryptedData.withUnsafeBytes { dataRaw in
-            rn_keys_mobile_decrypt_message_from_node(mobileHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            encryptedData.withUnsafeBytes { dataRaw in
+                rn_keys_mobile_decrypt_message_from_node(mobileHandle, dataRaw.bindMemory(to: UInt8.self).baseAddress, encryptedData.count, &outPtr, &outLen, errPtr)
+            }
         }
     }
 
@@ -1238,9 +1342,11 @@ internal func ffi_create_ca_client(
     var out: UnsafeMutableRawPointer?
     
     let (code, err) = withRnErrorCode { errPtr in
-        configCbor.withUnsafeBytes { raw in
-            logger.trace("ffi_create_ca_client() - About to call rn_transport_ca_client_new_with_config")
-            return rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, configCbor.count, nodeHandle, &out, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            configCbor.withUnsafeBytes { raw in
+                logger.trace("ffi_create_ca_client() - About to call rn_transport_ca_client_new_with_config")
+                return rn_transport_ca_client_new_with_config(raw.bindMemory(to: UInt8.self).baseAddress, configCbor.count, nodeHandle, &out, errPtr)
+            }
         }
     }
     
@@ -1265,14 +1371,16 @@ internal func ffi_create_discovery(
     var outPtr: UnsafeMutableRawPointer?
 
     let (code, err) = withRnErrorCode { errPtr in
-        optionsCbor.withUnsafeBytes { raw in
-            rn_discovery_new_with_multicast(
-                handle,
-                raw.bindMemory(to: UInt8.self).baseAddress,
-                optionsCbor.count,
-                &outPtr,
-                errPtr
-            )
+        HandleLockRegistry.shared.withLock(for: handle) {
+            optionsCbor.withUnsafeBytes { raw in
+                rn_discovery_new_with_multicast(
+                    handle,
+                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    optionsCbor.count,
+                    &outPtr,
+                    errPtr
+                )
+            }
         }
     }
 
@@ -1292,8 +1400,10 @@ internal func ffi_create_transport(
     var outTransport: UnsafeMutableRawPointer?
 
     let (code, err) = withRnErrorCode { errPtr in
-        optionsCbor.withUnsafeBytes { raw in
-            rn_transport_new_with_keys(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, optionsCbor.count, &outTransport, errPtr)
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            optionsCbor.withUnsafeBytes { raw in
+                rn_transport_new_with_keys(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, optionsCbor.count, &outTransport, errPtr)
+            }
         }
     }
 
@@ -1919,11 +2029,11 @@ public class CANode {
         let logger = RunarLogger(component: .custom)
         logger.info("CANode.create() - Starting CA Node creation")
         var handle: UnsafeMutableRawPointer?
-        logger.trace("CANode.create() - About to call rn_keys_ca_node_new")
+        logger.trace("CANode.create() - About to call rn_keys_ca_node_new_shared")
         let (code, err) = withRnErrorCode { errPtr in
             logger.trace("CANode.create() - Inside withRnErrorCode closure")
-            let result = rn_keys_ca_node_new(&handle, errPtr)
-            logger.debug("CANode.create() - rn_keys_ca_node_new returned: \(result)")
+            let result = rn_keys_ca_node_new_shared(&handle, errPtr)
+            logger.debug("CANode.create() - rn_keys_ca_node_new_shared returned: \(result)")
             return result
         }
         logger.debug("CANode.create() - withRnErrorCode completed, code: \(code)")
@@ -1984,20 +2094,6 @@ public class CANode {
         logger.info("CANode.setupComplete() - Setup completed successfully")
     }
     
-    public nonisolated func createShared() async throws -> UnsafeMutableRawPointer {
-        // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
-        var shared: UnsafeMutableRawPointer?
-        let (code, err) = withRnErrorCode { errPtr in
-            rn_keys_ca_node_create_shared(caHandle, &shared, errPtr)
-        }
-        if let error = err { throw error }
-        guard code == 0, let out = shared else {
-            throw FFIError.operationFailed("Failed to create shared CA Node")
-        }
-        return out
-    }
-    
     public static func freeShared(_ handle: UnsafeMutableRawPointer) {
         rn_keys_ca_node_free_shared(handle)
     }
@@ -2017,7 +2113,7 @@ public class CANode {
     }
 
     deinit {
-        rn_keys_ca_node_free(_ffiHandle)
+        rn_keys_ca_node_free_shared(_ffiHandle)
     }
 }
 
@@ -2237,8 +2333,9 @@ public extension CANode {
     }
 
     func createSharedWrapped() async throws -> SharedCANode {
-        let raw = try await createShared()
-        return SharedCANode(handle: raw)
+        // Since CANode.create() now creates shared handles directly, 
+        // we can create a SharedCANode wrapper around the current handle
+        return SharedCANode(handle: self.ffiHandle)
     }
 
     func handleCRL(networkId: String) async throws -> Data {
@@ -3299,10 +3396,17 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
 public final class CAClient: Sendable {
     private let _handleWrapper: SendableHandle
     var handle: UnsafeMutableRawPointer { _handleWrapper.handle }
+    @MainActor private static var _liveCount: Int = 0
+    @MainActor private static func _inc() { _liveCount += 1 }
+    @MainActor private static func _dec() { _liveCount -= 1 }
 
     // Use NodeKeyManager factory to create instances; keep this internal
     internal init(handle: UnsafeMutableRawPointer) {
         self._handleWrapper = SendableHandle(handle)
+        let logger = RunarLogger(component: .custom)
+        let threadId = pthread_mach_thread_np(pthread_self())
+        Task { @MainActor in CAClient._inc() }
+        logger.trace("CAClient.init: thread=\(threadId) clientHandle=\(handle)")
     }
     
     public func enroll(bootstrapAddress: String, request: Data) async throws -> Data {
@@ -3437,7 +3541,11 @@ public final class CAClient: Sendable {
     }
 
     deinit {
+        let logger = RunarLogger(component: .custom)
+        let threadId = pthread_mach_thread_np(pthread_self())
+        logger.trace("CAClient.deinit: thread=\(threadId) clientHandle=\(_handleWrapper.handle)")
         rn_transport_ca_client_free(_handleWrapper.handle)
+        Task { @MainActor in CAClient._dec() }
     }
 }
 

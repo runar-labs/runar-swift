@@ -6,3 +6,13 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# Rust FFI build artifacts
+lib/
+*.dylib
+*.so
+*.a
+
+# Build artifacts
+.build/
+DerivedData/
