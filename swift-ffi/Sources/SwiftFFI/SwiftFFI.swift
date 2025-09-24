@@ -1303,6 +1303,30 @@ internal func ffi_encrypt_message_for_node(
     return try copyBytesAndFree(outPtr, outLen)
 }
 
+/// Nonisolated helper for decrypting envelope (mobile)
+@inline(__always)
+internal func ffi_mobile_decrypt_envelope(
+    _ handle: UnsafeMutableRawPointer,
+    envelopeData: Data
+) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
+    var outPtr: UnsafeMutablePointer<UInt8>?
+    var outLen = 0
+    
+    let (code, err) = withRnErrorCode { errPtr in
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            envelopeData.withUnsafeBytes { raw in
+                rn_keys_mobile_decrypt_envelope(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, envelopeData.count, &outPtr, &outLen, errPtr)
+            }
+        }
+    }
+    
+    if let error = err { throw error }
+    guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt envelope") }
+    return try copyBytesAndFree(outPtr, outLen)
+}
+
 @inline(__always)
 internal func ffi_mobile_decrypt_message_from_node(
     _ handle: UnsafeMutableRawPointer,
@@ -1703,6 +1727,34 @@ public struct CsrEnrollResponse: Codable {
     }
 }
 
+/// Renewal response structure
+public struct RenewResponse: Codable {
+    public let network_id: String
+    public let certificate_der: [UInt8]
+    public let issuing_ca_der: [UInt8]
+    public let expires_at: UInt64
+    
+    enum CodingKeys: String, CodingKey {
+        case network_id
+        case certificate_der
+        case issuing_ca_der
+        case expires_at
+    }
+}
+
+/// Chain response structure
+public struct ChainResponse: Codable {
+    public let network_id: String
+    public let issuing_ca_der: [UInt8]
+    public let root_ca_der: [UInt8]?
+    
+    enum CodingKeys: String, CodingKey {
+        case network_id
+        case issuing_ca_der
+        case root_ca_der
+    }
+}
+
 public struct CaErrorResponse: Codable {
     public let code: String
     public let message: String
@@ -1760,9 +1812,11 @@ public struct RevokeRequest: Codable {
 
 /// Revocation response structure
 public struct RevokeResponse: Codable {
+    public let network_id: String
     public let ok: Bool
     
     enum CodingKeys: String, CodingKey {
+        case network_id
         case ok
     }
 }
@@ -1784,12 +1838,14 @@ public struct CrlLite: Codable {
 
 /// CA Status structure
 public struct CaStatus: Codable {
+    public let network_id: String
     public let issuing_subject: String
     public let issuing_serial_hex: String
     public let not_before: UInt64
     public let not_after: UInt64
     
     enum CodingKeys: String, CodingKey {
+        case network_id
         case issuing_subject
         case issuing_serial_hex
         case not_before
@@ -2265,7 +2321,8 @@ public final class SharedCANode {
     }
 
     nonisolated deinit {
-        rn_keys_ca_node_free_shared(_handle)
+        // Note: We don't free the handle here because it's managed by CANode
+        // The handle will be freed when the CANode is deallocated
     }
 }
 
@@ -2513,6 +2570,147 @@ public extension CANode {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to generate CRL-lite") }
         return try copyBytesAndFree(outPtr, outLen)
+    }
+}
+
+// MARK: - CA Creation Functions
+
+/// Certificate Authority creation and management
+public class CA {
+    public nonisolated(unsafe) let ffiHandle: UnsafeMutableRawPointer
+    nonisolated(unsafe) private let _ffiHandle: UnsafeMutableRawPointer
+    
+    public init(ffiHandle: UnsafeMutableRawPointer) {
+        self.ffiHandle = ffiHandle
+        self._ffiHandle = ffiHandle
+    }
+    
+    deinit {
+        rn_keys_ca_free(_ffiHandle)
+    }
+    
+    /// Create a self-signed root CA
+    /// - Parameter subject: The subject for the root CA certificate
+    /// - Returns: A new CA instance representing the root CA
+    /// - Throws: FFIError if creation fails
+    public nonisolated static func createRootCA(subject: String) throws -> CA {
+        let logger = RunarLogger(component: .custom)
+        logger.info("CA.createRootCA() - Starting root CA creation with subject: \(subject)")
+        
+        var handle: UnsafeMutableRawPointer?
+        let (code, err) = withRnErrorCode { errPtr in
+            subject.withCString { cSubject in
+                rn_keys_ca_create_root_ca(cSubject, &handle, errPtr)
+            }
+        }
+        
+        if let error = err {
+            logger.error("CA.createRootCA() - FFI error: \(error)")
+            throw error
+        }
+        
+        guard code == 0, let out = handle else {
+            logger.error("CA.createRootCA() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
+            throw FFIError.operationFailed("Failed to create root CA")
+        }
+        
+        logger.info("CA.createRootCA() - Root CA created successfully")
+        return CA(ffiHandle: out)
+    }
+    
+    /// Create an issuing CA signed by a root CA
+    /// - Parameters:
+    ///   - rootCA: The root CA that will sign this issuing CA
+    ///   - subject: The subject for the issuing CA certificate
+    ///   - validityDays: Number of days the certificate is valid
+    ///   - serial: Serial number for the certificate
+    /// - Returns: A new CA instance representing the issuing CA
+    /// - Throws: FFIError if creation fails
+    public nonisolated static func createIssuingCA(
+        rootCA: CA,
+        subject: String,
+        validityDays: UInt32,
+        serial: UInt64
+    ) throws -> CA {
+        let logger = RunarLogger(component: .custom)
+        logger.info("CA.createIssuingCA() - Starting issuing CA creation with subject: \(subject)")
+        
+        var handle: UnsafeMutableRawPointer?
+        let (code, err) = withRnErrorCode { errPtr in
+            subject.withCString { cSubject in
+                rn_keys_ca_create_issuing_ca(rootCA.ffiHandle, cSubject, validityDays, serial, &handle, errPtr)
+            }
+        }
+        
+        if let error = err {
+            logger.error("CA.createIssuingCA() - FFI error: \(error)")
+            throw error
+        }
+        
+        guard code == 0, let out = handle else {
+            logger.error("CA.createIssuingCA() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
+            throw FFIError.operationFailed("Failed to create issuing CA")
+        }
+        
+        logger.info("CA.createIssuingCA() - Issuing CA created successfully")
+        return CA(ffiHandle: out)
+    }
+    
+    /// Get the CA certificate in DER format
+    /// - Returns: The certificate data in DER format
+    /// - Throws: FFIError if retrieval fails
+    public nonisolated func getCertificateDER() async throws -> Data {
+        let logger = RunarLogger(component: .custom)
+        logger.trace("CA.getCertificateDER() - About to call rn_keys_ca_get_certificate_der")
+        
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let (code, err) = withRnErrorCode { errPtr in
+            HandleLockRegistry.shared.withLock(for: self.ffiHandle) {
+                rn_keys_ca_get_certificate_der(self.ffiHandle, &outPtr, &outLen, errPtr)
+            }
+        }
+        
+        if let error = err {
+            logger.error("CA.getCertificateDER() - FFI error: \(error)")
+            throw error
+        }
+        
+        guard code == 0 else {
+            logger.error("CA.getCertificateDER() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to get CA certificate DER")
+        }
+        
+        logger.trace("CA.getCertificateDER() - Successfully retrieved certificate DER")
+        return try copyBytesAndFree(outPtr, outLen)
+    }
+    
+    /// Get the CA certificate subject
+    /// - Returns: The certificate subject string
+    /// - Throws: FFIError if retrieval fails
+    public nonisolated func getCertificateSubject() async throws -> String {
+        let logger = RunarLogger(component: .custom)
+        logger.trace("CA.getCertificateSubject() - About to call rn_keys_ca_get_certificate_subject")
+        
+        var outPtr: UnsafeMutablePointer<CChar>?
+        let (code, err) = withRnErrorCode { errPtr in
+            HandleLockRegistry.shared.withLock(for: self.ffiHandle) {
+                rn_keys_ca_get_certificate_subject(self.ffiHandle, &outPtr, errPtr)
+            }
+        }
+        
+        if let error = err {
+            logger.error("CA.getCertificateSubject() - FFI error: \(error)")
+            throw error
+        }
+        
+        guard code == 0 else {
+            logger.error("CA.getCertificateSubject() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to get CA certificate subject")
+        }
+        
+        logger.trace("CA.getCertificateSubject() - Successfully retrieved certificate subject")
+        return try copyCStringAndFree(outPtr)
     }
 }
 
@@ -3072,7 +3270,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
-        return try ffi_node_decrypt_envelope(handle, envelopeData: envelopeData)
+        return try ffi_mobile_decrypt_envelope(handle, envelopeData: envelopeData)
     }
     
     // MARK: - MobileOnly Implementation

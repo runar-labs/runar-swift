@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to run tests with LLDB and capture stack trace on crash
+# Script to debug the crash with LLDB
 cd /Users/rafael/dev/runar-swift/swift-ffi
 
 # Build the test first
