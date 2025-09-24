@@ -47,6 +47,11 @@ SWIFT_LIB_DIR="$SWIFT_PACKAGE/lib"
 mkdir -p "$SWIFT_LIB_DIR"
 cp "$LIBRARY_PATH" "$SWIFT_LIB_DIR/"
 
+# Fix the library's install name to be relative
+echo "🔧 Fixing library install name..."
+SWIFT_LIB_PATH="$SWIFT_LIB_DIR/librunar_ffi.dylib"
+install_name_tool -id "@rpath/librunar_ffi.dylib" "$SWIFT_LIB_PATH"
+
 # Copy header file
 echo "📄 Copying header file..."
 HEADER_SOURCE="$RUST_WORKSPACE/runar-ffi/include/runar_ffi.h"
