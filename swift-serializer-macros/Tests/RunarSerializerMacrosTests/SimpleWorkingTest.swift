@@ -74,7 +74,7 @@ final class SimpleWorkingTest: XCTestCase {
             let value: String
         }
 
-        let instance = AliasTest(value: "test")
+        _ = AliasTest(value: "test")
         let encrypted = AliasTest.Encrypted.self
         _ = encrypted
 

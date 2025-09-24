@@ -138,7 +138,7 @@ final class RustParityEncryptionTest: XCTestCase {
         let original = TestProfile(
             id: "123",
             name: "Test User",
-            `private`: "secret123",
+            private: "secret123",
             email: "test@example.com",
             system_metadata: "system_data"
         )
@@ -187,7 +187,7 @@ final class RustParityEncryptionTest: XCTestCase {
         let profile = TestProfile(
             id: "789",
             name: "ArcValue Test",
-            `private`: "arc_secret",
+            private: "arc_secret",
             email: "arc@example.com",
             system_metadata: "arc_system_data"
         )
@@ -206,7 +206,7 @@ final class RustParityEncryptionTest: XCTestCase {
         
         // Create serialization context - resolve network_public_key from resolver
         logger.trace("Creating serialization context")
-        let systemInfo = try resolver.resolveLabelInfo("system")
+        _ = try resolver.resolveLabelInfo("system")
         let context = SerializationContext(
             keystore: mobileKs,
             resolver: resolver,

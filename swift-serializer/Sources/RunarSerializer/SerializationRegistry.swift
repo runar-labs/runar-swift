@@ -74,27 +74,30 @@ public actor SerializationRegistry {
 
     // MARK: - Serialization Functions
 
-    public func registerDecryptor<T: Decodable>(
+    @preconcurrency
+    public func registerDecryptor<T: Decodable & Sendable>(
         for _: T.Type,
         wireName: String? = nil,
         decryptor: @escaping @Sendable (Data, CommonKeyManager) async throws -> T
     ) {
         let registryKey = wireName ?? String(describing: T.self)
-        wireNameToDecryptor[registryKey] = { data, keystore in
+        wireNameToDecryptor[registryKey] = { [decryptor] data, keystore in
             try await decryptor(data, keystore)
         }
     }
 
-    public func registerEncryptor<T: Encodable>(
+    @preconcurrency
+    public func registerEncryptor<T: Encodable & Sendable>(
         for _: T.Type,
         wireName: String? = nil,
         targetEncryptedWireName: String? = nil,
         encryptor: @escaping @Sendable (T, CommonKeyManager, LabelResolver) async throws -> Data
     ) {
         let registryKey = wireName ?? String(describing: T.self)
-        wireNameToEncryptor[registryKey] = { value, keystore, resolver in
+        let expectedTypeName = String(describing: T.self)
+        wireNameToEncryptor[registryKey] = { [encryptor, expectedTypeName] value, keystore, resolver in
             guard let typedValue = value as? T else {
-                throw SerializerError.typeMismatch("Expected \(T.self), got \(String(describing: Swift.type(of: value)))")
+                throw SerializerError.typeMismatch("Expected \(expectedTypeName), got \(String(describing: Swift.type(of: value)))")
             }
             return try await encryptor(typedValue, keystore, resolver)
         }
@@ -114,11 +117,12 @@ public actor SerializationRegistry {
 
     // MARK: - Deserialization Functions
 
+    @preconcurrency
     public func registerDecoder(
         for wireName: String,
-        decoder: @escaping @Sendable (Data) throws -> some Decodable
+        decoder: @escaping @Sendable (Data) throws -> (any Decodable & Sendable)
     ) {
-        wireNameToDecoder[wireName] = { data in
+        wireNameToDecoder[wireName] = { [decoder] data in
             try decoder(data)
         }
     }
