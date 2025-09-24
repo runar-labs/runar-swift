@@ -539,13 +539,16 @@ public final class AnyValue: Sendable {
             if let cbor = try? CBOR.decode(bytes) {
                 switch cbor {
                 case let .utf8String(stringValue):
-                    if let casted = stringValue as? T { return casted }
-                    throw SerializerError.typeMismatch("Cannot cast string to \(T.self)")
-                case let .array(arr) where arr.count == 1:
-                    if case let .utf8String(stringValue) = arr[0] {
-                        if let casted = stringValue as? T { return casted }
-                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)")
+                    guard let casted = stringValue as? T else { 
+                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)") 
                     }
+                    return casted
+                case let .array(arr) where arr.count == 1:
+                    guard case let .utf8String(stringValue) = arr[0] else { break }
+                    guard let casted = stringValue as? T else { 
+                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)") 
+                    }
+                    return casted
                 default: break
                 }
             }
@@ -883,23 +886,25 @@ public final class AnyValue: Sendable {
             if WireNameParser.parseList(lazyData.typeName) != nil, lazyData.typeName != "list<any>" {
                 // Decode as plain typed CBOR array to Decodable target
                 let cborData = Array(lazyData.data)
-                if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T
-                {
-                    return decodedAny
+                guard let target = T.self as? Decodable.Type else {
+                    throw SerializerError.deserializationFailed("Type \(T.self) is not Decodable")
                 }
-                throw SerializerError.deserializationFailed("Typed list decode failed")
+                guard let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T else {
+                    throw SerializerError.deserializationFailed("Typed list decode failed")
+                }
+                return decodedAny
             }
 
             if WireNameParser.parseMap(lazyData.typeName) != nil, lazyData.typeName != "map<string,any>" {
                 let cborData = Array(lazyData.data)
                 // Try plain typed map decode to Decodable
-                if let target = T.self as? Decodable.Type,
-                   let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T
-                {
-                    return decodedAny
+                guard let target = T.self as? Decodable.Type else {
+                    throw SerializerError.deserializationFailed("Type \(T.self) is not Decodable")
                 }
-                throw SerializerError.deserializationFailed("Typed map decode failed")
+                guard let decodedAny = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: Data(cborData)) as? T else {
+                    throw SerializerError.deserializationFailed("Typed map decode failed")
+                }
+                return decodedAny
             }
 
             // Structs and custom types: require known wire name in registry
@@ -914,9 +919,10 @@ public final class AnyValue: Sendable {
 
                 // If decoder returns an encrypted value but T is the plain type, decrypt with keystore
                 if let keystore, let encryptedValue = result as? AnyRunarDecryptable {
-                    if let decrypted = try? await encryptedValue.runarDecryptWithKeystore(keystore) as? T {
-                        return decrypted
+                    guard let decrypted = try? await encryptedValue.runarDecryptWithKeystore(keystore) as? T else {
+                        throw SerializerError.typeMismatch("Failed to decrypt value to \(T.self)")
                     }
+                    return decrypted
                 }
 
                 // If T is an Encrypted type, allow direct cast
@@ -1197,8 +1203,5 @@ public extension PlainSerializable {
 // (Removed legacy TypeRegistry; use SerializationRegistry instead)
 
 // MARK: - Encryption Types
-
-/// Protocol for envelope encryption operations
-/// Use EnvelopeCrypto from the appropriate keystore implementation
 
 // No dummy keystore - all encryption must use real FFI implementation
