@@ -220,7 +220,10 @@ public final class AnyValue: Sendable {
             var cborElements: [CBOR] = []
             for value in values {
                 let full = try await value.serialize(context: context)
-                let (cat, _, name, payload) = try Self.parseSerializedHeader(full)
+                let header = try Self.parseSerializedHeader(full)
+                let cat = header.category
+                let name = header.wireName
+                let payload = header.payload
                 var map: [CBOR: CBOR] = [:]
                 map[.utf8String("category")] = .unsignedInt(UInt64(cat.rawValue))
                 map[.utf8String("typename")] = .utf8String(name)
@@ -283,7 +286,10 @@ public final class AnyValue: Sendable {
             var cborMap: [CBOR: CBOR] = [:]
             for (key, value) in values {
                 let full = try await value.serialize(context: context)
-                let (cat, _, name, payload) = try Self.parseSerializedHeader(full)
+                let header = try Self.parseSerializedHeader(full)
+                let cat = header.category
+                let name = header.wireName
+                let payload = header.payload
                 var map: [CBOR: CBOR] = [:]
                 map[.utf8String("category")] = .unsignedInt(UInt64(cat.rawValue))
                 map[.utf8String("typename")] = .utf8String(name)
@@ -433,7 +439,7 @@ public final class AnyValue: Sendable {
 
         // Decide header wire name: prefer encrypted wire when using registry encryptor
         var headerWireName = plainWireName
-        if let _ = context, let encWire = await SerializationRegistry.shared.encryptedWireName(for: plainWireName) {
+        if context != nil, let encWire = await SerializationRegistry.shared.encryptedWireName(for: plainWireName) {
             headerWireName = encWire
         }
 
@@ -635,7 +641,9 @@ public final class AnyValue: Sendable {
         case "u8":
             do {
                 let uint8Value = try SwiftCBOR.CodableCBORDecoder().decode(UInt8.self, from: Data(lazyData.data))
-                guard let casted = uint8Value as? T else { throw SerializerError.typeMismatch("Cannot cast u8 to \(T.self)") }
+                guard let casted = uint8Value as? T else { 
+                    throw SerializerError.typeMismatch("Cannot cast u8 to \(T.self)") 
+                }
                 return casted
             } catch {
                 throw SerializerError.deserializationFailed("Failed to decode u8 from CBOR: \(error)")
@@ -690,7 +698,9 @@ public final class AnyValue: Sendable {
         case "f32":
             do {
                 let floatValue = try SwiftCBOR.CodableCBORDecoder().decode(Float.self, from: Data(lazyData.data))
-                guard let casted = floatValue as? T else { throw SerializerError.typeMismatch("Cannot cast f32 to \(T.self)") }
+                guard let casted = floatValue as? T else { 
+                    throw SerializerError.typeMismatch("Cannot cast f32 to \(T.self)") 
+                }
                 return casted
             } catch {
                 throw SerializerError.deserializationFailed("Failed to decode f32 from CBOR: \(error)")
@@ -699,7 +709,9 @@ public final class AnyValue: Sendable {
         case "f64":
             do {
                 let doubleValue = try SwiftCBOR.CodableCBORDecoder().decode(Double.self, from: Data(lazyData.data))
-                guard let casted = doubleValue as? T else { throw SerializerError.typeMismatch("Cannot cast f64 to \(T.self)") }
+                guard let casted = doubleValue as? T else { 
+                    throw SerializerError.typeMismatch("Cannot cast f64 to \(T.self)") 
+                }
                 return casted
             } catch {
                 throw SerializerError.deserializationFailed("Failed to decode f64 from CBOR: \(error)")
@@ -708,7 +720,9 @@ public final class AnyValue: Sendable {
         case "bool":
             do {
                 let boolValue = try SwiftCBOR.CodableCBORDecoder().decode(Bool.self, from: Data(lazyData.data))
-                guard let casted = boolValue as? T else { throw SerializerError.typeMismatch("Cannot cast bool to \(T.self)") }
+                guard let casted = boolValue as? T else { 
+                    throw SerializerError.typeMismatch("Cannot cast bool to \(T.self)") 
+                }
                 return casted
             } catch {
                 throw SerializerError.deserializationFailed("Failed to decode Bool from CBOR: \(error)")
@@ -754,19 +768,28 @@ public final class AnyValue: Sendable {
             }
             var out: [AnyValue] = []
             for element in elements {
-                guard case let .map(map) = element else { throw SerializerError.deserializationFailed("Invalid element in list<any>") }
-                guard let catEntry = map[.utf8String("category")], let nameEntry = map[.utf8String("typename")], let valEntry = map[.utf8String("value")] else {
+                guard case let .map(map) = element else { 
+                    throw SerializerError.deserializationFailed("Invalid element in list<any>") 
+                }
+                guard let catEntry = map[.utf8String("category")], 
+                      let nameEntry = map[.utf8String("typename")], 
+                      let valEntry = map[.utf8String("value")] else {
                     throw SerializerError.deserializationFailed("Missing fields in list<any> element")
                 }
                 let cat: ValueCategory
                 switch catEntry {
                 case let .unsignedInt(unsignedValue):
-                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else { throw SerializerError.deserializationFailed("Bad category") }
+                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else { 
+                        throw SerializerError.deserializationFailed("Bad category") 
+                    }
                     cat = category
                 default: throw SerializerError.deserializationFailed("Bad category type")
                 }
                 let name: String
-                switch nameEntry { case let .utf8String(stringValue): name = stringValue; default: throw SerializerError.deserializationFailed("Bad typename type") }
+                switch nameEntry { 
+                    case let .utf8String(stringValue): name = stringValue
+                    default: throw SerializerError.deserializationFailed("Bad typename type") 
+                }
                 let payload: Data
                 switch valEntry {
                 case let .byteString(bytesValue):
@@ -817,12 +840,17 @@ public final class AnyValue: Sendable {
                 let cat: ValueCategory
                 switch catEntry {
                 case let .unsignedInt(unsignedValue):
-                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else { throw SerializerError.deserializationFailed("Bad category") }
+                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else { 
+                        throw SerializerError.deserializationFailed("Bad category") 
+                    }
                     cat = category
                 default: throw SerializerError.deserializationFailed("Bad category type")
                 }
                 let name: String
-                switch nameEntry { case let .utf8String(stringValue): name = stringValue; default: throw SerializerError.deserializationFailed("Bad typename type") }
+                switch nameEntry { 
+                    case let .utf8String(stringValue): name = stringValue
+                    default: throw SerializerError.deserializationFailed("Bad typename type") 
+                }
                 let payload: Data
                 switch valEntry {
                 case let .byteString(bytesValue): payload = Data(bytesValue)
@@ -852,7 +880,7 @@ public final class AnyValue: Sendable {
 
         default:
             // Typed containers: list<ElemWire> or map<string,ElemWire>
-            if let _ = WireNameParser.parseList(lazyData.typeName), lazyData.typeName != "list<any>" {
+            if WireNameParser.parseList(lazyData.typeName) != nil, lazyData.typeName != "list<any>" {
                 // Decode as plain typed CBOR array to Decodable target
                 let cborData = Array(lazyData.data)
                 if let target = T.self as? Decodable.Type,
@@ -863,7 +891,7 @@ public final class AnyValue: Sendable {
                 throw SerializerError.deserializationFailed("Typed list decode failed")
             }
 
-            if let _ = WireNameParser.parseMap(lazyData.typeName), lazyData.typeName != "map<string,any>" {
+            if WireNameParser.parseMap(lazyData.typeName) != nil, lazyData.typeName != "map<string,any>" {
                 let cborData = Array(lazyData.data)
                 // Try plain typed map decode to Decodable
                 if let target = T.self as? Decodable.Type,
@@ -901,7 +929,10 @@ public final class AnyValue: Sendable {
 
             // No decoder found for this wire name - fall back to plain CBOR deserialization
             if let target = T.self as? Decodable.Type {
-                return try SwiftCBOR.CodableCBORDecoder().decode(target, from: lazyData.data) as! T
+                guard let result = try SwiftCBOR.CodableCBORDecoder().decode(target, from: lazyData.data) as? T else {
+                    throw SerializerError.deserializationFailed("Failed to cast decoded result to \(T.self)")
+                }
+                return result
             } else {
                 throw SerializerError.deserializationFailed("Type \(T.self) is not Decodable and not registered in registry")
             }
@@ -909,7 +940,14 @@ public final class AnyValue: Sendable {
     }
 
     // Parse our header: [category][encrypted][name_len][name_bytes][payload]
-    private static func parseSerializedHeader(_ data: Data) throws -> (ValueCategory, Bool, String, Data) {
+    private struct SerializedHeader {
+        let category: ValueCategory
+        let isEncrypted: Bool
+        let wireName: String
+        let payload: Data
+    }
+    
+    private static func parseSerializedHeader(_ data: Data) throws -> SerializedHeader {
         guard !data.isEmpty else { throw SerializerError.emptyData }
         let categoryByte = data[0]
         guard let category = ValueCategory.from(categoryByte) else { throw SerializerError.invalidCategory(categoryByte) }
@@ -920,7 +958,7 @@ public final class AnyValue: Sendable {
         let nameData = data[3 ..< (3 + nameLen)]
         guard let name = String(data: Data(nameData), encoding: .utf8) else { throw SerializerError.deserializationFailed("Invalid type name encoding") }
         let payload = data[(3 + nameLen)...]
-        return (category, isEncrypted, name, Data(payload))
+        return SerializedHeader(category: category, isEncrypted: isEncrypted, wireName: name, payload: Data(payload))
     }
 
     /// Deserialize from data
