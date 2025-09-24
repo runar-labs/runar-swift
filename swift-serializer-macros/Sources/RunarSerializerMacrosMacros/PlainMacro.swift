@@ -1,5 +1,4 @@
 import Foundation
-import RunarFFI
 import RunarSerializer
 import SwiftCBOR
 import SwiftCompilerPlugin

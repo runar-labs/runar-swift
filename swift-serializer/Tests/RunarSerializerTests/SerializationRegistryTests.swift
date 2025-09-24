@@ -1,6 +1,5 @@
 import XCTest
 import RunarSerializer
-import RunarFFI
 
 @testable import RunarSerializer
 

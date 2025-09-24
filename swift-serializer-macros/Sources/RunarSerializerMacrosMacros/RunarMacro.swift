@@ -1,4 +1,3 @@
-import RunarFFI
 import RunarSerializer
 import SwiftCompilerPlugin
 import SwiftSyntax
@@ -62,12 +61,8 @@ public struct RunarMacro: PeerMacro {
             throw MacroError("@Runar requires at least one label (e.g., @Runar(\"user\"))")
         }
 
-        // Validate that all labels are valid RunarLabel values
-        let validLabels = Set(RunarLabel.allCases.map { $0.rawValue })
-        let invalidLabels = labels.filter { !validLabels.contains($0) }
-        if !invalidLabels.isEmpty {
-            throw MacroError("Invalid label(s): \(invalidLabels.joined(separator: ", ")). Valid labels are: \(validLabels.sorted().joined(separator: ", "))")
-        }
+        // Labels are user-defined and can be any value according to the design
+        // No validation needed - labels will be resolved at runtime by the LabelResolver
 
         // For now, return empty declarations - the label information will be
         // processed by the EncryptedMacro when it expands

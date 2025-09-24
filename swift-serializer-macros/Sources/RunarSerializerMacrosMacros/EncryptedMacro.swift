@@ -1,5 +1,4 @@
 import Foundation
-import RunarFFI
 import RunarSerializer
 import SwiftCBOR
 import SwiftCompilerPlugin
@@ -77,12 +76,12 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
         // Encrypted fields per label -> EnvelopeEncryptedData?
         let encryptedFieldDecls = labelOrder.map { label in
-            "public let \(label)_encrypted: RunarFFI.EnvelopeEncryptedData?"
+            "public let \(label)_encrypted: RunarSerializer.EnvelopeEncryptedData?"
         }.joined(separator: "\n                ")
 
         // Encrypted struct init params/body
         let encInitParamsPlain = plainFields.map { "\($0.name): \($0.type)" }
-        let encInitParamsEncrypted = labelOrder.map { "\($0)_encrypted: RunarFFI.EnvelopeEncryptedData?" }
+        let encInitParamsEncrypted = labelOrder.map { "\($0)_encrypted: RunarSerializer.EnvelopeEncryptedData?" }
         let encInitParams = (encInitParamsPlain + encInitParamsEncrypted).joined(separator: ",\n                    ")
         let encInitBodyPlain = plainFields.map { "self.\($0.name) = \($0.name)" }
         let encInitBodyEncrypted = labelOrder.map { "self.\($0)_encrypted = \($0)_encrypted" }
@@ -97,11 +96,11 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let subInitArgs = fields.map { "\($0): self.\($0)" }.joined(separator: ", ")
             let line = """
             let \(label)Struct = \(subName)(\(subInitArgs))
-            var \(label)Encrypted: RunarFFI.EnvelopeEncryptedData? = nil
+            var \(label)Encrypted: RunarSerializer.EnvelopeEncryptedData? = nil
             if resolver.canResolve("\(label)") {
-                let keyInfo = try resolver.resolveLabel("\(label)")
+                let keyInfo = try resolver.resolveLabelInfo("\(label)")
                 let bytes = try SwiftCBOR.CodableCBOREncoder().encode(\(label)Struct)
-                \(label)Encrypted = try keystore.encryptWithEnvelope(data: bytes, networkId: keyInfo.networkId, profileIds: keyInfo.profileIds)
+                \(label)Encrypted = try keystore.encryptWithEnvelope(data: bytes, networkPublicKey: keyInfo.networkPublicKey, profilePublicKeys: keyInfo.profilePublicKeys)
             }
             """
             encryptGroupLines.append(line)
@@ -194,7 +193,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
                 return try await anyValue.asType()
         }
 
-        public func encryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto, _ resolver: RunarFFI.LabelResolver) async throws -> \(encryptedStructName) {
+        public func encryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager, _ resolver: RunarSerializer.LabelResolver) async throws -> \(encryptedStructName) {
                 // Await async registrations
                 await Self._ensureRegistered()
                 \(encryptGroupLines.joined(separator: "\n                "))
@@ -211,15 +210,15 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
                         \(encInitBody)
                 }
 
-                public func decryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> \(structName) {
+                public func decryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager) async throws -> \(structName) {
                         \(labeledLocalDefaults)
                         \(decryptBlocks.joined(separator: "\n                "))
                         return \(structName)(\(decryptInitArgs))
                 }
 
                 // Type-erased hook for AnyValue - required by AnyRunarDecryptable protocol
-                public func runarDecryptWithKeystore(_ keystore: RunarFFI.EnvelopeCrypto) throws -> Any {
-                        try decryptWithKeystore(keystore) as \(structName)
+                public func _runarDecryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager) async throws -> Any {
+                        try await decryptWithKeystore(keystore) as \(structName)
                 }
         }
         """

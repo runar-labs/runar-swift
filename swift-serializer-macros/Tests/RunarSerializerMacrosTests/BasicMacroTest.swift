@@ -1,4 +1,3 @@
-import RunarFFI
 import RunarSerializer
 import RunarSerializerMacros
 import SwiftCBOR

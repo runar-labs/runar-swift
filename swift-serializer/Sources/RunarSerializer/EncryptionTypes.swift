@@ -1,50 +1,19 @@
 import Foundation
-import RunarFFI
+import SwiftFFI
 
 // MARK: - Encryption Types
 
 // Enhanced label resolver protocol for field-level encryption
-public struct LabelKeyInfo {
-    public let profileIds: [String]
-    public let networkId: String?
-    
-    public init(profileIds: [String], networkId: String?) {
-        self.profileIds = profileIds
-        self.networkId = networkId
+public struct LabelKeyInfo: Sendable, Equatable {
+    public let profilePublicKeys: [Data]
+    public let networkPublicKey: Data?
+
+    public init(profilePublicKeys: [Data], networkPublicKey: Data?) {
+        self.profilePublicKeys = profilePublicKeys
+        self.networkPublicKey = networkPublicKey
     }
 }
 
-// MARK: - Standard Encryption Labels
-
-/// Standard encryption labels for field-level access control
-/// These match the Rust implementation exactly
-public enum RunarLabel: String, CaseIterable {
-    case system = "system"
-    case user = "user"
-    case search = "search"
-    case systemOnly = "system_only"
-    
-    /// Convert label to CamelCase for sub-struct naming
-    public var camelCase: String {
-        switch self {
-        case .system: return "System"
-        case .user: return "User"
-        case .search: return "Search"
-        case .systemOnly: return "SystemOnly"
-        }
-    }
-    
-    /// Priority for deterministic ordering (matches Rust)
-    public var priority: Int {
-        switch self {
-        case .system: return 0
-        case .user: return 1
-        case .search, .systemOnly: return 2
-        }
-    }
-}
-
-// LabelResolver is now imported from RunarFFI
 
 // MARK: - Default Values For Decryption Fallback
 
@@ -126,32 +95,12 @@ extension Dictionary: RunarDefault {
     public static var runarDefaultValue: [Key: Value] { [:] }
 }
 
-// MARK: - LabelResolver convenience
-
-// Note: LabelResolver is now imported from RunarFFI
-// The convenience methods are no longer needed as the FFI protocol has a different signature
-
-// MARK: - LabelResolver Adapter for FFI Compatibility
-
-/// Adapter to convert FFI LabelResolver to the format expected by the serializer
-public struct LabelResolverAdapter: RunarFFI.LabelResolver {
-    private let resolver: RunarFFI.LabelResolver
-    
-    public init(_ resolver: RunarFFI.LabelResolver) {
-        self.resolver = resolver
-    }
-    
-    public func resolveLabel(_ label: String) throws -> String {
-        try resolver.resolveLabel(label)
-    }
-}
-
 // MARK: - Dynamic decrypt/encrypt interoperability for AnyValue
 
 /// Type-erased decryptable interface so decoders can return encrypted structs
 /// and callers can request the plain type via AnyValue APIs.
 public protocol AnyRunarDecryptable {
-    func runarDecryptWithKeystore(_ keystore: EnvelopeCrypto) throws -> Any
+    func _runarDecryptWithKeystore(_ keystore: CommonKeyManager) async throws -> Any
 }
 
 /// Type-erased encryptable-to-CBOR interface used by AnyValue to produce

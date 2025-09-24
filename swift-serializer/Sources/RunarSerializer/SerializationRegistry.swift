@@ -1,5 +1,5 @@
 import Foundation
-import RunarFFI
+import SwiftFFI
 
 /// Unified actor-based registry for all serialization functionality
 public actor SerializationRegistry {
@@ -11,8 +11,8 @@ public actor SerializationRegistry {
 
     // MARK: - Serialization Functions
 
-    private var wireNameToDecryptor: [String: @Sendable (Data, EnvelopeCrypto) throws -> Any] = [:]
-    private var wireNameToEncryptor: [String: @Sendable (Any, EnvelopeCrypto, RunarFFI.LabelResolver) async throws -> Data] = [:]
+    private var wireNameToDecryptor: [String: @Sendable (Data, CommonKeyManager) async throws -> Any] = [:]
+    private var wireNameToEncryptor: [String: @Sendable (Any, CommonKeyManager, LabelResolver) async throws -> Data] = [:]
 
     // MARK: - Deserialization Functions
 
@@ -77,11 +77,11 @@ public actor SerializationRegistry {
     public func registerDecryptor<T: Decodable>(
         for _: T.Type,
         wireName: String? = nil,
-        decryptor: @escaping @Sendable (Data, EnvelopeCrypto) throws -> T
+        decryptor: @escaping @Sendable (Data, CommonKeyManager) async throws -> T
     ) {
         let registryKey = wireName ?? String(describing: T.self)
-        wireNameToDecryptor[registryKey] = { data, crypto in
-            try decryptor(data, crypto)
+        wireNameToDecryptor[registryKey] = { data, keystore in
+            try await decryptor(data, keystore)
         }
     }
 
@@ -89,14 +89,14 @@ public actor SerializationRegistry {
         for _: T.Type,
         wireName: String? = nil,
         targetEncryptedWireName: String? = nil,
-        encryptor: @escaping @Sendable (T, EnvelopeCrypto, RunarFFI.LabelResolver) async throws -> Data
+        encryptor: @escaping @Sendable (T, CommonKeyManager, LabelResolver) async throws -> Data
     ) {
         let registryKey = wireName ?? String(describing: T.self)
-        wireNameToEncryptor[registryKey] = { value, crypto, resolver in
+        wireNameToEncryptor[registryKey] = { value, keystore, resolver in
             guard let typedValue = value as? T else {
                 throw SerializerError.typeMismatch("Expected \(T.self), got \(String(describing: Swift.type(of: value)))")
             }
-            return try await encryptor(typedValue, crypto, resolver)
+            return try await encryptor(typedValue, keystore, resolver)
         }
 
         if let encryptedName = targetEncryptedWireName {
@@ -104,11 +104,11 @@ public actor SerializationRegistry {
         }
     }
 
-    public func decryptor(for wireName: String) -> (@Sendable (Data, EnvelopeCrypto) throws -> Any)? {
+    public func decryptor(for wireName: String) -> (@Sendable (Data, CommonKeyManager) async throws -> Any)? {
         wireNameToDecryptor[wireName]
     }
 
-    public func encryptor(for wireName: String) -> (@Sendable (Any, EnvelopeCrypto, RunarFFI.LabelResolver) async throws -> Data)? {
+    public func encryptor(for wireName: String) -> (@Sendable (Any, CommonKeyManager, LabelResolver) async throws -> Data)? {
         wireNameToEncryptor[wireName]
     }
 

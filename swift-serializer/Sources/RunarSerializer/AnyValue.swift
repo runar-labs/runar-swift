@@ -1,6 +1,6 @@
 import Foundation
-import RunarFFI
 import SwiftCBOR
+import SwiftFFI
 
 // Note: Macro declarations are now in the swift-serializer-macros package
 // and imported via the package dependency
@@ -10,13 +10,13 @@ import SwiftCBOR
 /// Protocol for types that can be encrypted
 public protocol RunarEncryptable {
     associatedtype Encrypted: RunarDecryptable where Encrypted.Decrypted == Self
-    func encryptWithKeystore(_ keystore: EnvelopeCrypto, resolver: RunarFFI.LabelResolver) throws -> Encrypted
+    func encryptWithKeystore(_ keystore: CommonKeyManager, resolver: LabelResolver) async throws -> Encrypted
 }
 
 /// Protocol for types that can be decrypted
 public protocol RunarDecryptable {
     associatedtype Decrypted: RunarEncryptable where Decrypted.Encrypted == Self
-    func decryptWithKeystore(_ keystore: EnvelopeCrypto) throws -> Decrypted
+    func decryptWithKeystore(_ keystore: CommonKeyManager) async throws -> Decrypted
 }
 
 /// Error types for serialization operations
@@ -74,19 +74,21 @@ public protocol AnyValueProtocol: AnyObject {
 }
 
 /// Type-erased box for storing values
-private final class AnyValueBox: Sendable {
+private final class AnyValueBox: @unchecked Sendable {
     let typeName: String
     let category: ValueCategory
+    private let rawValue: Any // @unchecked Sendable - Any is not Sendable but we handle it safely
     private let serializeFn: @Sendable (SerializationContext?) async throws -> Data
     private let asTypeFn: @Sendable (Any.Type) -> Any?
 
     init(
-        value _: some Any,
+        value: some Any,
         typeName: String,
         category: ValueCategory,
         serializeFn: @escaping @Sendable (SerializationContext?) async throws -> Data,
         asTypeFn: @escaping @Sendable (Any.Type) -> Any?
     ) {
+        rawValue = value
         self.typeName = typeName
         self.category = category
         self.serializeFn = serializeFn
@@ -99,6 +101,11 @@ private final class AnyValueBox: Sendable {
 
     func asType<T>() -> T? {
         asTypeFn(T.self) as? T
+    }
+
+    /// Get the raw value for registry operations
+    func getRawValue() -> Any {
+        rawValue
     }
 }
 
@@ -425,39 +432,38 @@ public final class AnyValue: Sendable {
         buf.append(categoryByte)
 
         // Decide header wire name: prefer encrypted wire when using registry encryptor
-        let headerWireName = plainWireName
-        // TODO: Re-enable when SerializationRegistry is implemented
-        // if let _ = context, let encWire = await SerializationRegistry.shared.encryptedWireName(for: plainWireName) {
-        //     headerWireName = encWire
-        // }
+        var headerWireName = plainWireName
+        if let context, let encWire = await SerializationRegistry.shared.encryptedWireName(for: plainWireName) {
+            headerWireName = encWire
+        }
 
         let typeNameBytes = headerWireName.data(using: .utf8)!
         if typeNameBytes.count > 255 {
             throw SerializerError.typeNameTooLong(headerWireName)
         }
 
-        if context != nil {
-            // Prefer registry encryptor for struct/plain types when available
-            if let _ = await SerializationRegistry.shared.encryptor(for: plainWireName) {
-                // Get the original value from the box for encryption
-                // We need to get the value as Any since we don't know the specific type at runtime
-                // For now, use plain serialization until we can properly access the boxed value
-                let bytes = try await box.serialize(context: nil)
-                let isEncryptedByte: UInt8 = 0x00
-                buf.append(isEncryptedByte)
-                buf.append(UInt8(typeNameBytes.count))
-                buf.append(typeNameBytes)
-                buf.append(bytes)
-                return buf
-            } else {
-                // Plain serialization
-                let bytes = try await box.serialize(context: nil)
-                let isEncryptedByte: UInt8 = 0x00
-                buf.append(isEncryptedByte)
-                buf.append(UInt8(typeNameBytes.count))
-                buf.append(typeNameBytes)
-                buf.append(bytes)
+        if let context, category == .struct {
+            // Registry-first encryption path for struct types
+            guard let encryptor = await SerializationRegistry.shared.encryptor(for: plainWireName) else {
+                throw SerializerError.serializationFailed("Missing encryptor for \(plainWireName)")
             }
+
+            guard let encryptedWireName = await SerializationRegistry.shared.encryptedWireName(for: plainWireName) else {
+                throw SerializerError.serializationFailed("Missing encrypted wire name for \(plainWireName)")
+            }
+
+            // Get the original value from the box for encryption
+            let rawValue = box.getRawValue()
+
+            // Produce payload using registry encryptor
+            let payload = try await encryptor(rawValue, context.keystore, context.resolver)
+
+            let isEncryptedByte: UInt8 = 0x01
+            buf.append(isEncryptedByte)
+            buf.append(UInt8(typeNameBytes.count))
+            buf.append(typeNameBytes)
+            buf.append(payload)
+            return buf
         } else {
             // Plain serialization
             let bytes = try await box.serialize(context: nil)
@@ -472,7 +478,6 @@ public final class AnyValue: Sendable {
     }
 
     /// Get the value as a specific type
-    @MainActor
     public func asType<T>(keystore: KeyStore? = nil) async throws -> T {
         // Try to get from box (for already loaded values)
         if let result = box.asType() as T? {
@@ -490,35 +495,38 @@ public final class AnyValue: Sendable {
 
     /// Convenience: get encrypted form of a plain type stored in this AnyValue
     /// by first materializing the plain value and then applying field-group encryption.
-    @MainActor
-    public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: KeyStore, resolver: RunarFFI.LabelResolver) async throws -> T.Encrypted {
-        let plain: T = try await asType()
-        return try plain.encryptWithKeystore(keystore, resolver: resolver)
+    public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: KeyStore, resolver: LabelResolver) async throws -> T.Encrypted {
+        let plain: T = try await asType(keystore: keystore)
+        return try await plain.encryptWithKeystore(keystore, resolver: resolver)
     }
 
     /// Deserialize lazy data into a concrete value of target type
-    @MainActor
     private func deserializeLazyData<T>(_ lazyData: LazyData, to targetType: T.Type, keystore: KeyStore? = nil) async throws -> T {
         // Handle encrypted data using real decryption
         if lazyData.encrypted {
-            // Deserialize the envelope data from CBOR
-            let envelopeData = try EnvelopeEncryption.deserializeFromCBOR(lazyData.data)
-
             // Decrypt using the keystore
             guard let keystore else {
                 throw SerializerError.deserializationFailed("No keystore provided for encrypted data")
             }
 
-            // Try to decrypt with profile keys first, then network key
+            // Try to decrypt with network key first, then profile key
             var decryptedData: Data
             do {
                 // Try network-based decryption first (more reliable)
-                decryptedData = try keystore.decryptWithNetwork(envelopeData: envelopeData)
+                decryptedData = try await keystore.decryptEnvelope(envelopeData: lazyData.data)
             } catch {
-                // If network decryption fails, try profile-based decryption
-                // We need to know which profile to use - for now, use a default
-                let defaultProfileId = "default"
-                decryptedData = try keystore.decryptWithProfile(envelopeData: envelopeData, profileId: defaultProfileId)
+                // If network decryption fails, try profile-based decryption (NodeOnly)
+                do {
+                    // We need to know which profile to use - for now, use a default
+                    let defaultProfileId = "default"
+                    if let nodeKeystore = keystore as? NodeOnly {
+                        decryptedData = try await nodeKeystore.decryptWithProfile(envelopeData: lazyData.data, profileId: defaultProfileId)
+                    } else {
+                        throw SerializerError.deserializationFailed("Mobile keystore doesn't support profile decryption")
+                    }
+                } catch {
+                    throw SerializerError.deserializationFailed("Failed to decrypt envelope data: \(error)")
+                }
             }
 
             // Continue with normal deserialization using the decrypted data
@@ -877,29 +885,31 @@ public final class AnyValue: Sendable {
             }
 
             // Structs and custom types: require known wire name in registry
-            // TODO: Re-enable when SerializationRegistry is implemented
             // Try to find a registered decoder for this wire name
-            // if let decoder = await SerializationRegistry.shared.decoder(for: lazyData.typeName) {
-            //     if let result = try? decoder(lazyData.data) as? T {
-            //         return result
-            //     }
+            if let decoder = await SerializationRegistry.shared.decoder(for: lazyData.typeName) {
+                let result = try decoder(lazyData.data)
 
-            //     // If decoder produced an encrypted value but T is the plain type, decrypt with keystore
-            //     if let value = try? decoder(lazyData.data) as? AnyRunarDecryptable, let ks = lazyData.keystore {
-            //         if let decrypted = try? value._runarDecryptWithKeystore(ks) as? T {
-            //         return decrypted
-            //     }
-            // }
+                // If decoder returns the expected type, return it
+                if let typedResult = result as? T {
+                    return typedResult
+                }
 
-            //     // If T is an Encrypted type, allow direct cast
-            //     if T.self is AnyRunarDecryptable.Type, let enc = try? decoder(lazyData.data) as? T {
-            //         return enc
-            //     }
+                // If decoder returns an encrypted value but T is the plain type, decrypt with keystore
+                if let keystore, let encryptedValue = result as? AnyRunarDecryptable {
+                    if let decrypted = try? await encryptedValue._runarDecryptWithKeystore(keystore) as? T {
+                        return decrypted
+                    }
+                }
 
-            //     throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
-            // }
+                // If T is an Encrypted type, allow direct cast
+                if T.self is AnyRunarDecryptable.Type, let encrypted = result as? T {
+                    return encrypted
+                }
 
-            // Temporary fallback: reject unknown wire names
+                throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
+            }
+
+            // No decoder found for this wire name
             throw SerializerError.deserializationFailed("Unknown wire name: \(lazyData.typeName)")
         }
     }
@@ -1143,7 +1153,6 @@ public extension PlainSerializable {
         AnyValue.struct(self)
     }
 
-    @MainActor
     static func fromAnyValue(_ value: AnyValue) async throws -> Self {
         try await value.asType()
     }
@@ -1156,10 +1165,4 @@ public extension PlainSerializable {
 /// Protocol for envelope encryption operations
 /// Use EnvelopeCrypto from the appropriate keystore implementation
 
-// Dummy keystore used only when decrypting element-level payloads without a provided keystore.
-// This will throw if used; present to satisfy function signatures.
-private struct DummyKeystore: EnvelopeCrypto {
-    func encryptWithEnvelope(data _: Data, networkId _: String?, profileIds _: [String]) throws -> EnvelopeEncryptedData { throw SerializerError.encryptionFailed("No keystore") }
-    func decryptWithProfile(envelopeData _: EnvelopeEncryptedData, profileId _: String) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
-    func decryptWithNetwork(envelopeData _: EnvelopeEncryptedData) throws -> Data { throw SerializerError.deserializationFailed("No keystore") }
-}
+// No dummy keystore - all encryption must use real FFI implementation

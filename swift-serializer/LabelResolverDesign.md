@@ -2,7 +2,7 @@
 
 ## Goal
 
-Design and specify a Swift-only Label Resolver that mirrors the Rust `runar-serializer` behavior exactly. The resolver maps human-readable labels (e.g., "system", "user") to concrete recipients expressed as actual public key bytes required by the CommonKeyManager envelope encryption APIs. No CommonKeyManager label APIs exist; all resolution happens in Swift.
+Design and specify a Swift-only Label Resolver that mirrors the Rust `runar-serializer` behavior exactly. The resolver maps human-readable labels (e.g., "system", "user") to concrete recipients expressed as actual public key bytes required by the CommonKeyManager envelope encryption APIs. No CommonKeyManager label APIs exist; all resolution happens in Swift. The CommonKeyManager protocol is implemented by both NodeKeyManager and MobileKeyManager.
 
 ## Rust Parity Summary
 
@@ -145,7 +145,7 @@ Notes:
 
 ## Integration with Encryption
 
-- `encryptLabelGroup` consumes `LabelResolver` to obtain `LabelKeyInfo` with pre-resolved recipients, then calls `CommonKeyManager.encryptWithEnvelope(data:networkPublicKey:profilePublicKeys:)` (API naming adjusted to actual CommonKeyManager).
+- `encryptLabelGroup` consumes `LabelResolver` to obtain `LabelKeyInfo` with pre-resolved recipients, then calls `CommonKeyManager.encryptWithEnvelope(data:networkPublicKey:profilePublicKeys:)` (exact API from CommonKeyManager protocol).
 - Missing label → omit group (store `nil` envelope) by contract in the higher-level orchestration.
 
 Example usage:
@@ -184,6 +184,7 @@ if resolver.canResolve("system") {
 ## Testing Strategy
 
 - Construct resolvers using real public key bytes from `swift-test-utils` fixtures.
+- Use real NodeKeyManager or MobileKeyManager instances (both implement CommonKeyManager) for encryption/decryption testing.
 - Verify:
   - Validation rejects incomplete or malformed configs (missing network keys, empty labels, wrong key lengths).
   - `currentUser` yields exactly the passed user profile keys.

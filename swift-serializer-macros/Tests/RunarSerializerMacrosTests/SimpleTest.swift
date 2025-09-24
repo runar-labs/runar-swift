@@ -1,4 +1,3 @@
-import RunarFFI
 import RunarSerializer
 import RunarSerializerMacros
 import SwiftCBOR
@@ -48,7 +47,7 @@ final class SimpleTest: XCTestCase {
             let id: String
             @Runar("user") var userField: String
             @Runar("system") var systemField: String
-            @Runar("user_system") var sharedField: String
+            @Runar("search") var sharedField: String
         }
 
         // Test that the struct compiles with @Runar annotations

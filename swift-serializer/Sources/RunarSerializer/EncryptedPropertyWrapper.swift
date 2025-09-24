@@ -261,7 +261,7 @@ public enum EncryptedFieldUtils {
     public static func encryptField(
         _ field: EncryptedField<some Encryptable>,
         context: SerializationContext
-    ) throws -> EnvelopeEncryptedData? {
+    ) async throws -> Data? {
         guard let value = field.wrappedValue else {
             return nil // No value to encrypt
         }
@@ -278,7 +278,7 @@ public enum EncryptedFieldUtils {
         )
 
         // Encrypt using envelope encryption
-        return try EnvelopeEncryption.encrypt(data, context: encryptionContext)
+        return try await EnvelopeEncryption.encrypt(data, context: encryptionContext)
     }
 
     /// Decrypt a field value from envelope encrypted data
@@ -288,12 +288,12 @@ public enum EncryptedFieldUtils {
     ///   - type: The type to decrypt to
     /// - Returns: Decrypted value
     public static func decryptField<T: Encryptable>(
-        _ envelopeData: EnvelopeEncryptedData,
+        _ envelopeData: Data,
         context: SerializationContext,
         as _: T.Type
-    ) throws -> T {
+    ) async throws -> T {
         // Decrypt the data
-        let decryptedData = try EnvelopeEncryption.decrypt(envelopeData, context: context)
+        let decryptedData = try await EnvelopeEncryption.decrypt(envelopeData, context: context)
 
         // Convert data back to the original type
         return try T.fromData(decryptedData)
