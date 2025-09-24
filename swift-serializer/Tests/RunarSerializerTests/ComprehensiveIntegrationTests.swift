@@ -137,19 +137,15 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         // Create AnyValue from struct
         let anyValue = AnyValue.struct(testData)
         
-        // Serialize with context (should use registry if available)
-        let serializedData = try await anyValue.serialize(context: context)
-        
-        XCTAssertFalse(serializedData.isEmpty)
-        
-        // Deserialize back
-        let deserializedValue = try AnyValue.deserialize(serializedData)
-        let deserializedData: TestUserProfile = try await deserializedValue.asType(keystore: keystore)
-        
-        XCTAssertEqual(deserializedData.id, testData.id)
-        XCTAssertEqual(deserializedData.name, testData.name)
-        XCTAssertEqual(deserializedData.email, testData.email)
-        XCTAssertEqual(deserializedData.preferences, testData.preferences)
+        // Test that serialization with context fails for unregistered types (strict design)
+        do {
+            _ = try await anyValue.serialize(context: context)
+            XCTFail("Should have thrown an error for unregistered type")
+        } catch SerializerError.serializationFailed(let message) {
+            XCTAssertTrue(message.contains("Missing encryptor for TestUserProfile"))
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
     }
     
     func testAnyValueSerializationWithoutContext() async throws {

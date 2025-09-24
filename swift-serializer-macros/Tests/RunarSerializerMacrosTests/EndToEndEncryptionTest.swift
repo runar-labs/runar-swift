@@ -13,9 +13,9 @@ final class EndToEndEncryptionTest: XCTestCase {
     struct TestProfile: Codable {
         let id: String
         let name: String
-        let secretData: String
+        @Runar("user") let secretData: String
         let email: String
-        let metadata: String
+        @Runar("system") let metadata: String
     }
     
     @Plain(name: "encryption_test.SimpleStruct")
@@ -183,5 +183,192 @@ final class EndToEndEncryptionTest: XCTestCase {
         XCTAssertNotNil(plainAnyValue)
         
         print("✅ Macro compilation test passed")
+    }
+    
+    // MARK: - Debug Test
+    
+    func testDebugEncryptionFlow() async throws {
+        // Create a test keystore
+        let keystore = TestKeyManagerAdapter()
+        
+        // Create a test resolver
+        let resolver = LabelResolver(mapping: [
+            "system": LabelKeyInfo(
+                profilePublicKeys: [Data("system_profile_key".utf8)],
+                networkPublicKey: Data("system_network_key".utf8)
+            ),
+            "user": LabelKeyInfo(
+                profilePublicKeys: [Data("user_profile_key".utf8)],
+                networkPublicKey: Data("user_network_key".utf8)
+            )
+        ])
+        
+        // Test the macro-generated encryptWithKeystore method directly
+        let profile = TestProfile(
+            id: "debug_user",
+            name: "Debug User",
+            secretData: "debug_secret",
+            email: "debug@test.com",
+            metadata: "debug_metadata"
+        )
+        
+        // Test direct encryption
+        let encryptedProfile = try await profile.encryptWithKeystore(keystore, resolver)
+        print("✅ Direct encryption worked")
+        
+        // Test direct decryption
+        let decryptedProfile = try await encryptedProfile.decryptWithKeystore(keystore)
+        print("✅ Direct decryption worked")
+        
+        // Verify data matches
+        XCTAssertEqual(decryptedProfile.id, profile.id)
+        XCTAssertEqual(decryptedProfile.name, profile.name)
+        XCTAssertEqual(decryptedProfile.secretData, profile.secretData)
+        XCTAssertEqual(decryptedProfile.email, profile.email)
+        XCTAssertEqual(decryptedProfile.metadata, profile.metadata)
+        
+        print("✅ Debug encryption flow test passed")
+    }
+    
+    // MARK: - Full Encryption Flow Test
+    
+    func testFullEncryptionFlowWithRegistry() async throws {
+        // Create a test keystore (using the same pattern as in swift-serializer tests)
+        let keystore = TestKeyManagerAdapter()
+        
+        // Create a test resolver
+        let resolver = LabelResolver(mapping: [
+            "system": LabelKeyInfo(
+                profilePublicKeys: [Data("system_profile_key".utf8)],
+                networkPublicKey: Data("system_network_key".utf8)
+            ),
+            "user": LabelKeyInfo(
+                profilePublicKeys: [Data("user_profile_key".utf8)],
+                networkPublicKey: Data("user_network_key".utf8)
+            )
+        ])
+        
+        let context = SerializationContext(keystore: keystore, resolver: resolver, networkId: "test_network")
+        
+        // Test the full encryption flow with @Encrypted macro
+        let profile = TestProfile(
+            id: "encryption_test_user",
+            name: "Encryption Test User",
+            secretData: "top_secret_data",
+            email: "encryption@test.com",
+            metadata: "system_metadata"
+        )
+        
+        // Convert to AnyValue (this should register the encryptor with the registry)
+        let anyValue = await profile.toAnyValue()
+        
+        // Test that the type is registered for encryption
+        let wireName = "encryption_test.TestProfile"
+        let isRegistered = await SerializationRegistry.shared.isRegistered(wireName: wireName)
+        XCTAssertTrue(isRegistered, "TestProfile should be registered for encryption")
+        
+        // Test serialization with context (should use registry encryptor)
+        let serializedData = try await anyValue.serialize(context: context)
+        XCTAssertFalse(serializedData.isEmpty, "Serialized data should not be empty")
+        
+        // Test deserialization - this should work with the registry
+        let deserializedValue = try AnyValue.deserialize(serializedData)
+        
+        // The deserialized value should be of type EncryptedTestProfile
+        // We need to decrypt it using the registry decryptor
+        let deserializedProfile: TestProfile = try await deserializedValue.asType(keystore: keystore)
+        
+        // Verify the data matches
+        XCTAssertEqual(deserializedProfile.id, profile.id)
+        XCTAssertEqual(deserializedProfile.name, profile.name)
+        XCTAssertEqual(deserializedProfile.secretData, profile.secretData)
+        XCTAssertEqual(deserializedProfile.email, profile.email)
+        XCTAssertEqual(deserializedProfile.metadata, profile.metadata)
+        
+        print("✅ Full encryption flow with registry test passed")
+    }
+}
+
+// MARK: - Test Key Manager Adapter
+
+/// Test implementation of CommonKeyManager for testing purposes
+/// This is a temporary solution until NodeKeyManager and MobileKeyManager are fully implemented
+@testable import SwiftFFI
+final class TestKeyManagerAdapter: CommonKeyManager, @unchecked Sendable {
+    
+    func encryptWithEnvelope(
+        data: Data,
+        networkPublicKey: Data?,
+        profilePublicKeys: [Data]
+    ) async throws -> Data {
+        // Simple test implementation - just return the payload with a prefix
+        var result = Data("ENCRYPTED:".utf8)
+        result.append(data)
+        return result
+    }
+    
+    func decryptEnvelope(envelopeData: Data) async throws -> Data {
+        // Simple test implementation - remove the prefix
+        let prefix = Data("ENCRYPTED:".utf8)
+        guard envelopeData.starts(with: prefix) else {
+            throw SerializerError.deserializationFailed("Invalid encrypted data format")
+        }
+        return envelopeData.dropFirst(prefix.count)
+    }
+    
+    func ensureSymmetricKey(name: String) async throws -> Data {
+        return Data("symmetric_key_\(name)".utf8)
+    }
+    
+    func encryptLocalData(data: Data) async throws -> Data {
+        var result = Data("LOCAL:".utf8)
+        result.append(data)
+        return result
+    }
+    
+    func decryptLocalData(encryptedData: Data) async throws -> Data {
+        let prefix = Data("LOCAL:".utf8)
+        guard encryptedData.starts(with: prefix) else {
+            throw SerializerError.deserializationFailed("Invalid local encrypted data format")
+        }
+        return encryptedData.dropFirst(prefix.count)
+    }
+    
+    func setPersistenceDirectory(_ directory: String) async throws {
+        // No-op for testing
+    }
+    
+    func enableAutoPersistence(_ enabled: Bool) async throws {
+        // No-op for testing
+    }
+    
+    func wipePersistence() async throws {
+        // No-op for testing
+    }
+    
+    func getKeystoreCapabilities() async throws -> KeystoreCapabilities {
+        return KeystoreCapabilities(version: 1, flags: 0x3F) // All capabilities enabled
+    }
+    
+    func flushState() async throws {
+        // No-op for testing
+    }
+    
+    func registerAppleDeviceKeystore(label: String) async throws {
+        // No-op for testing
+    }
+    
+    func encryptForNetwork(data: Data, networkPublicKey: Data) async throws -> Data {
+        var result = Data("NETWORK:".utf8)
+        result.append(data)
+        return result
+    }
+    
+    func decryptNetworkData(encryptedEnvelope: Data) async throws -> Data {
+        let prefix = Data("NETWORK:".utf8)
+        guard encryptedEnvelope.starts(with: prefix) else {
+            throw SerializerError.deserializationFailed("Invalid network encrypted data format")
+        }
+        return encryptedEnvelope.dropFirst(prefix.count)
     }
 }

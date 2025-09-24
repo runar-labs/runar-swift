@@ -12,6 +12,8 @@ Implement all the missign features, accordinly to the plan and always double che
 
 /Users/rafael/dev/runar-swift/swift-serializer/LabelResolverDesign.md provide details specs fo rhe label resover features. follow it 100% -  the LabelResolverFactory and Cache SHUOLD NOT BE IMPLEMENTED NOW>. this is for future reference when doing the main node.
 
-al the tests must also mimic?follow the RUST tests. we need to test all tehs me scenarion that rust tests does /Users/rafael/dev/runar-swift/runar-rust/runar-serializer/tests KEEP MACRO tests in the macros packge.. and serialier test in the serializer package. (that migh differ from rusts organization)
+al the tests must also mimic/follow the RUST tests. we need to test all tehs me scenarion that rust tests does /Users/rafael/dev/runar-swift/runar-rust/runar-serializer/tests KEEP MACRO tests in the macros packge.. and serialier test in the serializer package. (that migh differ from rusts organization)
 
 GO STEP by step/feature by features and when u implement one feauture write the tests for it.(ALWAYS COMPLET TESTS, no mocks, no stubs.. no shortcuts or hacks.) follow our rules always /Users/rafael/dev/runar-swift/.cursor/rules/code-standards.mdc
+
+INSTEAD OF GUESSING. compare the swift implement to the rust implementation LINE BY LINE.. do not overlook anytghing .. the seift must do exaclt tyeh same thing.. same rules.. same data flows.. @runar-serializer/ @runar-serializer-macros/ the only differences shuold be the language specific differences.. and thqat seift does not have a native keys package.. but uses the FFI inter5face for all keus funtoinlioyt . encruypion and decryption..  also check how tyourn tests are using the FFI.. initializing the proper key store.. mobile or node.. to match the rust code .. the test must have exactlt the sme setup.;. same steps.. and etc..every swif test must have a rust counterpart.. and must follow it 100%.. DO THIS AND STOP GUESSING when facing issues

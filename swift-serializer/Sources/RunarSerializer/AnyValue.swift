@@ -478,7 +478,7 @@ public final class AnyValue: Sendable {
     }
 
     /// Get the value as a specific type
-    public func asType<T>(keystore: KeyStore? = nil) async throws -> T {
+    public func asType<T>(keystore: CommonKeyManager? = nil) async throws -> T {
         // Try to get from box (for already loaded values)
         if let result = box.asType() as T? {
             return result
@@ -495,46 +495,30 @@ public final class AnyValue: Sendable {
 
     /// Convenience: get encrypted form of a plain type stored in this AnyValue
     /// by first materializing the plain value and then applying field-group encryption.
-    public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: KeyStore, resolver: LabelResolver) async throws -> T.Encrypted {
+    public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: CommonKeyManager, resolver: LabelResolver) async throws -> T.Encrypted {
         let plain: T = try await asType(keystore: keystore)
         return try await plain.encryptWithKeystore(keystore, resolver: resolver)
     }
 
     /// Deserialize lazy data into a concrete value of target type
-    private func deserializeLazyData<T>(_ lazyData: LazyData, to targetType: T.Type, keystore: KeyStore? = nil) async throws -> T {
-        // Handle encrypted data using real decryption
+    private func deserializeLazyData<T>(_ lazyData: LazyData, to targetType: T.Type, keystore: CommonKeyManager? = nil) async throws -> T {
+        // Handle encrypted data using registry decryptor
         if lazyData.encrypted {
-            // Decrypt using the keystore
+            // For encrypted data, use the registry decryptor to decrypt the encrypted struct
             guard let keystore else {
                 throw SerializerError.deserializationFailed("No keystore provided for encrypted data")
             }
 
-            // Try to decrypt with network key first, then profile key
-            var decryptedData: Data
-            do {
-                // Try network-based decryption first (more reliable)
-                decryptedData = try await keystore.decryptEnvelope(envelopeData: lazyData.data)
-            } catch {
-                // If network decryption fails, try profile-based decryption (NodeOnly)
-                do {
-                    // We need to know which profile to use - for now, use a default
-                    let defaultProfileId = "default"
-                    if let nodeKeystore = keystore as? NodeOnly {
-                        decryptedData = try await nodeKeystore.decryptWithProfile(envelopeData: lazyData.data, profileId: defaultProfileId)
-                    } else {
-                        throw SerializerError.deserializationFailed("Mobile keystore doesn't support profile decryption")
-                    }
-                } catch {
-                    throw SerializerError.deserializationFailed("Failed to decrypt envelope data: \(error)")
+            // Try to find a registered decryptor for this wire name
+            if let decryptor = await SerializationRegistry.shared.decryptor(for: lazyData.typeName) {
+                let result = try await decryptor(lazyData.data, keystore)
+                guard let casted = result as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast decrypted result to \(T.self)")
                 }
+                return casted
+            } else {
+                throw SerializerError.deserializationFailed("No decryptor registered for encrypted wire name: \(lazyData.typeName)")
             }
-
-            // Continue with normal deserialization using the decrypted data
-            return try await deserializeLazyData(LazyData(
-                typeName: lazyData.typeName,
-                data: decryptedData,
-                encrypted: false
-            ), to: targetType)
         }
 
         // Handle by strict wire names for known categories and primitives
@@ -909,8 +893,12 @@ public final class AnyValue: Sendable {
                 throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
             }
 
-            // No decoder found for this wire name
-            throw SerializerError.deserializationFailed("Unknown wire name: \(lazyData.typeName)")
+            // No decoder found for this wire name - fall back to plain CBOR deserialization
+            if let target = T.self as? Decodable.Type {
+                return try SwiftCBOR.CodableCBORDecoder().decode(target, from: lazyData.data) as! T
+            } else {
+                throw SerializerError.deserializationFailed("Type \(T.self) is not Decodable and not registered in registry")
+            }
         }
     }
 
@@ -930,7 +918,7 @@ public final class AnyValue: Sendable {
     }
 
     /// Deserialize from data
-    public static func deserialize(_ data: Data, keystore _: KeyStore? = nil) throws -> AnyValue {
+    public static func deserialize(_ data: Data, keystore _: CommonKeyManager? = nil) throws -> AnyValue {
         guard !data.isEmpty else {
             throw SerializerError.emptyData
         }

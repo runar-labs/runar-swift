@@ -3,7 +3,7 @@ import SwiftFFI
 
 // Shared encryption-related types used across the serializer
 
-public typealias KeyStore = CommonKeyManager
+public typealias CommonKeyManager = SwiftFFI.CommonKeyManager
 
 public struct SerializationContext {
     public let keystore: CommonKeyManager

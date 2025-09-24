@@ -5,7 +5,7 @@ import SwiftFFI
 // MARK: - Label Group Encryption Types
 
 /// Result of encrypting a label group
-public struct EncryptedLabelGroup: Sendable, Equatable {
+public struct EncryptedLabelGroup: Codable, Sendable, Equatable {
     public let label: String
     public let envelope: Data?
 
@@ -18,6 +18,7 @@ public struct EncryptedLabelGroup: Sendable, Equatable {
 // MARK: - Label Group Encryption Functions
 
 /// Encrypt a label group using the provided keystore and resolver
+/// This matches the Rust encrypt_label_group function exactly
 /// - Parameters:
 ///   - label: The label for this group
 ///   - fieldsStruct: The struct containing the fields to encrypt
@@ -54,6 +55,7 @@ public func encryptLabelGroup(
 }
 
 /// Decrypt a label group using the provided keystore
+/// This matches the Rust decrypt_label_group function exactly
 /// - Parameters:
 ///   - encryptedGroup: The encrypted label group to decrypt
 ///   - keystore: The keystore for decryption operations

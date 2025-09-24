@@ -63,8 +63,17 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
                 return "public let \(fname): \(ty)"
             }.joined(separator: "\n                ")
             let sub = """
-            struct \(subName): Codable {
+            struct \(subName): Codable, RunarSerializer.RunarDefault {
             	\(members)
+                
+                static var runarDefaultValue: \(subName) {
+                    \(subName)(
+                        \(fields.map { fname in
+                            guard let ty = fieldTypes[fname] else { return "\(fname): \(fname).runarDefaultValue" }
+                            return "\(fname): \(ty).runarDefaultValue"
+                        }.joined(separator: ",\n                        "))
+                    )
+                }
             }
             """
             substructs.append(sub)
@@ -74,14 +83,14 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         let plainFields = orderedFields.filter { fieldLabels[$0.name] == nil }
         let plainFieldDecls = plainFields.map { "public let \($0.name): \($0.type)" }.joined(separator: "\n                ")
 
-        // Encrypted fields per label -> EnvelopeEncryptedData?
+        // Encrypted fields per label -> EncryptedLabelGroup?
         let encryptedFieldDecls = labelOrder.map { label in
-            "public let \(label)_encrypted: RunarSerializer.EnvelopeEncryptedData?"
+            "public let \(label)_encrypted: RunarSerializer.EncryptedLabelGroup?"
         }.joined(separator: "\n                ")
 
         // Encrypted struct init params/body
         let encInitParamsPlain = plainFields.map { "\($0.name): \($0.type)" }
-        let encInitParamsEncrypted = labelOrder.map { "\($0)_encrypted: RunarSerializer.EnvelopeEncryptedData?" }
+        let encInitParamsEncrypted = labelOrder.map { "\($0)_encrypted: RunarSerializer.EncryptedLabelGroup?" }
         let encInitParams = (encInitParamsPlain + encInitParamsEncrypted).joined(separator: ",\n                    ")
         let encInitBodyPlain = plainFields.map { "self.\($0.name) = \($0.name)" }
         let encInitBodyEncrypted = labelOrder.map { "self.\($0)_encrypted = \($0)_encrypted" }
@@ -93,15 +102,12 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let cap = toCamelCase(label)
             let subName = "\(structName)\(cap)Fields"
             let fields = labelToFields[label] ?? []
-            let subInitArgs = fields.map { "\($0): self.\($0)" }.joined(separator: ", ")
+            let subInitArgs = fields.map { fieldName in
+                return "\(fieldName): self.\(fieldName)"
+            }.joined(separator: ", ")
             let line = """
             let \(label)Struct = \(subName)(\(subInitArgs))
-            var \(label)Encrypted: RunarSerializer.EnvelopeEncryptedData? = nil
-            if resolver.canResolve("\(label)") {
-                let keyInfo = try resolver.resolveLabelInfo("\(label)")
-                let bytes = try SwiftCBOR.CodableCBOREncoder().encode(\(label)Struct)
-                \(label)Encrypted = try keystore.encryptWithEnvelope(data: bytes, networkPublicKey: keyInfo.networkPublicKey, profilePublicKeys: keyInfo.profilePublicKeys)
-            }
+            let \(label)Encrypted = try await RunarSerializer.encryptLabelGroup(label: "\(label)", fieldsStruct: \(label)Struct, keystore: keystore, resolver: resolver)
             """
             encryptGroupLines.append(line)
         }
@@ -112,7 +118,8 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         // Decrypt: prepare locals with defaults for labeled fields
         let labeledFields = orderedFields.filter { fieldLabels[$0.name] != nil }
         let labeledLocalDefaults = labeledFields.map { f in
-            "var \(f.name)_value: \(f.type) = (\(f.type)).runarDefaultValue"
+            let sanitizedName = sanitizeFieldName(f.name)
+            return "var \(sanitizedName)_value: \(f.type) = (\(f.type)).runarDefaultValue"
         }.joined(separator: "\n                ")
 
         // For each label, attempt decrypt and assign into locals
@@ -121,19 +128,14 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let fields = labelToFields[label] ?? []
             let cap = toCamelCase(label)
             let subName = "\(structName)\(cap)Fields"
-            let assignLines = fields.map { fname in "\(fname)_value = tmp.\(fname)" }.joined(separator: "\n                        ")
+            let assignLines = fields.map { fname in 
+                let sanitizedName = sanitizeFieldName(fname)
+                return "\(sanitizedName)_value = tmp.\(fname)" 
+            }.joined(separator: "\n                        ")
             let block = """
             if let group = self.\(label)_encrypted {
-                var decrypted: Data? = nil
-                if let data = try? keystore.decryptWithNetwork(envelopeData: group) {
-                    decrypted = data
-                } else if let data = try? keystore.decryptWithProfile(envelopeData: group, profileId: "default") {
-                    decrypted = data
-                }
-                if let data = decrypted {
-                    if let tmp = try? SwiftCBOR.CodableCBORDecoder().decode(\(subName).self, from: data) {
-                        \(assignLines)
-                    }
+                if let tmp = try? await RunarSerializer.decryptLabelGroup(encryptedGroup: group, keystore: keystore) as \(subName) {
+                    \(assignLines)
                 }
             }
             """
@@ -142,8 +144,13 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
         // Build final initializer call with locals
         let decryptInitArgs = orderedFields.map { f in
-            if fieldLabels[f.name] != nil { return "\(f.name): \(f.name)_value" }
-            return "\(f.name): self.\(f.name)"
+            if fieldLabels[f.name] != nil { 
+                let sanitizedName = sanitizeFieldName(f.name)
+                let cleanFieldName = f.name.replacingOccurrences(of: "`", with: "")
+                return "\(cleanFieldName): \(sanitizedName)_value" 
+            }
+            let cleanFieldName = f.name.replacingOccurrences(of: "`", with: "")
+            return "\(cleanFieldName): self.\(f.name)"
         }.joined(separator: ",\n                        ")
 
         let members = """
@@ -163,8 +170,9 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
                     let encoder = SwiftCBOR.CodableCBOREncoder()
                     return try encoder.encode(enc)
             }
-            await RunarSerializer.SerializationRegistry.shared.registerDecryptor(for: Encrypted\(structName).self, wireName: "Encrypted_\(wireName)") { data, _ in
-                    try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
+            await RunarSerializer.SerializationRegistry.shared.registerDecryptor(for: Self.self, wireName: "Encrypted_\(wireName)") { data, keystore in
+                    let encrypted = try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
+                    return try await encrypted.decryptWithKeystore(keystore)
             }
 
             // Register wire names and decoders
@@ -330,5 +338,10 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         """
 
         return [extEncryptable, extDecryptable]
+    }
+    
+    private static func sanitizeFieldName(_ name: String) -> String {
+        // Remove backticks and replace with underscores for variable names
+        return name.replacingOccurrences(of: "`", with: "")
     }
 }
