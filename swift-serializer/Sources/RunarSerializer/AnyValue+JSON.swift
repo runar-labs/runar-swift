@@ -27,8 +27,8 @@ public extension AnyValue {
             return data.base64EncodedString()
         case .json:
             // Already CBOR of JSON, round-trip as Foundation object
-            let s: String = try await asType()
-            let obj = try JSONSerialization.jsonObject(with: Data(s.utf8))
+            let jsonString: String = try await asType()
+            let obj = try JSONSerialization.jsonObject(with: Data(jsonString.utf8))
             return obj
         case .list:
             if typeName == "list<any>" {
@@ -41,8 +41,8 @@ public extension AnyValue {
             if typeName == "map<string,any>" {
                 let dict: [String: AnyValue] = try await asType()
                 var out: [String: Any] = [:]
-                for (k, v) in dict {
-                    out[k] = try await v.toJSONObject()
+                for (key, value) in dict {
+                    out[key] = try await value.toJSONObject()
                 }
                 return out
             }

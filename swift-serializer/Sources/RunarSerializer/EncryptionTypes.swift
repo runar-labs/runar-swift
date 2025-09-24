@@ -14,7 +14,6 @@ public struct LabelKeyInfo: Sendable, Equatable {
     }
 }
 
-
 // MARK: - Default Values For Decryption Fallback
 
 /// Types that can provide a sensible default value for access-controlled decryption fallbacks.
@@ -24,7 +23,7 @@ public protocol RunarDefault {
 }
 
 extension Optional: RunarDefault {
-    public static var runarDefaultValue: Optional<Wrapped> { nil }
+    public static var runarDefaultValue: Wrapped? { nil }
 }
 
 extension String: RunarDefault {
@@ -100,7 +99,7 @@ extension Dictionary: RunarDefault {
 /// Type-erased decryptable interface so decoders can return encrypted structs
 /// and callers can request the plain type via AnyValue APIs.
 public protocol AnyRunarDecryptable {
-    func _runarDecryptWithKeystore(_ keystore: CommonKeyManager) async throws -> Any
+    func runarDecryptWithKeystore(_ keystore: CommonKeyManager) async throws -> Any
 }
 
 /// Type-erased encryptable-to-CBOR interface used by AnyValue to produce

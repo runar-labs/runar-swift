@@ -225,7 +225,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
                 }
 
                 // Type-erased hook for AnyValue - required by AnyRunarDecryptable protocol
-                public func _runarDecryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager) async throws -> Any {
+                public func runarDecryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager) async throws -> Any {
                         try await decryptWithKeystore(keystore) as \(structName)
                 }
         }

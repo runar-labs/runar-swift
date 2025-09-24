@@ -19,10 +19,9 @@ public enum EnvelopeEncryption {
         profileId: String? = nil
     ) async throws -> Data {
         if let pid = profileId, let nodeKeystore = context.keystore as? NodeOnly {
-            return try await nodeKeystore.decryptWithProfile(envelopeData: envelopeData, profileId: pid)
+            try await nodeKeystore.decryptWithProfile(envelopeData: envelopeData, profileId: pid)
         } else {
-            return try await context.keystore.decryptEnvelope(envelopeData: envelopeData)
+            try await context.keystore.decryptEnvelope(envelopeData: envelopeData)
         }
     }
-
 }

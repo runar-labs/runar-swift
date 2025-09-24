@@ -186,8 +186,8 @@ final class ComplexTypesTests: XCTestCase {
 
         // JSON re-serialization may reorder keys; compare objects instead of pretty string
         let retrievedString: String = try! await deserialized.asType()
-        let lhs = try! JSONSerialization.jsonObject(with: Data(retrievedString.utf8)) as! NSDictionary
-        let rhs = try! JSONSerialization.jsonObject(with: jsonData) as! NSDictionary
+        let lhs = try! JSONSerialization.jsonObject(with: Data(retrievedString.utf8)) as? NSDictionary ?? NSDictionary()
+        let rhs = try! JSONSerialization.jsonObject(with: jsonData) as? NSDictionary ?? NSDictionary()
         XCTAssertEqual(lhs, rhs)
     }
 
@@ -294,7 +294,7 @@ final class ComplexTypesTests: XCTestCase {
 
     // MARK: - Error Tests
 
-    func testTypeMismatch() async {
+    func testTypeMismatch() async throws {
         let list = AnyValue.list([AnyValue.primitive("test")])
 
         // Try to get as wrong type
@@ -306,7 +306,7 @@ final class ComplexTypesTests: XCTestCase {
         }
     }
 
-    func testInvalidJSONData() async {
+    func testInvalidJSONData() async throws {
         let invalidData = Data([0xFF, 0xFE, 0xFD]) // Invalid UTF-8
         let jsonValue = AnyValue.json(invalidData)
 
@@ -341,4 +341,3 @@ final class ComplexTypesTests: XCTestCase {
 
 @testable import RunarSerializer
 import XCTest
-
