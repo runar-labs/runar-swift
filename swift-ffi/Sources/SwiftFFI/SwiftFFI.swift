@@ -56,7 +56,7 @@ public struct KeystoreCapabilities: Sendable {
 ///
 /// This protocol defines the common operations that are available to both node and mobile key managers,
 /// including envelope crypto, symmetric key management, persistence, and general message crypto.
-public protocol CommonKeyManager {
+public protocol CommonKeyManager: Sendable {
     // Envelope crypto (serializer-critical)
     func encryptWithEnvelope(data: Data, networkPublicKey: Data?, profilePublicKeys: [Data]) async throws -> Data
     func decryptEnvelope(envelopeData: Data) async throws -> Data

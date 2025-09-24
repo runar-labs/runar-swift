@@ -306,7 +306,7 @@ final class EndToEndEncryptionTest: XCTestCase {
         
         // The deserialized value should be of type EncryptedTestProfile
         // We need to decrypt it using the registry decryptor
-        let deserializedProfile: TestProfile = try await deserializedValue.asType(keystore: mobileKeystore)
+        let deserializedProfile: TestProfile = try await deserializedValue.asType()
         
         // Verify the data matches
         XCTAssertEqual(deserializedProfile.id, profile.id)

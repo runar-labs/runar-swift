@@ -223,7 +223,7 @@ final class RustParityEncryptionTest: XCTestCase {
         // Deserialize with node (limited access)
         logger.trace("Deserializing with node keystore (limited access)")
         let deNode = try AnyValue.deserialize(ser, keystore: nodeKs)
-        let nodeProfile: TestProfile = try await deNode.asType(keystore: nodeKs)
+        let nodeProfile: TestProfile = try await deNode.asType()
         logger.debug("Node deserialization successful - verifying access control")
         XCTAssertEqual(nodeProfile.id, profile.id)
         XCTAssertEqual(nodeProfile.name, profile.name)
@@ -235,7 +235,7 @@ final class RustParityEncryptionTest: XCTestCase {
         // Deserialize with mobile (access to user fields but not system_only)
         logger.trace("Deserializing with mobile keystore (user access)")
         let deMobile = try AnyValue.deserialize(ser, keystore: mobileKs)
-        let mobileProfile: TestProfile = try await deMobile.asType(keystore: mobileKs)
+        let mobileProfile: TestProfile = try await deMobile.asType()
         logger.debug("Mobile deserialization successful - verifying access control")
         XCTAssertEqual(mobileProfile.id, profile.id)
         XCTAssertEqual(mobileProfile.name, profile.name)
@@ -244,12 +244,26 @@ final class RustParityEncryptionTest: XCTestCase {
         XCTAssertEqual(mobileProfile.system_metadata, "") // Mobile should NOT have access to system_metadata
         logger.info("Mobile keystore access control verified - can decrypt user fields, cannot decrypt system_only")
         
-        // Note: In Swift, getting the encrypted struct directly from AnyValue is more complex than in Rust
-        // because AnyValue.asType() always tries to decrypt. The core functionality (access control) is verified above.
-        // The encrypted struct verification would require additional infrastructure to access the raw encrypted data.
-        // For now, we verify that the access control works correctly:
-        // - Node can decrypt system fields but not user fields
-        // - Mobile can decrypt user fields but not system_only fields
-        // This matches the Rust test behavior exactly.
+        // Test getting encrypted type directly from AnyValue (matching Rust pattern)
+        logger.trace("Testing encrypted type access from AnyValue")
+        let nodeProfileEncrypted: TestProfile.EncryptedTestProfile = try await deNode.asType()
+        logger.debug("Encrypted type access successful - verifying encrypted fields")
+        XCTAssertEqual(nodeProfileEncrypted.id, profile.id)
+        XCTAssertNotNil(nodeProfileEncrypted.search_encrypted)
+        XCTAssertNotNil(nodeProfileEncrypted.system_encrypted)
+        XCTAssertNotNil(nodeProfileEncrypted.user_encrypted)
+        XCTAssertNotNil(nodeProfileEncrypted.system_only_encrypted)
+        logger.info("Encrypted type access verified - all encrypted field groups present")
+        
+        // Test decryption of encrypted type with node keystore
+        logger.trace("Testing decryption of encrypted type with node keystore")
+        let nodeProfileFromEncrypted = try await nodeProfileEncrypted.decryptWithKeystore(nodeKs)
+        logger.debug("Node decryption from encrypted type successful - verifying access control")
+        XCTAssertEqual(nodeProfileFromEncrypted.id, profile.id)
+        XCTAssertEqual(nodeProfileFromEncrypted.name, profile.name)
+        XCTAssertEqual(nodeProfileFromEncrypted.`private`, "") // Node should NOT have access to user fields
+        XCTAssertEqual(nodeProfileFromEncrypted.email, profile.email)
+        XCTAssertEqual(nodeProfileFromEncrypted.system_metadata, profile.system_metadata) // Node should have access to system_metadata
+        logger.info("Node keystore access control from encrypted type verified - can decrypt system fields, cannot decrypt user fields")
     }
 }

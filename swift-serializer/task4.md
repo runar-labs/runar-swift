@@ -40,3 +40,5 @@ let decrypted_mobile = encrypted.decrypt_with_keystore(&mobile_ks)?;
 
 
 THIS IS THE CRUCIAL FEATURE OF THE Serializer encryptoin mechanism.. the ablity to encrypt Field Groups Labels and debcrupt them dependneign on what keyus are vailable in the key store presented.
+
+WHEN IMPLEMENTIN ANY OF THIS IN SEIFT>. CHECK THE RUST CODE>> ALWATYS BEFGORE U DO AND AFTER TO CHECK THE OUTPUT> the seift impl must match rust 100%.. mnothing more. nothing less. the only differences should be the language specific ones. THE data flow and rules must match 100%.

@@ -484,7 +484,7 @@ public final class AnyValue: Sendable {
     }
 
     /// Get the value as a specific type
-    public func asType<T>(keystore: CommonKeyManager? = nil) async throws -> T {
+    public func asType<T>() async throws -> T {
         // Try to get from box (for already loaded values)
         if let result = box.asType() as T? {
             return result
@@ -492,7 +492,7 @@ public final class AnyValue: Sendable {
 
         // Try lazy deserialization
         if let lazyData {
-            let value: T = try await deserializeLazyData(lazyData, to: T.self, keystore: keystore)
+            let value: T = try await deserializeLazyData(lazyData, to: T.self)
             return value
         }
 
@@ -502,30 +502,12 @@ public final class AnyValue: Sendable {
     /// Convenience: get encrypted form of a plain type stored in this AnyValue
     /// by first materializing the plain value and then applying field-group encryption.
     public func asEncrypted<T: RunarEncryptable>(_: T.Type, keystore: CommonKeyManager, resolver: LabelResolver) async throws -> T.Encrypted {
-        let plain: T = try await asType(keystore: keystore)
+        let plain: T = try await asType()
         return try await plain.encryptWithKeystore(keystore, resolver: resolver)
     }
 
     /// Deserialize lazy data into a concrete value of target type
-    private func deserializeLazyData<T>(_ lazyData: LazyData, to _: T.Type, keystore: CommonKeyManager? = nil) async throws -> T {
-        // Handle encrypted data using registry decryptor
-        if lazyData.encrypted {
-            // For encrypted data, use the registry decryptor to decrypt the encrypted struct
-            guard let keystore else {
-                throw SerializerError.deserializationFailed("No keystore provided for encrypted data")
-            }
-
-            // Try to find a registered decryptor for this wire name
-            if let decryptor = await SerializationRegistry.shared.decryptor(for: lazyData.typeName) {
-                let result = try await decryptor(lazyData.data, keystore)
-                guard let casted = result as? T else {
-                    throw SerializerError.typeMismatch("Cannot cast decrypted result to \(T.self)")
-                }
-                return casted
-            } else {
-                throw SerializerError.deserializationFailed("No decryptor registered for encrypted wire name: \(lazyData.typeName)")
-            }
-        }
+    private func deserializeLazyData<T>(_ lazyData: LazyData, to _: T.Type) async throws -> T {
 
         // Handle by strict wire names for known categories and primitives
         switch lazyData.typeName {
@@ -817,7 +799,7 @@ public final class AnyValue: Sendable {
                     // If the value is itself a CBOR structure, re-encode it to bytes (Rust may store raw CBOR of inner payload)
                     payload = Data(valEntry.encode())
                 }
-                let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, encrypted: false))
+                let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, encrypted: false, keystore: nil))
                 out.append(child)
             }
             guard let casted = out as? T else { throw SerializerError.typeMismatch("Cannot cast list<any> to \(T.self)") }
@@ -875,7 +857,7 @@ public final class AnyValue: Sendable {
                     }
                 default: payload = Data(valEntry.encode())
                 }
-                let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, encrypted: false))
+                let child = AnyValue.lazy(category: cat, lazyData: LazyData(typeName: name, data: payload, encrypted: false, keystore: nil))
                 out[key] = child
             }
             guard let casted = out as? T else { throw SerializerError.typeMismatch("Cannot cast map<string,any> to \(T.self)") }
@@ -907,40 +889,29 @@ public final class AnyValue: Sendable {
                 return decodedAny
             }
 
-            // Structs and custom types: require known wire name in registry
-            // Try to find a registered decoder for this wire name
-            if let decoder = await SerializationRegistry.shared.decoder(for: lazyData.typeName) {
-                let result = try decoder(lazyData.data)
-
-                // If decoder returns the expected type, return it
-                if let typedResult = result as? T {
-                    return typedResult
+            // Structs and custom types: Follow Rust pattern - try direct deserialization first, then registry fallback
+            // First attempt: Direct deserialization (works for encrypted types)
+            if let target = T.self as? Decodable.Type {
+                if let result = try? SwiftCBOR.CodableCBORDecoder().decode(target, from: lazyData.data) as? T {
+                    return result
                 }
-
-                // If decoder returns an encrypted value but T is the plain type, decrypt with keystore
-                if let keystore, let encryptedValue = result as? AnyRunarDecryptable {
-                    guard let decrypted = try? await encryptedValue.runarDecryptWithKeystore(keystore) as? T else {
-                        throw SerializerError.typeMismatch("Failed to decrypt value to \(T.self)")
-                    }
-                    return decrypted
-                }
-
-                // If T is an Encrypted type, allow direct cast
-                if T.self is AnyRunarDecryptable.Type, let encrypted = result as? T {
-                    return encrypted
-                }
-
-                throw SerializerError.typeMismatch("Decoder returned incompatible type for \(T.self)")
             }
 
-            // No decoder found for this wire name - fall back to plain CBOR deserialization
-            if let target = T.self as? Decodable.Type {
-                guard let result = try SwiftCBOR.CodableCBORDecoder().decode(target, from: lazyData.data) as? T else {
-                    throw SerializerError.deserializationFailed("Failed to cast decoded result to \(T.self)")
+            // Second attempt: Registry fallback - decrypt into the requested plain type
+            // This requires a keystore for decryption
+            guard let keystore = lazyData.keystore else {
+                throw SerializerError.deserializationFailed("Keystore required for registry decryption")
+            }
+
+            // Try to find a registered decryptor for this wire name
+            if let decryptor = await SerializationRegistry.shared.decryptor(for: lazyData.typeName) {
+                let result = try await decryptor(lazyData.data, keystore)
+                guard let casted = result as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast decrypted result to \(T.self)")
                 }
-                return result
+                return casted
             } else {
-                throw SerializerError.deserializationFailed("Type \(T.self) is not Decodable and not registered in registry")
+                throw SerializerError.deserializationFailed("No decryptor registered for wire name: \(lazyData.typeName)")
             }
         }
     }
@@ -968,7 +939,7 @@ public final class AnyValue: Sendable {
     }
 
     /// Deserialize from data
-    public static func deserialize(_ data: Data, keystore _: CommonKeyManager? = nil) throws -> AnyValue {
+    public static func deserialize(_ data: Data, keystore: CommonKeyManager? = nil) throws -> AnyValue {
         guard !data.isEmpty else {
             throw SerializerError.emptyData
         }
@@ -1033,7 +1004,8 @@ public final class AnyValue: Sendable {
         let lazyData = LazyData(
             typeName: typeName,
             data: Data(valueData),
-            encrypted: isEncrypted
+            encrypted: isEncrypted,
+            keystore: keystore
         )
 
         // Keep everything lazy, including bytes and json
@@ -1178,6 +1150,7 @@ public struct LazyData: Sendable {
     let typeName: String
     let data: Data
     let encrypted: Bool
+    let keystore: CommonKeyManager?
 }
 
 /// Protocol for types that can be automatically serialized
