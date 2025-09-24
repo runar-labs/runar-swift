@@ -1,35 +1,66 @@
 import RunarSerializer
 import SwiftCBOR
 import SwiftFFI
+import SwiftCommon
 import XCTest
 
-/// Tests for Label Group Encryption functionality
+/// Tests for Label Group Encryption functionality using real FFI key managers
 final class LabelGroupEncryptionTests: XCTestCase {
     // MARK: - Test Data
 
-    private let testNetworkKey = Data(Array(0 ..< 32)) // Exactly 32 bytes
-    private let testProfileKey1 = Data(Array(10 ..< 42)) // Exactly 32 bytes
-    private let testProfileKey2 = Data(Array(20 ..< 52)) // Exactly 32 bytes
-
-    private var keystore: TestKeyManagerAdapter!
+    private var mobileKeystore: MobileKeyManager!
+    private var nodeKeystore: NodeKeyManager!
     private var resolver: LabelResolver!
+    private var networkPublicKey: Data!
+    private var profilePublicKey: Data!
 
     override func setUp() async throws {
         try await super.setUp()
 
-        // Create a test keystore adapter
-        keystore = TestKeyManagerAdapter()
+        // Set up logging for both Rust FFI layer and Swift layer
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("label-group-test")
 
-        let config = LabelResolverConfig(labelMappings: [
-            "system": LabelValue(networkPublicKey: testNetworkKey, userKeySpec: .currentUser),
-            "user": LabelValue(networkPublicKey: nil, userKeySpec: .currentUser),
-            "search": LabelValue(networkPublicKey: testNetworkKey, userKeySpec: nil),
-        ])
+        // Create mobile keystore and initialize user root key
+        mobileKeystore = try await MobileKeyManager()
+        try await mobileKeystore.initializeUserRootKey()
+        
+        // Generate network data key
+        networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
+        
+        // Derive profile key for testing
+        profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
+        
+        // Install network public key on mobile
+        try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
 
-        resolver = try LabelResolver.createContextResolver(
-            systemConfig: config,
-            userProfilePublicKeys: [testProfileKey1, testProfileKey2]
+        // Create node keystore and generate keys
+        nodeKeystore = try await NodeKeyManager()
+        try await nodeKeystore.generateKeys()
+        
+        // Install network key on node
+        let nodeAgreementPublicKey = try await nodeKeystore.getNodeAgreementPublicKey()
+        let networkKeyMessage = try await mobileKeystore.createNetworkKeyMessage(
+            networkPublicKey: networkPublicKey,
+            nodeAgreementPublicKey: nodeAgreementPublicKey
         )
+        try await nodeKeystore.installNetworkKey(networkKeyMessage)
+
+        // Create label resolver with real keys
+        resolver = LabelResolver(mapping: [
+            "system": LabelKeyInfo(
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
+            ),
+            "user": LabelKeyInfo(
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: nil
+            ),
+            "search": LabelKeyInfo(
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
+            ),
+        ])
     }
 
     // MARK: - Test Structures
@@ -52,7 +83,7 @@ final class LabelGroupEncryptionTests: XCTestCase {
         let result = try await encryptLabelGroup(
             label: "system",
             fieldsStruct: testFields,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
@@ -66,7 +97,7 @@ final class LabelGroupEncryptionTests: XCTestCase {
         let result = try await encryptLabelGroup(
             label: "nonexistent",
             fieldsStruct: testFields,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
@@ -80,7 +111,7 @@ final class LabelGroupEncryptionTests: XCTestCase {
         let result = try await encryptLabelGroup(
             label: "user",
             fieldsStruct: testFields,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
@@ -94,7 +125,7 @@ final class LabelGroupEncryptionTests: XCTestCase {
         let result = try await encryptLabelGroup(
             label: "search",
             fieldsStruct: testFields,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
@@ -111,14 +142,14 @@ final class LabelGroupEncryptionTests: XCTestCase {
         let encryptedGroup = try await encryptLabelGroup(
             label: "system",
             fieldsStruct: originalFields,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
         // Decrypt
         let decryptedFields: TestFields = try await decryptLabelGroup(
             encryptedGroup: encryptedGroup,
-            keystore: keystore
+            keystore: mobileKeystore
         )
 
         XCTAssertEqual(decryptedFields.id, originalFields.id)
@@ -131,7 +162,7 @@ final class LabelGroupEncryptionTests: XCTestCase {
 
         let decryptedFields: TestFields = try await decryptLabelGroup(
             encryptedGroup: encryptedGroup,
-            keystore: keystore
+            keystore: mobileKeystore
         )
 
         // Should return default value when envelope is nil
@@ -148,7 +179,7 @@ final class LabelGroupEncryptionTests: XCTestCase {
         // Should return default value when decryption fails
         let decryptedFields: TestFields = try await decryptLabelGroup(
             encryptedGroup: encryptedGroup,
-            keystore: keystore
+            keystore: mobileKeystore
         )
 
         XCTAssertEqual(decryptedFields.id, "")
@@ -165,13 +196,13 @@ final class LabelGroupEncryptionTests: XCTestCase {
         let systemEncrypted = try await encryptLabelGroup(
             label: "system",
             fieldsStruct: originalFields,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
         let systemDecrypted: TestFields = try await decryptLabelGroup(
             encryptedGroup: systemEncrypted,
-            keystore: keystore
+            keystore: mobileKeystore
         )
 
         XCTAssertEqual(systemDecrypted.id, originalFields.id)
@@ -182,13 +213,13 @@ final class LabelGroupEncryptionTests: XCTestCase {
         let userEncrypted = try await encryptLabelGroup(
             label: "user",
             fieldsStruct: originalFields,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
         let userDecrypted: TestFields = try await decryptLabelGroup(
             encryptedGroup: userEncrypted,
-            keystore: keystore
+            keystore: mobileKeystore
         )
 
         XCTAssertEqual(userDecrypted.id, originalFields.id)
@@ -208,15 +239,15 @@ final class LabelGroupEncryptionTests: XCTestCase {
         // Test label info resolution
         let systemInfo = try resolver.resolveLabelInfo("system")
         XCTAssertNotNil(systemInfo.networkPublicKey)
-        XCTAssertEqual(systemInfo.profilePublicKeys.count, 2)
+        XCTAssertEqual(systemInfo.profilePublicKeys.count, 1)
 
         let userInfo = try resolver.resolveLabelInfo("user")
         XCTAssertNil(userInfo.networkPublicKey)
-        XCTAssertEqual(userInfo.profilePublicKeys.count, 2)
+        XCTAssertEqual(userInfo.profilePublicKeys.count, 1)
 
         let searchInfo = try resolver.resolveLabelInfo("search")
         XCTAssertNotNil(searchInfo.networkPublicKey)
-        XCTAssertEqual(searchInfo.profilePublicKeys.count, 0)
+        XCTAssertEqual(searchInfo.profilePublicKeys.count, 1)
     }
 
     func testAvailableLabels() async throws {

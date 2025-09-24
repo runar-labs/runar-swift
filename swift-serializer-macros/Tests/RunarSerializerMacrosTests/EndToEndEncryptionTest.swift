@@ -1,6 +1,8 @@
 import RunarSerializer
 import RunarSerializerMacros
 import SwiftCBOR
+import SwiftFFI
+import SwiftCommon
 import XCTest
 
 /// End-to-end encryption test that demonstrates the full flow working
@@ -188,18 +190,32 @@ final class EndToEndEncryptionTest: XCTestCase {
     // MARK: - Debug Test
     
     func testDebugEncryptionFlow() async throws {
-        // Create a test keystore
-        let keystore = TestKeyManagerAdapter()
+        // Set up logging for both Rust FFI layer and Swift layer
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("debug-encryption-test")
+
+        // Create mobile keystore and initialize user root key
+        let mobileKeystore = try await MobileKeyManager()
+        try await mobileKeystore.initializeUserRootKey()
+        
+        // Generate network data key
+        let networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
+        
+        // Derive profile key for testing
+        let profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
+        
+        // Install network public key on mobile
+        try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
         
         // Create a test resolver
         let resolver = LabelResolver(mapping: [
             "system": LabelKeyInfo(
-                profilePublicKeys: [Data("system_profile_key".utf8)],
-                networkPublicKey: Data("system_network_key".utf8)
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
             ),
             "user": LabelKeyInfo(
-                profilePublicKeys: [Data("user_profile_key".utf8)],
-                networkPublicKey: Data("user_network_key".utf8)
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
             )
         ])
         
@@ -213,11 +229,11 @@ final class EndToEndEncryptionTest: XCTestCase {
         )
         
         // Test direct encryption
-        let encryptedProfile = try await profile.encryptWithKeystore(keystore, resolver)
+        let encryptedProfile = try await profile.encryptWithKeystore(mobileKeystore, resolver)
         print("✅ Direct encryption worked")
         
         // Test direct decryption
-        let decryptedProfile = try await encryptedProfile.decryptWithKeystore(keystore)
+        let decryptedProfile = try await encryptedProfile.decryptWithKeystore(mobileKeystore)
         print("✅ Direct decryption worked")
         
         // Verify data matches
@@ -233,22 +249,36 @@ final class EndToEndEncryptionTest: XCTestCase {
     // MARK: - Full Encryption Flow Test
     
     func testFullEncryptionFlowWithRegistry() async throws {
-        // Create a test keystore (using the same pattern as in swift-serializer tests)
-        let keystore = TestKeyManagerAdapter()
+        // Set up logging for both Rust FFI layer and Swift layer
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("full-encryption-test")
+
+        // Create mobile keystore and initialize user root key
+        let mobileKeystore = try await MobileKeyManager()
+        try await mobileKeystore.initializeUserRootKey()
+        
+        // Generate network data key
+        let networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
+        
+        // Derive profile key for testing
+        let profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
+        
+        // Install network public key on mobile
+        try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
         
         // Create a test resolver
         let resolver = LabelResolver(mapping: [
             "system": LabelKeyInfo(
-                profilePublicKeys: [Data("system_profile_key".utf8)],
-                networkPublicKey: Data("system_network_key".utf8)
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
             ),
             "user": LabelKeyInfo(
-                profilePublicKeys: [Data("user_profile_key".utf8)],
-                networkPublicKey: Data("user_network_key".utf8)
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
             )
         ])
         
-        let context = SerializationContext(keystore: keystore, resolver: resolver, networkId: "test_network")
+        let context = SerializationContext(keystore: mobileKeystore, resolver: resolver, networkId: "test_network")
         
         // Test the full encryption flow with @Encrypted macro
         let profile = TestProfile(
@@ -276,7 +306,7 @@ final class EndToEndEncryptionTest: XCTestCase {
         
         // The deserialized value should be of type EncryptedTestProfile
         // We need to decrypt it using the registry decryptor
-        let deserializedProfile: TestProfile = try await deserializedValue.asType(keystore: keystore)
+        let deserializedProfile: TestProfile = try await deserializedValue.asType(keystore: mobileKeystore)
         
         // Verify the data matches
         XCTAssertEqual(deserializedProfile.id, profile.id)
@@ -286,89 +316,5 @@ final class EndToEndEncryptionTest: XCTestCase {
         XCTAssertEqual(deserializedProfile.metadata, profile.metadata)
         
         print("✅ Full encryption flow with registry test passed")
-    }
-}
-
-// MARK: - Test Key Manager Adapter
-
-/// Test implementation of CommonKeyManager for testing purposes
-/// This is a temporary solution until NodeKeyManager and MobileKeyManager are fully implemented
-@testable import SwiftFFI
-final class TestKeyManagerAdapter: CommonKeyManager, @unchecked Sendable {
-    
-    func encryptWithEnvelope(
-        data: Data,
-        networkPublicKey: Data?,
-        profilePublicKeys: [Data]
-    ) async throws -> Data {
-        // Simple test implementation - just return the payload with a prefix
-        var result = Data("ENCRYPTED:".utf8)
-        result.append(data)
-        return result
-    }
-    
-    func decryptEnvelope(envelopeData: Data) async throws -> Data {
-        // Simple test implementation - remove the prefix
-        let prefix = Data("ENCRYPTED:".utf8)
-        guard envelopeData.starts(with: prefix) else {
-            throw SerializerError.deserializationFailed("Invalid encrypted data format")
-        }
-        return envelopeData.dropFirst(prefix.count)
-    }
-    
-    func ensureSymmetricKey(name: String) async throws -> Data {
-        return Data("symmetric_key_\(name)".utf8)
-    }
-    
-    func encryptLocalData(data: Data) async throws -> Data {
-        var result = Data("LOCAL:".utf8)
-        result.append(data)
-        return result
-    }
-    
-    func decryptLocalData(encryptedData: Data) async throws -> Data {
-        let prefix = Data("LOCAL:".utf8)
-        guard encryptedData.starts(with: prefix) else {
-            throw SerializerError.deserializationFailed("Invalid local encrypted data format")
-        }
-        return encryptedData.dropFirst(prefix.count)
-    }
-    
-    func setPersistenceDirectory(_ directory: String) async throws {
-        // No-op for testing
-    }
-    
-    func enableAutoPersistence(_ enabled: Bool) async throws {
-        // No-op for testing
-    }
-    
-    func wipePersistence() async throws {
-        // No-op for testing
-    }
-    
-    func getKeystoreCapabilities() async throws -> KeystoreCapabilities {
-        return KeystoreCapabilities(version: 1, flags: 0x3F) // All capabilities enabled
-    }
-    
-    func flushState() async throws {
-        // No-op for testing
-    }
-    
-    func registerAppleDeviceKeystore(label: String) async throws {
-        // No-op for testing
-    }
-    
-    func encryptForNetwork(data: Data, networkPublicKey: Data) async throws -> Data {
-        var result = Data("NETWORK:".utf8)
-        result.append(data)
-        return result
-    }
-    
-    func decryptNetworkData(encryptedEnvelope: Data) async throws -> Data {
-        let prefix = Data("NETWORK:".utf8)
-        guard encryptedEnvelope.starts(with: prefix) else {
-            throw SerializerError.deserializationFailed("Invalid network encrypted data format")
-        }
-        return encryptedEnvelope.dropFirst(prefix.count)
     }
 }

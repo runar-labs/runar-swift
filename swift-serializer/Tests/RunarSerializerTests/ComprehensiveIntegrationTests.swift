@@ -1,43 +1,74 @@
 import RunarSerializer
 import SwiftCBOR
 import SwiftFFI
+import SwiftCommon
 import XCTest
 
 /// Comprehensive integration tests that demonstrate the full functionality
-/// of the Swift serializer with label-based encryption
+/// of the Swift serializer with label-based encryption using real FFI key managers
 final class ComprehensiveIntegrationTests: XCTestCase {
     // MARK: - Test Data
 
-    private let testNetworkKey = Data(Array(0 ..< 32)) // Exactly 32 bytes
-    private let testProfileKey1 = Data(Array(10 ..< 42)) // Exactly 32 bytes
-    private let testProfileKey2 = Data(Array(20 ..< 52)) // Exactly 32 bytes
-
-    private var keystore: TestKeyManagerAdapter!
+    private var mobileKeystore: MobileKeyManager!
+    private var nodeKeystore: NodeKeyManager!
     private var resolver: LabelResolver!
     private var context: SerializationContext!
+    private var networkPublicKey: Data!
+    private var profilePublicKey: Data!
 
     override func setUp() async throws {
         try await super.setUp()
 
-        // Create a test keystore adapter
-        keystore = TestKeyManagerAdapter()
+        // Set up logging for both Rust FFI layer and Swift layer
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerNodeId("comprehensive-test")
 
-        let config = LabelResolverConfig(labelMappings: [
-            "system": LabelValue(networkPublicKey: testNetworkKey, userKeySpec: .currentUser),
-            "user": LabelValue(networkPublicKey: nil, userKeySpec: .currentUser),
-            "search": LabelValue(networkPublicKey: testNetworkKey, userKeySpec: nil),
+        // Create mobile keystore and initialize user root key
+        mobileKeystore = try await MobileKeyManager()
+        try await mobileKeystore.initializeUserRootKey()
+        
+        // Generate network data key
+        networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
+        
+        // Derive profile key for testing
+        profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
+        
+        // Install network public key on mobile
+        try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
+
+        // Create node keystore and generate keys
+        nodeKeystore = try await NodeKeyManager()
+        try await nodeKeystore.generateKeys()
+        
+        // Install network key on node
+        let nodeAgreementPublicKey = try await nodeKeystore.getNodeAgreementPublicKey()
+        let networkKeyMessage = try await mobileKeystore.createNetworkKeyMessage(
+            networkPublicKey: networkPublicKey,
+            nodeAgreementPublicKey: nodeAgreementPublicKey
+        )
+        try await nodeKeystore.installNetworkKey(networkKeyMessage)
+
+        // Create label resolver with real keys
+        resolver = LabelResolver(mapping: [
+            "system": LabelKeyInfo(
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
+            ),
+            "user": LabelKeyInfo(
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: nil
+            ),
+            "search": LabelKeyInfo(
+                profilePublicKeys: [profilePublicKey],
+                networkPublicKey: networkPublicKey
+            ),
         ])
 
-        resolver = try LabelResolver.createContextResolver(
-            systemConfig: config,
-            userProfilePublicKeys: [testProfileKey1, testProfileKey2]
-        )
-
         context = SerializationContext(
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver,
             networkId: "test_network",
-            profilePublicKey: testProfileKey1
+            profilePublicKey: profilePublicKey
         )
     }
 
@@ -84,7 +115,7 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         let userEncrypted = try await encryptLabelGroup(
             label: "user",
             fieldsStruct: userProfile,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
@@ -95,7 +126,7 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         let systemEncrypted = try await encryptLabelGroup(
             label: "system",
             fieldsStruct: systemConfig,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
@@ -105,7 +136,7 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         // Test decryption
         let decryptedUser: TestUserProfile = try await decryptLabelGroup(
             encryptedGroup: userEncrypted,
-            keystore: keystore
+            keystore: mobileKeystore
         )
 
         XCTAssertEqual(decryptedUser.id, userProfile.id)
@@ -115,7 +146,7 @@ final class ComprehensiveIntegrationTests: XCTestCase {
 
         let decryptedSystem: TestSystemConfig = try await decryptLabelGroup(
             encryptedGroup: systemEncrypted,
-            keystore: keystore
+            keystore: mobileKeystore
         )
 
         XCTAssertEqual(decryptedSystem.version, systemConfig.version)
@@ -192,15 +223,15 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         // Test resolveLabelInfo
         let systemInfo = try resolver.resolveLabelInfo("system")
         XCTAssertNotNil(systemInfo.networkPublicKey)
-        XCTAssertEqual(systemInfo.profilePublicKeys.count, 2)
+        XCTAssertEqual(systemInfo.profilePublicKeys.count, 1)
 
         let userInfo = try resolver.resolveLabelInfo("user")
         XCTAssertNil(userInfo.networkPublicKey)
-        XCTAssertEqual(userInfo.profilePublicKeys.count, 2)
+        XCTAssertEqual(userInfo.profilePublicKeys.count, 1)
 
         let searchInfo = try resolver.resolveLabelInfo("search")
         XCTAssertNotNil(searchInfo.networkPublicKey)
-        XCTAssertEqual(searchInfo.profilePublicKeys.count, 0)
+        XCTAssertEqual(searchInfo.profilePublicKeys.count, 1)
     }
 
     // MARK: - Error Handling Tests
@@ -235,7 +266,7 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         let encrypted = try await encryptLabelGroup(
             label: "system",
             fieldsStruct: testData,
-            keystore: keystore,
+            keystore: mobileKeystore,
             resolver: resolver
         )
 
