@@ -47,3 +47,13 @@ shuold be
 public func completeRequest(complete: RequestCompleteParams) async throws {
 
 All these public APIS must dea wih ptoper types and CBOR must be dealt as an internal concer.. paramets shuold ben serialize to CBOS internaly and return should be desetialized form CBOR to proper types
+
+NO BACKWARED COMPAT AT ALL> FULL REFACTORY>> ALL TESTS TAHT USE THESE APIS MUST BE UPDATED TO USE THE PROPER NEW API.
+
+
+ALL new types that uses CBOR must be properly tested against the RUST TYPES 
+/Users/rafael/dev/runar-swift/swift-ffi/Tests/SwiftFFITests/FFITypesCrossValidationTests.swift
+
+/Users/rafael/dev/runar-swift/runar-rust/rust-examples/validate_swift_vectors.rs
+/Users/rafael/dev/runar-swift/runar-rust/rust-examples/validate_ffi_vectors.rs
+

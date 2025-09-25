@@ -37,7 +37,7 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Encode options to CBOR
         let encoder = CodableCBOREncoder()
-        let optionsCbor = try await encoder.encode(discoveryOptions)
+        let optionsCbor = try encoder.encode(discoveryOptions)
 
 
         // Create discovery instance
@@ -91,13 +91,12 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let transportOptionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         // Create transports
-        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: transportOptionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
         try await transportA.start()
 
-        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: transportOptionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
         try await transportB.start()
 
 
@@ -111,7 +110,7 @@ final class FFIDiscoveryTest: XCTestCase {
         )
 
         let encoder = CodableCBOREncoder()
-        let discoveryOptionsCbor = try await encoder.encode(discoveryOptions)
+        let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
         let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
@@ -206,13 +205,12 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let transportOptionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         // Create transports
-        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: transportOptionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
         try await transportA.start()
 
-        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: transportOptionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
         try await transportB.start()
 
 
@@ -226,7 +224,7 @@ final class FFIDiscoveryTest: XCTestCase {
         )
 
         let encoder = CodableCBOREncoder()
-        let discoveryOptionsCbor = try await encoder.encode(discoveryOptions)
+        let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
         let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)

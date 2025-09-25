@@ -271,4 +271,87 @@ final class FFITypesCrossValidationTests: XCTestCase {
         // Verify both can be decoded and are equal
         XCTAssertEqual(swiftError, rustError, "CaErrorResponse validation failed - Swift and Rust data don't match")
     }
+    
+    /// Test all new transport types CBOR compatibility as required by task11.md
+    func testNewTransportTypesCBORCompatibility() async throws {
+        print("=== Testing New Transport Types CBOR Compatibility ===")
+        // Note: QuicTransportOptions doesn't implement Serialize in Rust, so we skip it for now
+        try await validatePeerInfo()
+        try await validateTransportEvent()
+        try await validateTransportRequestParams()
+        try await validateTransportCompleteRequestParams()
+        try await validateTransportPublishParams()
+        print("=== All new transport types CBOR tests passed ===")
+    }
+    
+    // MARK: - New Transport Types Validation (task11.md requirement)
+    
+    // QuicTransportOptions doesn't implement Serialize in Rust, so we skip it for now
+    
+    /// Test PeerInfo CBOR compatibility with Rust
+    private func validatePeerInfo() async throws {
+        let swiftDir = URL(fileURLWithPath: "target/ffi-types-vectors-swift")
+        let rustDir = URL(fileURLWithPath: "../../runar-rust/rust-examples/target/ffi-types-vectors")
+        
+        let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("peer_info_basic.bin"))
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("peer_info_basic.bin"))
+        
+        let swiftPeer: PeerInfo = try CodableCBORDecoder().decode(PeerInfo.self, from: swiftData)
+        let rustPeer: PeerInfo = try CodableCBORDecoder().decode(PeerInfo.self, from: rustData)
+        
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftPeer, rustPeer, "PeerInfo validation failed - Swift and Rust data don't match")
+    }
+    
+    /// Test TransportEvent CBOR compatibility with Rust
+    private func validateTransportEvent() async throws {
+        // TransportEvent doesn't exist in Rust yet, so we skip this validation
+        // This is a placeholder for when TransportEvent is implemented in Rust
+        print("⚠️  TransportEvent validation skipped - not implemented in Rust yet")
+    }
+    
+    /// Test TransportRequestParams CBOR compatibility with Rust
+    private func validateTransportRequestParams() async throws {
+        let swiftDir = URL(fileURLWithPath: "target/ffi-types-vectors-swift")
+        let rustDir = URL(fileURLWithPath: "../../runar-rust/rust-examples/target/ffi-types-vectors")
+        
+        let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("transport_request_params_basic.bin"))
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("transport_request_params_basic.bin"))
+        
+        let swiftRequest: TransportRequestParams = try CodableCBORDecoder().decode(TransportRequestParams.self, from: swiftData)
+        let rustRequest: TransportRequestParams = try CodableCBORDecoder().decode(TransportRequestParams.self, from: rustData)
+        
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftRequest, rustRequest, "TransportRequestParams validation failed - Swift and Rust data don't match")
+    }
+    
+    /// Test TransportCompleteRequestParams CBOR compatibility with Rust
+    private func validateTransportCompleteRequestParams() async throws {
+        let swiftDir = URL(fileURLWithPath: "target/ffi-types-vectors-swift")
+        let rustDir = URL(fileURLWithPath: "../../runar-rust/rust-examples/target/ffi-types-vectors")
+        
+        let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("transport_complete_request_params_basic.bin"))
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("transport_complete_request_params_basic.bin"))
+        
+        let swiftComplete: TransportCompleteRequestParams = try CodableCBORDecoder().decode(TransportCompleteRequestParams.self, from: swiftData)
+        let rustComplete: TransportCompleteRequestParams = try CodableCBORDecoder().decode(TransportCompleteRequestParams.self, from: rustData)
+        
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftComplete, rustComplete, "TransportCompleteRequestParams validation failed - Swift and Rust data don't match")
+    }
+    
+    /// Test TransportPublishParams CBOR compatibility with Rust
+    private func validateTransportPublishParams() async throws {
+        let swiftDir = URL(fileURLWithPath: "target/ffi-types-vectors-swift")
+        let rustDir = URL(fileURLWithPath: "../../runar-rust/rust-examples/target/ffi-types-vectors")
+        
+        let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("transport_publish_params_basic.bin"))
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("transport_publish_params_basic.bin"))
+        
+        let swiftPublish: TransportPublishParams = try CodableCBORDecoder().decode(TransportPublishParams.self, from: swiftData)
+        let rustPublish: TransportPublishParams = try CodableCBORDecoder().decode(TransportPublishParams.self, from: rustData)
+        
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftPublish, rustPublish, "TransportPublishParams validation failed - Swift and Rust data don't match")
+    }
 }

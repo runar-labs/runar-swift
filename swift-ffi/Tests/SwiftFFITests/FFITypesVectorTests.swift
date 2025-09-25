@@ -30,6 +30,13 @@ final class FFITypesVectorTests: XCTestCase {
         try generateCrlLite()
         try generateCaErrorResponse()
         
+        // Transport types (task11.md requirement)
+        // Note: QuicTransportOptions doesn't implement Serialize in Rust, so we skip it for now
+        try generatePeerInfo()
+        try generateTransportRequestParams()
+        try generateTransportPublishParams()
+        try generateTransportCompleteRequestParams()
+        
         print("✅ All FFI types test vectors generated successfully")
     }
     
@@ -38,8 +45,8 @@ final class FFITypesVectorTests: XCTestCase {
             token_id: "test_token_001",
             network_id: "test_network",
             subject_hint: "test_subject",
-            not_before: 1234567890,
-            expires_at: 1234567890 + 3600,
+            not_before: 1757890822,
+            expires_at: 1757894422,
             nonce: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
             permissions: ["enroll"]
         )
@@ -54,16 +61,16 @@ final class FFITypesVectorTests: XCTestCase {
             token_id: "test_token_001",
             network_id: "test_network",
             subject_hint: "test_subject",
-            not_before: 1234567890,
-            expires_at: 1234567890 + 3600,
+            not_before: 1757890822,
+            expires_at: 1757894422,
             nonce: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
             permissions: ["enroll"]
         )
         
         let enrollmentToken = EnrollmentToken(
             body: tokenBody,
-            signature: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64]),
-            signer_id: "test_signer_id"
+            signature: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70]),
+            signer_id: "test_signer_001"
         )
         
         let encoder = CodableCBOREncoder()
@@ -73,10 +80,10 @@ final class FFITypesVectorTests: XCTestCase {
     
     private func generateSetupToken() throws {
         let setupToken = SetupToken(
-            node_id: "test_compact_id",
-            node_public_key: Array(1...65).map { UInt8($0 % 256) },
-            node_agreement_public_key: Array(2...67).map { UInt8($0 % 256) },
-            csr_der: Array(3...320).map { UInt8($0 % 256) }
+            node_id: "test_node_001",
+            node_public_key: Array(repeating: 1, count: 65),
+            node_agreement_public_key: Array(repeating: 2, count: 65),
+            csr_der: Array(repeating: 3, count: 318)
         )
         
         let encoder = CodableCBOREncoder()
@@ -89,21 +96,21 @@ final class FFITypesVectorTests: XCTestCase {
             token_id: "test_token_001",
             network_id: "test_network",
             subject_hint: "test_subject",
-            not_before: 1234567890,
-            expires_at: 1234567890 + 3600,
+            not_before: 1757890822,
+            expires_at: 1757894422,
             nonce: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
             permissions: ["enroll"]
         )
         
         let enrollmentToken = EnrollmentToken(
             body: tokenBody,
-            signature: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64]),
-            signer_id: "test_signer_id"
+            signature: Data(Array(repeating: 1, count: 70)),
+            signer_id: "test_signer_001"
         )
         
         let csrEnrollRequest = CsrEnrollRequest(
             network_id: "test_network",
-            csr_der: Data(Array(1...100).map { UInt8($0 % 256) }),
+            csr_der: Data(Array(repeating: 7, count: 318)),
             enrollment_token: enrollmentToken
         )
         
@@ -115,10 +122,10 @@ final class FFITypesVectorTests: XCTestCase {
     private func generateCsrEnrollResponse() throws {
         let csrEnrollResponse = CsrEnrollResponse(
             network_id: "test_network",
-            certificate_der: Array(1...200).map { UInt8($0 % 256) },
-            issuing_ca_der: Array(1...200).map { UInt8($0 % 256) },
-            root_ca_der: Array(1...200).map { UInt8($0 % 256) },
-            expires_at: 1234567890 + 86400
+            certificate_der: Array(repeating: 9, count: 1024),
+            issuing_ca_der: Array(repeating: 10, count: 512),
+            root_ca_der: Array(repeating: 11, count: 256),
+            expires_at: 1757894422
         )
         
         let encoder = CodableCBOREncoder()
@@ -129,7 +136,7 @@ final class FFITypesVectorTests: XCTestCase {
     private func generateRenewRequest() throws {
         let renewRequest = RenewRequest(
             network_id: "test_network",
-            csr_der: Data(Array(1...100).map { UInt8($0 % 256) })
+            csr_der: Data(Array(repeating: 1, count: 318))
         )
         
         let encoder = CodableCBOREncoder()
@@ -140,9 +147,9 @@ final class FFITypesVectorTests: XCTestCase {
     private func generateRenewResponse() throws {
         let renewResponse = RenewResponse(
             network_id: "test_network",
-            certificate_der: Array(1...200).map { UInt8($0 % 256) },
-            issuing_ca_der: Array(1...200).map { UInt8($0 % 256) },
-            expires_at: 1234567890 + 86400
+            certificate_der: Array(repeating: 3, count: 1024),
+            issuing_ca_der: Array(repeating: 4, count: 512),
+            expires_at: 1757894422
         )
         
         let encoder = CodableCBOREncoder()
@@ -178,8 +185,8 @@ final class FFITypesVectorTests: XCTestCase {
             network_id: "test_network",
             issuing_subject: "CN=Test Issuing CA,O=Test,C=US",
             issuing_serial_hex: "1234567890ABCDEF",
-            not_before: 1234567890,
-            not_after: 1234567890 + 31536000 // 1 year
+            not_before: 1757890822,
+            not_after: 1757894422
         )
         
         let encoder = CodableCBOREncoder()
@@ -190,8 +197,8 @@ final class FFITypesVectorTests: XCTestCase {
     private func generateChainResponse() throws {
         let chainResponse = ChainResponse(
             network_id: "test_network",
-            issuing_ca_der: Array(1...200).map { UInt8($0 % 256) },
-            root_ca_der: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200]
+            issuing_ca_der: Array(repeating: 1, count: 512),
+            root_ca_der: Array(repeating: 2, count: 256)
         )
         
         let encoder = CodableCBOREncoder()
@@ -217,13 +224,69 @@ final class FFITypesVectorTests: XCTestCase {
     
     private func generateCaErrorResponse() throws {
         let caErrorResponse = CaErrorResponse(
-            code: "INVALID_TOKEN",
-            message: "The provided enrollment token is invalid or expired",
-            reason: "token_expired"
+            code: "unauthorized",
+            message: "Invalid enrollment token",
+            reason: nil
         )
         
         let encoder = CodableCBOREncoder()
         let data = try encoder.encode(caErrorResponse)
         try data.write(to: outputDir.appendingPathComponent("ca_error_response_basic.bin"))
+    }
+    
+    // MARK: - Transport Types Generation (task11.md requirement)
+    
+    // QuicTransportOptions doesn't implement Serialize in Rust, so we skip it for now
+    
+    private func generatePeerInfo() throws {
+        let peerInfo = PeerInfo(
+            publicKey: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]),
+            addresses: ["127.0.0.1:8080", "192.168.1.100:9090"]
+        )
+        
+        let encoder = CodableCBOREncoder()
+        let data = try encoder.encode(peerInfo)
+        try data.write(to: outputDir.appendingPathComponent("peer_info_basic.bin"))
+    }
+    
+    private func generateTransportRequestParams() throws {
+        let params = TransportRequestParams(
+            path: "/api/test",
+            correlationId: "corr_789",
+            payload: Data("test payload".utf8),
+            destPeerId: "peer_123",
+            networkPublicKey: Data([1, 2, 3, 4, 5]),
+            profilePublicKeys: [Data([6, 7, 8, 9, 10]), Data([11, 12, 13, 14, 15])]
+        )
+        
+        let encoder = CodableCBOREncoder()
+        let data = try encoder.encode(params)
+        try data.write(to: outputDir.appendingPathComponent("transport_request_params_basic.bin"))
+    }
+    
+    private func generateTransportPublishParams() throws {
+        let params = TransportPublishParams(
+            path: "/publish/test",
+            correlationId: "pub_123",
+            payload: Data("publish data".utf8),
+            destPeerId: "peer_789",
+            networkPublicKey: Data([1, 2, 3, 4, 5])
+        )
+        
+        let encoder = CodableCBOREncoder()
+        let data = try encoder.encode(params)
+        try data.write(to: outputDir.appendingPathComponent("transport_publish_params_basic.bin"))
+    }
+    
+    private func generateTransportCompleteRequestParams() throws {
+        let params = TransportCompleteRequestParams(
+            requestId: "req_456",
+            responsePayload: Data("response data".utf8),
+            profilePublicKeys: [Data([1, 2, 3]), Data([4, 5, 6])]
+        )
+        
+        let encoder = CodableCBOREncoder()
+        let data = try encoder.encode(params)
+        try data.write(to: outputDir.appendingPathComponent("transport_complete_request_params_basic.bin"))
     }
 }

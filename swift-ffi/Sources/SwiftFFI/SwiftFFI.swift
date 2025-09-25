@@ -3281,8 +3281,22 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         return try DiscoveryHandle(token: token)
     }
     
-    /// Create a transport handle with this node's handle
-    public func createTransportHandle(optionsCbor: Data) async throws -> QuicTransport {
+    /// Create a transport handle with this node's handle (typed API)
+    public func createTransportHandle(options: QuicTransportOptionsCbor) async throws -> QuicTransport {
+        // Encode options to CBOR internally (pure encoding, no MainActor)
+        let optionsCbor = try CodableCBOREncoder().encode(options)
+        // Copy handle to local to avoid capturing actor state in closures
+        let handle = self.handle
+
+        // Call nonisolated helper - no suspension during FFI
+        let transportHandle = try ffi_create_transport(handle, optionsCbor: optionsCbor)
+        let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
+        return try QuicTransport(token: token)
+    }
+
+    /// Legacy internal: Create a transport handle from raw CBOR
+    /// This remains internal to support typed API implementation
+    internal func createTransportHandle(optionsCbor: Data) async throws -> QuicTransport {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
@@ -4072,7 +4086,7 @@ public enum SchemaDataType: String, Codable {
 }
 
 /// Swift representation of QuicTransportOptions for CBOR encoding
-public struct QuicTransportOptionsCbor: Codable {
+public struct QuicTransportOptionsCbor: Codable, Equatable {
     public let bindAddr: String?
     public let handshakeTimeoutMs: UInt64?
     public let openStreamTimeoutMs: UInt64?
@@ -4253,32 +4267,22 @@ public enum CBORHelper {
 // MARK: - Transport Request/Response Structures
 
 /// Swift representation of TransportRequestParams from Rust FFI
-/// Matches Rust struct exactly: Vec<u8> becomes [UInt8]
-public struct TransportRequestParams: Codable {
+/// Matches Rust struct exactly: Vec<u8> becomes Data with flexible CBOR encoding
+public struct TransportRequestParams: Codable, Equatable {
     public let path: String
     public let correlationId: String
-    public let payload: [UInt8]  // Vec<u8> in Rust
+    public let payload: Data  // Vec<u8> in Rust
     public let destPeerId: String
-    public let networkPublicKey: [UInt8]?  // Option<Vec<u8>> in Rust
-    public let profilePublicKeys: [[UInt8]]  // Vec<Vec<u8>> in Rust
+    public let networkPublicKey: Data?  // Option<Vec<u8>> in Rust
+    public let profilePublicKeys: [Data]  // Vec<Vec<u8>> in Rust
     
-    public init(path: String, correlationId: String, payload: [UInt8], destPeerId: String, networkPublicKey: [UInt8]? = nil, profilePublicKeys: [[UInt8]] = []) {
+    public init(path: String, correlationId: String, payload: Data, destPeerId: String, networkPublicKey: Data? = nil, profilePublicKeys: [Data] = []) {
         self.path = path
         self.correlationId = correlationId
         self.payload = payload
         self.destPeerId = destPeerId
         self.networkPublicKey = networkPublicKey
         self.profilePublicKeys = profilePublicKeys
-    }
-    
-    // Convenience initializer that accepts Data and converts to [UInt8]
-    public init(path: String, correlationId: String, payload: Data, destPeerId: String, networkPublicKey: Data? = nil, profilePublicKeys: [Data] = []) {
-        self.path = path
-        self.correlationId = correlationId
-        self.payload = [UInt8](payload)
-        self.destPeerId = destPeerId
-        self.networkPublicKey = networkPublicKey.map { [UInt8]($0) }
-        self.profilePublicKeys = profilePublicKeys.map { [UInt8]($0) }
     }
     
     enum CodingKeys: String, CodingKey {
@@ -4289,26 +4293,66 @@ public struct TransportRequestParams: Codable {
         case networkPublicKey = "network_public_key"
         case profilePublicKeys = "profile_public_keys"
     }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(correlationId, forKey: .correlationId)
+        
+        // Encode as array of bytes to match Rust Vec<u8> serialization
+        try container.encode([UInt8](payload), forKey: .payload)
+        try container.encode(destPeerId, forKey: .destPeerId)
+        
+        // Encode networkPublicKey as array of bytes if present
+        if let networkKey = networkPublicKey {
+            try container.encode([UInt8](networkKey), forKey: .networkPublicKey)
+        } else {
+            try container.encodeNil(forKey: .networkPublicKey)
+        }
+        
+        // Encode profilePublicKeys as array of byte arrays
+        let profileKeysArray = profilePublicKeys.map { [UInt8]($0) }
+        try container.encode(profileKeysArray, forKey: .profilePublicKeys)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        
+        // Support both CBOR byte string and array<u8> for payload
+        if let payloadBytes = try? container.decode([UInt8].self, forKey: .payload) {
+            payload = Data(payloadBytes)
+        } else {
+            payload = try container.decode(Data.self, forKey: .payload)
+        }
+        
+        destPeerId = try container.decode(String.self, forKey: .destPeerId)
+        
+        // Support both CBOR byte string and array<u8> for networkPublicKey
+        if let networkBytes = try? container.decode([UInt8].self, forKey: .networkPublicKey) {
+            networkPublicKey = Data(networkBytes)
+        } else {
+            networkPublicKey = try container.decodeIfPresent(Data.self, forKey: .networkPublicKey)
+        }
+        
+        // Decode profilePublicKeys as array of byte arrays
+        let profileKeysArray = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
+        profilePublicKeys = profileKeysArray.map { Data($0) }
+    }
 }
 
 /// Swift representation of TransportCompleteRequestParams from Rust FFI
-/// Matches Rust struct exactly: Vec<u8> becomes [UInt8]
-public struct TransportCompleteRequestParams: Codable {
+/// Matches Rust struct exactly: Vec<u8> becomes Data with flexible CBOR encoding
+public struct TransportCompleteRequestParams: Codable, Equatable {
     public let requestId: String
-    public let responsePayload: [UInt8]  // Vec<u8> in Rust
-    public let profilePublicKeys: [[UInt8]]  // Vec<Vec<u8>> in Rust
+    public let responsePayload: Data  // Vec<u8> in Rust
+    public let profilePublicKeys: [Data]  // Vec<Vec<u8>> in Rust
     
-    public init(requestId: String, responsePayload: [UInt8], profilePublicKeys: [[UInt8]] = []) {
+    public init(requestId: String, responsePayload: Data, profilePublicKeys: [Data] = []) {
         self.requestId = requestId
         self.responsePayload = responsePayload
         self.profilePublicKeys = profilePublicKeys
-    }
-    
-    // Convenience initializer that accepts Data and converts to [UInt8]
-    public init(requestId: String, responsePayload: Data, profilePublicKeys: [Data] = []) {
-        self.requestId = requestId
-        self.responsePayload = [UInt8](responsePayload)
-        self.profilePublicKeys = profilePublicKeys.map { [UInt8]($0) }
     }
     
     enum CodingKeys: String, CodingKey {
@@ -4316,11 +4360,36 @@ public struct TransportCompleteRequestParams: Codable {
         case responsePayload = "response_payload"
         case profilePublicKeys = "profile_public_keys"
     }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        
+        // Encode as array of bytes to match Rust Vec<u8> serialization
+        try container.encode([UInt8](responsePayload), forKey: .responsePayload)
+        
+        // Encode profilePublicKeys as array of byte arrays
+        let profileKeysArray = profilePublicKeys.map { [UInt8]($0) }
+        try container.encode(profileKeysArray, forKey: .profilePublicKeys)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        requestId = try container.decode(String.self, forKey: .requestId)
+        
+        // Deterministic: strictly decode as array<u8>
+        let payloadBytes = try container.decode([UInt8].self, forKey: .responsePayload)
+        responsePayload = Data(payloadBytes)
+        
+        // Deterministic: strictly decode as array of byte arrays
+        let profileKeysArray = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
+        profilePublicKeys = profileKeysArray.map { Data($0) }
+    }
 }
 
 /// Swift representation of PeerInfo from Rust
-public struct PeerInfo: Codable {
-    public let publicKey: Data
+public struct PeerInfo: Codable, Equatable {
+    public let publicKey: Data  // Vec<u8> in Rust - encoded as array of bytes
     public let addresses: [String]
     
     public init(publicKey: Data, addresses: [String]) {
@@ -4333,17 +4402,132 @@ public struct PeerInfo: Codable {
         case addresses
     }
     
-    public func encode(to encoder: Encoder) async throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(Array(publicKey), forKey: .publicKey)
+        // Encode as array of bytes to match Rust Vec<u8> serialization
+        try container.encode([UInt8](publicKey), forKey: .publicKey)
         try container.encode(addresses, forKey: .addresses)
     }
     
-    public init(from decoder: Decoder) async throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Decode from array of bytes to match Rust Vec<u8> deserialization
         let publicKeyBytes = try container.decode([UInt8].self, forKey: .publicKey)
         publicKey = Data(publicKeyBytes)
         addresses = try container.decode([String].self, forKey: .addresses)
+    }
+}
+
+/// Transport publish parameters matching Rust side publish payload
+public struct TransportPublishParams: Codable, Equatable {
+    public let path: String
+    public let correlationId: String
+    public let payload: Data  // Vec<u8> in Rust
+    public let destPeerId: String
+    public let networkPublicKey: Data?  // Optional Vec<u8> in Rust
+
+    public init(path: String, correlationId: String, payload: Data, destPeerId: String, networkPublicKey: Data? = nil) {
+        self.path = path
+        self.correlationId = correlationId
+        self.payload = payload
+        self.destPeerId = destPeerId
+        self.networkPublicKey = networkPublicKey
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case path
+        case correlationId = "correlation_id"
+        case payload
+        case destPeerId = "dest_peer_id"
+        case networkPublicKey = "network_public_key"
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(correlationId, forKey: .correlationId)
+        
+        // Encode as array of bytes to match Rust Vec<u8> serialization
+        try container.encode([UInt8](payload), forKey: .payload)
+        try container.encode(destPeerId, forKey: .destPeerId)
+        
+        // Encode networkPublicKey as array of bytes if present
+        if let networkKey = networkPublicKey {
+            try container.encode([UInt8](networkKey), forKey: .networkPublicKey)
+        } else {
+            try container.encodeNil(forKey: .networkPublicKey)
+        }
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        
+        // Support both CBOR byte string and array<u8> for payload
+        if let payloadBytes = try? container.decode([UInt8].self, forKey: .payload) {
+            payload = Data(payloadBytes)
+        } else {
+            payload = try container.decode(Data.self, forKey: .payload)
+        }
+        
+        destPeerId = try container.decode(String.self, forKey: .destPeerId)
+        
+        // Support both CBOR byte string and array<u8> for networkPublicKey
+        if let networkKeyBytes = try? container.decode([UInt8].self, forKey: .networkPublicKey) {
+            networkPublicKey = Data(networkKeyBytes)
+        } else if try container.decodeNil(forKey: .networkPublicKey) {
+            networkPublicKey = nil
+        } else {
+            networkPublicKey = try container.decode(Data.self, forKey: .networkPublicKey)
+        }
+    }
+}
+
+/// Transport event surfaced to Swift API (decoded from CBOR internally)
+public struct TransportEvent: Codable, Sendable, Equatable {
+    public let type: String
+    public let requestId: String?
+    public let correlationId: String?
+    public let payload: [UInt8]?
+
+    public init(type: String, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil) {
+        self.type = type
+        self.requestId = requestId
+        self.correlationId = correlationId
+        self.payload = payload
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case requestId = "request_id"
+        case correlationId = "correlation_id"
+        case payload
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(requestId, forKey: .requestId)
+        try container.encodeIfPresent(correlationId, forKey: .correlationId)
+        // Deterministic: encode payload as byte string if present
+        if let payload {
+            try container.encode(Data(payload), forKey: .payload)
+        }
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        requestId = try container.decodeIfPresent(String.self, forKey: .requestId)
+        correlationId = try container.decodeIfPresent(String.self, forKey: .correlationId)
+        
+        // Deterministic: decode payload strictly as byte string if present
+        if let data = try container.decodeIfPresent(Data.self, forKey: .payload) {
+            payload = [UInt8](data)
+        } else {
+            payload = nil
+        }
     }
 }
 
@@ -4495,10 +4679,12 @@ public actor QuicTransport {
     /// Create a new transport instance with keys
     /// - Parameters:
     ///   - keys: Keys handle instance
-    ///   - optionsCbor: Transport options in CBOR format
+    ///   - options: Transport options (encoded to CBOR internally)
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
-    public static func create(keys: NodeKeyManager, optionsCbor: Data) async throws -> QuicTransport {
+    public static func create(keys: NodeKeyManager, options: QuicTransportOptionsCbor) async throws -> QuicTransport {
+        // Encode to CBOR in the current task context to avoid sending non-Sendable across actors
+        let optionsCbor = try CodableCBOREncoder().encode(options)
         return try await keys.createTransportHandle(optionsCbor: optionsCbor)
     }
     
@@ -4527,9 +4713,9 @@ public actor QuicTransport {
     }
     
     /// Poll for events
-    /// - Returns: Event data if available, nil if no events
+    /// - Returns: Event if available, nil if no events
     /// - Throws: FFIError if polling fails
-    public func pollEvent() async throws -> Data? {
+    public func pollEvent() async throws -> TransportEvent? {
         let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.pollEvent() - Polling for events")
         // Copy handle to local to avoid capturing actor state in closures
@@ -4555,16 +4741,28 @@ public actor QuicTransport {
             return nil
         }
         
-        logger.debug("QuicTransport.pollEvent() - Event available, copying data")
-        return try copyBytesAndFree(outEvent, outLen)
+        logger.debug("QuicTransport.pollEvent() - Event available, decoding")
+        let data = try copyBytesAndFree(outEvent, outLen)
+        let prefixHex = data.prefix(64).map { String(format: "%02x", $0) }.joined()
+        logger.trace("QuicTransport.pollEvent() - CBOR length=\(data.count) bytes, first64=\(prefixHex)")
+        let decoder = CodableCBORDecoder()
+        do {
+            let event = try decoder.decode(TransportEvent.self, from: data)
+            logger.trace("QuicTransport.pollEvent() - Decoded TransportEvent type=\(event.type) requestId=\(event.requestId ?? "nil") correlationId=\(event.correlationId ?? "nil") payloadLen=\(event.payload?.count ?? 0)")
+            return event
+        } catch {
+            logger.error("QuicTransport.pollEvent() - CBOR decode failed: \(error)")
+            throw error
+        }
     }
     
     /// Connect to a peer
-    /// - Parameter peerInfoCbor: Peer information in CBOR format
+    /// - Parameter peerInfo: Peer information (encoded to CBOR internally)
     /// - Throws: FFIError if connection fails
-    public func connectPeer(peerInfoCbor: Data) async throws {
+    public func connectPeer(peerInfo: PeerInfo) async throws {
         let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.connectPeer() - Connecting to peer")
+        let peerInfoCbor = try CodableCBOREncoder().encode(peerInfo)
         logger.debug("QuicTransport.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
@@ -4642,11 +4840,12 @@ public actor QuicTransport {
     }
     
     /// Update local node information
-    /// - Parameter nodeInfoCbor: Node information in CBOR format
+    /// - Parameter nodeInfo: Node information (encoded to CBOR internally)
     /// - Throws: FFIError if update fails
-    public func updateLocalNodeInfo(nodeInfoCbor: Data) async throws {
+    public func updateLocalNodeInfo(nodeInfo: NodeInfo) async throws {
         let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.updateLocalNodeInfo() - Updating local node info")
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
         logger.debug("QuicTransport.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
@@ -4669,11 +4868,12 @@ public actor QuicTransport {
     }
     
     /// Send a request
-    /// - Parameter requestCbor: Request data in CBOR format
+    /// - Parameter request: Request parameters (encoded to CBOR internally)
     /// - Throws: FFIError if request fails
-    public func request(requestCbor: Data) async throws {
+    public func request(_ request: TransportRequestParams) async throws {
         let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.request() - Sending request")
+        let requestCbor = try CodableCBOREncoder().encode(request)
         logger.debug("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
@@ -4696,11 +4896,12 @@ public actor QuicTransport {
     }
     
     /// Publish an event
-    /// - Parameter publishCbor: Event data in CBOR format
+    /// - Parameter publish: Publish parameters (encoded to CBOR internally)
     /// - Throws: FFIError if publish fails
-    public func publish(publishCbor: Data) async throws {
+    public func publish(_ publish: TransportPublishParams) async throws {
         let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.publish() - Publishing event")
+        let publishCbor = try CodableCBOREncoder().encode(publish)
         logger.debug("QuicTransport.publish() - Publish CBOR length: \(publishCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
@@ -4723,11 +4924,12 @@ public actor QuicTransport {
     }
     
     /// Complete a request
-    /// - Parameter completeCbor: Completion data in CBOR format
+    /// - Parameter complete: Completion parameters (encoded to CBOR internally)
     /// - Throws: FFIError if completion fails
-    public func completeRequest(completeCbor: Data) async throws {
+    public func completeRequest(_ complete: TransportCompleteRequestParams) async throws {
         let logger = RunarLogger(component: .custom)
         logger.trace("QuicTransport.completeRequest() - Completing request")
+        let completeCbor = try CodableCBOREncoder().encode(complete)
         logger.trace("QuicTransport.completeRequest() - Complete CBOR length: \(completeCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle

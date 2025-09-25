@@ -14,16 +14,7 @@ import XCTest
 /// - Connection state management
 @testable import SwiftFFI
 
-/// Transport event structure for CBOR decoding
-struct TransportEvent: Codable {
-    let type: String
-    let requestId: String?
-
-    enum CodingKeys: String, CodingKey {
-        case type
-        case requestId = "request_id"
-    }
-}
+// Use the TransportEvent from SwiftFFI instead of defining our own
 
 @MainActor
 final class FFIQuicTransportTest: XCTestCase {
@@ -61,10 +52,9 @@ final class FFIQuicTransportTest: XCTestCase {
         
         // Step 6: Create transport options - exactly like Rust
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Step 7: Create transport A and start it - exactly like Rust
-        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: optionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
         try await transportA.start()
         
         // Step 8: Get local address for transport A - exactly like Rust
@@ -72,7 +62,7 @@ final class FFIQuicTransportTest: XCTestCase {
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
         
         // Step 9: Create transport B and start it - exactly like Rust
-        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: optionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
         try await transportB.start()
         
         // Step 10: Get public key for node A - exactly like Rust
@@ -83,47 +73,30 @@ final class FFIQuicTransportTest: XCTestCase {
         
         // Step 12: Create peer info for connection - exactly like Rust
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
-        let peerInfoCbor = try await CBORHelper.encodePeerInfo(peerInfo)
         
         // Step 13: Connect transport B to transport A - exactly like Rust
-        try await transportB.connectPeer(peerInfoCbor: peerInfoCbor)
+        try await transportB.connectPeer(peerInfo: peerInfo)
         
         // Step 14: Create request parameters - exactly like Rust
         let requestParams = TransportRequestParams(
             path: "/echo",
             correlationId: "c1",
-            payload: Array("hello".utf8),
+            payload: Data("hello".utf8),
             destPeerId: peerId,
             networkPublicKey: nil,
             profilePublicKeys: []
         )
-        let requestParamsCbor = try await CBORHelper.encodeTransportRequestParams(requestParams)
         
         // Step 15: Send request from transport B - exactly like Rust
-        try await transportB.request(requestCbor: requestParamsCbor)
+        try await transportB.request(requestParams)
         
         // Step 16: Handle request on A then complete - exactly like Rust
         var requestId: String? = nil
         for _ in 0..<50 {
-            if let eventData = try await transportA.pollEvent() {
-                // Parse event using CBOR like Rust does
-                do {
-                    let decoder = CodableCBORDecoder()
-                    let event = try decoder.decode(TransportEvent.self, from: eventData)
-                    
-                    if event.type == "RequestReceived" {
-                        requestId = event.requestId
-                        break
-                    }
-                } catch {
-                    // Try JSON as fallback (like Rust does with Value::Map)
-                    if let event = try? JSONSerialization.jsonObject(with: eventData) as? [String: Any] {
-                        if let type = event["type"] as? String, type == "RequestReceived",
-                           let reqId = event["request_id"] as? String {
-                            requestId = reqId
-                            break
-                        }
-                    }
+            if let event = try await transportA.pollEvent() {
+                if event.type == "RequestReceived" {
+                    requestId = event.requestId
+                    break
                 }
             }
             try await Task.sleep(nanoseconds: UInt64(50 * 1_000_000)) // 50ms like Rust
@@ -134,32 +107,19 @@ final class FFIQuicTransportTest: XCTestCase {
         // Step 17: Complete the request on transport A - exactly like Rust
         let completeParams = TransportCompleteRequestParams(
             requestId: requestId!,
-            responsePayload: Array("world".utf8),
+            responsePayload: Data("world".utf8),
             profilePublicKeys: []
         )
-        let completeParamsCbor = try await CBORHelper.encodeTransportCompleteRequestParams(completeParams)
         
-        try await transportA.completeRequest(completeCbor: completeParamsCbor)
+        try await transportA.completeRequest(completeParams)
         
         // Step 18: Expect response on B - exactly like Rust
         var gotResponse = false
         for _ in 0..<50 {
-            if let eventData = try await transportB.pollEvent() {
-                do {
-                    let decoder = CodableCBORDecoder()
-                    let event = try decoder.decode(TransportEvent.self, from: eventData)
-                    
-                    if event.type == "ResponseReceived" {
-                        gotResponse = true
-                        break
-                    }
-                } catch {
-                    // Try JSON as fallback (like Rust does with Value::Map)
-                    if let event = try? JSONSerialization.jsonObject(with: eventData) as? [String: Any],
-                       let type = event["type"] as? String, type == "ResponseReceived" {
-                        gotResponse = true
-                        break
-                    }
+            if let event = try await transportB.pollEvent() {
+                if event.type == "ResponseReceived" {
+                    gotResponse = true
+                    break
                 }
             }
             try await Task.sleep(nanoseconds: UInt64(50 * 1_000_000)) // 50ms like Rust
@@ -196,10 +156,9 @@ final class FFIQuicTransportTest: XCTestCase {
         
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Create transport
-        let transport = try await QuicTransport.create(keys: keys, optionsCbor: optionsCbor)
+        let transport = try await QuicTransport.create(keys: keys, options: transportOptions)
         
         // Test start/stop idempotence - multiple starts should not fail
         try await transport.start()
@@ -249,10 +208,9 @@ final class FFIQuicTransportTest: XCTestCase {
         
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Create transport A
-        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: optionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
         try await transportA.start()
         
         // Get local address for transport A
@@ -260,7 +218,7 @@ final class FFIQuicTransportTest: XCTestCase {
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
         
         // Create transport B
-        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: optionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
         try await transportB.start()
         
         // Get public key for node A
@@ -271,10 +229,9 @@ final class FFIQuicTransportTest: XCTestCase {
         
         // Create peer info for connection
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
-        let peerInfoCbor = try await CBORHelper.encodePeerInfo(peerInfo)
         
         // Connect transport B to transport A
-        try await transportB.connectPeer(peerInfoCbor: peerInfoCbor)
+        try await transportB.connectPeer(peerInfo: peerInfo)
         
         // Wait for connection to establish
         try await Task.sleep(nanoseconds: UInt64(100 * 1_000_000)) // 100ms
@@ -312,10 +269,9 @@ final class FFIQuicTransportTest: XCTestCase {
         
         // Create transport options
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
-        let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Create transport
-        let transport = try await QuicTransport.create(keys: keys, optionsCbor: optionsCbor)
+        let transport = try await QuicTransport.create(keys: keys, options: transportOptions)
         XCTAssertNotNil(transport, "Transport should be created successfully")
         
         // Start transport
