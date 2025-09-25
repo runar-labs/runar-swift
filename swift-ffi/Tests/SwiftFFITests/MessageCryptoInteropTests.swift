@@ -175,6 +175,99 @@ final class MessageCryptoInteropTests: XCTestCase {
         XCTAssertNotEqual(decryptedData2, decryptedData, "Different data should produce different results")
     }
 
+    func testComprehensiveNetworkEncryptionWorkflow() async throws {
+        // Test comprehensive network encryption workflow - matching Rust ffi_keys_state_test.rs
+        // This test covers the complete network encryption flow from mobile to node
+        
+        print("🔐 Testing comprehensive network encryption workflow...")
+        
+        // Step 1: Generate network data key on mobile side
+        let networkDataKey = try await mobileKeys.generateNetworkDataKey()
+        XCTAssertFalse(networkDataKey.isEmpty, "Network data key should be generated")
+        print("   ✅ Network data key generated: \(networkDataKey.count) bytes")
+        
+        // Step 2: Get node agreement public key for creating network key message
+        let nodeAgreementPublicKey = try await nodeKeys.getNodeAgreementPublicKey()
+        XCTAssertFalse(nodeAgreementPublicKey.isEmpty, "Node agreement public key should be available")
+        print("   ✅ Node agreement public key retrieved: \(nodeAgreementPublicKey.count) bytes")
+        
+        // Step 3: Create network key message using mobile keys
+        let networkKeyMessage = try await mobileKeys.createNetworkKeyMessage(
+            networkPublicKey: networkDataKey, 
+            nodeAgreementPublicKey: nodeAgreementPublicKey
+        )
+        XCTAssertFalse(networkKeyMessage.isEmpty, "Network key message should be created")
+        print("   ✅ Network key message created: \(networkKeyMessage.count) bytes")
+        
+        // Step 4: Install network key message on node side
+        try await nodeKeys.installNetworkKey(networkKeyMessage)
+        print("   ✅ Network key message installed on node")
+        
+        // Step 5: Test multiple network encryption scenarios
+        let testDataSets = [
+            ("Simple text", Data("Hello network world!".utf8)),
+            ("JSON data", Data("{\"type\":\"network\",\"data\":\"test\"}".utf8)),
+            ("Binary data", Data([0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD])),
+            ("Large data", Data(repeating: 0x42, count: 1024 * 10)) // 10KB
+        ]
+        
+        for (dataType, testData) in testDataSets {
+            print("   🔄 Testing \(dataType) encryption...")
+            
+            // Encrypt data for network using node keys
+            let encryptedData = try await nodeKeys.encryptForNetwork(
+                data: testData, 
+                networkPublicKey: networkDataKey
+            )
+            XCTAssertFalse(encryptedData.isEmpty, "\(dataType) encrypted data should not be empty")
+            XCTAssertNotEqual(encryptedData, testData, "\(dataType) encrypted data should be different from original")
+            
+            // Decrypt network data using node keys
+            let decryptedData = try await nodeKeys.decryptNetworkData(encryptedEnvelope: encryptedData)
+            XCTAssertEqual(decryptedData, testData, "\(dataType) decrypted data should match original")
+            
+            print("   ✅ \(dataType) encryption/decryption successful")
+        }
+        
+        // Step 6: Test network encryption with different network keys
+        let networkDataKey2 = try await mobileKeys.generateNetworkDataKey()
+        XCTAssertNotEqual(networkDataKey, networkDataKey2, "Different network keys should be generated")
+        
+        // Create and install second network key
+        let networkKeyMessage2 = try await mobileKeys.createNetworkKeyMessage(
+            networkPublicKey: networkDataKey2, 
+            nodeAgreementPublicKey: nodeAgreementPublicKey
+        )
+        try await nodeKeys.installNetworkKey(networkKeyMessage2)
+        
+        // Test encryption with second network key
+        let testData = Data("Second network key test".utf8)
+        let encryptedData2 = try await nodeKeys.encryptForNetwork(
+            data: testData, 
+            networkPublicKey: networkDataKey2
+        )
+        let decryptedData2 = try await nodeKeys.decryptNetworkData(encryptedEnvelope: encryptedData2)
+        XCTAssertEqual(decryptedData2, testData, "Second network key encryption should work")
+        
+        print("   ✅ Multiple network keys tested successfully")
+        
+        // Step 7: Test network encryption error handling
+        let invalidNetworkKey = Data("invalid network key".utf8)
+        
+        do {
+            _ = try await nodeKeys.encryptForNetwork(
+                data: Data("test".utf8), 
+                networkPublicKey: invalidNetworkKey
+            )
+            XCTFail("Should have thrown an error for invalid network key")
+        } catch {
+            XCTAssertTrue(error is FFIError, "Should throw FFIError for invalid network key")
+            print("   ✅ Invalid network key properly rejected")
+        }
+        
+        print("🎉 Comprehensive network encryption workflow completed successfully!")
+    }
+
     // MARK: - Complete Message Exchange Flow
 
     func testCompleteMessageExchangeFlow() async throws {
@@ -201,8 +294,42 @@ final class MessageCryptoInteropTests: XCTestCase {
         let mobileToNodeDecrypted = try await nodeKeys.decryptMessageFromMobile(encryptedData: mobileToNodeEncrypted)
         XCTAssertEqual(mobileToNodeDecrypted, testData, "Mobile to node decrypted data should match original")
         
-        // Step 5: Test network encryption (skipped - requires complex setup)
-        // Network encryption requires proper key installation and setup
+        // Step 5: Test network encryption - complete workflow
+        // This tests the full network encryption flow: mobile generates network key,
+        // creates network key message, node installs it, then encrypts/decrypts data
+        
+        // Generate network data key on mobile side
+        let networkDataKey = try await mobileKeys.generateNetworkDataKey()
+        XCTAssertFalse(networkDataKey.isEmpty, "Network data key should be generated")
+        
+        // Get node agreement public key for creating network key message
+        let nodeAgreementPublicKeyForNetwork = try await nodeKeys.getNodeAgreementPublicKey()
+        XCTAssertFalse(nodeAgreementPublicKeyForNetwork.isEmpty, "Node agreement public key should be available")
+        
+        // Create network key message using mobile keys
+        let networkKeyMessage = try await mobileKeys.createNetworkKeyMessage(
+            networkPublicKey: networkDataKey, 
+            nodeAgreementPublicKey: nodeAgreementPublicKeyForNetwork
+        )
+        XCTAssertFalse(networkKeyMessage.isEmpty, "Network key message should be created")
+        
+        // Install network key message on node side
+        try await nodeKeys.installNetworkKey(networkKeyMessage)
+        
+        // Test encrypting data for network using node keys
+        let networkTestData = Data("Network encryption test data".utf8)
+        let networkEncryptedData = try await nodeKeys.encryptForNetwork(
+            data: networkTestData, 
+            networkPublicKey: networkDataKey
+        )
+        XCTAssertFalse(networkEncryptedData.isEmpty, "Network encrypted data should not be empty")
+        XCTAssertNotEqual(networkEncryptedData, networkTestData, "Network encrypted data should be different from original")
+        
+        // Test decrypting network data using node keys
+        let networkDecryptedData = try await nodeKeys.decryptNetworkData(encryptedEnvelope: networkEncryptedData)
+        XCTAssertEqual(networkDecryptedData, networkTestData, "Network decrypted data should match original")
+        
+        print("✅ Complete message exchange flow tested successfully - including network encryption")
     }
 
     // MARK: - Error Handling Tests
