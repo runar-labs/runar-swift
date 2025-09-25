@@ -4727,8 +4727,8 @@ public actor QuicTransport {
     /// - Throws: FFIError if completion fails
     public func completeRequest(completeCbor: Data) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.completeRequest() - Completing request")
-        logger.debug("QuicTransport.completeRequest() - Complete CBOR length: \(completeCbor.count)")
+        logger.trace("QuicTransport.completeRequest() - Completing request")
+        logger.trace("QuicTransport.completeRequest() - Complete CBOR length: \(completeCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -4737,7 +4737,7 @@ public actor QuicTransport {
                 return rn_transport_complete_request(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, completeCbor.count, errPtr)
             }
         }
-        logger.debug("QuicTransport.completeRequest() - FFI call completed, code: \(code)")
+        logger.trace("QuicTransport.completeRequest() - FFI call completed, code: \(code)")
         if let error = err { 
             logger.error("QuicTransport.completeRequest() - FFI error: \(error)")
             throw error 
@@ -4746,7 +4746,7 @@ public actor QuicTransport {
             logger.error("QuicTransport.completeRequest() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to complete request") 
         }
-        logger.info("QuicTransport.completeRequest() - Request completed successfully")
+        logger.debug("QuicTransport.completeRequest() - Request completed successfully")
     }
     
     /// Stop the transport
