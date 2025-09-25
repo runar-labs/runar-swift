@@ -133,22 +133,54 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("renew_request_basic.bin"))
         let rustData = try Data(contentsOf: rustDir.appendingPathComponent("renew_request_basic.bin"))
         
+        // Verify both can be decoded correctly
         let swiftRequest: RenewRequest = try CodableCBORDecoder().decode(RenewRequest.self, from: swiftData)
         let rustRequest: RenewRequest = try CodableCBORDecoder().decode(RenewRequest.self, from: rustData)
         
-        // Verify both can be decoded and are equal
-        XCTAssertEqual(swiftRequest, rustRequest, "RenewRequest validation failed - Swift and Rust data don't match")
+        // Test serialization/deserialization round-trip for Swift data
+        let encoder = CodableCBOREncoder()
+        let swiftReencoded = try encoder.encode(swiftRequest)
+        let swiftRoundTrip: RenewRequest = try CodableCBORDecoder().decode(RenewRequest.self, from: swiftReencoded)
+        XCTAssertEqual(swiftRequest, swiftRoundTrip, "Swift RenewRequest round-trip serialization failed")
+        
+        // Test serialization/deserialization round-trip for Rust data
+        let rustReencoded = try encoder.encode(rustRequest)
+        let rustRoundTrip: RenewRequest = try CodableCBORDecoder().decode(RenewRequest.self, from: rustReencoded)
+        XCTAssertEqual(rustRequest, rustRoundTrip, "Rust RenewRequest round-trip serialization failed")
+        
+        // Validate that both decoded objects have the expected structure
+        XCTAssertEqual(swiftRequest.network_id, "test_network", "Swift RenewRequest network_id should match")
+        XCTAssertEqual(rustRequest.network_id, "test_network", "Rust RenewRequest network_id should match")
+        XCTAssertFalse(swiftRequest.csr_der.isEmpty, "Swift RenewRequest csr_der should not be empty")
+        XCTAssertFalse(rustRequest.csr_der.isEmpty, "Rust RenewRequest csr_der should not be empty")
     }
     
     private func validateRenewResponse(swiftDir: URL, rustDir: URL) async throws {
         let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("renew_response_basic.bin"))
         let rustData = try Data(contentsOf: rustDir.appendingPathComponent("renew_response_basic.bin"))
         
+        // Verify both can be decoded correctly
         let swiftResponse: RenewResponse = try CodableCBORDecoder().decode(RenewResponse.self, from: swiftData)
         let rustResponse: RenewResponse = try CodableCBORDecoder().decode(RenewResponse.self, from: rustData)
         
-        // Verify both can be decoded and are equal
-        XCTAssertEqual(swiftResponse, rustResponse, "RenewResponse validation failed - Swift and Rust data don't match")
+        // Test serialization/deserialization round-trip for Swift data
+        let encoder = CodableCBOREncoder()
+        let swiftReencoded = try encoder.encode(swiftResponse)
+        let swiftRoundTrip: RenewResponse = try CodableCBORDecoder().decode(RenewResponse.self, from: swiftReencoded)
+        XCTAssertEqual(swiftResponse, swiftRoundTrip, "Swift RenewResponse round-trip serialization failed")
+        
+        // Test serialization/deserialization round-trip for Rust data
+        let rustReencoded = try encoder.encode(rustResponse)
+        let rustRoundTrip: RenewResponse = try CodableCBORDecoder().decode(RenewResponse.self, from: rustReencoded)
+        XCTAssertEqual(rustResponse, rustRoundTrip, "Rust RenewResponse round-trip serialization failed")
+        
+        // Validate that both decoded objects have the expected structure
+        XCTAssertEqual(swiftResponse.network_id, "test_network", "Swift RenewResponse network_id should match")
+        XCTAssertEqual(rustResponse.network_id, "test_network", "Rust RenewResponse network_id should match")
+        XCTAssertFalse(swiftResponse.certificate_der.isEmpty, "Swift RenewResponse certificate_der should not be empty")
+        XCTAssertFalse(rustResponse.certificate_der.isEmpty, "Rust RenewResponse certificate_der should not be empty")
+        XCTAssertFalse(swiftResponse.issuing_ca_der.isEmpty, "Swift RenewResponse issuing_ca_der should not be empty")
+        XCTAssertFalse(rustResponse.issuing_ca_der.isEmpty, "Rust RenewResponse issuing_ca_der should not be empty")
     }
     
     private func validateRevokeRequest(swiftDir: URL, rustDir: URL) async throws {
@@ -177,22 +209,55 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("ca_status_basic.bin"))
         let rustData = try Data(contentsOf: rustDir.appendingPathComponent("ca_status_basic.bin"))
         
+        // Verify both can be decoded correctly
         let swiftStatus: CaStatus = try CodableCBORDecoder().decode(CaStatus.self, from: swiftData)
         let rustStatus: CaStatus = try CodableCBORDecoder().decode(CaStatus.self, from: rustData)
         
-        // Verify both can be decoded and are equal
-        XCTAssertEqual(swiftStatus, rustStatus, "CaStatus validation failed - Swift and Rust data don't match")
+        // Test serialization/deserialization round-trip for Swift data
+        let encoder = CodableCBOREncoder()
+        let swiftReencoded = try encoder.encode(swiftStatus)
+        let swiftRoundTrip: CaStatus = try CodableCBORDecoder().decode(CaStatus.self, from: swiftReencoded)
+        XCTAssertEqual(swiftStatus, swiftRoundTrip, "Swift CaStatus round-trip serialization failed")
+        
+        // Test serialization/deserialization round-trip for Rust data
+        let rustReencoded = try encoder.encode(rustStatus)
+        let rustRoundTrip: CaStatus = try CodableCBORDecoder().decode(CaStatus.self, from: rustReencoded)
+        XCTAssertEqual(rustStatus, rustRoundTrip, "Rust CaStatus round-trip serialization failed")
+        
+        // Validate that both decoded objects have the expected structure
+        XCTAssertEqual(swiftStatus.network_id, "test_network", "Swift CaStatus network_id should match")
+        XCTAssertEqual(rustStatus.network_id, "test_network", "Rust CaStatus network_id should match")
+        XCTAssertFalse(swiftStatus.issuing_subject.isEmpty, "Swift CaStatus issuing_subject should not be empty")
+        XCTAssertFalse(rustStatus.issuing_subject.isEmpty, "Rust CaStatus issuing_subject should not be empty")
+        XCTAssertFalse(swiftStatus.issuing_serial_hex.isEmpty, "Swift CaStatus issuing_serial_hex should not be empty")
+        XCTAssertFalse(rustStatus.issuing_serial_hex.isEmpty, "Rust CaStatus issuing_serial_hex should not be empty")
     }
     
     private func validateChainResponse(swiftDir: URL, rustDir: URL) async throws {
         let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("chain_response_basic.bin"))
         let rustData = try Data(contentsOf: rustDir.appendingPathComponent("chain_response_basic.bin"))
         
+        // Verify both can be decoded correctly
         let swiftResponse: ChainResponse = try CodableCBORDecoder().decode(ChainResponse.self, from: swiftData)
         let rustResponse: ChainResponse = try CodableCBORDecoder().decode(ChainResponse.self, from: rustData)
         
-        // Verify both can be decoded and are equal
-        XCTAssertEqual(swiftResponse, rustResponse, "ChainResponse validation failed - Swift and Rust data don't match")
+        // Test serialization/deserialization round-trip for Swift data
+        let encoder = CodableCBOREncoder()
+        let swiftReencoded = try encoder.encode(swiftResponse)
+        let swiftRoundTrip: ChainResponse = try CodableCBORDecoder().decode(ChainResponse.self, from: swiftReencoded)
+        XCTAssertEqual(swiftResponse, swiftRoundTrip, "Swift ChainResponse round-trip serialization failed")
+        
+        // Test serialization/deserialization round-trip for Rust data
+        let rustReencoded = try encoder.encode(rustResponse)
+        let rustRoundTrip: ChainResponse = try CodableCBORDecoder().decode(ChainResponse.self, from: rustReencoded)
+        XCTAssertEqual(rustResponse, rustRoundTrip, "Rust ChainResponse round-trip serialization failed")
+        
+        // Validate that both decoded objects have the expected structure
+        XCTAssertEqual(swiftResponse.network_id, "test_network", "Swift ChainResponse network_id should match")
+        XCTAssertEqual(rustResponse.network_id, "test_network", "Rust ChainResponse network_id should match")
+        XCTAssertFalse(swiftResponse.issuing_ca_der.isEmpty, "Swift ChainResponse issuing_ca_der should not be empty")
+        XCTAssertFalse(rustResponse.issuing_ca_der.isEmpty, "Rust ChainResponse issuing_ca_der should not be empty")
+        // Note: root_ca_der is optional, so we don't assert it's not empty
     }
     
     

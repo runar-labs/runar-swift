@@ -9,75 +9,10 @@ GOAL #1 - DO an in depth detailed systematic methodicaly analisys (check all the
 We need a robust solution that does not use @unchecked - we have solved this for other types int eh FFI package. so check how those are handled.. CA node and etc.
 
 
+GOAL #2 - Implement the selected design  - implement robust solutions. n0o hacks. no shortcuts. like @unchecked . must be robust and folow swift 6 best practices.
 
-GOAL #2 - Implement the selected design (depends on goal 1) - implement robust solutions. n0o hacks. no shortcuts. like @unchecked . must be robust and folow swift 6 best practices.
-
-## SOLUTION: Actor-Based Approach
-
-### Analysis Results
-After detailed analysis, the root cause of `@unchecked Sendable` usage is that these classes contain `UnsafeMutableRawPointer` which is not `Sendable`. The FFI handles are inherently thread-safe (Rust side handles concurrency), but Swift's concurrency system doesn't know this.
-
-**Current problematic types:**
-1. `SendableHandle: @unchecked Sendable` - Wrapper for UnsafeMutableRawPointer
-2. `TransportHandle: @unchecked Sendable` - Class wrapping FFI transport handle  
-3. `DiscoveryHandle: @unchecked Sendable` - Class wrapping FFI discovery handle
-4. `CAClient: Sendable` - Uses SendableHandle internally (also problematic)
-
-**Key insight:** The existing `NodeKeyManager` and `MobileKeyManager` are already actors and handle this correctly. We need to extend this pattern to all handle-based types.
-
-### Selected Solution: Complete Actor Migration
-
-**Rationale:**
-- Actors provide proper isolation and thread safety by design
-- No need for `@unchecked Sendable` anywhere
-- Consistent with existing key manager pattern
-- Swift 6 compliant and follows best practices
-- All methods are already async, so minimal API changes
-
-### Types to Convert
-
-1. **TransportHandle** (class → actor)
-   - Current: `public class TransportHandle: @unchecked Sendable`
-   - New: `public actor TransportHandle`
-   - Methods: Already async, no changes needed
-
-2. **DiscoveryHandle** (class → actor)  
-   - Current: `public class DiscoveryHandle: @unchecked Sendable`
-   - New: `public actor DiscoveryHandle`
-   - Methods: Already async, no changes needed
-
-3. **CAClient** (class → actor)
-   - Current: `public final class CAClient: Sendable` (uses SendableHandle)
-   - New: `public actor CAClient`
-   - Methods: Already async, no changes needed
-
-4. **SendableHandle** (struct → remove entirely)
-   - Current: `struct SendableHandle: @unchecked Sendable`
-   - New: Remove completely, use direct `UnsafeMutableRawPointer` in actors
-
-5. **Update Key Managers** (remove SendableHandle usage)
-   - Current: `private let _handle: SendableHandle`
-   - New: `private let handle: UnsafeMutableRawPointer`
-
-### Implementation Strategy
-
-1. **Phase 1:** Remove `SendableHandle` and update key managers to use direct handles
-2. **Phase 2:** Convert `TransportHandle` to actor
-3. **Phase 3:** Convert `DiscoveryHandle` to actor  
-4. **Phase 4:** Convert `CAClient` to actor
-5. **Phase 5:** Update all factory methods and tests
-6. **Phase 6:** Verify no `@unchecked Sendable` usage remains
-
-### Benefits
-
-- ✅ Zero `@unchecked Sendable` usage
-- ✅ Proper actor isolation and thread safety
-- ✅ Swift 6 compliant
-- ✅ Consistent with existing patterns
-- ✅ No API changes (methods already async)
-- ✅ Follows established FFI concurrency guidelines
-
----
+NO BACKWARED COMPATIBILITUY. this is full complewte refactory. this is a new codebase. no legacy code. keep code clean and aligned with final design.
+ 
 
 ## FINAL ROBUST DESIGN (Swift 6, zero `@unchecked`)
 

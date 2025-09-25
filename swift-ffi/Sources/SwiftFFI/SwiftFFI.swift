@@ -33,16 +33,96 @@ internal final class HandleLockRegistry {
     }
 }
 
-// MARK: - Sendable Handle Wrapper
+// MARK: - Handle Registry for Tokenized Handoff
 
-/// A thread-safe wrapper for FFI handles
-struct SendableHandle: @unchecked Sendable {
-    let handle: UnsafeMutableRawPointer
+/// Handle kinds for validation in the registry
+public enum HandleKind: Sendable, Equatable {
+    case transport
+    case discovery
+    case caClient
+    case keys
+}
+
+/// Opaque token for handle handoff between actors
+public struct HandleToken: Sendable, Equatable, Hashable {
+    let id: UUID
     
-    init(_ handle: UnsafeMutableRawPointer) {
-        self.handle = handle
+    public init() {
+        self.id = UUID()
+    }
+    
+    private init(id: UUID) {
+        self.id = id
     }
 }
+
+/// Thread-safe registry for mediating ownership transfer using opaque tokens
+/// This avoids sending non-Sendable pointers across actor boundaries
+internal final class HandleRegistry {
+    nonisolated(unsafe) static let shared = HandleRegistry()
+    
+    private let lock = NSLock()
+    private var registry: [HandleToken: (HandleKind, UnsafeMutableRawPointer)] = [:]
+    
+    private init() {}
+    
+    /// Insert a handle into the registry and return a token for claiming it
+    /// - Parameters:
+    ///   - kind: The type of handle being registered
+    ///   - pointer: The raw pointer to register
+    /// - Returns: A token that can be used to claim this handle exactly once
+    func insert(kind: HandleKind, pointer: UnsafeMutableRawPointer) -> HandleToken {
+        let token = HandleToken()
+        lock.lock()
+        defer { lock.unlock() }
+        
+        // Validate no token collision (practically impossible with UUID, but still check)
+        guard registry[token] == nil else {
+            fatalError("HandleRegistry: Token collision detected - this should never happen with UUID")
+        }
+        
+        registry[token] = (kind, pointer)
+        return token
+    }
+    
+    /// Claim a handle from the registry using its token
+    /// - Parameters:
+    ///   - kind: The expected type of handle
+    ///   - token: The token obtained from insert
+    /// - Returns: The raw pointer that was registered
+    /// - Throws: HandleRegistryError if the token is invalid, kind mismatches, or already claimed
+    func claim(kind: HandleKind, token: HandleToken) throws -> UnsafeMutableRawPointer {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard let (registeredKind, pointer) = registry.removeValue(forKey: token) else {
+            throw HandleRegistryError.invalidToken
+        }
+        
+        guard registeredKind == kind else {
+            throw HandleRegistryError.kindMismatch(expected: kind, actual: registeredKind)
+        }
+        
+        return pointer
+    }
+    
+    /// Revoke a token if it exists (best-effort cleanup on failures)
+    /// - Parameter token: The token to revoke
+    func revokeIfPresent(token: HandleToken) {
+        lock.lock()
+        defer { lock.unlock() }
+        registry.removeValue(forKey: token)
+    }
+}
+
+/// Errors for handle registry operations
+public enum HandleRegistryError: Error, Sendable {
+    case invalidToken
+    case kindMismatch(expected: HandleKind, actual: HandleKind)
+    case alreadyClaimed
+}
+
+// MARK: - Sendable Handle Wrapper (REMOVED - replaced with HandleRegistry tokenized handoff)
 
 // MARK: - Key Manager Protocols
 
@@ -2738,10 +2818,7 @@ public class CA {
 /// and NodeOnly protocols to provide a complete node key management interface.
 public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     /// The underlying Rust FFI handle
-    private let _handle: SendableHandle
-    
-    /// Access to the FFI handle
-    var handle: UnsafeMutableRawPointer { _handle.handle }
+    private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
 
 
     /// Initialize a new node key manager
@@ -2757,7 +2834,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         }
         if let error = err { throw error }
         guard code == 0, let handle = out else { throw FFIError.operationFailed("Failed to create keys handle") }
-        self._handle = SendableHandle(handle)
+        self.handle = handle
 
         // Initialize as node
         // Copy handle to local to avoid capturing actor state in closures
@@ -2770,7 +2847,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     deinit {
-        rn_keys_free(_handle.handle)
+        rn_keys_free(handle)
     }
 
     // MARK: - EnvelopeCryptoCommon Implementation
@@ -3189,7 +3266,8 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         }
         let nodeHandle = self.handle
         let clientHandle = try ffi_create_ca_client(nodeHandle, configCbor: cbor)
-        return CAClient(handle: clientHandle)
+        let token = HandleRegistry.shared.insert(kind: .caClient, pointer: clientHandle)
+        return try CAClient(token: token)
     }
     
     /// Create a discovery handle with this node's handle
@@ -3199,7 +3277,8 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 
         // Call nonisolated helper - no suspension during FFI
         let discoveryHandle = try ffi_create_discovery(handle, optionsCbor: optionsCbor)
-        return DiscoveryHandle(handle: discoveryHandle)
+        let token = HandleRegistry.shared.insert(kind: .discovery, pointer: discoveryHandle)
+        return try DiscoveryHandle(token: token)
     }
     
     /// Create a transport handle with this node's handle
@@ -3209,7 +3288,8 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 
         // Call nonisolated helper - no suspension during FFI
         let transportHandle = try ffi_create_transport(handle, optionsCbor: optionsCbor)
-        return TransportHandle(handle: transportHandle)
+        let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
+        return try TransportHandle(token: token)
     }
 }
 
@@ -3220,10 +3300,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 /// and MobileOnly protocols to provide a complete mobile key management interface.
 public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     /// The underlying Rust FFI handle
-    private let _handle: SendableHandle
-    
-    /// Access to the FFI handle
-    var handle: UnsafeMutableRawPointer { _handle.handle }
+    private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     
 
     /// Initialize a new mobile key manager
@@ -3239,7 +3316,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         }
         if let error = err { throw error }
         guard code == 0, let handle = out else { throw FFIError.operationFailed("Failed to create keys handle") }
-        self._handle = SendableHandle(handle)
+        self.handle = handle
 
         // Initialize as mobile
         // Copy handle to local to avoid capturing actor state in closures
@@ -3252,7 +3329,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     }
 
     deinit {
-        rn_keys_free(_handle.handle)
+        rn_keys_free(handle)
     }
 
     // MARK: - EnvelopeCryptoCommon Implementation
@@ -3591,16 +3668,15 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
 
 // MARK: - CA Client Wrapper
 
-public final class CAClient: Sendable {
-    private let _handleWrapper: SendableHandle
-    var handle: UnsafeMutableRawPointer { _handleWrapper.handle }
+public actor CAClient {
+    private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     @MainActor private static var _liveCount: Int = 0
     @MainActor private static func _inc() { _liveCount += 1 }
     @MainActor private static func _dec() { _liveCount -= 1 }
 
     // Use NodeKeyManager factory to create instances; keep this internal
-    internal init(handle: UnsafeMutableRawPointer) {
-        self._handleWrapper = SendableHandle(handle)
+    public init(token: HandleToken) throws {
+        self.handle = try HandleRegistry.shared.claim(kind: .caClient, token: token)
         let logger = RunarLogger(component: .custom)
         let threadId = pthread_mach_thread_np(pthread_self())
         Task { @MainActor in CAClient._inc() }
@@ -3741,8 +3817,8 @@ public final class CAClient: Sendable {
     deinit {
         let logger = RunarLogger(component: .custom)
         let threadId = pthread_mach_thread_np(pthread_self())
-        logger.trace("CAClient.deinit: thread=\(threadId) clientHandle=\(_handleWrapper.handle)")
-        rn_transport_ca_client_free(_handleWrapper.handle)
+        logger.trace("CAClient.deinit: thread=\(threadId) clientHandle=\(handle)")
+        rn_transport_ca_client_free(handle)
         Task { @MainActor in CAClient._dec() }
     }
 }
@@ -4302,11 +4378,11 @@ public struct DiscoveryOptions: Codable {
 // MARK: - Discovery Handle
 
 /// Handle for Discovery operations
-public class DiscoveryHandle: @unchecked Sendable {
-    private let handle: UnsafeMutableRawPointer
+public actor DiscoveryHandle {
+    private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     
-    public init(handle: UnsafeMutableRawPointer) {
-        self.handle = handle
+    public init(token: HandleToken) throws {
+        self.handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
     }
     
     deinit {
@@ -4400,15 +4476,15 @@ public class DiscoveryHandle: @unchecked Sendable {
 // MARK: - Transport Handle
 
 /// Handle for QUIC Transport operations
-public class TransportHandle: @unchecked Sendable {
-    private let handle: UnsafeMutableRawPointer
+public actor TransportHandle {
+    private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     
-    public init(handle: UnsafeMutableRawPointer) {
-        self.handle = handle
+    public init(token: HandleToken) throws {
+        self.handle = try HandleRegistry.shared.claim(kind: .transport, token: token)
     }
     
     /// Get the raw handle for internal use
-    var rawHandle: UnsafeMutableRawPointer {
+    nonisolated var rawHandle: UnsafeMutableRawPointer {
         return handle
     }
     
@@ -4433,12 +4509,12 @@ public class TransportHandle: @unchecked Sendable {
         logger.info("TransportHandle.start() - Starting transport")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
-        logger.debug("TransportHandle.start() - Handle copied to local")
+        logger.trace("TransportHandle.start() - Handle copied to local")
         let (code, err) = withRnErrorCode { errPtr in
             logger.trace("TransportHandle.start() - About to call rn_transport_start")
             return rn_transport_start(transportHandle, errPtr)
         }
-        logger.debug("TransportHandle.start() - FFI call completed, code: \(code)")
+        logger.trace("TransportHandle.start() - FFI call completed, code: \(code)")
         if let error = err { 
             logger.error("TransportHandle.start() - FFI error: \(error)")
             throw error 
@@ -4810,6 +4886,7 @@ public enum FFITypesVectors {
             .write(to: base.appendingPathComponent("ca_error_response_basic.bin"))
     }
 }
+
 
 
 
