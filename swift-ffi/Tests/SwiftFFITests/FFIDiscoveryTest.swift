@@ -93,10 +93,16 @@ final class FFIDiscoveryTest: XCTestCase {
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
 
         // Create transports
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
+        let callbacksA = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA)
         try await transportA.start()
 
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
+        let callbacksB = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB)
         try await transportB.start()
 
 
@@ -207,10 +213,16 @@ final class FFIDiscoveryTest: XCTestCase {
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
 
         // Create transports
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
+        let callbacksA = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA)
         try await transportA.start()
 
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
+        let callbacksB = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB)
         try await transportB.start()
 
 

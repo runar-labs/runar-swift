@@ -3282,7 +3282,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
     
     /// Create a transport handle with this node's handle (typed API)
-    public func createTransportHandle(options: QuicTransportOptions) async throws -> QuicTransport {
+    public func createTransportHandle(options: QuicTransportOptions) async throws -> HandleToken {
         // Encode options to CBOR internally (pure encoding, no MainActor)
         let optionsCbor = try CodableCBOREncoder().encode(options)
         // Copy handle to local to avoid capturing actor state in closures
@@ -3291,19 +3291,19 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         let transportHandle = try ffi_create_transport(handle, optionsCbor: optionsCbor)
         let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
-        return try QuicTransport(token: token)
+        return token
     }
 
     /// Legacy internal: Create a transport handle from raw CBOR
     /// This remains internal to support typed API implementation
-    internal func createTransportHandle(optionsCbor: Data) async throws -> QuicTransport {
+    internal func createTransportHandle(optionsCbor: Data) async throws -> HandleToken {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
         let transportHandle = try ffi_create_transport(handle, optionsCbor: optionsCbor)
         let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
-        return try QuicTransport(token: token)
+        return token
     }
 }
 
@@ -4662,9 +4662,13 @@ public actor DiscoveryHandle {
 /// Handle for QUIC Transport operations
 public actor QuicTransport {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
+    private let callbacks: TransportCallbacks
+    private var pollingTask: Task<Void, Never>?
+    private var isPolling = false
     
-    public init(token: HandleToken) throws {
+    public init(token: HandleToken, callbacks: TransportCallbacks) throws {
         self.handle = try HandleRegistry.shared.claim(kind: .transport, token: token)
+        self.callbacks = callbacks
     }
     
     /// Get the raw handle for internal use
@@ -4676,16 +4680,18 @@ public actor QuicTransport {
         rn_transport_free(handle)
     }
     
-    /// Create a new transport instance with keys
+    /// Create a new transport instance with keys and callbacks
     /// - Parameters:
     ///   - keys: Keys handle instance
     ///   - options: Transport options (encoded to CBOR internally)
+    ///   - callbacks: Transport callbacks for handling events
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
-    public static func create(keys: NodeKeyManager, options: QuicTransportOptions) async throws -> QuicTransport {
+    public static func create(keys: NodeKeyManager, options: QuicTransportOptions, callbacks: TransportCallbacks) async throws -> QuicTransport {
         // Encode to CBOR in the current task context to avoid sending non-Sendable across actors
         let optionsCbor = try CodableCBOREncoder().encode(options)
-        return try await keys.createTransportHandle(optionsCbor: optionsCbor)
+        let token = try await keys.createTransportHandle(optionsCbor: optionsCbor)
+        return try QuicTransport(token: token, callbacks: callbacks)
     }
     
     /// Start the transport
@@ -4710,12 +4716,15 @@ public actor QuicTransport {
             throw FFIError.operationFailed("Failed to start transport") 
         }
         logger.info("QuicTransport.start() - Transport started successfully")
+        
+        // Start internal polling
+        startInternalPolling()
     }
     
-    /// Poll for events
+    /// Poll for events (internal use only)
     /// - Returns: Event if available, nil if no events
     /// - Throws: FFIError if polling fails
-    public func pollEvent() async throws -> TransportEvent? {
+    private func pollEvent() async throws -> TransportEvent? {
         let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.pollEvent() - Polling for events")
         // Copy handle to local to avoid capturing actor state in closures
@@ -4956,6 +4965,10 @@ public actor QuicTransport {
     public func stop() async throws {
         let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.stop() - Stopping transport")
+        
+        // Stop internal polling first
+        stopInternalPolling()
+        
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -4972,6 +4985,73 @@ public actor QuicTransport {
             throw FFIError.operationFailed("Failed to stop transport") 
         }
         logger.info("QuicTransport.stop() - Transport stopped successfully")
+    }
+    
+    /// Start internal polling for events
+    private func startInternalPolling() {
+        guard !isPolling else { return }
+        isPolling = true
+        
+        pollingTask = Task { [weak self] in
+            guard let self = self else { return }
+            
+            while await self.isPolling {
+                do {
+                    if let event = try await self.pollEvent() {
+                        await self.handleEvent(event)
+                    }
+                } catch {
+                    // Log error but continue polling
+                    let logger = RunarLogger(component: .custom)
+                    logger.error("QuicTransport internal polling error: \(error)")
+                }
+                
+                // Small delay to prevent busy waiting
+                try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            }
+        }
+    }
+    
+    /// Stop internal polling
+    private func stopInternalPolling() {
+        isPolling = false
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+    
+    /// Handle incoming events and call appropriate callbacks
+    private func handleEvent(_ event: TransportEvent) async {
+        let logger = RunarLogger(component: .custom)
+        logger.debug("QuicTransport.handleEvent() - Handling event: \(event.type)")
+        
+        switch event.type {
+        case "PeerConnected":
+            if let peerId = event.requestId {
+                callbacks.peerConnectedCallback?(peerId)
+            }
+            
+        case "PeerDisconnected":
+            if let peerId = event.requestId {
+                callbacks.peerDisconnectedCallback?(peerId)
+            }
+            
+        case "RequestReceived":
+            // Extract request details from event payload
+            if let requestId = event.requestId,
+               let payload = event.payload {
+                // For now, we'll use placeholder values - in a real implementation,
+                // these would be extracted from the event payload
+                let path = "/unknown" // Would be extracted from payload
+                let sourcePeerId = "unknown" // Would be extracted from payload
+                let correlationId = event.correlationId
+                
+                callbacks.requestCallback(requestId, path, Data(payload), sourcePeerId, correlationId)
+            }
+            
+        default:
+            // Call general event callback for other events
+            callbacks.eventCallback?(event)
+        }
     }
     
     /// Get local address
@@ -5011,6 +5091,47 @@ public actor QuicTransport {
         let address = String(cString: str)
         logger.debug("QuicTransport.getLocalAddr() - Local address: \(address)")
         return address
+    }
+}
+
+// MARK: - Transport Callback Types
+
+/// Callback for when a peer connects
+public typealias PeerConnectedCallback = @Sendable (String) -> Void
+
+/// Callback for when a peer disconnects  
+public typealias PeerDisconnectedCallback = @Sendable (String) -> Void
+
+/// Callback for handling incoming requests
+/// - Parameters:
+///   - requestId: The request ID to use when completing the request
+///   - path: The request path
+///   - payload: The request payload
+///   - sourcePeerId: The ID of the peer that sent the request
+///   - correlationId: Optional correlation ID
+public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> Void
+
+/// Callback for handling transport events
+/// - Parameter event: The transport event
+public typealias EventCallback = @Sendable (TransportEvent) -> Void
+
+/// Transport callbacks container
+public struct TransportCallbacks: Sendable {
+    public let peerConnectedCallback: PeerConnectedCallback?
+    public let peerDisconnectedCallback: PeerDisconnectedCallback?
+    public let requestCallback: RequestCallback
+    public let eventCallback: EventCallback?
+    
+    public init(
+        peerConnectedCallback: PeerConnectedCallback? = nil,
+        peerDisconnectedCallback: PeerDisconnectedCallback? = nil,
+        requestCallback: @escaping RequestCallback,
+        eventCallback: EventCallback? = nil
+    ) {
+        self.peerConnectedCallback = peerConnectedCallback
+        self.peerDisconnectedCallback = peerDisconnectedCallback
+        self.requestCallback = requestCallback
+        self.eventCallback = eventCallback
     }
 }
 

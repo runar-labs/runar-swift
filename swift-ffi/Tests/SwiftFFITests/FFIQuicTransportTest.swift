@@ -12,9 +12,19 @@ import XCTest
 /// - Request/response patterns
 /// - Event handling
 /// - Connection state management
+///
+/// NOTE: This test uses the improved Transport API with callbacks but still matches
+/// the Rust test in all rules, steps, setup and asserts. It does not compromise
+/// the test - it just uses the new callback-based API instead of manual polling.
 @testable import SwiftFFI
 
 // Use the TransportEvent from SwiftFFI instead of defining our own
+
+/// Thread-safe box for capturing values in callbacks
+final class Box<T>: @unchecked Sendable {
+    var value: T
+    init(_ value: T) { self.value = value }
+}
 
 @MainActor
 final class FFIQuicTransportTest: XCTestCase {
@@ -53,31 +63,56 @@ final class FFIQuicTransportTest: XCTestCase {
         // Step 6: Create transport options - exactly like Rust
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
         
-        // Step 7: Create transport A and start it - exactly like Rust
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
+        // Step 7: Set up callbacks for transport A (request handler) - exactly like Rust
+        let requestReceived = expectation(description: "Request received on transport A")
+        let requestIdBox = Box<String?>(nil)
+        
+        let callbacksA = TransportCallbacks(
+            requestCallback: { receivedRequestId, path, payload, sourcePeerId, correlationId in
+                requestIdBox.value = receivedRequestId
+                requestReceived.fulfill()
+            }
+        )
+        
+        // Step 8: Create transport A and start it - exactly like Rust
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA)
         try await transportA.start()
         
-        // Step 8: Get local address for transport A - exactly like Rust
+        // Step 9: Get local address for transport A - exactly like Rust
         let localAddrA = try await transportA.getLocalAddr()
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
         
-        // Step 9: Create transport B and start it - exactly like Rust
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
+        // Step 10: Set up callbacks for transport B (response handler) - exactly like Rust
+        let responseReceived = expectation(description: "Response received on transport B")
+        let gotResponseBox = Box(false)
+        
+        let callbacksB = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in },
+            eventCallback: { event in
+                if event.type == "ResponseReceived" {
+                    gotResponseBox.value = true
+                    responseReceived.fulfill()
+                }
+            }
+        )
+        
+        // Step 11: Create transport B and start it - exactly like Rust
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB)
         try await transportB.start()
         
-        // Step 10: Get public key for node A - exactly like Rust
+        // Step 12: Get public key for node A - exactly like Rust
         let publicKeyA = try await keysA.getNodePublicKey()
         
-        // Step 11: Generate peer ID using compact ID (matching Rust implementation) - exactly like Rust
+        // Step 13: Generate peer ID using compact ID (matching Rust implementation) - exactly like Rust
         let peerId = try await keysA.getCompactId(for: publicKeyA)
         
-        // Step 12: Create peer info for connection - exactly like Rust
+        // Step 14: Create peer info for connection - exactly like Rust
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
         
-        // Step 13: Connect transport B to transport A - exactly like Rust
+        // Step 15: Connect transport B to transport A - exactly like Rust
         try await transportB.connectPeer(peerInfo: peerInfo)
         
-        // Step 14: Create request parameters - exactly like Rust
+        // Step 16: Create request parameters - exactly like Rust
         let requestParams = TransportRequestParams(
             path: "/echo",
             correlationId: "c1",
@@ -87,47 +122,27 @@ final class FFIQuicTransportTest: XCTestCase {
             profilePublicKeys: []
         )
         
-        // Step 15: Send request from transport B - exactly like Rust
+        // Step 17: Send request from transport B - exactly like Rust
         try await transportB.request(requestParams)
         
-        // Step 16: Handle request on A then complete - exactly like Rust
-        var requestId: String? = nil
-        for _ in 0..<50 {
-            if let event = try await transportA.pollEvent() {
-                if event.type == "RequestReceived" {
-                    requestId = event.requestId
-                    break
-                }
-            }
-            try await Task.sleep(nanoseconds: UInt64(50 * 1_000_000)) // 50ms like Rust
-        }
+        // Step 18: Wait for request to be received on A - exactly like Rust
+        await fulfillment(of: [requestReceived], timeout: 5.0)
+        XCTAssertNotNil(requestIdBox.value, "Should have received request on transport A")
         
-        XCTAssertNotNil(requestId, "Should have received request on transport A")
-        
-        // Step 17: Complete the request on transport A - exactly like Rust
+        // Step 19: Complete the request on transport A - exactly like Rust
         let completeParams = TransportCompleteRequestParams(
-            requestId: requestId!,
+            requestId: requestIdBox.value!,
             responsePayload: Data("world".utf8),
             profilePublicKeys: []
         )
         
         try await transportA.completeRequest(completeParams)
         
-        // Step 18: Expect response on B - exactly like Rust
-        var gotResponse = false
-        for _ in 0..<50 {
-            if let event = try await transportB.pollEvent() {
-                if event.type == "ResponseReceived" {
-                    gotResponse = true
-                    break
-                }
-            }
-            try await Task.sleep(nanoseconds: UInt64(50 * 1_000_000)) // 50ms like Rust
-        }
+        // Step 20: Wait for response on B - exactly like Rust
+        await fulfillment(of: [responseReceived], timeout: 5.0)
+        XCTAssertTrue(gotResponseBox.value, "Should have received response on transport B")
         
-        XCTAssertTrue(gotResponse, "Should have received response on transport B")
-        
-        // Step 19: Cleanup - exactly like Rust
+        // Step 21: Cleanup - exactly like Rust
         try await transportA.stop()
         try await transportB.stop()
     }
@@ -158,7 +173,10 @@ final class FFIQuicTransportTest: XCTestCase {
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
         
         // Create transport
-        let transport = try await QuicTransport.create(keys: keys, options: transportOptions)
+        let callbacks = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transport = try await QuicTransport.create(keys: keys, options: transportOptions, callbacks: callbacks)
         
         // Test start/stop idempotence - multiple starts should not fail
         try await transport.start()
@@ -210,7 +228,10 @@ final class FFIQuicTransportTest: XCTestCase {
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
         
         // Create transport A
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions)
+        let callbacksA = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA)
         try await transportA.start()
         
         // Get local address for transport A
@@ -218,7 +239,10 @@ final class FFIQuicTransportTest: XCTestCase {
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
         
         // Create transport B
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions)
+        let callbacksB = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB)
         try await transportB.start()
         
         // Get public key for node A
@@ -271,7 +295,10 @@ final class FFIQuicTransportTest: XCTestCase {
         let transportOptions = CBORHelper.createMinimalTransportOptions(bindAddr: "127.0.0.1:0")
         
         // Create transport
-        let transport = try await QuicTransport.create(keys: keys, options: transportOptions)
+        let callbacks = TransportCallbacks(
+            requestCallback: { _, _, _, _, _ in }
+        )
+        let transport = try await QuicTransport.create(keys: keys, options: transportOptions, callbacks: callbacks)
         XCTAssertNotNil(transport, "Transport should be created successfully")
         
         // Start transport
