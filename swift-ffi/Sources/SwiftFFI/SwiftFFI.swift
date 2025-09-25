@@ -1494,7 +1494,7 @@ extension Data {
 // These are the data structures used by the tests
 // They need to match the Rust FFI interface
 
-public struct EnrollmentToken: Codable {
+public struct EnrollmentToken: Codable, Equatable {
     public let body: EnrollmentTokenBody
     public let signature: Data
     public let signer_id: String
@@ -1531,7 +1531,7 @@ public struct EnrollmentToken: Codable {
     }
 }
 
-public struct EnrollmentTokenBody: Codable {
+public struct EnrollmentTokenBody: Codable, Equatable {
     public let token_id: String
     public let network_id: String
     public let subject_hint: String?
@@ -1587,7 +1587,7 @@ public struct EnrollmentTokenBody: Codable {
     }
 }
 
-public struct SetupToken: Codable {
+public struct SetupToken: Codable, Equatable {
     public let node_id: String
     public let node_public_key: [UInt8]
     public let node_agreement_public_key: [UInt8]
@@ -1675,7 +1675,7 @@ public struct SetupToken: Codable {
     }
 }
 
-public struct CsrEnrollRequest: Codable {
+public struct CsrEnrollRequest: Codable, Equatable {
     public let network_id: String
     public let csr_der: Data
     public let enrollment_token: EnrollmentToken
@@ -1711,7 +1711,7 @@ public struct CsrEnrollRequest: Codable {
     }
 }
 
-public struct CsrEnrollResponse: Codable {
+public struct CsrEnrollResponse: Codable, Equatable {
     public let network_id: String
     public let certificate_der: [UInt8]
     public let issuing_ca_der: [UInt8]
@@ -1728,7 +1728,7 @@ public struct CsrEnrollResponse: Codable {
 }
 
 /// Renewal response structure
-public struct RenewResponse: Codable {
+public struct RenewResponse: Codable, Equatable {
     public let network_id: String
     public let certificate_der: [UInt8]
     public let issuing_ca_der: [UInt8]
@@ -1743,7 +1743,7 @@ public struct RenewResponse: Codable {
 }
 
 /// Chain response structure
-public struct ChainResponse: Codable {
+public struct ChainResponse: Codable, Equatable {
     public let network_id: String
     public let issuing_ca_der: [UInt8]
     public let root_ca_der: [UInt8]?
@@ -1755,7 +1755,7 @@ public struct ChainResponse: Codable {
     }
 }
 
-public struct CaErrorResponse: Codable {
+public struct CaErrorResponse: Codable, Equatable {
     public let code: String
     public let message: String
     public let reason: String?
@@ -1767,7 +1767,7 @@ public struct CaErrorResponse: Codable {
     }
 }
 
-public struct RenewRequest: Codable {
+public struct RenewRequest: Codable, Equatable {
     public let network_id: String
     public let csr_der: Data
     
@@ -1798,7 +1798,7 @@ public struct RenewRequest: Codable {
     }
 }
 
-public struct RevokeRequest: Codable {
+public struct RevokeRequest: Codable, Equatable {
     public let network_id: String
     public let certificate_serial: [UInt8]
     public let reason: String
@@ -1811,7 +1811,7 @@ public struct RevokeRequest: Codable {
 }
 
 /// Revocation response structure
-public struct RevokeResponse: Codable {
+public struct RevokeResponse: Codable, Equatable {
     public let network_id: String
     public let ok: Bool
     
@@ -1837,7 +1837,7 @@ public struct CrlLite: Codable {
 }
 
 /// CA Status structure
-public struct CaStatus: Codable {
+public struct CaStatus: Codable, Equatable {
     public let network_id: String
     public let issuing_subject: String
     public let issuing_serial_hex: String

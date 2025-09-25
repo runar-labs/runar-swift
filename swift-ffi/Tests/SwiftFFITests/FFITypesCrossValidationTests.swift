@@ -81,8 +81,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftBody: EnrollmentTokenBody = try CodableCBORDecoder().decode(EnrollmentTokenBody.self, from: swiftData)
         let rustBody: EnrollmentTokenBody = try CodableCBORDecoder().decode(EnrollmentTokenBody.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftBody, rustBody, "EnrollmentTokenBody validation failed - Swift and Rust data don't match")
     }
     
     private func validateEnrollmentToken(swiftDir: URL, rustDir: URL) async throws {
@@ -92,8 +92,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftToken: EnrollmentToken = try CodableCBORDecoder().decode(EnrollmentToken.self, from: swiftData)
         let rustToken: EnrollmentToken = try CodableCBORDecoder().decode(EnrollmentToken.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftToken, rustToken, "EnrollmentToken validation failed - Swift and Rust data don't match")
     }
     
     private func validateSetupToken(swiftDir: URL, rustDir: URL) async throws {
@@ -103,8 +103,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftSetup: SetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: swiftData)
         let rustSetup: SetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftSetup, rustSetup, "SetupToken validation failed - Swift and Rust data don't match")
     }
     
     private func validateCsrEnrollRequest(swiftDir: URL, rustDir: URL) async throws {
@@ -114,8 +114,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftRequest: CsrEnrollRequest = try CodableCBORDecoder().decode(CsrEnrollRequest.self, from: swiftData)
         let rustRequest: CsrEnrollRequest = try CodableCBORDecoder().decode(CsrEnrollRequest.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftRequest, rustRequest, "CsrEnrollRequest validation failed - Swift and Rust data don't match")
     }
     
     private func validateCsrEnrollResponse(swiftDir: URL, rustDir: URL) async throws {
@@ -125,8 +125,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftResponse: CsrEnrollResponse = try CodableCBORDecoder().decode(CsrEnrollResponse.self, from: swiftData)
         let rustResponse: CsrEnrollResponse = try CodableCBORDecoder().decode(CsrEnrollResponse.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftResponse, rustResponse, "CsrEnrollResponse validation failed - Swift and Rust data don't match")
     }
     
     private func validateRenewRequest(swiftDir: URL, rustDir: URL) async throws {
@@ -136,9 +136,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftRequest: RenewRequest = try CodableCBORDecoder().decode(RenewRequest.self, from: swiftData)
         let rustRequest: RenewRequest = try CodableCBORDecoder().decode(RenewRequest.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
-        // XCTAssertEqual(swiftRequest, rustRequest, "RenewRequest validation failed")
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftRequest, rustRequest, "RenewRequest validation failed - Swift and Rust data don't match")
     }
     
     private func validateRenewResponse(swiftDir: URL, rustDir: URL) async throws {
@@ -148,9 +147,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftResponse: RenewResponse = try CodableCBORDecoder().decode(RenewResponse.self, from: swiftData)
         let rustResponse: RenewResponse = try CodableCBORDecoder().decode(RenewResponse.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
-        // XCTAssertEqual(swiftResponse, rustResponse, "RenewResponse validation failed")
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftResponse, rustResponse, "RenewResponse validation failed - Swift and Rust data don't match")
     }
     
     private func validateRevokeRequest(swiftDir: URL, rustDir: URL) async throws {
@@ -160,9 +158,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftRequest: RevokeRequest = try CodableCBORDecoder().decode(RevokeRequest.self, from: swiftData)
         let rustRequest: RevokeRequest = try CodableCBORDecoder().decode(RevokeRequest.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
-        // XCTAssertEqual(swiftRequest, rustRequest, "RevokeRequest validation failed")
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftRequest, rustRequest, "RevokeRequest validation failed - Swift and Rust data don't match")
     }
     
     private func validateRevokeResponse(swiftDir: URL, rustDir: URL) async throws {
@@ -172,9 +169,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftResponse: RevokeResponse = try CodableCBORDecoder().decode(RevokeResponse.self, from: swiftData)
         let rustResponse: RevokeResponse = try CodableCBORDecoder().decode(RevokeResponse.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
-        // XCTAssertEqual(swiftResponse, rustResponse, "RevokeResponse validation failed")
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftResponse, rustResponse, "RevokeResponse validation failed - Swift and Rust data don't match")
     }
     
     private func validateCaStatus(swiftDir: URL, rustDir: URL) async throws {
@@ -184,9 +180,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftStatus: CaStatus = try CodableCBORDecoder().decode(CaStatus.self, from: swiftData)
         let rustStatus: CaStatus = try CodableCBORDecoder().decode(CaStatus.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
-        // XCTAssertEqual(swiftStatus, rustStatus, "CaStatus validation failed")
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftStatus, rustStatus, "CaStatus validation failed - Swift and Rust data don't match")
     }
     
     private func validateChainResponse(swiftDir: URL, rustDir: URL) async throws {
@@ -196,9 +191,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftResponse: ChainResponse = try CodableCBORDecoder().decode(ChainResponse.self, from: swiftData)
         let rustResponse: ChainResponse = try CodableCBORDecoder().decode(ChainResponse.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
-        // XCTAssertEqual(swiftResponse, rustResponse, "ChainResponse validation failed")
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftResponse, rustResponse, "ChainResponse validation failed - Swift and Rust data don't match")
     }
     
     
@@ -209,8 +203,7 @@ final class FFITypesCrossValidationTests: XCTestCase {
         let swiftError: CaErrorResponse = try CodableCBORDecoder().decode(CaErrorResponse.self, from: swiftData)
         let rustError: CaErrorResponse = try CodableCBORDecoder().decode(CaErrorResponse.self, from: rustData)
         
-        // For now, just verify both can be decoded successfully
-        // TODO: Add proper equality comparison when Equatable is implemented
-        // XCTAssertEqual(swiftError, rustError, "CaErrorResponse validation failed")
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftError, rustError, "CaErrorResponse validation failed - Swift and Rust data don't match")
     }
 }
