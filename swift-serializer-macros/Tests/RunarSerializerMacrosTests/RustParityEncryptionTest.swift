@@ -206,7 +206,6 @@ final class RustParityEncryptionTest: XCTestCase {
         
         // Create serialization context - resolve network_public_key from resolver
         logger.trace("Creating serialization context")
-        let systemInfo = try resolver.resolveLabelInfo("system")
         let context = SerializationContext(
             keystore: mobileKs,
             resolver: resolver,
