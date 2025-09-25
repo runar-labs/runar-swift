@@ -193,9 +193,9 @@ final class RustParityEncryptionTest: XCTestCase {
         )
         logger.debug("AnyValue test profile created: id=\(profile.id), name=\(profile.name)")
         
-        // Ensure TestProfile is registered before any serialization
-        logger.trace("Registering TestProfile with serialization registry")
-        _ = try await profile.encryptWithKeystore(mobileKs, resolver)
+        // Ensure TestProfile is registered before creating AnyValue
+        logger.trace("Ensuring TestProfile is registered")
+        TestProfile._ensureRegistered()
         logger.info("TestProfile registration complete")
         
         // Create AnyValue with struct
@@ -206,7 +206,7 @@ final class RustParityEncryptionTest: XCTestCase {
         
         // Create serialization context - resolve network_public_key from resolver
         logger.trace("Creating serialization context")
-        _ = try resolver.resolveLabelInfo("system")
+        let systemInfo = try resolver.resolveLabelInfo("system")
         let context = SerializationContext(
             keystore: mobileKs,
             resolver: resolver,

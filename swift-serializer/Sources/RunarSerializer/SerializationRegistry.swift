@@ -5,18 +5,18 @@ import SwiftFFI
 public actor SerializationRegistry {
     // MARK: - Wire Name Management
 
-    private var swiftTypeToWireName: [String: String] = [:]
-    private var wireNameToSwiftType: [String: Any.Type] = [:]
-    private var encryptedWireByPlainWire: [String: String] = [:]
+    private nonisolated(unsafe) var swiftTypeToWireName: [String: String] = [:]
+    private nonisolated(unsafe) var wireNameToSwiftType: [String: Any.Type] = [:]
+    private nonisolated(unsafe) var encryptedWireByPlainWire: [String: String] = [:]
 
     // MARK: - Serialization Functions
 
-    private var wireNameToDecryptor: [String: @Sendable (Data, CommonKeyManager) async throws -> Any] = [:]
-    private var wireNameToEncryptor: [String: @Sendable (Any, CommonKeyManager, LabelResolver) async throws -> Data] = [:]
+    private nonisolated(unsafe) var wireNameToDecryptor: [String: @Sendable (Data, CommonKeyManager) async throws -> Any] = [:]
+    private nonisolated(unsafe) var wireNameToEncryptor: [String: @Sendable (Any, CommonKeyManager, LabelResolver) async throws -> Data] = [:]
 
     // MARK: - Deserialization Functions
 
-    private var wireNameToDecoder: [String: @Sendable (Data) throws -> Any] = [:]
+    private nonisolated(unsafe) var wireNameToDecoder: [String: @Sendable (Data) throws -> Any] = [:]
 
     // MARK: - JSON Conversion
 
@@ -168,6 +168,73 @@ public actor SerializationRegistry {
     private func setupContainerMappings() {
         wireNameToSwiftType["list<any>"] = [AnyValue].self
         wireNameToSwiftType["map<string,any>"] = [String: AnyValue].self
+    }
+
+    // MARK: - Synchronous Registration Methods (for startup)
+
+    private static let registrationLock = NSLock()
+
+    public nonisolated func registerEncryptorSync<T: Encodable & Sendable>(
+        for _: T.Type,
+        wireName: String? = nil,
+        targetEncryptedWireName: String? = nil,
+        encryptor: @escaping @Sendable (T, CommonKeyManager, LabelResolver) async throws -> Data
+    ) {
+        let registryKey = wireName ?? String(describing: T.self)
+        let expectedTypeName = String(describing: T.self)
+        
+        Self.registrationLock.lock()
+        defer { Self.registrationLock.unlock() }
+        
+        // Store the encryptor closure
+        wireNameToEncryptor[registryKey] = { [encryptor, expectedTypeName] value, keystore, resolver in
+            guard let typedValue = value as? T else {
+                throw SerializerError.typeMismatch("Expected \(expectedTypeName), got \(String(describing: Swift.type(of: value)))")
+            }
+            return try await encryptor(typedValue, keystore, resolver)
+        }
+        
+        if let encryptedName = targetEncryptedWireName {
+            encryptedWireByPlainWire[registryKey] = encryptedName
+        }
+    }
+
+    public nonisolated func registerDecryptorSync<T: Decodable & Sendable>(
+        for _: T.Type,
+        wireName: String? = nil,
+        decryptor: @escaping @Sendable (Data, CommonKeyManager) async throws -> T
+    ) {
+        let registryKey = wireName ?? String(describing: T.self)
+        
+        Self.registrationLock.lock()
+        defer { Self.registrationLock.unlock() }
+        
+        wireNameToDecryptor[registryKey] = { [decryptor] data, keystore in
+            try await decryptor(data, keystore)
+        }
+    }
+
+    public nonisolated func registerDecoderSync(
+        for wireName: String,
+        decoder: @escaping @Sendable (Data) throws -> (any Decodable & Sendable)
+    ) {
+        Self.registrationLock.lock()
+        defer { Self.registrationLock.unlock() }
+        
+        wireNameToDecoder[wireName] = { [decoder] data in
+            try decoder(data)
+        }
+    }
+
+    public nonisolated func registerWireNameSync<T>(for _: T.Type, wireName: String) {
+        let swiftName = String(describing: T.self)
+        
+        Self.registrationLock.lock()
+        defer { Self.registrationLock.unlock() }
+        
+        swiftTypeToWireName[swiftName] = wireName
+        wireNameToSwiftType[wireName] = T.self
+        wireNameCache.setObject(NSString(string: wireName), forKey: NSString(string: swiftName))
     }
 
     // MARK: - Registry Introspection

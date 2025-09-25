@@ -899,20 +899,20 @@ public final class AnyValue: Sendable {
 
             // Second attempt: Registry fallback - decrypt into the requested plain type
             // This requires a keystore for decryption
-            guard let keystore = lazyData.keystore else {
-                throw SerializerError.deserializationFailed("Keystore required for registry decryption")
-            }
-
-            // Try to find a registered decryptor for this wire name
-            if let decryptor = await SerializationRegistry.shared.decryptor(for: lazyData.typeName) {
-                let result = try await decryptor(lazyData.data, keystore)
-                guard let casted = result as? T else {
-                    throw SerializerError.typeMismatch("Cannot cast decrypted result to \(T.self)")
+            if let keystore = lazyData.keystore {
+                // Try to find a registered decryptor for this wire name
+                if let decryptor = await SerializationRegistry.shared.decryptor(for: lazyData.typeName) {
+                    let result = try await decryptor(lazyData.data, keystore)
+                    guard let casted = result as? T else {
+                        throw SerializerError.typeMismatch("Cannot cast decrypted result to \(T.self)")
+                    }
+                    return casted
                 }
-                return casted
-            } else {
-                throw SerializerError.deserializationFailed("No decryptor registered for wire name: \(lazyData.typeName)")
             }
+            
+            // If we get here, either no keystore was provided or no decryptor was found
+            // This is expected for plain types or when no keystore is available
+            throw SerializerError.deserializationFailed("Cannot deserialize \(lazyData.typeName) as \(T.self) - no keystore provided or no decryptor registered")
         }
     }
 

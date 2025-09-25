@@ -302,7 +302,7 @@ final class EndToEndEncryptionTest: XCTestCase {
         XCTAssertFalse(serializedData.isEmpty, "Serialized data should not be empty")
         
         // Test deserialization - this should work with the registry
-        let deserializedValue = try AnyValue.deserialize(serializedData)
+        let deserializedValue = try AnyValue.deserialize(serializedData, keystore: mobileKeystore)
         
         // The deserialized value should be of type EncryptedTestProfile
         // We need to decrypt it using the registry decryptor

@@ -156,54 +156,56 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
         let members = """
         public typealias Encrypted = \(encryptedStructName)
 
-        // Simple async registration - no static state
-        private static func _ensureRegistered() async {
+        // Automatic registration at program startup (like Rust #[ctor::ctor])
+        private static let _registration: Void = {
             // Register encryptor
-            await RunarSerializer.SerializationRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(wireName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+            RunarSerializer.SerializationRegistry.shared.registerEncryptorSync(for: Self.self, wireName: "\(wireName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
                     let enc = try await value.encryptWithKeystore(keystore, resolver)
                     let encoder = SwiftCBOR.CodableCBOREncoder()
                     return try encoder.encode(enc)
             }
             // Also register encryptor under Swift type name to avoid races during bootstrap
-            await RunarSerializer.SerializationRegistry.shared.registerEncryptor(for: Self.self, wireName: "\(structName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+            RunarSerializer.SerializationRegistry.shared.registerEncryptorSync(for: Self.self, wireName: "\(structName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
                     let enc = try await value.encryptWithKeystore(keystore, resolver)
                     let encoder = SwiftCBOR.CodableCBOREncoder()
                     return try encoder.encode(enc)
             }
-            await RunarSerializer.SerializationRegistry.shared.registerDecryptor(for: Self.self, wireName: "Encrypted_\(wireName)") { data, keystore in
+            RunarSerializer.SerializationRegistry.shared.registerDecryptorSync(for: Self.self, wireName: "Encrypted_\(wireName)") { data, keystore in
                     let encrypted = try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
                     return try await encrypted.decryptWithKeystore(keystore)
             }
 
             // Register wire names and decoders
-            await RunarSerializer.SerializationRegistry.shared.registerWireName(for: Self.self, wireName: "\(wireName)")
-            await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(wireName)") { data in
+            RunarSerializer.SerializationRegistry.shared.registerWireNameSync(for: Self.self, wireName: "\(wireName)")
+            RunarSerializer.SerializationRegistry.shared.registerDecoderSync(for: "\(wireName)") { data in
                     try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
             }
-            await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(structName)") { data in
+            RunarSerializer.SerializationRegistry.shared.registerDecoderSync(for: "\(structName)") { data in
                     try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
             }
             // Also register decoder for encrypted wire name
-            await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "Encrypted_\(wireName)") { data in
+            RunarSerializer.SerializationRegistry.shared.registerDecoderSync(for: "Encrypted_\(wireName)") { data in
                     try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
             }
+        }()
+
+        // Ensure registration happens when type is first accessed
+        public static func _ensureRegistered() {
+            _ = _registration
         }
 
         public func toAnyValue() async -> RunarSerializer.AnyValue {
-                // Await async registrations
-                await Self._ensureRegistered()
+                Self._ensureRegistered()
                 return RunarSerializer.AnyValue.struct(self)
         }
 
         public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> Self {
-                // Trigger async registrations
-                await Self._ensureRegistered()
+                Self._ensureRegistered()
                 return try await anyValue.asType()
         }
 
         public func encryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager, _ resolver: RunarSerializer.LabelResolver) async throws -> \(encryptedStructName) {
-                // Await async registrations
-                await Self._ensureRegistered()
+                Self._ensureRegistered()
                 \(encryptGroupLines.joined(separator: "\n                "))
                 return \(encryptedStructName)(\(encReturnArgs))
         }
