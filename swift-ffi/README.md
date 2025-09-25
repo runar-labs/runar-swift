@@ -154,7 +154,7 @@ let caServer = try CAServer.create(config: serverConfig, sharedCaNode: sharedCaN
 
 ```swift
 // Create transport
-let transportOptions = QuicTransportOptionsCbor(
+let transportOptions = QuicTransportOptions(
     bindAddr: "127.0.0.1:0",
     handshakeTimeoutMs: 5000,
     maxMessageSize: 1024

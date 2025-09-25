@@ -3282,7 +3282,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
     
     /// Create a transport handle with this node's handle (typed API)
-    public func createTransportHandle(options: QuicTransportOptionsCbor) async throws -> QuicTransport {
+    public func createTransportHandle(options: QuicTransportOptions) async throws -> QuicTransport {
         // Encode options to CBOR internally (pure encoding, no MainActor)
         let optionsCbor = try CodableCBOREncoder().encode(options)
         // Copy handle to local to avoid capturing actor state in closures
@@ -4086,7 +4086,7 @@ public enum SchemaDataType: String, Codable {
 }
 
 /// Swift representation of QuicTransportOptions for CBOR encoding
-public struct QuicTransportOptionsCbor: Codable, Equatable {
+public struct QuicTransportOptions: Codable, Equatable {
     public let bindAddr: String?
     public let handshakeTimeoutMs: UInt64?
     public let openStreamTimeoutMs: UInt64?
@@ -4144,8 +4144,8 @@ public enum CBORHelper {
     }
     
     /// Create minimal transport options for testing
-    public static func createMinimalTransportOptions(bindAddr: String = "127.0.0.1:0") -> QuicTransportOptionsCbor {
-        return QuicTransportOptionsCbor(
+    public static func createMinimalTransportOptions(bindAddr: String = "127.0.0.1:0") -> QuicTransportOptions {
+        return QuicTransportOptions(
             bindAddr: bindAddr,
             handshakeTimeoutMs: 5000,
             openStreamTimeoutMs: 10000,
@@ -4186,7 +4186,7 @@ public enum CBORHelper {
     }
     
     /// Encode QuicTransportOptions to CBOR data
-    @MainActor public static func encodeTransportOptions(_ options: QuicTransportOptionsCbor) async throws -> Data {
+    @MainActor public static func encodeTransportOptions(_ options: QuicTransportOptions) async throws -> Data {
         // Create CBOR map manually to match Rust structure
         var map: [CBOR: CBOR] = [:]
         
@@ -4682,7 +4682,7 @@ public actor QuicTransport {
     ///   - options: Transport options (encoded to CBOR internally)
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
-    public static func create(keys: NodeKeyManager, options: QuicTransportOptionsCbor) async throws -> QuicTransport {
+    public static func create(keys: NodeKeyManager, options: QuicTransportOptions) async throws -> QuicTransport {
         // Encode to CBOR in the current task context to avoid sending non-Sendable across actors
         let optionsCbor = try CodableCBOREncoder().encode(options)
         return try await keys.createTransportHandle(optionsCbor: optionsCbor)
