@@ -86,3 +86,26 @@ You have conflated the "Transport FFI Event" with the message event.. Two differ
 
 Check the rust code I have reference event_callback: super::EventCallback,  and u will see that the EventCallback here takeas parmetarmers.. in seift must be the same..
 
+
+Correct Architecture (matching Rust):
+request() method:
+Sends request via FFI
+Waits internally for ResponseReceived event
+Returns the response data directly
+publish() method:
+Sends fire-and-forget event via FFI
+No response expected
+RequestCallback:
+Handles incoming requests
+Returns a response (which gets sent back via completeRequest())
+EventCallback:
+Handles incoming publish events (fire-and-forget)
+No return value
+ResponseReceived events:
+NOT handled by eventCallback
+Handled internally by the request() method
+This matches the Rust implementation exactly where:
+request() waits for the response internally and returns it
+publish() sends fire-and-forget events
+RequestCallback returns responses
+EventCallback handles publish events (no response)

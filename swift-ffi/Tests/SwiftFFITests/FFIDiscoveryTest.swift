@@ -94,15 +94,17 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create transports
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in }
+            requestCallback: { _, _, _, _, _ in return nil }
         )
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA)
+        let loggerA = RunarLogger(component: .custom)
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.start()
 
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in }
+            requestCallback: { _, _, _, _, _ in return nil }
         )
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB)
+        let loggerB = RunarLogger(component: .custom)
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
         try await transportB.start()
 
 
@@ -214,15 +216,17 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create transports
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in }
+            requestCallback: { _, _, _, _, _ in return nil }
         )
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA)
+        let loggerA = RunarLogger(component: .custom)
+        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.start()
 
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in }
+            requestCallback: { _, _, _, _, _ in return nil }
         )
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB)
+        let loggerB = RunarLogger(component: .custom)
+        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
         try await transportB.start()
 
 

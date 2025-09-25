@@ -4663,12 +4663,14 @@ public actor DiscoveryHandle {
 public actor QuicTransport {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     private let callbacks: TransportCallbacks
+    private let logger: RunarLogger
     private var pollingTask: Task<Void, Never>?
     private var isPolling = false
     
-    public init(token: HandleToken, callbacks: TransportCallbacks) throws {
+    public init(token: HandleToken, callbacks: TransportCallbacks, logger: RunarLogger) throws {
         self.handle = try HandleRegistry.shared.claim(kind: .transport, token: token)
         self.callbacks = callbacks
+        self.logger = logger
     }
     
     /// Get the raw handle for internal use
@@ -4687,17 +4689,16 @@ public actor QuicTransport {
     ///   - callbacks: Transport callbacks for handling events
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
-    public static func create(keys: NodeKeyManager, options: QuicTransportOptions, callbacks: TransportCallbacks) async throws -> QuicTransport {
+    public static func create(keys: NodeKeyManager, options: QuicTransportOptions, callbacks: TransportCallbacks, logger: RunarLogger) async throws -> QuicTransport {
         // Encode to CBOR in the current task context to avoid sending non-Sendable across actors
         let optionsCbor = try CodableCBOREncoder().encode(options)
         let token = try await keys.createTransportHandle(optionsCbor: optionsCbor)
-        return try QuicTransport(token: token, callbacks: callbacks)
+        return try QuicTransport(token: token, callbacks: callbacks, logger: logger)
     }
     
     /// Start the transport
     /// - Throws: FFIError if start fails
     public func start() async throws {
-        let logger = RunarLogger(component: .custom)
         logger.info("QuicTransport.start() - Starting transport")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
@@ -4717,25 +4718,29 @@ public actor QuicTransport {
         }
         logger.info("QuicTransport.start() - Transport started successfully")
         
-        // Start internal polling
+        // Start internal polling to handle events
+        logger.info("QuicTransport.start() - Starting internal polling")
         startInternalPolling()
     }
     
     /// Poll for events (internal use only)
     /// - Returns: Event if available, nil if no events
     /// - Throws: FFIError if polling fails
-    private func pollEvent() async throws -> TransportEvent? {
-        let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.pollEvent() - Polling for events")
+    public func pollEvent() async throws -> TransportEvent? {
+        logger.trace("QuicTransport.pollEvent() - Polling for events")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
-        var outEvent: UnsafeMutablePointer<UInt8>?
-        var outLen = 0
+        
+        struct PollResult: @unchecked Sendable {
+            var outEvent: UnsafeMutablePointer<UInt8>?
+            var outLen: Int = 0
+        }
+        var result = PollResult()
         let (code, err) = withRnErrorCode { errPtr in
             logger.trace("QuicTransport.pollEvent() - About to call rn_transport_poll_event")
-            return rn_transport_poll_event(transportHandle, &outEvent, &outLen, errPtr)
+            return rn_transport_poll_event(transportHandle, &result.outEvent, &result.outLen, errPtr)
         }
-        logger.debug("QuicTransport.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
+        logger.info("QuicTransport.pollEvent() - FFI call completed, code: \(code), outLen: \(result.outLen)")
         if let error = err { 
             logger.error("QuicTransport.pollEvent() - FFI error: \(error)")
             throw error 
@@ -4745,13 +4750,13 @@ public actor QuicTransport {
             throw FFIError.operationFailed("Failed to poll event") 
         }
         
-        if outLen == 0 {
+        if result.outLen == 0 {
             logger.debug("QuicTransport.pollEvent() - No events available")
             return nil
         }
         
         logger.debug("QuicTransport.pollEvent() - Event available, decoding")
-        let data = try copyBytesAndFree(outEvent, outLen)
+        let data = try copyBytesAndFree(result.outEvent, result.outLen)
         let prefixHex = data.prefix(64).map { String(format: "%02x", $0) }.joined()
         logger.trace("QuicTransport.pollEvent() - CBOR length=\(data.count) bytes, first64=\(prefixHex)")
         let decoder = CodableCBORDecoder()
@@ -4769,10 +4774,9 @@ public actor QuicTransport {
     /// - Parameter peerInfo: Peer information (encoded to CBOR internally)
     /// - Throws: FFIError if connection fails
     public func connectPeer(peerInfo: PeerInfo) async throws {
-        let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.connectPeer() - Connecting to peer")
+        logger.trace("QuicTransport.connectPeer() - Connecting to peer")
         let peerInfoCbor = try CodableCBOREncoder().encode(peerInfo)
-        logger.debug("QuicTransport.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
+        logger.trace("QuicTransport.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -4797,8 +4801,7 @@ public actor QuicTransport {
     /// - Parameter peerNodeId: Node ID of the peer to disconnect
     /// - Throws: FFIError if disconnection fails
     public func disconnectPeer(peerNodeId: String) async throws {
-        let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
+        logger.trace("QuicTransport.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -4824,7 +4827,6 @@ public actor QuicTransport {
     /// - Returns: True if connected, false otherwise
     /// - Throws: FFIError if check fails
     public func isConnected(peerNodeId: String) async throws -> Bool {
-        let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.isConnected() - Checking connection to peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
@@ -4852,7 +4854,6 @@ public actor QuicTransport {
     /// - Parameter nodeInfo: Node information (encoded to CBOR internally)
     /// - Throws: FFIError if update fails
     public func updateLocalNodeInfo(nodeInfo: NodeInfo) async throws {
-        let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.updateLocalNodeInfo() - Updating local node info")
         let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
         logger.debug("QuicTransport.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
@@ -4879,11 +4880,10 @@ public actor QuicTransport {
     /// Send a request
     /// - Parameter request: Request parameters (encoded to CBOR internally)
     /// - Throws: FFIError if request fails
-    public func request(_ request: TransportRequestParams) async throws {
-        let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.request() - Sending request")
+    public func request(_ request: TransportRequestParams) async throws -> Data {
+        logger.trace("QuicTransport.request() - Sending request")
         let requestCbor = try CodableCBOREncoder().encode(request)
-        logger.debug("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
+        logger.trace("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -4902,16 +4902,49 @@ public actor QuicTransport {
             throw FFIError.operationFailed("Failed to send request") 
         }
         logger.info("QuicTransport.request() - Request sent successfully")
+        
+        // Wait for response by polling for events until we get a ResponseReceived event
+        // This matches the Rust implementation where request() waits for the response internally
+        logger.trace("QuicTransport.request() - Waiting for response...")
+        var attempts = 0
+        let maxAttempts = 100 // Prevent infinite loop
+        
+        while attempts < maxAttempts {
+            do {
+                if let event = try await pollEvent() {
+                    if event.type == "ResponseReceived" {
+                        logger.info("QuicTransport.request() - Response received")
+                        if let payload = event.payload {
+                            return Data(payload)
+                        } else {
+                            throw FFIError.operationFailed("ResponseReceived event missing payload")
+                        }
+                    }
+                    // Handle other events (like PeerConnected) but continue waiting for ResponseReceived
+                    logger.trace("QuicTransport.request() - Received event: \(event.type), continuing to wait for ResponseReceived")
+                } else {
+                    logger.trace("QuicTransport.request() - No events available, waiting...")
+                }
+            } catch {
+                logger.error("QuicTransport.request() - Error polling for response: \(error)")
+                throw error
+            }
+            
+            // Small delay to prevent busy waiting
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            attempts += 1
+        }
+        
+        throw FFIError.operationFailed("Request timeout - no response received after \(maxAttempts) attempts")
     }
     
     /// Publish an event
     /// - Parameter publish: Publish parameters (encoded to CBOR internally)
     /// - Throws: FFIError if publish fails
     public func publish(_ publish: TransportPublishParams) async throws {
-        let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.publish() - Publishing event")
+        logger.trace("QuicTransport.publish() - Publishing event")
         let publishCbor = try CodableCBOREncoder().encode(publish)
-        logger.debug("QuicTransport.publish() - Publish CBOR length: \(publishCbor.count)")
+        logger.trace("QuicTransport.publish() - Publish CBOR length: \(publishCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -4936,7 +4969,6 @@ public actor QuicTransport {
     /// - Parameter complete: Completion parameters (encoded to CBOR internally)
     /// - Throws: FFIError if completion fails
     public func completeRequest(_ complete: TransportCompleteRequestParams) async throws {
-        let logger = RunarLogger(component: .custom)
         logger.trace("QuicTransport.completeRequest() - Completing request")
         let completeCbor = try CodableCBOREncoder().encode(complete)
         logger.trace("QuicTransport.completeRequest() - Complete CBOR length: \(completeCbor.count)")
@@ -4963,8 +4995,7 @@ public actor QuicTransport {
     /// Stop the transport
     /// - Throws: FFIError if stop fails
     public func stop() async throws {
-        let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.stop() - Stopping transport")
+        logger.info("QuicTransport.stop() - Stopping transport")
         
         // Stop internal polling first
         stopInternalPolling()
@@ -4989,26 +5020,37 @@ public actor QuicTransport {
     
     /// Start internal polling for events
     private func startInternalPolling() {
-        guard !isPolling else { return }
+        guard !isPolling else { 
+            logger.debug("QuicTransport.startInternalPolling() - Already polling, skipping")
+            return 
+        }
+        logger.info("QuicTransport.startInternalPolling() - Starting internal polling task")
         isPolling = true
         
         pollingTask = Task { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { 
+                return 
+            }
+            logger.info("QuicTransport internal polling - Task started")
             
             while await self.isPolling {
+                logger.info("QuicTransport internal polling - Polling for events")
                 do {
                     if let event = try await self.pollEvent() {
+                        logger.info("QuicTransport internal polling - Event received: \(event.type)")
                         await self.handleEvent(event)
+                    } else {
+                        logger.info("QuicTransport internal polling - No events available")
                     }
                 } catch {
                     // Log error but continue polling
-                    let logger = RunarLogger(component: .custom)
                     logger.error("QuicTransport internal polling error: \(error)")
                 }
                 
                 // Small delay to prevent busy waiting
                 try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
             }
+            logger.debug("QuicTransport internal polling - Task ended")
         }
     }
     
@@ -5021,8 +5063,7 @@ public actor QuicTransport {
     
     /// Handle incoming events and call appropriate callbacks
     private func handleEvent(_ event: TransportEvent) async {
-        let logger = RunarLogger(component: .custom)
-        logger.debug("QuicTransport.handleEvent() - Handling event: \(event.type)")
+        logger.info("QuicTransport.handleEvent() - Handling event: \(event.type)")
         
         switch event.type {
         case "PeerConnected":
@@ -5045,12 +5086,49 @@ public actor QuicTransport {
                 let sourcePeerId = "unknown" // Would be extracted from payload
                 let correlationId = event.correlationId
                 
-                callbacks.requestCallback(requestId, path, Data(payload), sourcePeerId, correlationId)
+                // Call the request callback and get the response
+                logger.info("QuicTransport.handleEvent() - Calling request callback for requestId: \(requestId)")
+                if let responsePayload = callbacks.requestCallback(requestId, path, Data(payload), sourcePeerId, correlationId) {
+                    // Send the response back to the peer
+                    let completeParams = TransportCompleteRequestParams(
+                        requestId: requestId,
+                        responsePayload: responsePayload,
+                        profilePublicKeys: [] // Would be extracted from context
+                    )
+                    
+                    do {
+                        try await completeRequest(completeParams)
+                        logger.trace("QuicTransport.handleEvent() - Request completed successfully")
+                    } catch {
+                        logger.error("QuicTransport.handleEvent() - Failed to complete request: \(error)")
+                    }
+                } else {
+                    logger.trace("QuicTransport.handleEvent() - Request callback returned no response")
+                }
             }
             
+        case "EventReceived":
+            // Handle P2P event messages (fire and forget, no response)
+            if let requestId = event.requestId,
+               let payload = event.payload {
+                let path = "/unknown" // Would be extracted from payload
+                let sourcePeerId = "unknown" // Would be extracted from payload
+                let correlationId = event.correlationId
+                
+                // Call the event callback for P2P events
+                callbacks.eventCallback?(requestId, path, Data(payload), sourcePeerId, correlationId)
+                logger.trace("QuicTransport.handleEvent() - P2P event received and processed")
+            }
+            
+        case "ResponseReceived":
+            // ResponseReceived events are handled internally by the request() method
+            // They should NOT be handled by eventCallback - that's for publish events only
+            logger.info("QuicTransport.handleEvent() - ResponseReceived event (handled internally by request method)")
+            // No callback needed - the request() method handles this internally
+            
         default:
-            // Call general event callback for other events
-            callbacks.eventCallback?(event)
+            // Log error for unknown FFI events
+            logger.error("QuicTransport.handleEvent() - Unknown FFI event received: \(event.type)")
         }
     }
     
@@ -5058,15 +5136,17 @@ public actor QuicTransport {
     /// - Returns: Local address string
     /// - Throws: FFIError if getting address fails
     public func getLocalAddr() async throws -> String {
-        let logger = RunarLogger(component: .custom)
         logger.debug("QuicTransport.getLocalAddr() - Getting local address")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
-        var outStr: UnsafeMutablePointer<CChar>?
-        var outLen = 0
+        struct LocalAddrResult: @unchecked Sendable {
+            var outStr: UnsafeMutablePointer<CChar>?
+            var outLen: Int = 0
+        }
+        var result = LocalAddrResult()
         let (code, err) = withRnErrorCode { errPtr in
             logger.trace("QuicTransport.getLocalAddr() - About to call rn_transport_local_addr")
-            return rn_transport_local_addr(transportHandle, &outStr, &outLen, errPtr)
+            return rn_transport_local_addr(transportHandle, &result.outStr, &result.outLen, errPtr)
         }
         logger.debug("QuicTransport.getLocalAddr() - FFI call completed, code: \(code)")
         if let error = err { 
@@ -5079,12 +5159,12 @@ public actor QuicTransport {
         }
         
         defer {
-            if let str = outStr {
+            if let str = result.outStr {
                 rn_string_free(str)
             }
         }
         
-        guard let str = outStr else { 
+        guard let str = result.outStr else { 
             logger.debug("QuicTransport.getLocalAddr() - No local address returned")
             throw FFIError.operationFailed("No local address returned") 
         }
@@ -5109,11 +5189,16 @@ public typealias PeerDisconnectedCallback = @Sendable (String) -> Void
 ///   - payload: The request payload
 ///   - sourcePeerId: The ID of the peer that sent the request
 ///   - correlationId: Optional correlation ID
-public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> Void
+public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> Data?
 
-/// Callback for handling transport events
-/// - Parameter event: The transport event
-public typealias EventCallback = @Sendable (TransportEvent) -> Void
+/// Callback for handling P2P event messages (fire and forget, no response)
+/// - Parameters:
+///   - requestId: The request ID
+///   - path: The event path
+///   - payload: The event payload
+///   - sourcePeerId: The ID of the peer that sent the event
+///   - correlationId: Optional correlation ID
+public typealias EventCallback = @Sendable (String, String, Data, String, String?) -> Void
 
 /// Transport callbacks container
 public struct TransportCallbacks: Sendable {
