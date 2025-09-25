@@ -64,7 +64,7 @@ final class FFIQuicTransportTest: XCTestCase {
         let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Step 7: Create transport A and start it - exactly like Rust
-        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: optionsCbor)
         try await transportA.start()
         
         // Step 8: Get local address for transport A - exactly like Rust
@@ -72,7 +72,7 @@ final class FFIQuicTransportTest: XCTestCase {
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
         
         // Step 9: Create transport B and start it - exactly like Rust
-        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: optionsCbor)
         try await transportB.start()
         
         // Step 10: Get public key for node A - exactly like Rust
@@ -199,7 +199,7 @@ final class FFIQuicTransportTest: XCTestCase {
         let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Create transport
-        let transport = try await TransportHandle.create(keys: keys, optionsCbor: optionsCbor)
+        let transport = try await QuicTransport.create(keys: keys, optionsCbor: optionsCbor)
         
         // Test start/stop idempotence - multiple starts should not fail
         try await transport.start()
@@ -252,7 +252,7 @@ final class FFIQuicTransportTest: XCTestCase {
         let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Create transport A
-        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: optionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: optionsCbor)
         try await transportA.start()
         
         // Get local address for transport A
@@ -260,7 +260,7 @@ final class FFIQuicTransportTest: XCTestCase {
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
         
         // Create transport B
-        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: optionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: optionsCbor)
         try await transportB.start()
         
         // Get public key for node A
@@ -315,7 +315,7 @@ final class FFIQuicTransportTest: XCTestCase {
         let optionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
         
         // Create transport
-        let transport = try await TransportHandle.create(keys: keys, optionsCbor: optionsCbor)
+        let transport = try await QuicTransport.create(keys: keys, optionsCbor: optionsCbor)
         XCTAssertNotNil(transport, "Transport should be created successfully")
         
         // Start transport

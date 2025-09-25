@@ -36,7 +36,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
         let discoveryHandle = try await nodeKeyManager.createDiscoveryHandle(optionsCbor: optionsCbor)
         XCTAssertNotNil(discoveryHandle)
 
-        // Note: TransportHandle creation requires certificate setup, which is beyond the scope
+        // Note: QuicTransport creation requires certificate setup, which is beyond the scope
         // of this integration test. We focus on testing the tokenized handoff mechanism
         // for CA client and discovery handle creation.
     }

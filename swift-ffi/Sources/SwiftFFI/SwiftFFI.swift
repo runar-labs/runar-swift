@@ -3282,14 +3282,14 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
     
     /// Create a transport handle with this node's handle
-    public func createTransportHandle(optionsCbor: Data) async throws -> TransportHandle {
+    public func createTransportHandle(optionsCbor: Data) async throws -> QuicTransport {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
         let transportHandle = try ffi_create_transport(handle, optionsCbor: optionsCbor)
         let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
-        return try TransportHandle(token: token)
+        return try QuicTransport(token: token)
     }
 }
 
@@ -4411,7 +4411,7 @@ public actor DiscoveryHandle {
     }
     
     /// Bind discovery events to transport
-    public func bindEventsToTransport(transport: TransportHandle) async throws {
+    public func bindEventsToTransport(transport: QuicTransport) async throws {
         let (code, err) = withRnErrorCode { errPtr in
             rn_discovery_bind_events_to_transport(
                 self.handle,
@@ -4476,7 +4476,7 @@ public actor DiscoveryHandle {
 // MARK: - Transport Handle
 
 /// Handle for QUIC Transport operations
-public actor TransportHandle {
+public actor QuicTransport {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     
     public init(token: HandleToken) throws {
@@ -4498,7 +4498,7 @@ public actor TransportHandle {
     ///   - optionsCbor: Transport options in CBOR format
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
-    public static func create(keys: NodeKeyManager, optionsCbor: Data) async throws -> TransportHandle {
+    public static func create(keys: NodeKeyManager, optionsCbor: Data) async throws -> QuicTransport {
         return try await keys.createTransportHandle(optionsCbor: optionsCbor)
     }
     
@@ -4506,24 +4506,24 @@ public actor TransportHandle {
     /// - Throws: FFIError if start fails
     public func start() async throws {
         let logger = RunarLogger(component: .custom)
-        logger.info("TransportHandle.start() - Starting transport")
+        logger.info("QuicTransport.start() - Starting transport")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
-        logger.trace("TransportHandle.start() - Handle copied to local")
+        logger.trace("QuicTransport.start() - Handle copied to local")
         let (code, err) = withRnErrorCode { errPtr in
-            logger.trace("TransportHandle.start() - About to call rn_transport_start")
+            logger.trace("QuicTransport.start() - About to call rn_transport_start")
             return rn_transport_start(transportHandle, errPtr)
         }
-        logger.trace("TransportHandle.start() - FFI call completed, code: \(code)")
+        logger.trace("QuicTransport.start() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.start() - FFI error: \(error)")
+            logger.error("QuicTransport.start() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.start() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.start() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to start transport") 
         }
-        logger.info("TransportHandle.start() - Transport started successfully")
+        logger.info("QuicTransport.start() - Transport started successfully")
     }
     
     /// Poll for events
@@ -4531,31 +4531,31 @@ public actor TransportHandle {
     /// - Throws: FFIError if polling fails
     public func pollEvent() async throws -> Data? {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.pollEvent() - Polling for events")
+        logger.debug("QuicTransport.pollEvent() - Polling for events")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         var outEvent: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            logger.trace("TransportHandle.pollEvent() - About to call rn_transport_poll_event")
+            logger.trace("QuicTransport.pollEvent() - About to call rn_transport_poll_event")
             return rn_transport_poll_event(transportHandle, &outEvent, &outLen, errPtr)
         }
-        logger.debug("TransportHandle.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
+        logger.debug("QuicTransport.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
         if let error = err { 
-            logger.error("TransportHandle.pollEvent() - FFI error: \(error)")
+            logger.error("QuicTransport.pollEvent() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.pollEvent() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.pollEvent() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to poll event") 
         }
         
         if outLen == 0 {
-            logger.debug("TransportHandle.pollEvent() - No events available")
+            logger.debug("QuicTransport.pollEvent() - No events available")
             return nil
         }
         
-        logger.debug("TransportHandle.pollEvent() - Event available, copying data")
+        logger.debug("QuicTransport.pollEvent() - Event available, copying data")
         return try copyBytesAndFree(outEvent, outLen)
     }
     
@@ -4564,26 +4564,26 @@ public actor TransportHandle {
     /// - Throws: FFIError if connection fails
     public func connectPeer(peerInfoCbor: Data) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.connectPeer() - Connecting to peer")
-        logger.debug("TransportHandle.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
+        logger.debug("QuicTransport.connectPeer() - Connecting to peer")
+        logger.debug("QuicTransport.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             peerInfoCbor.withUnsafeBytes { raw in
-                logger.trace("TransportHandle.connectPeer() - About to call rn_transport_connect_peer")
+                logger.trace("QuicTransport.connectPeer() - About to call rn_transport_connect_peer")
                 return rn_transport_connect_peer(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, peerInfoCbor.count, errPtr)
             }
         }
-        logger.debug("TransportHandle.connectPeer() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.connectPeer() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.connectPeer() - FFI error: \(error)")
+            logger.error("QuicTransport.connectPeer() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.connectPeer() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.connectPeer() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to connect to peer") 
         }
-        logger.info("TransportHandle.connectPeer() - Peer connected successfully")
+        logger.info("QuicTransport.connectPeer() - Peer connected successfully")
     }
     
     /// Disconnect from a peer
@@ -4591,25 +4591,25 @@ public actor TransportHandle {
     /// - Throws: FFIError if disconnection fails
     public func disconnectPeer(peerNodeId: String) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
+        logger.debug("QuicTransport.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
-                logger.trace("TransportHandle.disconnectPeer() - About to call rn_transport_disconnect_peer")
+                logger.trace("QuicTransport.disconnectPeer() - About to call rn_transport_disconnect_peer")
                 return rn_transport_disconnect_peer(transportHandle, cString, errPtr)
             }
         }
-        logger.debug("TransportHandle.disconnectPeer() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.disconnectPeer() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.disconnectPeer() - FFI error: \(error)")
+            logger.error("QuicTransport.disconnectPeer() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.disconnectPeer() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.disconnectPeer() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to disconnect from peer") 
         }
-        logger.info("TransportHandle.disconnectPeer() - Peer disconnected successfully")
+        logger.info("QuicTransport.disconnectPeer() - Peer disconnected successfully")
     }
     
     /// Check if connected to a peer
@@ -4618,26 +4618,26 @@ public actor TransportHandle {
     /// - Throws: FFIError if check fails
     public func isConnected(peerNodeId: String) async throws -> Bool {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.isConnected() - Checking connection to peer: \(peerNodeId)")
+        logger.debug("QuicTransport.isConnected() - Checking connection to peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         var outConnected = false
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
-                logger.trace("TransportHandle.isConnected() - About to call rn_transport_is_connected")
+                logger.trace("QuicTransport.isConnected() - About to call rn_transport_is_connected")
                 return rn_transport_is_connected(transportHandle, cString, &outConnected, errPtr)
             }
         }
-        logger.debug("TransportHandle.isConnected() - FFI call completed, code: \(code), connected: \(outConnected)")
+        logger.debug("QuicTransport.isConnected() - FFI call completed, code: \(code), connected: \(outConnected)")
         if let error = err { 
-            logger.error("TransportHandle.isConnected() - FFI error: \(error)")
+            logger.error("QuicTransport.isConnected() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.isConnected() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.isConnected() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to check connection status") 
         }
-        logger.debug("TransportHandle.isConnected() - Connection check completed: \(outConnected)")
+        logger.debug("QuicTransport.isConnected() - Connection check completed: \(outConnected)")
         return outConnected
     }
     
@@ -4646,26 +4646,26 @@ public actor TransportHandle {
     /// - Throws: FFIError if update fails
     public func updateLocalNodeInfo(nodeInfoCbor: Data) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.updateLocalNodeInfo() - Updating local node info")
-        logger.debug("TransportHandle.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
+        logger.debug("QuicTransport.updateLocalNodeInfo() - Updating local node info")
+        logger.debug("QuicTransport.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             nodeInfoCbor.withUnsafeBytes { raw in
-                logger.trace("TransportHandle.updateLocalNodeInfo() - About to call rn_transport_update_local_node_info")
+                logger.trace("QuicTransport.updateLocalNodeInfo() - About to call rn_transport_update_local_node_info")
                 return rn_transport_update_local_node_info(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
             }
         }
-        logger.debug("TransportHandle.updateLocalNodeInfo() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.updateLocalNodeInfo() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.updateLocalNodeInfo() - FFI error: \(error)")
+            logger.error("QuicTransport.updateLocalNodeInfo() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.updateLocalNodeInfo() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.updateLocalNodeInfo() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to update local node info") 
         }
-        logger.info("TransportHandle.updateLocalNodeInfo() - Local node info updated successfully")
+        logger.info("QuicTransport.updateLocalNodeInfo() - Local node info updated successfully")
     }
     
     /// Send a request
@@ -4673,26 +4673,26 @@ public actor TransportHandle {
     /// - Throws: FFIError if request fails
     public func request(requestCbor: Data) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.request() - Sending request")
-        logger.debug("TransportHandle.request() - Request CBOR length: \(requestCbor.count)")
+        logger.debug("QuicTransport.request() - Sending request")
+        logger.debug("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             requestCbor.withUnsafeBytes { raw in
-                logger.trace("TransportHandle.request() - About to call rn_transport_request")
+                logger.trace("QuicTransport.request() - About to call rn_transport_request")
                 return rn_transport_request(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, requestCbor.count, errPtr)
             }
         }
-        logger.debug("TransportHandle.request() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.request() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.request() - FFI error: \(error)")
+            logger.error("QuicTransport.request() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.request() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.request() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to send request") 
         }
-        logger.info("TransportHandle.request() - Request sent successfully")
+        logger.info("QuicTransport.request() - Request sent successfully")
     }
     
     /// Publish an event
@@ -4700,26 +4700,26 @@ public actor TransportHandle {
     /// - Throws: FFIError if publish fails
     public func publish(publishCbor: Data) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.publish() - Publishing event")
-        logger.debug("TransportHandle.publish() - Publish CBOR length: \(publishCbor.count)")
+        logger.debug("QuicTransport.publish() - Publishing event")
+        logger.debug("QuicTransport.publish() - Publish CBOR length: \(publishCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             publishCbor.withUnsafeBytes { raw in
-                logger.trace("TransportHandle.publish() - About to call rn_transport_publish")
+                logger.trace("QuicTransport.publish() - About to call rn_transport_publish")
                 return rn_transport_publish(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, publishCbor.count, errPtr)
             }
         }
-        logger.debug("TransportHandle.publish() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.publish() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.publish() - FFI error: \(error)")
+            logger.error("QuicTransport.publish() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.publish() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.publish() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to publish event") 
         }
-        logger.info("TransportHandle.publish() - Event published successfully")
+        logger.info("QuicTransport.publish() - Event published successfully")
     }
     
     /// Complete a request
@@ -4727,49 +4727,49 @@ public actor TransportHandle {
     /// - Throws: FFIError if completion fails
     public func completeRequest(completeCbor: Data) async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.completeRequest() - Completing request")
-        logger.debug("TransportHandle.completeRequest() - Complete CBOR length: \(completeCbor.count)")
+        logger.debug("QuicTransport.completeRequest() - Completing request")
+        logger.debug("QuicTransport.completeRequest() - Complete CBOR length: \(completeCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
             completeCbor.withUnsafeBytes { raw in
-                logger.trace("TransportHandle.completeRequest() - About to call rn_transport_complete_request")
+                logger.trace("QuicTransport.completeRequest() - About to call rn_transport_complete_request")
                 return rn_transport_complete_request(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, completeCbor.count, errPtr)
             }
         }
-        logger.debug("TransportHandle.completeRequest() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.completeRequest() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.completeRequest() - FFI error: \(error)")
+            logger.error("QuicTransport.completeRequest() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.completeRequest() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.completeRequest() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to complete request") 
         }
-        logger.info("TransportHandle.completeRequest() - Request completed successfully")
+        logger.info("QuicTransport.completeRequest() - Request completed successfully")
     }
     
     /// Stop the transport
     /// - Throws: FFIError if stop fails
     public func stop() async throws {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.stop() - Stopping transport")
+        logger.debug("QuicTransport.stop() - Stopping transport")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         let (code, err) = withRnErrorCode { errPtr in
-            logger.trace("TransportHandle.stop() - About to call rn_transport_stop")
+            logger.trace("QuicTransport.stop() - About to call rn_transport_stop")
             return rn_transport_stop(transportHandle, errPtr)
         }
-        logger.debug("TransportHandle.stop() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.stop() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.stop() - FFI error: \(error)")
+            logger.error("QuicTransport.stop() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.stop() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.stop() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to stop transport") 
         }
-        logger.info("TransportHandle.stop() - Transport stopped successfully")
+        logger.info("QuicTransport.stop() - Transport stopped successfully")
     }
     
     /// Get local address
@@ -4777,22 +4777,22 @@ public actor TransportHandle {
     /// - Throws: FFIError if getting address fails
     public func getLocalAddr() async throws -> String {
         let logger = RunarLogger(component: .custom)
-        logger.debug("TransportHandle.getLocalAddr() - Getting local address")
+        logger.debug("QuicTransport.getLocalAddr() - Getting local address")
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = self.handle
         var outStr: UnsafeMutablePointer<CChar>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
-            logger.trace("TransportHandle.getLocalAddr() - About to call rn_transport_local_addr")
+            logger.trace("QuicTransport.getLocalAddr() - About to call rn_transport_local_addr")
             return rn_transport_local_addr(transportHandle, &outStr, &outLen, errPtr)
         }
-        logger.debug("TransportHandle.getLocalAddr() - FFI call completed, code: \(code)")
+        logger.debug("QuicTransport.getLocalAddr() - FFI call completed, code: \(code)")
         if let error = err { 
-            logger.error("TransportHandle.getLocalAddr() - FFI error: \(error)")
+            logger.error("QuicTransport.getLocalAddr() - FFI error: \(error)")
             throw error 
         }
         guard code == 0 else { 
-            logger.error("TransportHandle.getLocalAddr() - FFI operation failed with code: \(code)")
+            logger.error("QuicTransport.getLocalAddr() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to get local address") 
         }
         
@@ -4803,11 +4803,11 @@ public actor TransportHandle {
         }
         
         guard let str = outStr else { 
-            logger.debug("TransportHandle.getLocalAddr() - No local address returned")
+            logger.debug("QuicTransport.getLocalAddr() - No local address returned")
             throw FFIError.operationFailed("No local address returned") 
         }
         let address = String(cString: str)
-        logger.debug("TransportHandle.getLocalAddr() - Local address: \(address)")
+        logger.debug("QuicTransport.getLocalAddr() - Local address: \(address)")
         return address
     }
 }

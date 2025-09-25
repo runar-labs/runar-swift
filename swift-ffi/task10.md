@@ -1,7 +1,7 @@
 there shuold be no use of @unchecked Sendable anywhere in the FFI code. that is a code smell.
 
 current we have:
-public class TransportHandle: @unchecked Sendable {
+public class QuicTransport: @unchecked Sendable {
 struct SendableHandle: @unchecked Sendable {
 public class DiscoveryHandle: @unchecked Sendable {
 
@@ -27,7 +27,7 @@ NO BACKWARED COMPATIBILITUY. this is full complewte refactory. this is a new cod
 
 - `struct SendableHandle: @unchecked Sendable` (wrapper around `UnsafeMutableRawPointer`).
 - `public class DiscoveryHandle: @unchecked Sendable` holding a raw handle.
-- `public class TransportHandle: @unchecked Sendable` holding a raw handle.
+- `public class QuicTransport: @unchecked Sendable` holding a raw handle.
 - `public final class CAClient: Sendable` indirectly using `SendableHandle`.
 - Factory methods in `NodeKeyManager` return these wrappers constructed with raw handles, triggering “Sending '...Handle' risks causing data races”.
 
@@ -52,7 +52,7 @@ Properties:
 ### 3) Actor conversions and state
 
 - Convert raw-handle wrappers to actors:
-  - `public actor TransportHandle { private let handle: UnsafeMutableRawPointer }`
+  - `public actor QuicTransport { private let handle: UnsafeMutableRawPointer }`
   - `public actor DiscoveryHandle { private let handle: UnsafeMutableRawPointer }`
   - `public actor CAClient { private let handle: UnsafeMutableRawPointer }`
 - Remove `SendableHandle` entirely. Actors are references that are Sendable-by-reference; their isolated state does not need to be Sendable.
@@ -68,10 +68,10 @@ We replace the old pattern (“create raw pointer in `NodeKeyManager`, pass it i
 1. In `NodeKeyManager` (actor):
    - Call FFI to create the child handle synchronously (still within `NodeKeyManager` isolation).
    - Immediately call `HandleRegistry.insert(kind:.transport, pointer: p)` to obtain a `HandleToken`.
-   - Construct target actor with a token-only initializer, e.g. `TransportHandle(token: token)`.
+   - Construct target actor with a token-only initializer, e.g. `QuicTransport(token: token)`.
    - Return the actor reference.
 
-2. In `TransportHandle` (actor) initializer:
+2. In `QuicTransport` (actor) initializer:
    - Synchronously call `HandleRegistry.claim(kind:.transport, token: token)` to obtain the pointer.
    - Set `self.handle` to the claimed pointer. From this point, the actor owns the handle.
    - If `claim` fails, throw a precise error. Do not continue.
@@ -85,15 +85,15 @@ Illustrative pseudocode
 
 ```swift
 // NodeKeyManager (actor)
-public func createTransportHandle(optionsCbor: Data) async throws -> TransportHandle {
+public func createTransportHandle(optionsCbor: Data) async throws -> QuicTransport {
     let nodePtr = self.handle // actor-isolated
     let transportPtr = try ffi_create_transport(nodePtr, optionsCbor: optionsCbor)
     let token = HandleRegistry.insert(kind: .transport, pointer: transportPtr)
-    return try TransportHandle(token: token)
+    return try QuicTransport(token: token)
 }
 
-// TransportHandle (actor)
-public actor TransportHandle {
+// QuicTransport (actor)
+public actor QuicTransport {
     private let handle: UnsafeMutableRawPointer
 
     public init(token: HandleToken) throws {
@@ -113,7 +113,7 @@ Apply the same pattern to `DiscoveryHandle` and `CAClient`.
 - `HandleRegistry` operations:
   - `insert` must fail if a token collision somehow occurs (practically impossible with UUID; still validate).
   - `claim` must validate `HandleKind` and absence from registry; otherwise throw a specific error (`.invalidToken`, `.kindMismatch`, `.alreadyClaimed`).
-  - On `TransportHandle.init(token:)` failure after `claim`, free the pointer before rethrowing.
+  - On `QuicTransport.init(token:)` failure after `claim`, free the pointer before rethrowing.
 
 ### 6) Lifecycle and deterministic deallocation
 
@@ -137,7 +137,7 @@ Apply the same pattern to `DiscoveryHandle` and `CAClient`.
 
 ### 8) API surface adjustments
 
-- Replace class-based wrappers with actors for `TransportHandle`, `DiscoveryHandle`, `CAClient`.
+- Replace class-based wrappers with actors for `QuicTransport`, `DiscoveryHandle`, `CAClient`.
 - Remove `SendableHandle` and any `_handleWrapper` usages.
 - Ensure all factory methods return actor references and accept only Sendable parameters (`Data`, simple value types, other actor references).
 - Provide `static create(...) async throws -> Self` helpers on the target actors as ergonomics that internally call into `NodeKeyManager` and apply the tokenized pattern, if desired.
@@ -146,7 +146,7 @@ Apply the same pattern to `DiscoveryHandle` and `CAClient`.
 
 Phase A (internal refactor):
 - Introduce `HandleRegistry`, add tests for linearity (insert→single-claim), kind validation, and concurrency.
-- Convert `TransportHandle`, `DiscoveryHandle`, and `CAClient` to actors with token initializers.
+- Convert `QuicTransport`, `DiscoveryHandle`, and `CAClient` to actors with token initializers.
 - Update `NodeKeyManager`/`MobileKeyManager` factories to use tokenized handoff.
 - Remove `SendableHandle` and replace usages with direct actor state.
 
@@ -167,7 +167,7 @@ Phase C (verification):
   - Kind mismatch and invalid token errors.
   - Concurrency test with many inserts/claims.
 
-- Integration tests for each handle actor (`CAClient`, `DiscoveryHandle`, `TransportHandle`):
+- Integration tests for each handle actor (`CAClient`, `DiscoveryHandle`, `QuicTransport`):
   - Create via `NodeKeyManager`, perform a simple FFI operation, allow deinit, assert no leaks/crashes.
   - Cross-actor usage: call methods from different tasks/actors to ensure isolation holds.
 

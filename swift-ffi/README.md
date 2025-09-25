@@ -14,7 +14,7 @@ This library provides Swift bindings for the Runar Rust FFI, enabling Swift appl
 - **CANode**: Certificate Authority node operations
 - **CAServer**: Certificate Authority server functionality
 - **CAClient**: Certificate Authority client operations
-- **TransportHandle**: QUIC transport operations
+- **QuicTransport**: QUIC transport operations
 - **DiscoveryHandle**: Network discovery functionality
 
 ### Error Handling
@@ -160,7 +160,7 @@ let transportOptions = QuicTransportOptionsCbor(
     maxMessageSize: 1024
 )
 let optionsCbor = try CBORHelper.encodeTransportOptions(transportOptions)
-let transport = try TransportHandle.create(keys: keys, optionsCbor: optionsCbor)
+let transport = try QuicTransport.create(keys: keys, optionsCbor: optionsCbor)
 
 // Start transport
 try transport.start()
@@ -342,7 +342,7 @@ Certificate Authority client operations.
 - `getChain(bootstrapAddress:networkId:)` - Get certificate chain
 - `getCrl(authenticatedAddress:networkId:)` - Get CRL
 
-### TransportHandle
+### QuicTransport
 
 QUIC transport operations.
 

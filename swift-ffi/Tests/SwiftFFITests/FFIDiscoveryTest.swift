@@ -94,10 +94,10 @@ final class FFIDiscoveryTest: XCTestCase {
         let transportOptionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         // Create transports
-        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: transportOptionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: transportOptionsCbor)
         try await transportA.start()
 
-        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: transportOptionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: transportOptionsCbor)
         try await transportB.start()
 
 
@@ -209,10 +209,10 @@ final class FFIDiscoveryTest: XCTestCase {
         let transportOptionsCbor = try await CBORHelper.encodeTransportOptions(transportOptions)
 
         // Create transports
-        let transportA = try await TransportHandle.create(keys: keysA, optionsCbor: transportOptionsCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, optionsCbor: transportOptionsCbor)
         try await transportA.start()
 
-        let transportB = try await TransportHandle.create(keys: keysB, optionsCbor: transportOptionsCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, optionsCbor: transportOptionsCbor)
         try await transportB.start()
 
 
