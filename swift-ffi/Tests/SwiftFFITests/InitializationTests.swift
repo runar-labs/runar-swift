@@ -198,21 +198,192 @@ final class InitializationTests: XCTestCase {
     }
 
     func testConcurrentKeyManagerAccess() async throws {
-        // Test that key managers can handle concurrent access
+        // Test that key managers can handle concurrent access using real concurrency
         let mobileKeyManager = try await MobileKeyManager()
         let nodeKeyManager = try await NodeKeyManager()
 
-        // This test verifies that the managers can handle concurrent access
-        // In a real scenario, this would be tested with actual concurrency
-        // For now, we just verify the managers work in sequence
+        print("🔄 Testing concurrent key manager access...")
 
-        // Mobile manager operations
+        // Test concurrent mobile key manager operations
+        // Note: initializeUserRootKey is not idempotent, so we initialize once and then test concurrent access
         try await mobileKeyManager.initializeUserRootKey()
-        do { _ = try await mobileKeyManager.getUserPublicKey() } catch { XCTFail("getUserPublicKey failed: \(error)") }
+        
+        await withTaskGroup(of: Void.self) { group in
+            // Add multiple concurrent tasks for mobile key manager
+            for i in 0..<5 {
+                group.addTask {
+                    do {
+                        // Each task gets public key (initialization already done)
+                        let publicKey = try await mobileKeyManager.getUserPublicKey()
+                        XCTAssertFalse(publicKey.isEmpty, "Public key should not be empty in task \(i)")
+                        print("   ✅ Mobile task \(i) completed successfully")
+                    } catch {
+                        XCTFail("Mobile task \(i) failed: \(error)")
+                    }
+                }
+            }
+            
+            // Wait for all mobile tasks to complete
+            for await _ in group {
+                // All tasks completed
+            }
+        }
 
-        // Node manager operations
-        try await nodeKeyManager.generateKeys()
-        do { _ = try await nodeKeyManager.getNodePublicKey() } catch { XCTFail("getNodePublicKey failed: \(error)") }
+        // Test concurrent node key manager operations
+        await withTaskGroup(of: Void.self) { group in
+            // Add multiple concurrent tasks for node key manager
+            for i in 0..<5 {
+                group.addTask {
+                    do {
+                        // Each task generates keys and gets public key
+                        try await nodeKeyManager.generateKeys()
+                        let publicKey = try await nodeKeyManager.getNodePublicKey()
+                        XCTAssertFalse(publicKey.isEmpty, "Node public key should not be empty in task \(i)")
+                        print("   ✅ Node task \(i) completed successfully")
+                    } catch {
+                        XCTFail("Node task \(i) failed: \(error)")
+                    }
+                }
+            }
+            
+            // Wait for all node tasks to complete
+            for await _ in group {
+                // All tasks completed
+            }
+        }
+
+        print("🎉 Concurrent key manager access test completed successfully!")
+    }
+
+    func testConcurrentMixedKeyManagerOperations() async throws {
+        // Test concurrent operations across different key manager types
+        let mobileKeyManager = try await MobileKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
+
+        print("🔄 Testing concurrent mixed key manager operations...")
+
+        // Initialize mobile key manager once before concurrent operations
+        try await mobileKeyManager.initializeUserRootKey()
+        
+        await withTaskGroup(of: Void.self) { group in
+            // Add mobile key manager tasks
+            for i in 0..<3 {
+                group.addTask {
+                    do {
+                        let publicKey = try await mobileKeyManager.getUserPublicKey()
+                        XCTAssertFalse(publicKey.isEmpty, "Mobile public key should not be empty in task \(i)")
+                        print("   ✅ Mobile mixed task \(i) completed")
+                    } catch {
+                        XCTFail("Mobile mixed task \(i) failed: \(error)")
+                    }
+                }
+            }
+
+            // Add node key manager tasks
+            for i in 0..<3 {
+                group.addTask {
+                    do {
+                        try await nodeKeyManager.generateKeys()
+                        let publicKey = try await nodeKeyManager.getNodePublicKey()
+                        XCTAssertFalse(publicKey.isEmpty, "Node public key should not be empty in task \(i)")
+                        print("   ✅ Node mixed task \(i) completed")
+                    } catch {
+                        XCTFail("Node mixed task \(i) failed: \(error)")
+                    }
+                }
+            }
+            
+            // Wait for all tasks to complete
+            for await _ in group {
+                // All tasks completed
+            }
+        }
+
+        print("🎉 Concurrent mixed key manager operations test completed successfully!")
+    }
+
+    func testConcurrentKeyManagerCreation() async throws {
+        // Test concurrent creation of multiple key managers
+        print("🔄 Testing concurrent key manager creation...")
+
+        await withTaskGroup(of: (MobileKeyManager?, NodeKeyManager?).self) { group in
+            // Add multiple concurrent creation tasks
+            for i in 0..<10 {
+                group.addTask {
+                    do {
+                        let mobileManager = try await MobileKeyManager()
+                        let nodeManager = try await NodeKeyManager()
+                        print("   ✅ Creation task \(i) completed")
+                        return (mobileManager, nodeManager)
+                    } catch {
+                        XCTFail("Creation task \(i) failed: \(error)")
+                        return (nil, nil)
+                    }
+                }
+            }
+            
+            // Wait for all creation tasks to complete
+            var mobileManagers: [MobileKeyManager] = []
+            var nodeManagers: [NodeKeyManager] = []
+            
+            for await (mobile, node) in group {
+                if let mobile = mobile {
+                    mobileManagers.append(mobile)
+                }
+                if let node = node {
+                    nodeManagers.append(node)
+                }
+            }
+            
+            XCTAssertEqual(mobileManagers.count, 10, "Should have created 10 mobile managers")
+            XCTAssertEqual(nodeManagers.count, 10, "Should have created 10 node managers")
+        }
+
+        print("🎉 Concurrent key manager creation test completed successfully!")
+    }
+
+    func testConcurrentKeyManagerStressTest() async throws {
+        // Test stress scenario with many concurrent operations
+        let mobileKeyManager = try await MobileKeyManager()
+        let nodeKeyManager = try await NodeKeyManager()
+
+        print("🔄 Testing concurrent key manager stress test...")
+
+        // Initialize mobile key manager once before stress test
+        try await mobileKeyManager.initializeUserRootKey()
+        
+        await withTaskGroup(of: Void.self) { group in
+            // Add many concurrent tasks
+            for i in 0..<20 {
+                group.addTask {
+                    do {
+                        if i % 2 == 0 {
+                            // Mobile operations
+                            let publicKey = try await mobileKeyManager.getUserPublicKey()
+                            XCTAssertFalse(publicKey.isEmpty, "Mobile public key should not be empty in stress task \(i)")
+                        } else {
+                            // Node operations
+                            try await nodeKeyManager.generateKeys()
+                            let publicKey = try await nodeKeyManager.getNodePublicKey()
+                            XCTAssertFalse(publicKey.isEmpty, "Node public key should not be empty in stress task \(i)")
+                        }
+                        
+                        if i % 5 == 0 {
+                            print("   ✅ Stress task \(i) completed")
+                        }
+                    } catch {
+                        XCTFail("Stress task \(i) failed: \(error)")
+                    }
+                }
+            }
+            
+            // Wait for all stress tasks to complete
+            for await _ in group {
+                // All tasks completed
+            }
+        }
+
+        print("🎉 Concurrent key manager stress test completed successfully!")
     }
 
     func testEmitFfiTypesVectors() async throws {
