@@ -1,19 +1,19 @@
 import CRunarFFI
-import Foundation
 import Darwin
+import Foundation
 import SwiftCBOR
 import SwiftCommon
 
 // MARK: - Handle Lock Registry
 
 /// Thread-safe registry for managing locks on FFI handles
-internal final class HandleLockRegistry {
+final class HandleLockRegistry {
     nonisolated(unsafe) static let shared = HandleLockRegistry()
     private let tableLock = NSLock()
     private var locks: [UInt: NSLock] = [:]
-    
+
     private init() {}
-    
+
     private func lockFor(_ rawHandle: UnsafeMutableRawPointer) -> NSLock {
         let key = UInt(bitPattern: rawHandle)
         tableLock.lock()
@@ -23,7 +23,7 @@ internal final class HandleLockRegistry {
         locks[key] = l
         return l
     }
-    
+
     @inline(__always)
     func withLock<T>(for rawHandle: UnsafeMutableRawPointer, _ body: () throws -> T) rethrows -> T {
         let l = lockFor(rawHandle)
@@ -46,11 +46,11 @@ public enum HandleKind: Sendable, Equatable {
 /// Opaque token for handle handoff between actors
 public struct HandleToken: Sendable, Equatable, Hashable {
     let id: UUID
-    
+
     public init() {
-        self.id = UUID()
+        id = UUID()
     }
-    
+
     private init(id: UUID) {
         self.id = id
     }
@@ -58,14 +58,14 @@ public struct HandleToken: Sendable, Equatable, Hashable {
 
 /// Thread-safe registry for mediating ownership transfer using opaque tokens
 /// This avoids sending non-Sendable pointers across actor boundaries
-internal final class HandleRegistry {
+final class HandleRegistry {
     nonisolated(unsafe) static let shared = HandleRegistry()
-    
+
     private let lock = NSLock()
     private var registry: [HandleToken: (HandleKind, UnsafeMutableRawPointer)] = [:]
-    
+
     private init() {}
-    
+
     /// Insert a handle into the registry and return a token for claiming it
     /// - Parameters:
     ///   - kind: The type of handle being registered
@@ -75,16 +75,16 @@ internal final class HandleRegistry {
         let token = HandleToken()
         lock.lock()
         defer { lock.unlock() }
-        
+
         // Validate no token collision (practically impossible with UUID, but still check)
         guard registry[token] == nil else {
             fatalError("HandleRegistry: Token collision detected - this should never happen with UUID")
         }
-        
+
         registry[token] = (kind, pointer)
         return token
     }
-    
+
     /// Claim a handle from the registry using its token
     /// - Parameters:
     ///   - kind: The expected type of handle
@@ -94,18 +94,18 @@ internal final class HandleRegistry {
     func claim(kind: HandleKind, token: HandleToken) throws -> UnsafeMutableRawPointer {
         lock.lock()
         defer { lock.unlock() }
-        
+
         guard let (registeredKind, pointer) = registry.removeValue(forKey: token) else {
             throw HandleRegistryError.invalidToken
         }
-        
+
         guard registeredKind == kind else {
             throw HandleRegistryError.kindMismatch(expected: kind, actual: registeredKind)
         }
-        
+
         return pointer
     }
-    
+
     /// Revoke a token if it exists (best-effort cleanup on failures)
     /// - Parameter token: The token to revoke
     func revokeIfPresent(token: HandleToken) {
@@ -160,7 +160,7 @@ public protocol CommonKeyManager: Sendable {
 }
 
 /// Node-specific key manager operations
-/// 
+///
 /// This protocol defines operations that are only available to node key managers,
 /// including certificate management, profile key operations, and network key handling.
 public protocol NodeOnly: CommonKeyManager {
@@ -168,47 +168,47 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Returns: True if keys exist, false otherwise
     /// - Throws: FFIError if the operation fails
     func hasKeys() async throws -> Bool
-    
+
     /// Generate keys for the node
     /// - Throws: FFIError if key generation fails
     func generateKeys() async throws
-    
+
     /// Generate CSR setup token for certificate enrollment
     /// - Returns: CSR setup token data
     /// - Throws: FFIError if generation fails
     func generateCsrSetupToken() async throws -> Data
-    
+
     /// Generate CSR for certificate enrollment
     /// - Returns: CSR data
     /// - Throws: FFIError if generation fails
     func generateCSR() async throws -> Data
-    
+
     /// Install certificate from CA response
     /// - Parameter certMessage: Certificate message data
     /// - Throws: FFIError if installation fails
     func installCertificate(_ certMessage: Data) async throws
-    
+
     /// Get QUIC certificate configuration
     /// - Returns: QUIC certificate configuration data
     /// - Throws: FFIError if the operation fails
     func getQuicCertificateConfig() async throws -> Data
-    
+
     /// Get node certificate
     /// - Returns: Node certificate data
     /// - Throws: FFIError if the operation fails
     func getNodeCertificate() async throws -> Data
-    
+
     /// Get node public key
     /// - Returns: Node public key data
     /// - Throws: FFIError if the operation fails
     func getNodePublicKey() async throws -> Data
-    
+
     /// Derive user profile key for given label
     /// - Parameter label: Profile label (e.g., "personal", "work")
     /// - Returns: Derived profile key data
     /// - Throws: FFIError if derivation fails
     func deriveUserProfileKey(label: String) async throws -> Data
-    
+
     /// Decrypt envelope data using specific profile
     /// - Parameters:
     ///   - envelopeData: Encrypted envelope data
@@ -216,44 +216,44 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Returns: Decrypted data
     /// - Throws: FFIError if decryption fails
     func decryptWithProfile(envelopeData: Data, profileId: String) async throws -> Data
-    
+
     /// Install profile public key
     /// - Parameter publicKey: Profile public key data
     /// - Throws: FFIError if installation fails
     func installProfilePublicKey(_ publicKey: Data) async throws
-    
+
     /// Get profile public key by label
     /// - Parameter label: Profile label
     /// - Returns: Tuple containing public key data and existence flag
     /// - Throws: FFIError if the operation fails
     func getProfilePublicKey(label: String) async throws -> (publicKey: Data?, exists: Bool)
-    
+
     /// Get certificate status
     /// - Returns: Certificate status code
     /// - Throws: FFIError if the operation fails
     func getCertificateStatus() async throws -> Int32
-    
+
     /// Get certificate serial number
     /// - Returns: Certificate serial number string
     /// - Throws: FFIError if the operation fails
     func getCertificateSerial() async throws -> String
-    
+
     /// Validate peer certificate
     /// - Parameter cert: Peer certificate data
     /// - Throws: FFIError if validation fails
     func validatePeerCertificate(_ cert: Data) async throws
-    
+
     /// Install network key from message
     /// - Parameter networkKeyMessage: Network key message data
     /// - Throws: FFIError if installation fails
     func installNetworkKey(_ networkKeyMessage: Data) async throws
-    
+
     /// Get network agreement for given network public key
     /// - Parameter networkPublicKey: Network public key
     /// - Returns: Network agreement data
     /// - Throws: FFIError if the operation fails
     func getNetworkAgreement(networkPublicKey: Data) async throws -> Data
-    
+
     /// Check if node has network private key for given public key
     /// - Parameter networkPublicKey: Network public key to check
     /// - Returns: True if private key exists, false otherwise
@@ -292,51 +292,51 @@ public protocol NodeOnly: CommonKeyManager {
 }
 
 /// Mobile-specific key manager operations
-/// 
+///
 /// This protocol defines operations that are only available to mobile key managers,
 /// including user key initialization, network key exchange, and certificate processing.
 public protocol MobileOnly: CommonKeyManager {
     /// Initialize user root key for mobile device
     /// - Throws: FFIError if initialization fails
     func initializeUserRootKey() async throws
-    
+
     /// Get user public key
     /// - Returns: User public key data
     /// - Throws: FFIError if the operation fails
     func getUserPublicKey() async throws -> Data
-    
+
     /// Derive user profile key for given label
     /// - Parameter label: Profile label (e.g., "personal", "work")
     /// - Returns: Derived profile key data
     /// - Throws: FFIError if derivation fails
     func deriveUserProfileKey(label: String) async throws -> Data
-    
+
     /// Install network public key
     /// - Parameter networkPublicKey: Network public key data
     /// - Throws: FFIError if installation fails
     func installNetworkPublicKey(_ networkPublicKey: Data) async throws
-    
+
     /// Generate CSR for certificate enrollment
     /// - Returns: CSR data
     /// - Throws: FFIError if generation fails
     func generateCSR() async throws -> Data
-    
+
     /// Install certificate from CA response
     /// - Parameter certMessage: Certificate message data
     /// - Throws: FFIError if installation fails
     func installCertificate(_ certMessage: Data) async throws
-    
+
     /// Generate network data key
     /// - Returns: Generated network data key
     /// - Throws: FFIError if generation fails
     func generateNetworkDataKey() async throws -> Data
-    
+
     /// Check if mobile has network private key for given public key
     /// - Parameter networkPublicKey: Network public key to check
     /// - Returns: True if private key exists, false otherwise
     /// - Throws: FFIError if the operation fails
     func hasNetworkPrivateKey(networkPublicKey: Data) async throws -> Bool
-    
+
     /// Create network key message for key exchange
     /// - Parameters:
     ///   - networkPublicKey: Network public key
@@ -344,19 +344,19 @@ public protocol MobileOnly: CommonKeyManager {
     /// - Returns: Network key message data
     /// - Throws: FFIError if creation fails
     func createNetworkKeyMessage(networkPublicKey: Data, nodeAgreementPublicKey: Data) async throws -> Data
-    
+
     /// Process setup token (CSR) to create certificate
     /// - Parameter setupToken: Certificate signing request data
     /// - Returns: Certificate message data
     /// - Throws: FFIError if processing fails
     func processSetupToken(_ setupToken: Data) async throws -> Data
-    
+
     /// Process enroll response from CA
     /// - Parameter response: Enroll response data
     /// - Returns: Processed response data
     /// - Throws: FFIError if processing fails
     func fromEnrollResponse(_ response: Data) async throws -> Data
-    
+
     /// Process renew response from CA
     /// - Parameter response: Renew response data
     /// - Returns: Processed response data
@@ -388,7 +388,7 @@ public protocol MobileOnly: CommonKeyManager {
 // MARK: - FFI Error Types
 
 /// Errors that can occur during FFI operations
-/// 
+///
 /// This enum provides typed error handling for all FFI operations, ensuring
 /// that errors from the Rust layer are properly propagated to Swift callers.
 /// All errors include descriptive messages to aid in debugging.
@@ -396,19 +396,19 @@ public enum FFIError: Error, LocalizedError {
     /// An operation failed with the specified message
     /// - Parameter message: Description of what failed
     case operationFailed(String)
-    
+
     /// An invalid parameter was provided
     /// - Parameter message: Description of the invalid parameter
     case invalidParameter(String)
-    
+
     /// A memory-related error occurred
     /// - Parameter message: Description of the memory error
     case memoryError(String)
-    
+
     /// A network-related error occurred
     /// - Parameter message: Description of the network error
     case networkError(String)
-    
+
     /// Human-readable description of the error
     public var errorDescription: String? {
         switch self {
@@ -427,10 +427,10 @@ public enum FFIError: Error, LocalizedError {
 // MARK: - FFI Logger
 
 /// Logger for FFI operations
-/// 
+///
 /// Provides logging functionality that integrates with the Rust FFI layer.
 /// This class allows setting log levels and node context for debugging FFI operations.
-/// 
+///
 /// - Note: This logger integrates with SwiftCommon's RunarLogger for actual output.
 public class FFILogger {
     /// Available log levels for FFI operations
@@ -447,7 +447,7 @@ public class FFILogger {
         case debug = 4
         /// Trace level logging
         case trace = 5
-        
+
         /// String representation of the log level
         public var stringValue: String {
             switch self {
@@ -460,7 +460,7 @@ public class FFILogger {
             }
         }
     }
-    
+
     /// Set the global log level for the Rust FFI logger
     /// - Parameter level: The log level to set
     /// - Throws: FFIError if the operation fails
@@ -471,7 +471,7 @@ public class FFILogger {
         if let error = error { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to set log level (code: \(code))") }
     }
-    
+
     /// Set the node ID for the Rust FFI logger context
     /// - Parameter nodeId: The node ID to set for logging context
     /// - Throws: FFIError if the operation fails
@@ -481,12 +481,12 @@ public class FFILogger {
                 rn_set_logger_node_id(cNodeId, errPtr)
             }
         }
-        
+
         if result != 0 {
             throw error ?? FFIError.operationFailed("Failed to set logger node ID")
         }
     }
-    
+
     /// Log a message using the Rust FFI logger
     /// - Parameters:
     ///   - level: The log level
@@ -607,7 +607,7 @@ public func withRnError(_ body: (UnsafeMutablePointer<CRunarFFI.RnError>) -> Int
 
 /// Nonisolated helper for encrypting with envelope (node)
 @inline(__always)
-internal func ffi_node_encrypt_with_envelope(
+func ffi_node_encrypt_with_envelope(
     _ handle: UnsafeMutableRawPointer,
     data: Data,
     networkPublicKey: Data?,
@@ -617,7 +617,7 @@ internal func ffi_node_encrypt_with_envelope(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             data.withUnsafeBytes { dataRaw in
@@ -669,14 +669,14 @@ internal func ffi_node_encrypt_with_envelope(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to encrypt with envelope") }
     return try copyBytesAndFree(outPtr, outLen)
 }
 
 @inline(__always)
-internal func ffi_mobile_encrypt_with_envelope(
+func ffi_mobile_encrypt_with_envelope(
     _ handle: UnsafeMutableRawPointer,
     data: Data,
     networkPublicKey: Data?,
@@ -746,7 +746,7 @@ internal func ffi_mobile_encrypt_with_envelope(
 
 /// Nonisolated helper for decrypting envelope (node)
 @inline(__always)
-internal func ffi_node_decrypt_envelope(
+func ffi_node_decrypt_envelope(
     _ handle: UnsafeMutableRawPointer,
     envelopeData: Data
 ) throws -> Data {
@@ -754,7 +754,7 @@ internal func ffi_node_decrypt_envelope(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             envelopeData.withUnsafeBytes { raw in
@@ -762,7 +762,7 @@ internal func ffi_node_decrypt_envelope(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt envelope") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -770,7 +770,7 @@ internal func ffi_node_decrypt_envelope(
 
 /// Nonisolated helper for generating CSR setup token (node)
 @inline(__always)
-internal func ffi_node_generate_csr(
+func ffi_node_generate_csr(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
@@ -780,13 +780,13 @@ internal func ffi_node_generate_csr(
     let logger = RunarLogger(component: .custom)
     let threadId = pthread_mach_thread_np(pthread_self())
     logger.trace("ffi_node_generate_csr: ENTER thread=\(threadId) nodeHandle=\(nodeHandle)")
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             rn_keys_node_generate_csr(nodeHandle, &outPtr, &outLen, errPtr)
         }
     }
-    
+
     if let error = err {
         logger.trace("ffi_node_generate_csr: ERROR thread=\(threadId) nodeHandle=\(nodeHandle) code=\(code) err=\(error)")
         throw error
@@ -798,20 +798,20 @@ internal func ffi_node_generate_csr(
 
 /// Nonisolated helper for getting QUIC certificate config (node)
 @inline(__always)
-internal func ffi_node_get_quic_certificate_config(
+func ffi_node_get_quic_certificate_config(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             rn_keys_node_get_quic_certificate_config(nodeHandle, &outPtr, &outLen, errPtr)
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to get QUIC certificate config") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -819,20 +819,20 @@ internal func ffi_node_get_quic_certificate_config(
 
 /// Nonisolated helper for getting node certificate (node)
 @inline(__always)
-internal func ffi_node_get_node_certificate(
+func ffi_node_get_node_certificate(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             rn_keys_node_get_node_certificate(nodeHandle, &outPtr, &outLen, errPtr)
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to get node certificate") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -840,20 +840,20 @@ internal func ffi_node_get_node_certificate(
 
 /// Nonisolated helper for getting node public key (node)
 @inline(__always)
-internal func ffi_node_get_public_key(
+func ffi_node_get_public_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             rn_keys_node_get_public_key(nodeHandle, &outPtr, &outLen, errPtr)
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to get node public key") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -861,7 +861,7 @@ internal func ffi_node_get_public_key(
 
 /// Nonisolated helper for deriving user profile key (node)
 @inline(__always)
-internal func ffi_node_derive_user_profile_key(
+func ffi_node_derive_user_profile_key(
     _ handle: UnsafeMutableRawPointer,
     label: String
 ) throws -> Data {
@@ -869,7 +869,7 @@ internal func ffi_node_derive_user_profile_key(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             label.withCString { cLabel in
@@ -877,7 +877,7 @@ internal func ffi_node_derive_user_profile_key(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to derive user profile key") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -885,7 +885,7 @@ internal func ffi_node_derive_user_profile_key(
 
 /// Nonisolated helper for decrypting with profile (node)
 @inline(__always)
-internal func ffi_node_decrypt_with_profile(
+func ffi_node_decrypt_with_profile(
     _ handle: UnsafeMutableRawPointer,
     envelopeData: Data,
     profileId: String
@@ -894,7 +894,7 @@ internal func ffi_node_decrypt_with_profile(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             envelopeData.withUnsafeBytes { raw in
@@ -912,7 +912,7 @@ internal func ffi_node_decrypt_with_profile(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt with profile") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -920,7 +920,7 @@ internal func ffi_node_decrypt_with_profile(
 
 /// Nonisolated helper for getting profile public key by label (node)
 @inline(__always)
-internal func ffi_node_get_profile_public_key_by_label(
+func ffi_node_get_profile_public_key_by_label(
     _ handle: UnsafeMutableRawPointer,
     label: String
 ) throws -> (publicKey: Data?, exists: Bool) {
@@ -929,7 +929,7 @@ internal func ffi_node_get_profile_public_key_by_label(
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
     var hasKey: Int32 = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             label.withCString { cLabel in
@@ -937,33 +937,33 @@ internal func ffi_node_get_profile_public_key_by_label(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to get profile public key") }
-    
+
     if hasKey == 0 {
         return (nil, false)
     }
-    
+
     let publicKey = try copyBytesAndFree(outPtr, outLen)
     return (publicKey, true)
 }
 
 /// Nonisolated helper for getting certificate serial (node)
 @inline(__always)
-internal func ffi_node_get_certificate_serial(
+func ffi_node_get_certificate_serial(
     _ handle: UnsafeMutableRawPointer
 ) throws -> String {
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<CChar>?
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             rn_keys_node_get_certificate_serial(nodeHandle, &outPtr, errPtr)
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to get certificate serial") }
     return try copyCStringAndFree(outPtr)
@@ -971,7 +971,7 @@ internal func ffi_node_get_certificate_serial(
 
 /// Nonisolated helper for getting network agreement (node)
 @inline(__always)
-internal func ffi_node_get_network_agreement(
+func ffi_node_get_network_agreement(
     _ handle: UnsafeMutableRawPointer,
     networkPublicKey: Data
 ) throws -> Data {
@@ -979,7 +979,7 @@ internal func ffi_node_get_network_agreement(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             networkPublicKey.withUnsafeBytes { raw in
@@ -987,7 +987,7 @@ internal func ffi_node_get_network_agreement(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to get network agreement") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -995,20 +995,20 @@ internal func ffi_node_get_network_agreement(
 
 /// Nonisolated helper for getting agreement public key (node)
 @inline(__always)
-internal func ffi_node_get_agreement_public_key(
+func ffi_node_get_agreement_public_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             rn_keys_node_get_agreement_public_key(nodeHandle, &outPtr, &outLen, errPtr)
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to get node agreement public key") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -1016,7 +1016,7 @@ internal func ffi_node_get_agreement_public_key(
 
 /// Nonisolated helper for ensuring symmetric key (common)
 @inline(__always)
-internal func ffi_ensure_symmetric_key(
+func ffi_ensure_symmetric_key(
     _ handle: UnsafeMutableRawPointer,
     name: String
 ) throws -> Data {
@@ -1024,7 +1024,7 @@ internal func ffi_ensure_symmetric_key(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             name.withCString { namePtr in
@@ -1032,7 +1032,7 @@ internal func ffi_ensure_symmetric_key(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to ensure symmetric key") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -1040,7 +1040,7 @@ internal func ffi_ensure_symmetric_key(
 
 /// Nonisolated helper for encrypting local data (common)
 @inline(__always)
-internal func ffi_encrypt_local_data(
+func ffi_encrypt_local_data(
     _ handle: UnsafeMutableRawPointer,
     data: Data
 ) throws -> Data {
@@ -1048,7 +1048,7 @@ internal func ffi_encrypt_local_data(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             data.withUnsafeBytes { dataRaw in
@@ -1056,7 +1056,7 @@ internal func ffi_encrypt_local_data(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to encrypt local data") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -1064,7 +1064,7 @@ internal func ffi_encrypt_local_data(
 
 /// Nonisolated helper for decrypting local data (common)
 @inline(__always)
-internal func ffi_decrypt_local_data(
+func ffi_decrypt_local_data(
     _ handle: UnsafeMutableRawPointer,
     encryptedData: Data
 ) throws -> Data {
@@ -1072,7 +1072,7 @@ internal func ffi_decrypt_local_data(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             encryptedData.withUnsafeBytes { dataRaw in
@@ -1080,16 +1080,15 @@ internal func ffi_decrypt_local_data(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt local data") }
     return try copyBytesAndFree(outPtr, outLen)
 }
 
-
 /// Nonisolated helper for encrypting for network (common)
 @inline(__always)
-internal func ffi_encrypt_for_network(
+func ffi_encrypt_for_network(
     _ handle: UnsafeMutableRawPointer,
     data: Data,
     networkPublicKey: Data
@@ -1098,7 +1097,7 @@ internal func ffi_encrypt_for_network(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             data.withUnsafeBytes { dataRaw in
@@ -1108,7 +1107,7 @@ internal func ffi_encrypt_for_network(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to encrypt for network") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -1116,7 +1115,7 @@ internal func ffi_encrypt_for_network(
 
 /// Nonisolated helper for decrypting network data (common)
 @inline(__always)
-internal func ffi_decrypt_network_data(
+func ffi_decrypt_network_data(
     _ handle: UnsafeMutableRawPointer,
     encryptedEnvelope: Data
 ) throws -> Data {
@@ -1124,7 +1123,7 @@ internal func ffi_decrypt_network_data(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             encryptedEnvelope.withUnsafeBytes { dataRaw in
@@ -1132,7 +1131,7 @@ internal func ffi_decrypt_network_data(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt network data") }
     return try copyBytesAndFree(outPtr, outLen)
@@ -1141,7 +1140,7 @@ internal func ffi_decrypt_network_data(
 // MARK: - Additional Helper Functions for Mobile Key Manager
 
 @inline(__always)
-internal func ffi_mobile_get_user_public_key(
+func ffi_mobile_get_user_public_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
@@ -1161,7 +1160,7 @@ internal func ffi_mobile_get_user_public_key(
 }
 
 @inline(__always)
-internal func ffi_mobile_derive_user_profile_key(
+func ffi_mobile_derive_user_profile_key(
     _ handle: UnsafeMutableRawPointer,
     label: String
 ) throws -> Data {
@@ -1184,7 +1183,7 @@ internal func ffi_mobile_derive_user_profile_key(
 }
 
 @inline(__always)
-internal func ffi_mobile_generate_network_data_key(
+func ffi_mobile_generate_network_data_key(
     _ handle: UnsafeMutableRawPointer
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
@@ -1204,7 +1203,7 @@ internal func ffi_mobile_generate_network_data_key(
 }
 
 @inline(__always)
-internal func ffi_mobile_create_network_key_message(
+func ffi_mobile_create_network_key_message(
     _ handle: UnsafeMutableRawPointer,
     data: Data,
     nodeAgreementPublicKey: Data
@@ -1237,7 +1236,7 @@ internal func ffi_mobile_create_network_key_message(
 }
 
 @inline(__always)
-internal func ffi_mobile_process_setup_token(
+func ffi_mobile_process_setup_token(
     _ handle: UnsafeMutableRawPointer,
     setupToken: Data
 ) throws -> Data {
@@ -1265,7 +1264,7 @@ internal func ffi_mobile_process_setup_token(
 }
 
 @inline(__always)
-internal func ffi_mobile_from_enroll_response(
+func ffi_mobile_from_enroll_response(
     _ handle: UnsafeMutableRawPointer,
     response: Data
 ) throws -> Data {
@@ -1288,7 +1287,7 @@ internal func ffi_mobile_from_enroll_response(
 }
 
 @inline(__always)
-internal func ffi_mobile_from_renew_response(
+func ffi_mobile_from_renew_response(
     _ handle: UnsafeMutableRawPointer,
     response: Data
 ) throws -> Data {
@@ -1313,7 +1312,7 @@ internal func ffi_mobile_from_renew_response(
 // MARK: - Additional Helper Functions for Message Encryption
 
 @inline(__always)
-internal func ffi_encrypt_message_for_mobile(
+func ffi_encrypt_message_for_mobile(
     _ handle: UnsafeMutableRawPointer,
     data: Data,
     mobilePublicKey: Data
@@ -1337,7 +1336,7 @@ internal func ffi_encrypt_message_for_mobile(
 }
 
 @inline(__always)
-internal func ffi_decrypt_message_from_mobile(
+func ffi_decrypt_message_from_mobile(
     _ handle: UnsafeMutableRawPointer,
     encryptedData: Data
 ) throws -> Data {
@@ -1358,7 +1357,7 @@ internal func ffi_decrypt_message_from_mobile(
 }
 
 @inline(__always)
-internal func ffi_encrypt_message_for_node(
+func ffi_encrypt_message_for_node(
     _ handle: UnsafeMutableRawPointer,
     data: Data,
     nodeAgreementPublicKey: Data
@@ -1385,7 +1384,7 @@ internal func ffi_encrypt_message_for_node(
 
 /// Nonisolated helper for decrypting envelope (mobile)
 @inline(__always)
-internal func ffi_mobile_decrypt_envelope(
+func ffi_mobile_decrypt_envelope(
     _ handle: UnsafeMutableRawPointer,
     envelopeData: Data
 ) throws -> Data {
@@ -1393,7 +1392,7 @@ internal func ffi_mobile_decrypt_envelope(
     let mobileHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: mobileHandle) {
             envelopeData.withUnsafeBytes { raw in
@@ -1401,14 +1400,14 @@ internal func ffi_mobile_decrypt_envelope(
             }
         }
     }
-    
+
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to decrypt envelope") }
     return try copyBytesAndFree(outPtr, outLen)
 }
 
 @inline(__always)
-internal func ffi_mobile_decrypt_message_from_node(
+func ffi_mobile_decrypt_message_from_node(
     _ handle: UnsafeMutableRawPointer,
     encryptedData: Data
 ) throws -> Data {
@@ -1433,18 +1432,18 @@ internal func ffi_mobile_decrypt_message_from_node(
 // MARK: - Additional Helper Functions for Transport and CA
 
 @inline(__always)
-internal func ffi_create_ca_client(
+func ffi_create_ca_client(
     _ handle: UnsafeMutableRawPointer,
     configCbor: Data
 ) throws -> UnsafeMutableRawPointer {
     let logger = RunarLogger(component: .custom)
     logger.info("ffi_create_ca_client() - Creating CA client")
     logger.debug("ffi_create_ca_client() - Config CBOR length: \(configCbor.count)")
-    
+
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var out: UnsafeMutableRawPointer?
-    
+
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
             configCbor.withUnsafeBytes { raw in
@@ -1453,22 +1452,22 @@ internal func ffi_create_ca_client(
             }
         }
     }
-    
+
     logger.debug("ffi_create_ca_client() - FFI call completed, code: \(code)")
-    if let error = err { 
+    if let error = err {
         logger.error("ffi_create_ca_client() - FFI error: \(error)")
-        throw error 
+        throw error
     }
-    guard code == 0, let clientHandle = out else { 
+    guard code == 0, let clientHandle = out else {
         logger.error("ffi_create_ca_client() - FFI operation failed with code: \(code)")
-        throw FFIError.operationFailed("Failed to create CA client") 
+        throw FFIError.operationFailed("Failed to create CA client")
     }
     logger.info("ffi_create_ca_client() - CA client created successfully")
     return clientHandle
 }
 
 @inline(__always)
-internal func ffi_create_discovery(
+func ffi_create_discovery(
     _ handle: UnsafeMutableRawPointer,
     optionsCbor: Data
 ) throws -> UnsafeMutableRawPointer {
@@ -1495,7 +1494,7 @@ internal func ffi_create_discovery(
 }
 
 @inline(__always)
-internal func ffi_create_transport(
+func ffi_create_transport(
     _ handle: UnsafeMutableRawPointer,
     optionsCbor: Data
 ) throws -> UnsafeMutableRawPointer {
@@ -1512,8 +1511,8 @@ internal func ffi_create_transport(
     }
 
     if let error = err { throw error }
-    guard code == 0, let transportHandle = outTransport else { 
-        throw FFIError.operationFailed("Failed to create transport") 
+    guard code == 0, let transportHandle = outTransport else {
+        throw FFIError.operationFailed("Failed to create transport")
     }
     return transportHandle
 }
@@ -1521,7 +1520,7 @@ internal func ffi_create_transport(
 // MARK: - Additional Helper Functions for CBOR Encoding
 
 @inline(__always)
-internal func ffi_encode_ca_client_config(
+func ffi_encode_ca_client_config(
     _ config: CaClientConfigAll
 ) async throws -> Data {
     // This is a nonisolated helper that can be called from any context
@@ -1578,7 +1577,7 @@ public struct EnrollmentToken: Codable, Equatable {
     public let body: EnrollmentTokenBody
     public let signature: Data
     public let signer_id: String
-    
+
     enum CodingKeys: String, CodingKey {
         case body
         case signature
@@ -1619,7 +1618,7 @@ public struct EnrollmentTokenBody: Codable, Equatable {
     public let expires_at: UInt64
     public let nonce: Data
     public let permissions: [String]
-    
+
     enum CodingKeys: String, CodingKey {
         case token_id
         case network_id
@@ -1672,7 +1671,7 @@ public struct SetupToken: Codable, Equatable {
     public let node_public_key: [UInt8]
     public let node_agreement_public_key: [UInt8]
     public let csr_der: [UInt8]
-    
+
     enum CodingKeys: String, CodingKey {
         case node_id
         case node_public_key
@@ -1688,48 +1687,52 @@ public struct SetupToken: Codable, Equatable {
     }
 
     public init(from cbor: CBOR) throws {
-        guard case .map(let map) = cbor else {
+        guard case let .map(map) = cbor else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Expected CBOR map"))
         }
-        
+
         // Extract node_id
         guard let nodeIdCbor = map[CBOR.utf8String("node_id")],
-              case .utf8String(let nodeId) = nodeIdCbor else {
+              case let .utf8String(nodeId) = nodeIdCbor
+        else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_id"))
         }
-        self.node_id = nodeId
-        
+        node_id = nodeId
+
         // Extract node_public_key (CBOR array of bytes)
         guard let nodePublicKeyCbor = map[CBOR.utf8String("node_public_key")],
-              case .array(let nodePublicKeyArray) = nodePublicKeyCbor else {
+              case let .array(nodePublicKeyArray) = nodePublicKeyCbor
+        else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_public_key"))
         }
-        self.node_public_key = try nodePublicKeyArray.map { byteCbor in
-            guard case .unsignedInt(let byte) = byteCbor else {
+        node_public_key = try nodePublicKeyArray.map { byteCbor in
+            guard case let .unsignedInt(byte) = byteCbor else {
                 throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in node_public_key array"))
             }
             return UInt8(byte)
         }
-        
+
         // Extract node_agreement_public_key (CBOR array of bytes)
         guard let nodeAgreementPublicKeyCbor = map[CBOR.utf8String("node_agreement_public_key")],
-              case .array(let nodeAgreementPublicKeyArray) = nodeAgreementPublicKeyCbor else {
+              case let .array(nodeAgreementPublicKeyArray) = nodeAgreementPublicKeyCbor
+        else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_agreement_public_key"))
         }
-        self.node_agreement_public_key = try nodeAgreementPublicKeyArray.map { byteCbor in
-            guard case .unsignedInt(let byte) = byteCbor else {
+        node_agreement_public_key = try nodeAgreementPublicKeyArray.map { byteCbor in
+            guard case let .unsignedInt(byte) = byteCbor else {
                 throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in node_agreement_public_key array"))
             }
             return UInt8(byte)
         }
-        
+
         // Extract csr_der (CBOR array of bytes)
         guard let csrDerCbor = map[CBOR.utf8String("csr_der")],
-              case .array(let csrDerArray) = csrDerCbor else {
+              case let .array(csrDerArray) = csrDerCbor
+        else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid csr_der"))
         }
-        self.csr_der = try csrDerArray.map { byteCbor in
-            guard case .unsignedInt(let byte) = byteCbor else {
+        csr_der = try csrDerArray.map { byteCbor in
+            guard case let .unsignedInt(byte) = byteCbor else {
                 throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in csr_der array"))
             }
             return UInt8(byte)
@@ -1739,7 +1742,7 @@ public struct SetupToken: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         node_id = try container.decode(String.self, forKey: .node_id)
-        
+
         // Decode binary fields as [UInt8] directly from CBOR arrays
         node_public_key = try container.decode([UInt8].self, forKey: .node_public_key)
         node_agreement_public_key = try container.decode([UInt8].self, forKey: .node_agreement_public_key)
@@ -1759,7 +1762,7 @@ public struct CsrEnrollRequest: Codable, Equatable {
     public let network_id: String
     public let csr_der: Data
     public let enrollment_token: EnrollmentToken
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case csr_der
@@ -1797,7 +1800,7 @@ public struct CsrEnrollResponse: Codable, Equatable {
     public let issuing_ca_der: [UInt8]
     public let root_ca_der: [UInt8]?
     public let expires_at: UInt64
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case certificate_der
@@ -1813,7 +1816,7 @@ public struct RenewResponse: Codable, Equatable {
     public let certificate_der: [UInt8]
     public let issuing_ca_der: [UInt8]
     public let expires_at: UInt64
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case certificate_der
@@ -1827,7 +1830,7 @@ public struct ChainResponse: Codable, Equatable {
     public let network_id: String
     public let issuing_ca_der: [UInt8]
     public let root_ca_der: [UInt8]?
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case issuing_ca_der
@@ -1839,7 +1842,7 @@ public struct CaErrorResponse: Codable, Equatable {
     public let code: String
     public let message: String
     public let reason: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case code
         case message
@@ -1850,7 +1853,7 @@ public struct CaErrorResponse: Codable, Equatable {
 public struct RenewRequest: Codable, Equatable {
     public let network_id: String
     public let csr_der: Data
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case csr_der
@@ -1882,7 +1885,7 @@ public struct RevokeRequest: Codable, Equatable {
     public let network_id: String
     public let certificate_serial: [UInt8]
     public let reason: String
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case certificate_serial
@@ -1894,7 +1897,7 @@ public struct RevokeRequest: Codable, Equatable {
 public struct RevokeResponse: Codable, Equatable {
     public let network_id: String
     public let ok: Bool
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case ok
@@ -1907,7 +1910,7 @@ public struct CrlLite: Codable {
     public let revoked_serials: [[UInt8]]
     public let signature: Data
     public let issuing_ca_serial_hex: String
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case revoked_serials
@@ -1923,7 +1926,7 @@ public struct CaStatus: Codable, Equatable {
     public let issuing_serial_hex: String
     public let not_before: UInt64
     public let not_after: UInt64
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case issuing_subject
@@ -1936,7 +1939,7 @@ public struct CaStatus: Codable, Equatable {
 /// Certificate chain structure
 public struct CertificateChain: Codable {
     public let certificates: [Data]
-    
+
     enum CodingKeys: String, CodingKey {
         case certificates
     }
@@ -1948,7 +1951,7 @@ public struct CustomCaServerConfig: Codable {
     public let network_id: String
     public let rate_limit_per_minute: Int
     public let rate_limit_per_hour: Int
-    
+
     enum CodingKeys: String, CodingKey {
         case bootstrap_bind
         case authenticated_bind
@@ -1982,7 +1985,7 @@ public struct CaClientConfigAll: Codable, Sendable {
         guard !issuing_ca_der.isEmpty else {
             throw FFIError.invalidParameter("issuing_ca_der cannot be empty")
         }
-        
+
         self.bootstrap_server = bootstrap_server
         self.authenticated_server = authenticated_server
         self.network_id = network_id
@@ -2041,7 +2044,7 @@ public struct CaServerConfig {
     public let networkId: String
     public let rateLimitPerMinute: Int
     public let rateLimitPerHour: Int
-    
+
     public init(bootstrapBind: String,
                 authenticatedBind: String,
                 networkId: String,
@@ -2071,9 +2074,9 @@ public class EAKeyManager {
         public let nonce: Data
         public let capabilities: [String]
     }
-    
+
     public init(logger _: RunarLogger) {}
-    
+
     public func createKeyPair() async throws -> UnsafeMutableRawPointer {
         var handle: UnsafeMutableRawPointer?
         let (code, err) = withRnErrorCode { errPtr in
@@ -2085,7 +2088,7 @@ public class EAKeyManager {
         }
         return out
     }
-    
+
     public func getPublicKey(_ handle: UnsafeMutableRawPointer) async throws -> Data {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
@@ -2098,7 +2101,7 @@ public class EAKeyManager {
         }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     public func generateEnrollmentToken(params: EnrollmentTokenParams) async throws -> Data {
         // Allocate stable C strings for capabilities
         let capabilityCStringPtrs: [UnsafeMutablePointer<CChar>] = params.capabilities.map { capability in
@@ -2146,7 +2149,7 @@ public class EAKeyManager {
         }
         return try copyBytesAndFree(tokenPtr, tokenLen)
     }
-    
+
     public static func free(_ handle: UnsafeMutableRawPointer) {
         rn_keys_ca_free_ea_key_pair(handle)
     }
@@ -2154,13 +2157,13 @@ public class EAKeyManager {
 
 public class CANode {
     public nonisolated(unsafe) let ffiHandle: UnsafeMutableRawPointer
-    nonisolated(unsafe) private let _ffiHandle: UnsafeMutableRawPointer
-    
+    private nonisolated(unsafe) let _ffiHandle: UnsafeMutableRawPointer
+
     public init(ffiHandle: UnsafeMutableRawPointer) {
         self.ffiHandle = ffiHandle
-        self._ffiHandle = ffiHandle
+        _ffiHandle = ffiHandle
     }
-    
+
     public nonisolated static func create() throws -> CANode {
         let logger = RunarLogger(component: .custom)
         logger.info("CANode.create() - Starting CA Node creation")
@@ -2173,9 +2176,9 @@ public class CANode {
             return result
         }
         logger.debug("CANode.create() - withRnErrorCode completed, code: \(code)")
-        if let error = err { 
-        logger.error("CANode.create() - FFI error: \(error)")
-        throw error
+        if let error = err {
+            logger.error("CANode.create() - FFI error: \(error)")
+            throw error
         }
         guard code == 0, let out = handle else {
             logger.error("CANode.create() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
@@ -2184,7 +2187,7 @@ public class CANode {
         logger.info("CANode.create() - CA Node created successfully")
         return CANode(ffiHandle: out)
     }
-    
+
     public nonisolated func setupComplete(params: CANodeManager.CANodeSetupParams) async throws {
         let logger = RunarLogger(component: .custom)
         logger.info("CANode.setupComplete() - Starting setup with params")
@@ -2195,9 +2198,9 @@ public class CANode {
         logger.debug("CANode.setupComplete() - EA Public Keys Length: \(params.eaPublicKeys.count)")
         logger.debug("CANode.setupComplete() - EA Public Keys first 20 bytes: \(Array(params.eaPublicKeys.prefix(20)))")
         logger.debug("CANode.setupComplete() - Network ID: \(params.networkId)")
-        
+
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             params.rootCaSubject.withCString { cRoot in
                 params.issuingCaSubject.withCString { cIssuing in
@@ -2219,31 +2222,31 @@ public class CANode {
                 }
             }
         }
-        if let error = err { 
+        if let error = err {
             logger.error("CANode.setupComplete() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("CANode.setupComplete() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to setup CA Node") 
+            throw FFIError.operationFailed("Failed to setup CA Node")
         }
         logger.info("CANode.setupComplete() - Setup completed successfully")
     }
-    
+
     public static func freeShared(_ handle: UnsafeMutableRawPointer) {
         rn_keys_ca_node_free_shared(handle)
     }
 
     /// Add admin SKI to CA Node
     public nonisolated func addAdminSki(_ ski: Data) async throws {
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let skiString = String(data: ski, encoding: .utf8) ?? ""
         let (code, err) = withRnErrorCode { errPtr in
             skiString.withCString { cSki in
                 rn_keys_ca_node_add_admin_ski(caHandle, cSki, errPtr)
             }
         }
-        
+
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to add admin SKI") }
     }
@@ -2267,13 +2270,13 @@ public class CANodeManager {
 
 public class CAServer {
     private nonisolated(unsafe) var handle: UnsafeMutableRawPointer?
-    nonisolated(unsafe) private var _handle: UnsafeMutableRawPointer?
-    
+    private nonisolated(unsafe) var _handle: UnsafeMutableRawPointer?
+
     public init(handle: UnsafeMutableRawPointer) {
         self.handle = handle
-        self._handle = handle
+        _handle = handle
     }
-    
+
     public nonisolated static func create(config: CaServerConfig, sharedCaNode: UnsafeMutableRawPointer) throws -> CAServer {
         // Encode to the CBOR config expected by rn_transport_ca_server_new
         let cborConfig = CustomCaServerConfig(
@@ -2302,7 +2305,7 @@ public class CAServer {
         }
         return CAServer(handle: out)
     }
-    
+
     public nonisolated func stop() async throws {
         guard let server = handle else { return }
         // Copy handle to local to avoid capturing actor state in closures
@@ -2368,7 +2371,7 @@ public class CAServer {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to configure admin SKIs") }
     }
-    
+
     nonisolated deinit {
         if let server = _handle {
             rn_transport_ca_server_free(server)
@@ -2381,16 +2384,16 @@ public class CAServer {
 
 public final class SharedCANode {
     public nonisolated(unsafe) let handle: UnsafeMutableRawPointer
-    nonisolated(unsafe) private let _handle: UnsafeMutableRawPointer
+    private nonisolated(unsafe) let _handle: UnsafeMutableRawPointer
 
     public init(handle: UnsafeMutableRawPointer) {
         self.handle = handle
-        self._handle = handle
+        _handle = handle
     }
 
     public func addAdminSki(_ ski: String) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             ski.withCString { cSki in
                 rn_keys_ca_node_add_admin_ski(nodeHandle, cSki, errPtr)
@@ -2413,7 +2416,7 @@ public extension CANode {
         let logger = RunarLogger(component: .custom)
         logger.debug("CANode.getRootCACertificate() - Getting Root CA certificate")
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -2421,21 +2424,21 @@ public extension CANode {
             return rn_keys_ca_node_get_root_ca_certificate(caHandle, &outPtr, &outLen, errPtr)
         }
         logger.debug("CANode.getRootCACertificate() - FFI call completed, code: \(code), outLen: \(outLen)")
-        if let error = err { 
+        if let error = err {
             logger.error("CANode.getRootCACertificate() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("CANode.getRootCACertificate() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to get Root CA certificate") 
+            throw FFIError.operationFailed("Failed to get Root CA certificate")
         }
         logger.debug("CANode.getRootCACertificate() - Root CA certificate retrieved successfully, length: \(outLen)")
-        
+
         // Defensive check: fail fast if certificate is empty
         guard outLen > 0 else {
             throw FFIError.operationFailed("CA root certificate is empty; verify EA keys CBOR array and setup sequence - ensure configureEnrollmentAuthority was called before setupComplete")
         }
-        
+
         return try copyBytesAndFree(outPtr, outLen)
     }
 
@@ -2443,7 +2446,7 @@ public extension CANode {
         let logger = RunarLogger(component: .custom)
         logger.debug("CANode.getIssuingCACertificate() - Getting Issuing CA certificate")
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -2451,33 +2454,33 @@ public extension CANode {
             return rn_keys_ca_node_get_issuing_ca_certificate(caHandle, &outPtr, &outLen, errPtr)
         }
         logger.debug("CANode.getIssuingCACertificate() - FFI call completed, code: \(code), outLen: \(outLen)")
-        if let error = err { 
+        if let error = err {
             logger.error("CANode.getIssuingCACertificate() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("CANode.getIssuingCACertificate() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to get Issuing CA certificate") 
+            throw FFIError.operationFailed("Failed to get Issuing CA certificate")
         }
         logger.debug("CANode.getIssuingCACertificate() - Issuing CA certificate retrieved successfully, length: \(outLen)")
-        
+
         // Defensive check: fail fast if certificate is empty
         guard outLen > 0 else {
             throw FFIError.operationFailed("CA issuing certificate is empty; verify EA keys CBOR array and setup sequence - ensure configureEnrollmentAuthority was called before setupComplete")
         }
-        
+
         return try copyBytesAndFree(outPtr, outLen)
     }
 
     func createSharedWrapped() async throws -> SharedCANode {
-        // Since CANode.create() now creates shared handles directly, 
+        // Since CANode.create() now creates shared handles directly,
         // we can create a SharedCANode wrapper around the current handle
-        return SharedCANode(handle: self.ffiHandle)
+        return SharedCANode(handle: ffiHandle)
     }
 
     func handleCRL(networkId: String) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -2492,7 +2495,7 @@ public extension CANode {
 
     func revokeToken(_ tokenId: String) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             tokenId.withCString { cToken in
                 rn_keys_ca_node_revoke_token(caHandle, cToken, errPtr)
@@ -2501,16 +2504,16 @@ public extension CANode {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to revoke token") }
     }
-    
+
     /// Configure enrollment authority
     /// - Parameter eaPublicKeys: Enrollment authority public keys data
     /// - Throws: FFIError if the operation fails
     func configureEnrollmentAuthority(eaPublicKeys: Data) async throws {
         let logger = RunarLogger(component: .custom)
         logger.debug("CANode.configureEnrollmentAuthority() - Configuring EA with keys length: \(eaPublicKeys.count)")
-        
+
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             logger.debug("CANode.configureEnrollmentAuthority() - Calling FFI function")
             return eaPublicKeys.withUnsafeBytes { raw in
@@ -2518,17 +2521,17 @@ public extension CANode {
             }
         }
         logger.debug("CANode.configureEnrollmentAuthority() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("CANode.configureEnrollmentAuthority() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("CANode.configureEnrollmentAuthority() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to configure enrollment authority") 
+            throw FFIError.operationFailed("Failed to configure enrollment authority")
         }
         logger.info("CANode.configureEnrollmentAuthority() - EA configuration completed successfully")
     }
-    
+
     /// Handle enrollment request (serverless)
     /// - Parameters:
     ///   - request: Enrollment request data
@@ -2539,7 +2542,7 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             request.withUnsafeBytes { raw in
                 remoteAddress.withCString { cAddr in
@@ -2551,7 +2554,7 @@ public extension CANode {
         guard code == 0 else { throw FFIError.operationFailed("Failed to handle enrollment request") }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Handle renewal request (serverless)
     /// - Parameters:
     ///   - request: Renewal request data
@@ -2562,7 +2565,7 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             request.withUnsafeBytes { reqRaw in
                 peerCertificate.withUnsafeBytes { certRaw in
@@ -2574,7 +2577,7 @@ public extension CANode {
         guard code == 0 else { throw FFIError.operationFailed("Failed to handle renewal request") }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Handle revocation request (serverless)
     /// - Parameters:
     ///   - request: Revocation request data
@@ -2585,7 +2588,7 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             request.withUnsafeBytes { raw in
                 adminSki.withCString { cSki in
@@ -2597,7 +2600,7 @@ public extension CANode {
         guard code == 0 else { throw FFIError.operationFailed("Failed to handle revocation request") }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Handle chain request (serverless)
     /// - Parameter networkId: Network ID
     /// - Returns: Chain response data
@@ -2606,7 +2609,7 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             networkId.withCString { cNet in
                 rn_keys_ca_node_handle_chain(caHandle, cNet, &outPtr, &outLen, errPtr)
@@ -2616,7 +2619,7 @@ public extension CANode {
         guard code == 0 else { throw FFIError.operationFailed("Failed to handle chain request") }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Handle status request (serverless)
     /// - Parameter networkId: Network ID
     /// - Returns: Status response data
@@ -2625,7 +2628,7 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             networkId.withCString { cNet in
                 rn_keys_ca_node_handle_status(caHandle, cNet, &outPtr, &outLen, errPtr)
@@ -2635,7 +2638,7 @@ public extension CANode {
         guard code == 0 else { throw FFIError.operationFailed("Failed to handle status request") }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Generate CRL-lite (explicit API)
     /// - Returns: CRL-lite data
     /// - Throws: FFIError if the operation fails
@@ -2643,7 +2646,7 @@ public extension CANode {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         // Copy handle to local to avoid capturing actor state in closures
-        let caHandle = self.ffiHandle
+        let caHandle = ffiHandle
         let (code, err) = withRnErrorCode { errPtr in
             rn_keys_ca_node_generate_crl_lite(caHandle, &outPtr, &outLen, errPtr)
         }
@@ -2658,17 +2661,17 @@ public extension CANode {
 /// Certificate Authority creation and management
 public class CA {
     public nonisolated(unsafe) let ffiHandle: UnsafeMutableRawPointer
-    nonisolated(unsafe) private let _ffiHandle: UnsafeMutableRawPointer
-    
+    private nonisolated(unsafe) let _ffiHandle: UnsafeMutableRawPointer
+
     public init(ffiHandle: UnsafeMutableRawPointer) {
         self.ffiHandle = ffiHandle
-        self._ffiHandle = ffiHandle
+        _ffiHandle = ffiHandle
     }
-    
+
     deinit {
         rn_keys_ca_free(_ffiHandle)
     }
-    
+
     /// Create a self-signed root CA
     /// - Parameter subject: The subject for the root CA certificate
     /// - Returns: A new CA instance representing the root CA
@@ -2676,28 +2679,28 @@ public class CA {
     public nonisolated static func createRootCA(subject: String) throws -> CA {
         let logger = RunarLogger(component: .custom)
         logger.info("CA.createRootCA() - Starting root CA creation with subject: \(subject)")
-        
+
         var handle: UnsafeMutableRawPointer?
         let (code, err) = withRnErrorCode { errPtr in
             subject.withCString { cSubject in
                 rn_keys_ca_create_root_ca(cSubject, &handle, errPtr)
             }
         }
-        
+
         if let error = err {
             logger.error("CA.createRootCA() - FFI error: \(error)")
             throw error
         }
-        
+
         guard code == 0, let out = handle else {
             logger.error("CA.createRootCA() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
             throw FFIError.operationFailed("Failed to create root CA")
         }
-        
+
         logger.info("CA.createRootCA() - Root CA created successfully")
         return CA(ffiHandle: out)
     }
-    
+
     /// Create an issuing CA signed by a root CA
     /// - Parameters:
     ///   - rootCA: The root CA that will sign this issuing CA
@@ -2714,35 +2717,35 @@ public class CA {
     ) throws -> CA {
         let logger = RunarLogger(component: .custom)
         logger.info("CA.createIssuingCA() - Starting issuing CA creation with subject: \(subject)")
-        
+
         var handle: UnsafeMutableRawPointer?
         let (code, err) = withRnErrorCode { errPtr in
             subject.withCString { cSubject in
                 rn_keys_ca_create_issuing_ca(rootCA.ffiHandle, cSubject, validityDays, serial, &handle, errPtr)
             }
         }
-        
+
         if let error = err {
             logger.error("CA.createIssuingCA() - FFI error: \(error)")
             throw error
         }
-        
+
         guard code == 0, let out = handle else {
             logger.error("CA.createIssuingCA() - FFI operation failed with code: \(code), handle: \(handle != nil ? "non-nil" : "nil")")
             throw FFIError.operationFailed("Failed to create issuing CA")
         }
-        
+
         logger.info("CA.createIssuingCA() - Issuing CA created successfully")
         return CA(ffiHandle: out)
     }
-    
+
     /// Get the CA certificate in DER format
     /// - Returns: The certificate data in DER format
     /// - Throws: FFIError if retrieval fails
     public nonisolated func getCertificateDER() async throws -> Data {
         let logger = RunarLogger(component: .custom)
         logger.trace("CA.getCertificateDER() - About to call rn_keys_ca_get_certificate_der")
-        
+
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -2750,45 +2753,45 @@ public class CA {
                 rn_keys_ca_get_certificate_der(self.ffiHandle, &outPtr, &outLen, errPtr)
             }
         }
-        
+
         if let error = err {
             logger.error("CA.getCertificateDER() - FFI error: \(error)")
             throw error
         }
-        
+
         guard code == 0 else {
             logger.error("CA.getCertificateDER() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to get CA certificate DER")
         }
-        
+
         logger.trace("CA.getCertificateDER() - Successfully retrieved certificate DER")
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Get the CA certificate subject
     /// - Returns: The certificate subject string
     /// - Throws: FFIError if retrieval fails
     public nonisolated func getCertificateSubject() async throws -> String {
         let logger = RunarLogger(component: .custom)
         logger.trace("CA.getCertificateSubject() - About to call rn_keys_ca_get_certificate_subject")
-        
+
         var outPtr: UnsafeMutablePointer<CChar>?
         let (code, err) = withRnErrorCode { errPtr in
             HandleLockRegistry.shared.withLock(for: self.ffiHandle) {
                 rn_keys_ca_get_certificate_subject(self.ffiHandle, &outPtr, errPtr)
             }
         }
-        
+
         if let error = err {
             logger.error("CA.getCertificateSubject() - FFI error: \(error)")
             throw error
         }
-        
+
         guard code == 0 else {
             logger.error("CA.getCertificateSubject() - FFI operation failed with code: \(code)")
             throw FFIError.operationFailed("Failed to get CA certificate subject")
         }
-        
+
         logger.trace("CA.getCertificateSubject() - Successfully retrieved certificate subject")
         return try copyCStringAndFree(outPtr)
     }
@@ -2797,17 +2800,17 @@ public class CA {
 // MARK: - Keys Wrapper
 
 /// Handle for key management operations
-/// 
+///
 /// This class provides a Swift interface to the Rust key management functionality.
 /// It supports both node and mobile key management modes, including:
 /// - Key generation and management
 /// - Certificate operations
 /// - Encryption and decryption
 /// - Persistence and keystore operations
-/// 
+///
 /// - Important: This class is not thread-safe. All operations should be performed
 ///   on the same queue/actor to ensure thread safety.
-/// 
+///
 
 // MARK: - Unified Key Manager Classes
 
@@ -2820,12 +2823,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     /// The underlying Rust FFI handle
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
 
-
     /// Initialize a new node key manager
-    /// 
+    ///
     /// Creates a new key manager and initializes it specifically for node operations.
     /// This includes node key generation, certificate management, and network operations.
-    /// 
+    ///
     /// - Throws: FFIError if initialization fails
     public init() async throws {
         var out: UnsafeMutableRawPointer?
@@ -2855,7 +2857,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func encryptWithEnvelope(data: Data, networkPublicKey: Data?, profilePublicKeys: [Data]) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_encrypt_with_envelope(handle, data: data, networkPublicKey: networkPublicKey, profilePublicKeys: profilePublicKeys)
     }
@@ -2863,7 +2865,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func decryptEnvelope(envelopeData: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_decrypt_envelope(handle, envelopeData: envelopeData)
     }
@@ -2872,7 +2874,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 
     public func hasKeys() async throws -> Bool {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         var hasKeys: Int32 = 0
         let (code, err) = withRnErrorCode { errPtr in
             rn_keys_node_has_keys(nodeHandle, &hasKeys, errPtr)
@@ -2884,7 +2886,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 
     public func generateKeys() async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             rn_keys_node_generate_keys(nodeHandle, errPtr)
         }
@@ -2895,15 +2897,15 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func generateCsrSetupToken() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_generate_csr(handle)
     }
-    
+
     public func generateCSR() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_generate_csr(handle)
     }
@@ -2926,7 +2928,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func getQuicCertificateConfig() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_get_quic_certificate_config(handle)
     }
@@ -2934,7 +2936,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func getNodeCertificate() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_get_node_certificate(handle)
     }
@@ -2942,7 +2944,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func getNodePublicKey() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_get_public_key(handle)
     }
@@ -2950,7 +2952,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func deriveUserProfileKey(label: String) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_derive_user_profile_key(handle, label: label)
     }
@@ -2958,14 +2960,14 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func decryptWithProfile(envelopeData: Data, profileId: String) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_decrypt_with_profile(handle, envelopeData: envelopeData, profileId: profileId)
     }
 
     public func installProfilePublicKey(_ publicKey: Data) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             publicKey.withUnsafeBytes { raw in
                 rn_keys_node_install_profile_public_key(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, publicKey.count, errPtr)
@@ -2978,14 +2980,14 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func getProfilePublicKey(label: String) async throws -> (publicKey: Data?, exists: Bool) {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_get_profile_public_key_by_label(handle, label: label)
     }
 
     public func getCertificateStatus() async throws -> Int32 {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         var status: Int32 = 0
         let (code, err) = withRnErrorCode { errPtr in
             rn_keys_node_get_certificate_status(nodeHandle, &status, errPtr)
@@ -2998,14 +3000,14 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func getCertificateSerial() async throws -> String {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_get_certificate_serial(handle)
     }
 
     public func validatePeerCertificate(_ cert: Data) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             cert.withUnsafeBytes { raw in
                 rn_keys_node_validate_peer_certificate(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, cert.count, errPtr)
@@ -3017,7 +3019,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 
     public func installNetworkKey(_ networkKeyMessage: Data) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             networkKeyMessage.withUnsafeBytes { raw in
                 rn_keys_node_install_network_key(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkKeyMessage.count, errPtr)
@@ -3030,14 +3032,14 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func getNetworkAgreement(networkPublicKey: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_get_network_agreement(handle, networkPublicKey: networkPublicKey)
     }
-    
+
     public func hasNetworkPrivateKey(networkPublicKey: Data) async throws -> Bool {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         var hasKey: Int32 = 0
         let (_, err) = withRnErrorCode { errPtr in
             networkPublicKey.withUnsafeBytes { raw in
@@ -3051,7 +3053,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func getNodeAgreementPublicKey() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_get_agreement_public_key(handle)
     }
@@ -3065,7 +3067,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 
     public func setLocalNodeInfo(_ nodeInfoCbor: Data) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             nodeInfoCbor.withUnsafeBytes { raw in
                 rn_keys_set_local_node_info(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
@@ -3100,11 +3102,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func ensureSymmetricKey(name: String) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_ensure_symmetric_key(handle, name: name)
     }
-    
+
     /// Encrypt local data with default symmetric key
     /// - Parameter data: Data to encrypt
     /// - Returns: Encrypted data
@@ -3112,7 +3114,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func encryptLocalData(data: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_encrypt_local_data(handle, data: data)
     }
@@ -3124,11 +3126,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func decryptLocalData(encryptedData: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_decrypt_local_data(handle, encryptedData: encryptedData)
     }
-    
+
     /// Set persistence directory
     /// - Parameter path: Directory path for persistence
     /// - Throws: FFIError if the operation fails
@@ -3141,7 +3143,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to set persistence directory") }
     }
-    
+
     /// Enable or disable auto-persistence
     /// - Parameter enabled: Whether to enable auto-persistence
     /// - Throws: FFIError if the operation fails
@@ -3152,7 +3154,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to enable auto-persistence") }
     }
-    
+
     /// Wipe persistence data
     /// - Throws: FFIError if the operation fails
     public func wipePersistence() async throws {
@@ -3162,7 +3164,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to wipe persistence") }
     }
-    
+
     /// Get keystore capabilities
     /// - Returns: Keystore capabilities information
     /// - Throws: FFIError if the operation fails
@@ -3175,7 +3177,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to get keystore capabilities") }
         return KeystoreCapabilities(version: caps.version, flags: caps.flags)
     }
-    
+
     /// Flush state to persistence
     /// - Throws: FFIError if the operation fails
     public func flushState() async throws {
@@ -3185,7 +3187,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to flush state") }
     }
-    
+
     /// Register Apple device keystore
     /// - Parameter label: Keystore label
     /// - Throws: FFIError if the operation fails
@@ -3198,8 +3200,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to register Apple device keystore") }
     }
-    
-    
+
     /// Encrypt data for network
     /// - Parameters:
     ///   - data: Data to encrypt
@@ -3209,11 +3210,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func encryptForNetwork(data: Data, networkPublicKey: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_encrypt_for_network(handle, data: data, networkPublicKey: networkPublicKey)
     }
-    
+
     /// Decrypt network data
     /// - Parameter encryptedEnvelope: Encrypted envelope data
     /// - Returns: Decrypted data
@@ -3221,7 +3222,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     public func decryptNetworkData(encryptedEnvelope: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_decrypt_network_data(handle, encryptedEnvelope: encryptedEnvelope)
     }
@@ -3253,9 +3254,9 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_decrypt_message_from_mobile(handle, encryptedData: encryptedData)
     }
-    
+
     // MARK: - Helper Methods for External Objects
-    
+
     /// Actor-safe factory: create a CAClient instance
     public func createCAClient(config: CaClientConfigAll, configCbor: Data? = nil) async throws -> CAClient {
         let cbor: Data
@@ -3264,12 +3265,12 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         } else {
             cbor = try await ffi_encode_ca_client_config(config)
         }
-        let nodeHandle = self.handle
+        let nodeHandle = handle
         let clientHandle = try ffi_create_ca_client(nodeHandle, configCbor: cbor)
         let token = HandleRegistry.shared.insert(kind: .caClient, pointer: clientHandle)
         return try CAClient(token: token)
     }
-    
+
     /// Create a discovery handle with this node's handle
     public func createDiscoveryHandle(optionsCbor: Data) async throws -> DiscoveryHandle {
         // Copy handle to local to avoid capturing actor state in closures
@@ -3280,9 +3281,9 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         let token = HandleRegistry.shared.insert(kind: .discovery, pointer: discoveryHandle)
         return try DiscoveryHandle(token: token)
     }
-    
+
     /// Create a transport handle with this node's handle (typed API)
-    public func createTransportHandle(options: QuicTransportOptions) async throws -> HandleToken {
+    public func createTransportHandle(options: FFIQuicTransportOptions) async throws -> HandleToken {
         // Encode options to CBOR internally (pure encoding, no MainActor)
         let optionsCbor = try CodableCBOREncoder().encode(options)
         // Copy handle to local to avoid capturing actor state in closures
@@ -3296,7 +3297,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 
     /// Legacy internal: Create a transport handle from raw CBOR
     /// This remains internal to support typed API implementation
-    internal func createTransportHandle(optionsCbor: Data) async throws -> HandleToken {
+    func createTransportHandle(optionsCbor: Data) async throws -> HandleToken {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
@@ -3315,7 +3316,6 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
 public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     /// The underlying Rust FFI handle
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
-    
 
     /// Initialize a new mobile key manager
     ///
@@ -3355,7 +3355,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_encrypt_with_envelope(handle, data: data, networkPublicKey: networkPublicKey, profilePublicKeys: profilePublicKeys)
     }
-    
+
     public func decryptEnvelope(envelopeData: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
@@ -3363,12 +3363,12 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_decrypt_envelope(handle, envelopeData: envelopeData)
     }
-    
+
     // MARK: - MobileOnly Implementation
 
     public func initializeUserRootKey() async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let mobileHandle = self.handle
+        let mobileHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             rn_keys_mobile_initialize_user_root_key(mobileHandle, errPtr)
         }
@@ -3391,10 +3391,10 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_derive_user_profile_key(handle, label: label)
     }
-    
+
     public func installNetworkPublicKey(_ networkPublicKey: Data) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let mobileHandle = self.handle
+        let mobileHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             networkPublicKey.withUnsafeBytes { raw in
                 rn_keys_mobile_install_network_public_key(mobileHandle, raw.bindMemory(to: UInt8.self).baseAddress, networkPublicKey.count, errPtr)
@@ -3403,7 +3403,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to install network public key") }
     }
-    
+
     public func generateNetworkDataKey() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
@@ -3411,10 +3411,10 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_generate_network_data_key(handle)
     }
-    
+
     public func hasNetworkPrivateKey(networkPublicKey: Data) async throws -> Bool {
         // Copy handle to local to avoid capturing actor state in closures
-        let mobileHandle = self.handle
+        let mobileHandle = handle
         var hasKey: Int32 = 0
         let (_, err) = withRnErrorCode { errPtr in
             networkPublicKey.withUnsafeBytes { raw in
@@ -3424,7 +3424,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         return hasKey != 0
     }
-    
+
     public func createNetworkKeyMessage(networkPublicKey: Data, nodeAgreementPublicKey: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
@@ -3432,7 +3432,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_create_network_key_message(handle, data: networkPublicKey, nodeAgreementPublicKey: nodeAgreementPublicKey)
     }
-    
+
     public func processSetupToken(_ setupToken: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
@@ -3440,7 +3440,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_process_setup_token(handle, setupToken: setupToken)
     }
-    
+
     public func fromEnrollResponse(_ response: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
@@ -3448,7 +3448,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_from_enroll_response(handle, response: response)
     }
-    
+
     public func fromRenewResponse(_ response: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
@@ -3456,7 +3456,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_from_renew_response(handle, response: response)
     }
-    
+
     /// Get compact ID for a public key
     /// - Parameter key: Public key data
     /// - Returns: Compact ID string
@@ -3482,11 +3482,11 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     public func ensureSymmetricKey(name: String) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_ensure_symmetric_key(handle, name: name)
     }
-    
+
     /// Encrypt local data with default symmetric key
     /// - Parameter data: Data to encrypt
     /// - Returns: Encrypted data
@@ -3494,11 +3494,11 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     public func encryptLocalData(data: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_encrypt_local_data(handle, data: data)
     }
-    
+
     /// Decrypt local data with default symmetric key
     /// - Parameter encryptedData: Encrypted data
     /// - Returns: Decrypted data
@@ -3506,11 +3506,11 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     public func decryptLocalData(encryptedData: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_decrypt_local_data(handle, encryptedData: encryptedData)
     }
-    
+
     /// Set persistence directory
     /// - Parameter path: Directory path for persistence
     /// - Throws: FFIError if the operation fails
@@ -3523,7 +3523,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to set persistence directory") }
     }
-    
+
     /// Enable or disable auto-persistence
     /// - Parameter enabled: Whether to enable auto-persistence
     /// - Throws: FFIError if the operation fails
@@ -3534,7 +3534,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to enable auto-persistence") }
     }
-    
+
     /// Wipe persistence data
     /// - Throws: FFIError if the operation fails
     public func wipePersistence() async throws {
@@ -3544,7 +3544,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to wipe persistence") }
     }
-    
+
     /// Get keystore capabilities
     /// - Returns: Keystore capabilities information
     /// - Throws: FFIError if the operation fails
@@ -3557,7 +3557,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to get keystore capabilities") }
         return KeystoreCapabilities(version: caps.version, flags: caps.flags)
     }
-    
+
     /// Flush state to persistence
     /// - Throws: FFIError if the operation fails
     public func flushState() async throws {
@@ -3567,7 +3567,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to flush state") }
     }
-    
+
     /// Register Apple device keystore
     /// - Parameter label: Keystore label
     /// - Throws: FFIError if the operation fails
@@ -3581,7 +3581,6 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to register Apple device keystore") }
     }
 
-
     /// Encrypt data for network
     /// - Parameters:
     ///   - data: Data to encrypt
@@ -3591,11 +3590,11 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     public func encryptForNetwork(data: Data, networkPublicKey: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_encrypt_for_network(handle, data: data, networkPublicKey: networkPublicKey)
     }
-    
+
     /// Decrypt network data
     /// - Parameter encryptedEnvelope: Encrypted envelope data
     /// - Returns: Decrypted data
@@ -3603,7 +3602,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     public func decryptNetworkData(encryptedEnvelope: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_decrypt_network_data(handle, encryptedEnvelope: encryptedEnvelope)
     }
@@ -3623,7 +3622,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_encrypt_message_for_node(handle, data: data, nodeAgreementPublicKey: nodeAgreementPublicKey)
     }
-    
+
     /// Decrypt message from node device
     /// - Parameter encryptedData: Encrypted message data
     /// - Returns: Decrypted data
@@ -3635,24 +3634,24 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         // Call nonisolated helper - no suspension during FFI
         return try ffi_mobile_decrypt_message_from_node(handle, encryptedData: encryptedData)
     }
-    
+
     /// Generate CSR for certificate enrollment
     /// - Returns: CSR data
     /// - Throws: FFIError if generation fails
     public func generateCSR() async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         // Call nonisolated helper - no suspension during FFI
         return try ffi_node_generate_csr(handle)
     }
-    
+
     /// Install certificate from CA response
     /// - Parameter certMessage: Certificate message data
     /// - Throws: FFIError if installation fails
     public func installCertificate(_ certMessage: Data) async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let mobileHandle = self.handle
+        let mobileHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             certMessage.withUnsafeBytes { raw in
                 rn_keys_node_install_certificate(
@@ -3666,7 +3665,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to install certificate") }
     }
-    
+
     /// Decrypt data with profile key
     /// - Parameters:
     ///   - data: Encrypted data
@@ -3675,7 +3674,7 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     /// - Throws: FFIError if decryption fails
     public func decryptWithProfile(_ data: Data, _ profileId: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
-        let mobileHandle = self.handle
+        let mobileHandle = handle
         return try ffi_node_decrypt_with_profile(mobileHandle, envelopeData: data, profileId: String(data: profileId, encoding: .utf8) ?? "")
     }
 }
@@ -3690,23 +3689,23 @@ public actor CAClient {
 
     // Use NodeKeyManager factory to create instances; keep this internal
     public init(token: HandleToken) throws {
-        self.handle = try HandleRegistry.shared.claim(kind: .caClient, token: token)
+        handle = try HandleRegistry.shared.claim(kind: .caClient, token: token)
         let logger = RunarLogger(component: .custom)
         let threadId = pthread_mach_thread_np(pthread_self())
         Task { @MainActor in CAClient._inc() }
         logger.trace("CAClient.init: thread=\(threadId) clientHandle=\(handle)")
     }
-    
+
     public func enroll(bootstrapAddress: String, request: Data) async throws -> Data {
         let logger = RunarLogger(component: .custom)
         logger.info("CAClient.enroll() - Starting enrollment")
         logger.debug("CAClient.enroll() - Bootstrap address: \(bootstrapAddress)")
         logger.debug("CAClient.enroll() - Request data length: \(request.count)")
-        
+
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
         logger.debug("CAClient.enroll() - Handle copied to local")
-        
+
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         logger.trace("CAClient.enroll() - About to call FFI function")
@@ -3719,13 +3718,13 @@ public actor CAClient {
             }
         }
         logger.debug("CAClient.enroll() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("CAClient.enroll() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("CAClient.enroll() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to enroll") 
+            throw FFIError.operationFailed("Failed to enroll")
         }
         logger.debug("CAClient.enroll() - About to copy and free result")
         let result = try copyBytesAndFree(outPtr, outLen)
@@ -3736,7 +3735,7 @@ public actor CAClient {
     public func renew(authenticatedAddress: String, request: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -3754,7 +3753,7 @@ public actor CAClient {
     public func revoke(authenticatedAddress: String, request: Data) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -3772,7 +3771,7 @@ public actor CAClient {
     public func getStatus(authenticatedAddress: String, networkId: String) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -3790,7 +3789,7 @@ public actor CAClient {
     public func getChain(bootstrapAddress: String, networkId: String) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
-        
+
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -3804,7 +3803,7 @@ public actor CAClient {
         guard code == 0 else { throw FFIError.operationFailed("Failed to get chain") }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Get CRL (Certificate Revocation List)
     /// - Parameters:
     ///   - authenticatedAddress: Authenticated server address
@@ -3815,7 +3814,7 @@ public actor CAClient {
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         // Copy handle to local to avoid capturing actor state in closures
-        let clientHandle = self.handle
+        let clientHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             authenticatedAddress.withCString { cAddr in
                 networkId.withCString { cNet in
@@ -3921,7 +3920,7 @@ public enum EnrollmentTokenUtils {
         guard code == 0 else { throw FFIError.operationFailed("Failed to generate enrollment token") }
         return try copyBytesAndFree(outPtr, outLen)
     }
-    
+
     /// Validate enrollment token (low-level utility)
     /// - Parameters:
     ///   - token: Token data to validate
@@ -3959,7 +3958,7 @@ public struct NodeInfo: Codable {
     public let addresses: [String]
     public let nodeMetadata: NodeMetadata
     public let version: Int64
-    
+
     public init(nodePublicKey: Data, networkIds: [String], addresses: [String], nodeMetadata: NodeMetadata, version: Int64) {
         self.nodePublicKey = nodePublicKey
         self.networkIds = networkIds
@@ -3967,7 +3966,7 @@ public struct NodeInfo: Codable {
         self.nodeMetadata = nodeMetadata
         self.version = version
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case nodePublicKey = "node_public_key"
         case networkIds = "network_ids"
@@ -3981,7 +3980,7 @@ public struct NodeInfo: Codable {
 public struct NodeMetadata: Codable {
     public let services: [ServiceMetadata]
     public let subscriptions: [SubscriptionMetadata]
-    
+
     public init(services: [ServiceMetadata], subscriptions: [SubscriptionMetadata]) {
         self.services = services
         self.subscriptions = subscriptions
@@ -3998,7 +3997,7 @@ public struct ServiceMetadata: Codable {
     public let actions: [ActionMetadata]
     public let registrationTime: UInt64
     public let lastStartTime: UInt64?
-    
+
     public init(networkId: String, servicePath: String, name: String, version: String, description: String, actions: [ActionMetadata], registrationTime: UInt64, lastStartTime: UInt64? = nil) {
         self.networkId = networkId
         self.servicePath = servicePath
@@ -4009,7 +4008,7 @@ public struct ServiceMetadata: Codable {
         self.registrationTime = registrationTime
         self.lastStartTime = lastStartTime
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case networkId = "network_id"
         case servicePath = "service_path"
@@ -4028,14 +4027,14 @@ public struct ActionMetadata: Codable {
     public let description: String
     public let inputSchema: FieldSchema?
     public let outputSchema: FieldSchema?
-    
+
     public init(name: String, description: String, inputSchema: FieldSchema? = nil, outputSchema: FieldSchema? = nil) {
         self.name = name
         self.description = description
         self.inputSchema = inputSchema
         self.outputSchema = outputSchema
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case name
         case description
@@ -4047,7 +4046,7 @@ public struct ActionMetadata: Codable {
 /// Swift representation of SubscriptionMetadata structure from Rust
 public struct SubscriptionMetadata: Codable {
     public let path: String
-    
+
     public init(path: String) {
         self.path = path
     }
@@ -4058,13 +4057,13 @@ public struct FieldSchema: Codable {
     public let dataType: SchemaDataType
     public let required: Bool
     public let description: String?
-    
+
     public init(dataType: SchemaDataType, required: Bool, description: String? = nil) {
         self.dataType = dataType
         self.required = required
         self.description = description
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case dataType = "data_type"
         case required
@@ -4086,14 +4085,14 @@ public enum SchemaDataType: String, Codable {
 }
 
 /// Swift representation of QuicTransportOptions for CBOR encoding
-public struct QuicTransportOptions: Codable, Equatable {
+public struct FFIQuicTransportOptions: Codable, Equatable, Sendable {
     public let bindAddr: String?
     public let handshakeTimeoutMs: UInt64?
     public let openStreamTimeoutMs: UInt64?
     public let maxMessageSize: UInt64?
     public let responseCacheTtlMs: UInt64?
     public let maxRequestRetries: UInt32?
-    
+
     public init(bindAddr: String? = nil, handshakeTimeoutMs: UInt64? = nil, openStreamTimeoutMs: UInt64? = nil, maxMessageSize: UInt64? = nil, responseCacheTtlMs: UInt64? = nil, maxRequestRetries: UInt32? = nil) {
         self.bindAddr = bindAddr
         self.handshakeTimeoutMs = handshakeTimeoutMs
@@ -4102,7 +4101,7 @@ public struct QuicTransportOptions: Codable, Equatable {
         self.responseCacheTtlMs = responseCacheTtlMs
         self.maxRequestRetries = maxRequestRetries
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case bindAddr = "bind_addr"
         case handshakeTimeoutMs = "handshake_timeout_ms"
@@ -4110,6 +4109,51 @@ public struct QuicTransportOptions: Codable, Equatable {
         case maxMessageSize = "max_message_size"
         case responseCacheTtlMs = "response_cache_ttl_ms"
         case maxRequestRetries = "max_request_retries"
+    }
+}
+
+/// Swift-layer transport options (normalized structure)
+public struct QuicTransportOptions: Sendable {
+    // Swift layer options
+    public let requestTimeoutSeconds: UInt64
+
+    // FFI options (normalized directly into this struct)
+    public let bindAddr: String?
+    public let handshakeTimeoutMs: UInt64?
+    public let openStreamTimeoutMs: UInt64?
+    public let maxMessageSize: UInt64?
+    public let responseCacheTtlMs: UInt64?
+    public let maxRequestRetries: UInt32?
+
+    public init(
+        requestTimeoutSeconds: UInt64 = 30,
+        bindAddr: String? = nil,
+        handshakeTimeoutMs: UInt64? = nil,
+        openStreamTimeoutMs: UInt64? = nil,
+        maxMessageSize: UInt64? = nil,
+        responseCacheTtlMs: UInt64? = nil,
+        maxRequestRetries: UInt32? = nil
+    ) {
+        self.requestTimeoutSeconds = requestTimeoutSeconds
+        self.bindAddr = bindAddr
+        self.handshakeTimeoutMs = handshakeTimeoutMs
+        self.openStreamTimeoutMs = openStreamTimeoutMs
+        self.maxMessageSize = maxMessageSize
+        self.responseCacheTtlMs = responseCacheTtlMs
+        self.maxRequestRetries = maxRequestRetries
+    }
+
+    /// Create FFIQuicTransportOptions from this QuicTransportOptions
+    /// This is used internally to convert to FFI format
+    internal func toFFIOptions() -> FFIQuicTransportOptions {
+        return FFIQuicTransportOptions(
+            bindAddr: bindAddr,
+            handshakeTimeoutMs: handshakeTimeoutMs,
+            openStreamTimeoutMs: openStreamTimeoutMs,
+            maxMessageSize: maxMessageSize,
+            responseCacheTtlMs: responseCacheTtlMs,
+            maxRequestRetries: maxRequestRetries
+        )
     }
 }
 
@@ -4128,12 +4172,12 @@ public enum CBORHelper {
             actions: [],
             registrationTime: UInt64(Date().timeIntervalSince1970)
         )
-        
+
         let nodeMetadata = NodeMetadata(
             services: [serviceMetadata],
             subscriptions: []
         )
-        
+
         return NodeInfo(
             nodePublicKey: nodePublicKey,
             networkIds: [networkId],
@@ -4142,10 +4186,10 @@ public enum CBORHelper {
             version: 1
         )
     }
-    
-    /// Create minimal transport options for testing
-    public static func createMinimalTransportOptions(bindAddr: String = "127.0.0.1:0") -> QuicTransportOptions {
-        return QuicTransportOptions(
+
+    /// Create minimal transport options for testing (FFI layer)
+    public static func createMinimalTransportOptions(bindAddr: String = "127.0.0.1:0") -> FFIQuicTransportOptions {
+        return FFIQuicTransportOptions(
             bindAddr: bindAddr,
             handshakeTimeoutMs: 5000,
             openStreamTimeoutMs: 10000,
@@ -4154,7 +4198,20 @@ public enum CBORHelper {
             maxRequestRetries: 3
         )
     }
-    
+
+    /// Create minimal transport options for testing (Swift layer)
+    public static func createMinimalSwiftTransportOptions(bindAddr: String = "127.0.0.1:0", requestTimeoutSeconds: UInt64 = 30) -> QuicTransportOptions {
+        return QuicTransportOptions(
+            requestTimeoutSeconds: requestTimeoutSeconds,
+            bindAddr: bindAddr,
+            handshakeTimeoutMs: 5000,
+            openStreamTimeoutMs: 10000,
+            maxMessageSize: 1024,
+            responseCacheTtlMs: 30000,
+            maxRequestRetries: 3
+        )
+    }
+
     /// Encode NodeInfo to CBOR data
     @MainActor
     public static func encodeNodeInfo(_ nodeInfo: NodeInfo) async throws -> Data {
@@ -4163,7 +4220,7 @@ public enum CBORHelper {
         map[.utf8String("node_public_key")] = .array([UInt8](nodeInfo.nodePublicKey).map { .unsignedInt(UInt64($0)) })
         map[.utf8String("network_ids")] = .array(nodeInfo.networkIds.map { .utf8String($0) })
         map[.utf8String("addresses")] = .array(nodeInfo.addresses.map { .utf8String($0) })
-        
+
         // Encode node metadata
         var metadataMap: [CBOR: CBOR] = [:]
         metadataMap[.utf8String("services")] = .array(nodeInfo.nodeMetadata.services.map { service in
@@ -4178,47 +4235,47 @@ public enum CBORHelper {
             return .map(serviceMap)
         })
         metadataMap[.utf8String("subscriptions")] = .array([])
-        
+
         map[.utf8String("node_metadata")] = .map(metadataMap)
         map[.utf8String("version")] = .unsignedInt(UInt64(nodeInfo.version))
-        
+
         return Data(CBOR.map(map).encode())
     }
-    
+
     /// Encode QuicTransportOptions to CBOR data
     @MainActor public static func encodeTransportOptions(_ options: QuicTransportOptions) async throws -> Data {
         // Create CBOR map manually to match Rust structure
         var map: [CBOR: CBOR] = [:]
-        
+
         // Always include bindAddr - it's required
         let bindAddr = options.bindAddr ?? "127.0.0.1:0"
-            map[.utf8String("bind_addr")] = .utf8String(bindAddr)
-        
+        map[.utf8String("bind_addr")] = .utf8String(bindAddr)
+
         // Always include required fields with defaults
         let handshakeTimeoutMs = options.handshakeTimeoutMs ?? 5000
-            map[.utf8String("handshake_timeout_ms")] = .unsignedInt(handshakeTimeoutMs)
-        
+        map[.utf8String("handshake_timeout_ms")] = .unsignedInt(handshakeTimeoutMs)
+
         let openStreamTimeoutMs = options.openStreamTimeoutMs ?? 10000
-            map[.utf8String("open_stream_timeout_ms")] = .unsignedInt(openStreamTimeoutMs)
-        
+        map[.utf8String("open_stream_timeout_ms")] = .unsignedInt(openStreamTimeoutMs)
+
         let maxMessageSize = options.maxMessageSize ?? 1024
-            map[.utf8String("max_message_size")] = .unsignedInt(maxMessageSize)
-        
+        map[.utf8String("max_message_size")] = .unsignedInt(maxMessageSize)
+
         let responseCacheTtlMs = options.responseCacheTtlMs ?? 30000
-            map[.utf8String("response_cache_ttl_ms")] = .unsignedInt(responseCacheTtlMs)
-        
+        map[.utf8String("response_cache_ttl_ms")] = .unsignedInt(responseCacheTtlMs)
+
         let maxRequestRetries = options.maxRequestRetries ?? 3
-            map[.utf8String("max_request_retries")] = .unsignedInt(UInt64(maxRequestRetries))
-        
+        map[.utf8String("max_request_retries")] = .unsignedInt(UInt64(maxRequestRetries))
+
         return Data(CBOR.map(map).encode())
     }
-    
+
     /// Encode CaClientConfigAll to CBOR data
     @MainActor
     public static func encodeCaClientConfig(_ config: CaClientConfigAll) async throws -> Data {
         // Create CBOR map manually to match Rust structure
         var map: [CBOR: CBOR] = [:]
-        
+
         map[.utf8String("bootstrap_server")] = .utf8String(config.bootstrap_server)
         map[.utf8String("authenticated_server")] = .utf8String(config.authenticated_server)
         map[.utf8String("network_id")] = .utf8String(config.network_id)
@@ -4226,10 +4283,10 @@ public enum CBORHelper {
         map[.utf8String("max_retries")] = .unsignedInt(UInt64(config.max_retries))
         map[.utf8String("root_ca_der")] = .array([UInt8](config.root_ca_der).map { .unsignedInt(UInt64($0)) })
         map[.utf8String("issuing_ca_der")] = .array([UInt8](config.issuing_ca_der).map { .unsignedInt(UInt64($0)) })
-        
+
         return Data(CBOR.map(map).encode())
     }
-    
+
     /// Encode PeerInfo to CBOR data
     @MainActor
     public static func encodePeerInfo(_ peerInfo: PeerInfo) async throws -> Data {
@@ -4237,24 +4294,24 @@ public enum CBORHelper {
         var map: [CBOR: CBOR] = [:]
         map[.utf8String("public_key")] = .array([UInt8](peerInfo.publicKey).map { .unsignedInt(UInt64($0)) })
         map[.utf8String("addresses")] = .array(peerInfo.addresses.map { .utf8String($0) })
-        
+
         return Data(CBOR.map(map).encode())
     }
-    
+
     /// Encode TransportRequestParams to CBOR data using manual CBOR map creation
     @MainActor
     public static func encodeTransportRequestParams(_ params: TransportRequestParams) async throws -> Data {
         // Debug logging removed per production standards
-        
+
         // Use automatic Codable encoding since struct now matches Rust types exactly
         let encoder = CodableCBOREncoder()
         let cborData = try encoder.encode(params)
-        
+
         // Debug logging removed per production standards
-        
+
         return cborData
     }
-    
+
     /// Encode TransportCompleteRequestParams to CBOR data using automatic Codable encoding
     @MainActor
     public static func encodeTransportCompleteRequestParams(_ params: TransportCompleteRequestParams) async throws -> Data {
@@ -4271,11 +4328,11 @@ public enum CBORHelper {
 public struct TransportRequestParams: Codable, Equatable {
     public let path: String
     public let correlationId: String
-    public let payload: Data  // Vec<u8> in Rust
+    public let payload: Data // Vec<u8> in Rust
     public let destPeerId: String
-    public let networkPublicKey: Data?  // Option<Vec<u8>> in Rust
-    public let profilePublicKeys: [Data]  // Vec<Vec<u8>> in Rust
-    
+    public let networkPublicKey: Data? // Option<Vec<u8>> in Rust
+    public let profilePublicKeys: [Data] // Vec<Vec<u8>> in Rust
+
     public init(path: String, correlationId: String, payload: Data, destPeerId: String, networkPublicKey: Data? = nil, profilePublicKeys: [Data] = []) {
         self.path = path
         self.correlationId = correlationId
@@ -4284,7 +4341,7 @@ public struct TransportRequestParams: Codable, Equatable {
         self.networkPublicKey = networkPublicKey
         self.profilePublicKeys = profilePublicKeys
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case path
         case correlationId = "correlation_id"
@@ -4293,49 +4350,49 @@ public struct TransportRequestParams: Codable, Equatable {
         case networkPublicKey = "network_public_key"
         case profilePublicKeys = "profile_public_keys"
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(path, forKey: .path)
         try container.encode(correlationId, forKey: .correlationId)
-        
+
         // Encode as array of bytes to match Rust Vec<u8> serialization
         try container.encode([UInt8](payload), forKey: .payload)
         try container.encode(destPeerId, forKey: .destPeerId)
-        
+
         // Encode networkPublicKey as array of bytes if present
         if let networkKey = networkPublicKey {
             try container.encode([UInt8](networkKey), forKey: .networkPublicKey)
         } else {
             try container.encodeNil(forKey: .networkPublicKey)
         }
-        
+
         // Encode profilePublicKeys as array of byte arrays
         let profileKeysArray = profilePublicKeys.map { [UInt8]($0) }
         try container.encode(profileKeysArray, forKey: .profilePublicKeys)
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         path = try container.decode(String.self, forKey: .path)
         correlationId = try container.decode(String.self, forKey: .correlationId)
-        
+
         // Support both CBOR byte string and array<u8> for payload
         if let payloadBytes = try? container.decode([UInt8].self, forKey: .payload) {
             payload = Data(payloadBytes)
         } else {
             payload = try container.decode(Data.self, forKey: .payload)
         }
-        
+
         destPeerId = try container.decode(String.self, forKey: .destPeerId)
-        
+
         // Support both CBOR byte string and array<u8> for networkPublicKey
         if let networkBytes = try? container.decode([UInt8].self, forKey: .networkPublicKey) {
             networkPublicKey = Data(networkBytes)
         } else {
             networkPublicKey = try container.decodeIfPresent(Data.self, forKey: .networkPublicKey)
         }
-        
+
         // Decode profilePublicKeys as array of byte arrays
         let profileKeysArray = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
         profilePublicKeys = profileKeysArray.map { Data($0) }
@@ -4346,41 +4403,41 @@ public struct TransportRequestParams: Codable, Equatable {
 /// Matches Rust struct exactly: Vec<u8> becomes Data with flexible CBOR encoding
 public struct TransportCompleteRequestParams: Codable, Equatable {
     public let requestId: String
-    public let responsePayload: Data  // Vec<u8> in Rust
-    public let profilePublicKeys: [Data]  // Vec<Vec<u8>> in Rust
-    
+    public let responsePayload: Data // Vec<u8> in Rust
+    public let profilePublicKeys: [Data] // Vec<Vec<u8>> in Rust
+
     public init(requestId: String, responsePayload: Data, profilePublicKeys: [Data] = []) {
         self.requestId = requestId
         self.responsePayload = responsePayload
         self.profilePublicKeys = profilePublicKeys
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case requestId = "request_id"
         case responsePayload = "response_payload"
         case profilePublicKeys = "profile_public_keys"
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(requestId, forKey: .requestId)
-        
+
         // Encode as array of bytes to match Rust Vec<u8> serialization
         try container.encode([UInt8](responsePayload), forKey: .responsePayload)
-        
+
         // Encode profilePublicKeys as array of byte arrays
         let profileKeysArray = profilePublicKeys.map { [UInt8]($0) }
         try container.encode(profileKeysArray, forKey: .profilePublicKeys)
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         requestId = try container.decode(String.self, forKey: .requestId)
-        
+
         // Deterministic: strictly decode as array<u8>
         let payloadBytes = try container.decode([UInt8].self, forKey: .responsePayload)
         responsePayload = Data(payloadBytes)
-        
+
         // Deterministic: strictly decode as array of byte arrays
         let profileKeysArray = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
         profilePublicKeys = profileKeysArray.map { Data($0) }
@@ -4389,26 +4446,26 @@ public struct TransportCompleteRequestParams: Codable, Equatable {
 
 /// Swift representation of PeerInfo from Rust
 public struct PeerInfo: Codable, Equatable {
-    public let publicKey: Data  // Vec<u8> in Rust - encoded as array of bytes
+    public let publicKey: Data // Vec<u8> in Rust - encoded as array of bytes
     public let addresses: [String]
-    
+
     public init(publicKey: Data, addresses: [String]) {
         self.publicKey = publicKey
         self.addresses = addresses
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case publicKey = "public_key"
         case addresses
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         // Encode as array of bytes to match Rust Vec<u8> serialization
         try container.encode([UInt8](publicKey), forKey: .publicKey)
         try container.encode(addresses, forKey: .addresses)
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         // Decode from array of bytes to match Rust Vec<u8> deserialization
@@ -4422,9 +4479,9 @@ public struct PeerInfo: Codable, Equatable {
 public struct TransportPublishParams: Codable, Equatable {
     public let path: String
     public let correlationId: String
-    public let payload: Data  // Vec<u8> in Rust
+    public let payload: Data // Vec<u8> in Rust
     public let destPeerId: String
-    public let networkPublicKey: Data?  // Optional Vec<u8> in Rust
+    public let networkPublicKey: Data? // Optional Vec<u8> in Rust
 
     public init(path: String, correlationId: String, payload: Data, destPeerId: String, networkPublicKey: Data? = nil) {
         self.path = path
@@ -4433,7 +4490,7 @@ public struct TransportPublishParams: Codable, Equatable {
         self.destPeerId = destPeerId
         self.networkPublicKey = networkPublicKey
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case path
         case correlationId = "correlation_id"
@@ -4441,16 +4498,16 @@ public struct TransportPublishParams: Codable, Equatable {
         case destPeerId = "dest_peer_id"
         case networkPublicKey = "network_public_key"
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(path, forKey: .path)
         try container.encode(correlationId, forKey: .correlationId)
-        
+
         // Encode as array of bytes to match Rust Vec<u8> serialization
         try container.encode([UInt8](payload), forKey: .payload)
         try container.encode(destPeerId, forKey: .destPeerId)
-        
+
         // Encode networkPublicKey as array of bytes if present
         if let networkKey = networkPublicKey {
             try container.encode([UInt8](networkKey), forKey: .networkPublicKey)
@@ -4458,21 +4515,21 @@ public struct TransportPublishParams: Codable, Equatable {
             try container.encodeNil(forKey: .networkPublicKey)
         }
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         path = try container.decode(String.self, forKey: .path)
         correlationId = try container.decode(String.self, forKey: .correlationId)
-        
+
         // Support both CBOR byte string and array<u8> for payload
         if let payloadBytes = try? container.decode([UInt8].self, forKey: .payload) {
             payload = Data(payloadBytes)
         } else {
             payload = try container.decode(Data.self, forKey: .payload)
         }
-        
+
         destPeerId = try container.decode(String.self, forKey: .destPeerId)
-        
+
         // Support both CBOR byte string and array<u8> for networkPublicKey
         if let networkKeyBytes = try? container.decode([UInt8].self, forKey: .networkPublicKey) {
             networkPublicKey = Data(networkKeyBytes)
@@ -4487,12 +4544,16 @@ public struct TransportPublishParams: Codable, Equatable {
 /// Transport event surfaced to Swift API (decoded from CBOR internally)
 public struct TransportEvent: Codable, Sendable, Equatable {
     public let type: String
+    public let v: Int?
+    public let path: String?
     public let requestId: String?
     public let correlationId: String?
     public let payload: [UInt8]?
 
-    public init(type: String, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil) {
+    public init(type: String, v: Int? = nil, path: String? = nil, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil) {
         self.type = type
+        self.v = v
+        self.path = path
         self.requestId = requestId
         self.correlationId = correlationId
         self.payload = payload
@@ -4500,14 +4561,18 @@ public struct TransportEvent: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case type
+        case v
+        case path
         case requestId = "request_id"
         case correlationId = "correlation_id"
         case payload
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(v, forKey: .v)
+        try container.encodeIfPresent(path, forKey: .path)
         try container.encodeIfPresent(requestId, forKey: .requestId)
         try container.encodeIfPresent(correlationId, forKey: .correlationId)
         // Deterministic: encode payload as byte string if present
@@ -4515,13 +4580,15 @@ public struct TransportEvent: Codable, Sendable, Equatable {
             try container.encode(Data(payload), forKey: .payload)
         }
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decode(String.self, forKey: .type)
+        v = try container.decodeIfPresent(Int.self, forKey: .v)
+        path = try container.decodeIfPresent(String.self, forKey: .path)
         requestId = try container.decodeIfPresent(String.self, forKey: .requestId)
         correlationId = try container.decodeIfPresent(String.self, forKey: .correlationId)
-        
+
         // Deterministic: decode payload strictly as byte string if present
         if let data = try container.decodeIfPresent(Data.self, forKey: .payload) {
             payload = [UInt8](data)
@@ -4539,8 +4606,8 @@ public struct DiscoveryOptions: Codable {
     public let announceIntervalMs: UInt32
     public let discoveryTimeoutMs: UInt32
     public let debounceWindowMs: UInt32
-    
-    public init(multicastGroup: String = "224.0.0.251:5353", 
+
+    public init(multicastGroup: String = "224.0.0.251:5353",
                 announceIntervalMs: UInt32 = 1000,
                 discoveryTimeoutMs: UInt32 = 5000,
                 debounceWindowMs: UInt32 = 200)
@@ -4550,7 +4617,7 @@ public struct DiscoveryOptions: Codable {
         self.discoveryTimeoutMs = discoveryTimeoutMs
         self.debounceWindowMs = debounceWindowMs
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case multicastGroup = "multicast_group"
         case announceIntervalMs = "announce_interval_ms"
@@ -4564,20 +4631,20 @@ public struct DiscoveryOptions: Codable {
 /// Handle for Discovery operations
 public actor DiscoveryHandle {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
-    
+
     public init(token: HandleToken) throws {
-        self.handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
+        handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
     }
-    
+
     deinit {
         rn_discovery_free(handle)
     }
-    
+
     /// Create a new discovery instance with multicast
     public static func create(keys: NodeKeyManager, optionsCbor: Data) async throws -> DiscoveryHandle {
         return try await keys.createDiscoveryHandle(optionsCbor: optionsCbor)
     }
-    
+
     /// Initialize discovery with options
     public func initialize(optionsCbor: Data) async throws {
         let (code, err) = withRnErrorCode { errPtr in
@@ -4593,7 +4660,7 @@ public actor DiscoveryHandle {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to initialize discovery") }
     }
-    
+
     /// Bind discovery events to transport
     public func bindEventsToTransport(transport: QuicTransport) async throws {
         let (code, err) = withRnErrorCode { errPtr in
@@ -4606,40 +4673,40 @@ public actor DiscoveryHandle {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to bind discovery events to transport") }
     }
-    
+
     /// Start announcing this node
     public func startAnnouncing() async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let discoveryHandle = self.handle
+        let discoveryHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             rn_discovery_start_announcing(discoveryHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to start announcing") }
     }
-    
+
     /// Stop announcing this node
     public func stopAnnouncing() async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let discoveryHandle = self.handle
+        let discoveryHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             rn_discovery_stop_announcing(discoveryHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to stop announcing") }
     }
-    
+
     /// Shutdown discovery
     public func shutdown() async throws {
         // Copy handle to local to avoid capturing actor state in closures
-        let discoveryHandle = self.handle
+        let discoveryHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             rn_discovery_shutdown(discoveryHandle, errPtr)
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to shutdown discovery") }
     }
-    
+
     /// Update local peer info
     public func updateLocalPeerInfo(peerInfoCbor: Data) async throws {
         let (code, err) = withRnErrorCode { errPtr in
@@ -4664,24 +4731,29 @@ public actor QuicTransport {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     private let callbacks: TransportCallbacks
     private let logger: RunarLogger
+    private let options: QuicTransportOptions
     private var pollingTask: Task<Void, Never>?
     private var isPolling = false
     
-    public init(token: HandleToken, callbacks: TransportCallbacks, logger: RunarLogger) throws {
-        self.handle = try HandleRegistry.shared.claim(kind: .transport, token: token)
+    // Response delivery mechanism for request() method
+    private var pendingRequests: [String: CheckedContinuation<Data, Error>] = [:]
+
+    public init(token: HandleToken, callbacks: TransportCallbacks, logger: RunarLogger, options: QuicTransportOptions) throws {
+        handle = try HandleRegistry.shared.claim(kind: .transport, token: token)
         self.callbacks = callbacks
         self.logger = logger
+        self.options = options
     }
-    
+
     /// Get the raw handle for internal use
     nonisolated var rawHandle: UnsafeMutableRawPointer {
         return handle
     }
-    
+
     deinit {
         rn_transport_free(handle)
     }
-    
+
     /// Create a new transport instance with keys and callbacks
     /// - Parameters:
     ///   - keys: Keys handle instance
@@ -4690,86 +4762,91 @@ public actor QuicTransport {
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
     public static func create(keys: NodeKeyManager, options: QuicTransportOptions, callbacks: TransportCallbacks, logger: RunarLogger) async throws -> QuicTransport {
-        // Encode to CBOR in the current task context to avoid sending non-Sendable across actors
-        let optionsCbor = try CodableCBOREncoder().encode(options)
-        let token = try await keys.createTransportHandle(optionsCbor: optionsCbor)
-        return try QuicTransport(token: token, callbacks: callbacks, logger: logger)
+        // Convert QuicTransportOptions to FFIQuicTransportOptions for FFI layer
+        let ffiOptions = options.toFFIOptions()
+        let token = try await keys.createTransportHandle(options: ffiOptions)
+        return try QuicTransport(token: token, callbacks: callbacks, logger: logger, options: options)
     }
-    
+
     /// Start the transport
     /// - Throws: FFIError if start fails
     public func start() async throws {
         logger.info("QuicTransport.start() - Starting transport")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         logger.trace("QuicTransport.start() - Handle copied to local")
         let (code, err) = withRnErrorCode { errPtr in
             logger.trace("QuicTransport.start() - About to call rn_transport_start")
             return rn_transport_start(transportHandle, errPtr)
         }
         logger.trace("QuicTransport.start() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.start() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.start() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to start transport") 
+            throw FFIError.operationFailed("Failed to start transport")
         }
         logger.info("QuicTransport.start() - Transport started successfully")
-        
+
         // Start internal polling to handle events
         logger.info("QuicTransport.start() - Starting internal polling")
         startInternalPolling()
     }
-    
+
     /// Poll for events (internal use only)
     /// - Returns: Event if available, nil if no events
     /// - Throws: FFIError if polling fails
     public func pollEvent() async throws -> TransportEvent? {
         logger.trace("QuicTransport.pollEvent() - Polling for events")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
-        
-        struct PollResult: @unchecked Sendable {
+        let transportHandle = handle
+
+        let (code, err, outEvent, outLen) = try await withCheckedThrowingContinuation { continuation in
             var outEvent: UnsafeMutablePointer<UInt8>?
-            var outLen: Int = 0
+            var outLen = 0
+            let (code, err) = withRnErrorCode { errPtr in
+                logger.trace("QuicTransport.pollEvent() - About to call rn_transport_poll_event")
+                return rn_transport_poll_event(transportHandle, &outEvent, &outLen, errPtr)
+            }
+            continuation.resume(returning: (code, err, outEvent, outLen))
         }
-        var result = PollResult()
-        let (code, err) = withRnErrorCode { errPtr in
-            logger.trace("QuicTransport.pollEvent() - About to call rn_transport_poll_event")
-            return rn_transport_poll_event(transportHandle, &result.outEvent, &result.outLen, errPtr)
-        }
-        logger.info("QuicTransport.pollEvent() - FFI call completed, code: \(code), outLen: \(result.outLen)")
-        if let error = err { 
+        logger.info("QuicTransport.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
+        if let error = err {
             logger.error("QuicTransport.pollEvent() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.pollEvent() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to poll event") 
+            throw FFIError.operationFailed("Failed to poll event")
         }
-        
-        if result.outLen == 0 {
+
+        if outLen == 0 {
             logger.debug("QuicTransport.pollEvent() - No events available")
             return nil
         }
-        
+
         logger.debug("QuicTransport.pollEvent() - Event available, decoding")
-        let data = try copyBytesAndFree(result.outEvent, result.outLen)
+        let data = try copyBytesAndFree(outEvent, outLen)
         let prefixHex = data.prefix(64).map { String(format: "%02x", $0) }.joined()
         logger.trace("QuicTransport.pollEvent() - CBOR length=\(data.count) bytes, first64=\(prefixHex)")
+        
+        // Log the raw CBOR data for debugging
+        let cborString = data.map { String(format: "%02x", $0) }.joined(separator: " ")
+        logger.info("QuicTransport.pollEvent() - Raw CBOR data: \(cborString)")
+        
         let decoder = CodableCBORDecoder()
         do {
             let event = try decoder.decode(TransportEvent.self, from: data)
-            logger.trace("QuicTransport.pollEvent() - Decoded TransportEvent type=\(event.type) requestId=\(event.requestId ?? "nil") correlationId=\(event.correlationId ?? "nil") payloadLen=\(event.payload?.count ?? 0)")
+            logger.trace("QuicTransport.pollEvent() - Decoded TransportEvent type=\(event.type) path=\(event.path ?? "nil") correlationId=\(event.correlationId ?? "nil") payloadLen=\(event.payload?.count ?? 0)")
             return event
         } catch {
             logger.error("QuicTransport.pollEvent() - CBOR decode failed: \(error)")
             throw error
         }
     }
-    
+
     /// Connect to a peer
     /// - Parameter peerInfo: Peer information (encoded to CBOR internally)
     /// - Throws: FFIError if connection fails
@@ -4778,7 +4855,7 @@ public actor QuicTransport {
         let peerInfoCbor = try CodableCBOREncoder().encode(peerInfo)
         logger.trace("QuicTransport.connectPeer() - PeerInfo CBOR length: \(peerInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             peerInfoCbor.withUnsafeBytes { raw in
                 logger.trace("QuicTransport.connectPeer() - About to call rn_transport_connect_peer")
@@ -4786,24 +4863,24 @@ public actor QuicTransport {
             }
         }
         logger.debug("QuicTransport.connectPeer() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.connectPeer() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.connectPeer() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to connect to peer") 
+            throw FFIError.operationFailed("Failed to connect to peer")
         }
         logger.info("QuicTransport.connectPeer() - Peer connected successfully")
     }
-    
+
     /// Disconnect from a peer
     /// - Parameter peerNodeId: Node ID of the peer to disconnect
     /// - Throws: FFIError if disconnection fails
     public func disconnectPeer(peerNodeId: String) async throws {
         logger.trace("QuicTransport.disconnectPeer() - Disconnecting from peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
                 logger.trace("QuicTransport.disconnectPeer() - About to call rn_transport_disconnect_peer")
@@ -4811,17 +4888,17 @@ public actor QuicTransport {
             }
         }
         logger.debug("QuicTransport.disconnectPeer() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.disconnectPeer() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.disconnectPeer() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to disconnect from peer") 
+            throw FFIError.operationFailed("Failed to disconnect from peer")
         }
         logger.info("QuicTransport.disconnectPeer() - Peer disconnected successfully")
     }
-    
+
     /// Check if connected to a peer
     /// - Parameter peerNodeId: Node ID of the peer to check
     /// - Returns: True if connected, false otherwise
@@ -4829,7 +4906,7 @@ public actor QuicTransport {
     public func isConnected(peerNodeId: String) async throws -> Bool {
         logger.debug("QuicTransport.isConnected() - Checking connection to peer: \(peerNodeId)")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         var outConnected = false
         let (code, err) = withRnErrorCode { errPtr in
             peerNodeId.withCString { cString in
@@ -4838,18 +4915,18 @@ public actor QuicTransport {
             }
         }
         logger.debug("QuicTransport.isConnected() - FFI call completed, code: \(code), connected: \(outConnected)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.isConnected() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.isConnected() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to check connection status") 
+            throw FFIError.operationFailed("Failed to check connection status")
         }
         logger.debug("QuicTransport.isConnected() - Connection check completed: \(outConnected)")
         return outConnected
     }
-    
+
     /// Update local node information
     /// - Parameter nodeInfo: Node information (encoded to CBOR internally)
     /// - Throws: FFIError if update fails
@@ -4858,7 +4935,7 @@ public actor QuicTransport {
         let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
         logger.debug("QuicTransport.updateLocalNodeInfo() - NodeInfo CBOR length: \(nodeInfoCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             nodeInfoCbor.withUnsafeBytes { raw in
                 logger.trace("QuicTransport.updateLocalNodeInfo() - About to call rn_transport_update_local_node_info")
@@ -4866,17 +4943,17 @@ public actor QuicTransport {
             }
         }
         logger.debug("QuicTransport.updateLocalNodeInfo() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.updateLocalNodeInfo() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.updateLocalNodeInfo() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to update local node info") 
+            throw FFIError.operationFailed("Failed to update local node info")
         }
         logger.info("QuicTransport.updateLocalNodeInfo() - Local node info updated successfully")
     }
-    
+
     /// Send a request
     /// - Parameter request: Request parameters (encoded to CBOR internally)
     /// - Throws: FFIError if request fails
@@ -4884,8 +4961,13 @@ public actor QuicTransport {
         logger.trace("QuicTransport.request() - Sending request")
         let requestCbor = try CodableCBOREncoder().encode(request)
         logger.trace("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
+        
+        // Use the correlation ID from the request parameters
+        let correlationId = request.correlationId
+        logger.trace("QuicTransport.request() - Using correlation ID: \(correlationId)")
+        
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             requestCbor.withUnsafeBytes { raw in
                 logger.trace("QuicTransport.request() - About to call rn_transport_request")
@@ -4893,60 +4975,43 @@ public actor QuicTransport {
             }
         }
         logger.debug("QuicTransport.request() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.request() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.request() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to send request") 
+            throw FFIError.operationFailed("Failed to send request")
         }
         logger.info("QuicTransport.request() - Request sent successfully")
-        
-        // Wait for response by polling for events until we get a ResponseReceived event
-        // This matches the Rust implementation where request() waits for the response internally
-        logger.trace("QuicTransport.request() - Waiting for response...")
-        var attempts = 0
-        let maxAttempts = 100 // Prevent infinite loop
-        
-        while attempts < maxAttempts {
-            do {
-                if let event = try await pollEvent() {
-                    if event.type == "ResponseReceived" {
-                        logger.info("QuicTransport.request() - Response received")
-                        if let payload = event.payload {
-                            return Data(payload)
-                        } else {
-                            throw FFIError.operationFailed("ResponseReceived event missing payload")
-                        }
-                    }
-                    // Handle other events (like PeerConnected) but continue waiting for ResponseReceived
-                    logger.trace("QuicTransport.request() - Received event: \(event.type), continuing to wait for ResponseReceived")
-                } else {
-                    logger.trace("QuicTransport.request() - No events available, waiting...")
-                }
-            } catch {
-                logger.error("QuicTransport.request() - Error polling for response: \(error)")
-                throw error
-            }
+
+        // Wait for response using async continuation - no polling needed
+        logger.trace("QuicTransport.request() - Waiting for response via channel...")
+        return try await withCheckedThrowingContinuation { continuation in
+            // Store the continuation to be resumed when response arrives
+            pendingRequests[correlationId] = continuation
             
-            // Small delay to prevent busy waiting
-            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
-            attempts += 1
+            // Set up timeout
+            Task {
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds timeout
+                if let continuation = pendingRequests.removeValue(forKey: correlationId) {
+                    logger.error("QuicTransport.request() - Request timeout for correlation ID: \(correlationId)")
+                    continuation.resume(throwing: FFIError.operationFailed("Request timeout - no response received after 30 seconds"))
+                }
+            }
         }
-        
-        throw FFIError.operationFailed("Request timeout - no response received after \(maxAttempts) attempts")
     }
-    
+
     /// Publish an event
     /// - Parameter publish: Publish parameters (encoded to CBOR internally)
     /// - Throws: FFIError if publish fails
     public func publish(_ publish: TransportPublishParams) async throws {
         logger.trace("QuicTransport.publish() - Publishing event")
+        logger.trace("QuicTransport.publish() - Publish params: path=\(publish.path), correlationId=\(publish.correlationId), destPeerId=\(publish.destPeerId)")
         let publishCbor = try CodableCBOREncoder().encode(publish)
         logger.trace("QuicTransport.publish() - Publish CBOR length: \(publishCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             publishCbor.withUnsafeBytes { raw in
                 logger.trace("QuicTransport.publish() - About to call rn_transport_publish")
@@ -4954,17 +5019,21 @@ public actor QuicTransport {
             }
         }
         logger.debug("QuicTransport.publish() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.publish() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.publish() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to publish event") 
+            throw FFIError.operationFailed("Failed to publish event")
         }
         logger.info("QuicTransport.publish() - Event published successfully")
+        
+        // Give the async task time to complete
+        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        logger.trace("QuicTransport.publish() - Async task should have completed")
     }
-    
+
     /// Complete a request
     /// - Parameter complete: Completion parameters (encoded to CBOR internally)
     /// - Throws: FFIError if completion fails
@@ -4973,7 +5042,7 @@ public actor QuicTransport {
         let completeCbor = try CodableCBOREncoder().encode(complete)
         logger.trace("QuicTransport.completeRequest() - Complete CBOR length: \(completeCbor.count)")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             completeCbor.withUnsafeBytes { raw in
                 logger.trace("QuicTransport.completeRequest() - About to call rn_transport_complete_request")
@@ -4981,58 +5050,58 @@ public actor QuicTransport {
             }
         }
         logger.trace("QuicTransport.completeRequest() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.completeRequest() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.completeRequest() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to complete request") 
+            throw FFIError.operationFailed("Failed to complete request")
         }
         logger.debug("QuicTransport.completeRequest() - Request completed successfully")
     }
-    
+
     /// Stop the transport
     /// - Throws: FFIError if stop fails
     public func stop() async throws {
         logger.info("QuicTransport.stop() - Stopping transport")
-        
+
         // Stop internal polling first
         stopInternalPolling()
-        
+
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
+        let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
             logger.trace("QuicTransport.stop() - About to call rn_transport_stop")
             return rn_transport_stop(transportHandle, errPtr)
         }
         logger.debug("QuicTransport.stop() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.stop() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.stop() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to stop transport") 
+            throw FFIError.operationFailed("Failed to stop transport")
         }
         logger.info("QuicTransport.stop() - Transport stopped successfully")
     }
-    
+
     /// Start internal polling for events
     private func startInternalPolling() {
-        guard !isPolling else { 
+        guard !isPolling else {
             logger.debug("QuicTransport.startInternalPolling() - Already polling, skipping")
-            return 
+            return
         }
         logger.info("QuicTransport.startInternalPolling() - Starting internal polling task")
         isPolling = true
-        
+
         pollingTask = Task { [weak self] in
-            guard let self = self else { 
-                return 
+            guard let self = self else {
+                return
             }
             logger.info("QuicTransport internal polling - Task started")
-            
+
             while await self.isPolling {
                 logger.info("QuicTransport internal polling - Polling for events")
                 do {
@@ -5046,46 +5115,48 @@ public actor QuicTransport {
                     // Log error but continue polling
                     logger.error("QuicTransport internal polling error: \(error)")
                 }
-                
+
                 // Small delay to prevent busy waiting
                 try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
             }
             logger.debug("QuicTransport internal polling - Task ended")
         }
     }
-    
+
     /// Stop internal polling
     private func stopInternalPolling() {
         isPolling = false
         pollingTask?.cancel()
         pollingTask = nil
     }
-    
+
     /// Handle incoming events and call appropriate callbacks
     private func handleEvent(_ event: TransportEvent) async {
         logger.info("QuicTransport.handleEvent() - Handling event: \(event.type)")
-        
+
         switch event.type {
         case "PeerConnected":
-            if let peerId = event.requestId {
+            if let peerId = event.path {
                 callbacks.peerConnectedCallback?(peerId)
             }
-            
+
         case "PeerDisconnected":
-            if let peerId = event.requestId {
+            if let peerId = event.path {
                 callbacks.peerDisconnectedCallback?(peerId)
             }
-            
+
         case "RequestReceived":
             // Extract request details from event payload
-            if let requestId = event.requestId,
-               let payload = event.payload {
+            logger.info("QuicTransport.handleEvent() - RequestReceived case - path: \(event.path ?? "nil"), payload: \(event.payload?.count ?? 0) bytes, requestId: \(event.requestId ?? "nil"), correlationId: \(event.correlationId ?? "nil")")
+            if let path = event.path,
+               let payload = event.payload
+            {
                 // For now, we'll use placeholder values - in a real implementation,
                 // these would be extracted from the event payload
-                let path = "/unknown" // Would be extracted from payload
+                let requestId = event.requestId ?? "unknown" // Use actual requestId from event
                 let sourcePeerId = "unknown" // Would be extracted from payload
                 let correlationId = event.correlationId
-                
+
                 // Call the request callback and get the response
                 logger.info("QuicTransport.handleEvent() - Calling request callback for requestId: \(requestId)")
                 if let responsePayload = callbacks.requestCallback(requestId, path, Data(payload), sourcePeerId, correlationId) {
@@ -5095,7 +5166,7 @@ public actor QuicTransport {
                         responsePayload: responsePayload,
                         profilePublicKeys: [] // Would be extracted from context
                     )
-                    
+
                     do {
                         try await completeRequest(completeParams)
                         logger.trace("QuicTransport.handleEvent() - Request completed successfully")
@@ -5105,68 +5176,82 @@ public actor QuicTransport {
                 } else {
                     logger.trace("QuicTransport.handleEvent() - Request callback returned no response")
                 }
+            } else {
+                logger.warning("QuicTransport.handleEvent() - RequestReceived event missing path or payload")
             }
-            
+
         case "EventReceived":
             // Handle P2P event messages (fire and forget, no response)
-            if let requestId = event.requestId,
-               let payload = event.payload {
-                let path = "/unknown" // Would be extracted from payload
-                let sourcePeerId = "unknown" // Would be extracted from payload
+            logger.info("QuicTransport.handleEvent() - EventReceived case - path: \(event.path ?? "nil"), payload: \(event.payload?.count ?? 0) bytes, correlationId: \(event.correlationId ?? "nil")")
+            if let path = event.path,
+               let payload = event.payload
+            {
+                // Use the path and correlationId from the event
+                let requestId = "evt_\(UUID().uuidString)" // Generate a unique event ID
+                let sourcePeerId = event.correlationId ?? "unknown"
                 let correlationId = event.correlationId
-                
+
+                logger.info("QuicTransport.handleEvent() - EventReceived - Calling eventCallback with requestId: \(requestId), path: \(path), sourcePeerId: \(sourcePeerId), correlationId: \(correlationId ?? "nil")")
                 // Call the event callback for P2P events
                 callbacks.eventCallback?(requestId, path, Data(payload), sourcePeerId, correlationId)
-                logger.trace("QuicTransport.handleEvent() - P2P event received and processed")
+                logger.info("QuicTransport.handleEvent() - P2P event received and processed")
+            } else {
+                logger.warning("QuicTransport.handleEvent() - EventReceived event missing path or payload")
             }
-            
+
         case "ResponseReceived":
-            // ResponseReceived events are handled internally by the request() method
-            // They should NOT be handled by eventCallback - that's for publish events only
-            logger.info("QuicTransport.handleEvent() - ResponseReceived event (handled internally by request method)")
-            // No callback needed - the request() method handles this internally
-            
+            // Deliver response to waiting request via channel mechanism
+            logger.info("QuicTransport.handleEvent() - ResponseReceived event - delivering to waiting request")
+            if let correlationId = event.correlationId,
+               let payload = event.payload,
+               let continuation = pendingRequests.removeValue(forKey: correlationId) {
+                logger.info("QuicTransport.handleEvent() - Delivering response to request with correlation ID: \(correlationId)")
+                continuation.resume(returning: Data(payload))
+            } else {
+                logger.warning("QuicTransport.handleEvent() - ResponseReceived event with no matching pending request or missing correlation ID")
+            }
+
         default:
             // Log error for unknown FFI events
             logger.error("QuicTransport.handleEvent() - Unknown FFI event received: \(event.type)")
         }
     }
-    
+
     /// Get local address
     /// - Returns: Local address string
     /// - Throws: FFIError if getting address fails
     public func getLocalAddr() async throws -> String {
         logger.debug("QuicTransport.getLocalAddr() - Getting local address")
         // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = self.handle
-        struct LocalAddrResult: @unchecked Sendable {
+        let transportHandle = handle
+        let (code, err, outStr, _) = try await withCheckedThrowingContinuation { continuation in
             var outStr: UnsafeMutablePointer<CChar>?
-            var outLen: Int = 0
-        }
-        var result = LocalAddrResult()
-        let (code, err) = withRnErrorCode { errPtr in
-            logger.trace("QuicTransport.getLocalAddr() - About to call rn_transport_local_addr")
-            return rn_transport_local_addr(transportHandle, &result.outStr, &result.outLen, errPtr)
+            var outLen = 0
+            let (code, err) = withRnErrorCode { errPtr in
+                logger.trace("QuicTransport.getLocalAddr() - About to call rn_transport_local_addr")
+                return rn_transport_local_addr(transportHandle, &outStr, &outLen, errPtr)
+            }
+            continuation.resume(returning: (code, err, outStr, outLen))
         }
         logger.debug("QuicTransport.getLocalAddr() - FFI call completed, code: \(code)")
-        if let error = err { 
+        if let error = err {
             logger.error("QuicTransport.getLocalAddr() - FFI error: \(error)")
-            throw error 
+            throw error
         }
-        guard code == 0 else { 
+        guard code == 0 else {
             logger.error("QuicTransport.getLocalAddr() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to get local address") 
+            throw FFIError.operationFailed("Failed to get local address")
         }
-        
+
         defer {
-            if let str = result.outStr {
+            if let str = outStr {
                 rn_string_free(str)
             }
         }
-        
-        guard let str = result.outStr else { 
+
+        guard let str = outStr else {
             logger.debug("QuicTransport.getLocalAddr() - No local address returned")
-            throw FFIError.operationFailed("No local address returned") 
+            throw FFIError.operationFailed("No local address returned")
         }
         let address = String(cString: str)
         logger.debug("QuicTransport.getLocalAddr() - Local address: \(address)")
@@ -5179,7 +5264,7 @@ public actor QuicTransport {
 /// Callback for when a peer connects
 public typealias PeerConnectedCallback = @Sendable (String) -> Void
 
-/// Callback for when a peer disconnects  
+/// Callback for when a peer disconnects
 public typealias PeerDisconnectedCallback = @Sendable (String) -> Void
 
 /// Callback for handling incoming requests
@@ -5206,7 +5291,7 @@ public struct TransportCallbacks: Sendable {
     public let peerDisconnectedCallback: PeerDisconnectedCallback?
     public let requestCallback: RequestCallback
     public let eventCallback: EventCallback?
-    
+
     public init(
         peerConnectedCallback: PeerConnectedCallback? = nil,
         peerDisconnectedCallback: PeerDisconnectedCallback? = nil,
@@ -5221,7 +5306,6 @@ public struct TransportCallbacks: Sendable {
 }
 
 // MARK: - Transport Parameter Types
-
 
 // MARK: - Type Aliases for Backward Compatibility
 
@@ -5239,9 +5323,9 @@ public enum FFITypesVectors {
             token_id: "test_token_001",
             network_id: "test_network",
             subject_hint: "test_subject",
-            not_before: 1757890822,
-            expires_at: 1757894422,
-            nonce: Data([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]),
+            not_before: 1_757_890_822,
+            expires_at: 1_757_894_422,
+            nonce: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
             permissions: ["enroll"]
         )
         try CodableCBOREncoder().encode(body)
@@ -5249,7 +5333,7 @@ public enum FFITypesVectors {
 
         let token = EnrollmentToken(
             body: body,
-            signature: Data([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70]),
+            signature: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70]),
             signer_id: "test_signer_001"
         )
         try CodableCBOREncoder().encode(token)
@@ -5284,7 +5368,7 @@ public enum FFITypesVectors {
             certificate_der: Array(repeating: 9, count: 1024),
             issuing_ca_der: Array(repeating: 10, count: 512),
             root_ca_der: Array(repeating: 11, count: 256),
-            expires_at: 1757894422
+            expires_at: 1_757_894_422
         )
         try CodableCBOREncoder().encode(enrollResp)
             .write(to: base.appendingPathComponent("csr_enroll_response_basic.bin"))
@@ -5294,14 +5378,3 @@ public enum FFITypesVectors {
             .write(to: base.appendingPathComponent("ca_error_response_basic.bin"))
     }
 }
-
-
-
-
-
-
-
-
-
-
-

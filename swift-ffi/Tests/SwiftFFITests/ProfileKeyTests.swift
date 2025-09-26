@@ -152,7 +152,6 @@ final class ProfileKeyTests: XCTestCase {
         }
     }
 
-
     func testInstallProfilePublicKeyNotInitialized() async throws {
         // Test calling function on uninitialized handle
         // In the new unified design, profile key operations work even without explicit initialization
@@ -209,7 +208,6 @@ final class ProfileKeyTests: XCTestCase {
         XCTAssertNotNil(afterInstall, "Key should exist after installation")
         XCTAssertEqual(afterInstall, profileKey, "Retrieved key should match original")
     }
-
 
     func testGetProfilePublicKeyByLabelNotInitialized() async throws {
         // Test calling function on uninitialized handle

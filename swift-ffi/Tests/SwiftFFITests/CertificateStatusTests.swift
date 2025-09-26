@@ -1,7 +1,7 @@
+import SwiftCBOR
 import SwiftCommon
 import SwiftFFI
 import XCTest
-import SwiftCBOR
 
 @testable import SwiftFFI
 
@@ -56,12 +56,12 @@ final class CertificateStatusTests: XCTestCase {
 
             // Now create server using the configured CA node
             caServer = try CAServer.create(config: caServerConfig, sharedCaNode: caNode.ffiHandle)
-            
+
             // Start CA server and fetch real addresses
             try await caServer.start()
             let bootstrapAddr = try await caServer.bootstrapAddress()
             let authenticatedAddr = try await caServer.authenticatedAddress()
-            
+
             let caClientConfig = try CaClientConfigAll(
                 bootstrap_server: bootstrapAddr,
                 authenticated_server: authenticatedAddr,
@@ -83,7 +83,7 @@ final class CertificateStatusTests: XCTestCase {
                 subject: "CN=test-node,O=Runar,C=US",
                 validFrom: now - 60,
                 validUntil: now + 3600,
-                nonce: Data((0..<16).map { _ in UInt8.random(in: 0...255) }),
+                nonce: Data((0 ..< 16).map { _ in UInt8.random(in: 0 ... 255) }),
                 capabilities: ["enroll"]
             )
             let tokenData = try await eaManager.generateEnrollmentToken(params: tokenParams)
@@ -355,11 +355,11 @@ final class CertificateStatusTests: XCTestCase {
 
     func testConcurrentCertificateOperations() async throws {
         // Test concurrent certificate operations
-        guard let nodeKeys = self.nodeKeys else {
+        guard let nodeKeys = nodeKeys else {
             XCTFail("Node keys not initialized")
             return
         }
-        
+
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 do {

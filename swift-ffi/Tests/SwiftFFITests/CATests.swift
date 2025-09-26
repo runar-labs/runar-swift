@@ -45,7 +45,7 @@ final class CATests: XCTestCase {
         XCTAssertNotNil(caNode, "CA node should be created successfully")
         XCTAssertNotNil(caNode.ffiHandle, "CA node should have a valid FFI handle")
     }
-    
+
     func testCaNodeNewNullError() async throws {
         // Test CA node creation error handling - matching Rust test_ca_node_new_null_output
         // This test verifies that the FFI properly handles null arguments
@@ -57,7 +57,6 @@ final class CATests: XCTestCase {
             XCTAssertTrue(error is FFIError, "Should throw FFIError for invalid arguments")
         }
     }
-
 
     func testCaNodeSetupCompleteHappyPath() async throws {
         // Test CA node setup with proper configuration
@@ -85,7 +84,6 @@ final class CATests: XCTestCase {
         EAKeyManager.free(eaKeyPair)
     }
 
-
     func testCaNodeCreateShared() async throws {
         // Test creating shared CA node
         let caNode = try CANode.create()
@@ -94,18 +92,17 @@ final class CATests: XCTestCase {
         XCTAssertNotNil(caNode.ffiHandle, "CA node should have a valid shared handle")
     }
 
-
     // MARK: - CA Server Tests
 
     func testCaServerNewHappyPath() async throws {
         // Test CA server creation with proper setup - matching Rust test_ca_server_new_stub
         let caNode = try CANode.create()
-        
+
         // Create EA key pair for proper CA setup
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         // Set up CA node properly
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: caNode.ffiHandle,
@@ -117,7 +114,7 @@ final class CATests: XCTestCase {
             networkId: "test-network"
         )
         try await caNode.setupComplete(params: setupParams)
-        
+
         // Create CA server with proper configuration
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
@@ -128,11 +125,10 @@ final class CATests: XCTestCase {
         )
         let caServer = try CAServer.create(config: config, sharedCaNode: caNode.ffiHandle)
         XCTAssertNotNil(caServer, "CA server should be created successfully")
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-
 
     func testCaServerStartStop() async throws {
         // Test CA server start and stop
@@ -200,7 +196,7 @@ final class CATests: XCTestCase {
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         // Set up CA node properly
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: caNode.ffiHandle,
@@ -212,11 +208,11 @@ final class CATests: XCTestCase {
             networkId: "test-network"
         )
         try await caNode.setupComplete(params: setupParams)
-        
+
         // Get CA certificates
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
-        
+
         // Verify certificates are valid
         XCTAssertFalse(rootCa.isEmpty, "Root CA certificate should not be empty")
         XCTAssertFalse(issuingCa.isEmpty, "Issuing CA certificate should not be empty")
@@ -236,11 +232,10 @@ final class CATests: XCTestCase {
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
         XCTAssertNotNil(caClient, "CA client should be created successfully")
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-
 
     func testCaClientEnroll() async throws {
         // Test CA client enrollment
@@ -508,7 +503,6 @@ final class CATests: XCTestCase {
         EAKeyManager.free(eaKeyPair)
     }
 
-
     // MARK: - Error Handling Tests
 
     func testCaNodeErrorHandling() async throws {
@@ -638,7 +632,7 @@ final class CATests: XCTestCase {
         // Verify CA node setup was successful
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
-        
+
         XCTAssertFalse(rootCa.isEmpty, "Root CA certificate should be generated")
         XCTAssertFalse(issuingCa.isEmpty, "Issuing CA certificate should be generated")
         XCTAssertGreaterThan(rootCa.count, 100, "Root CA certificate should be substantial")
@@ -679,16 +673,16 @@ final class CATests: XCTestCase {
     }
 
     // MARK: - Comprehensive CA Workflow Tests
-    
+
     func testCaNodeInstallIssuingCaHappyPath() async throws {
         // Test CA node setup with issuing CA installation - matching Rust test_ca_node_install_issuing_ca_happy_path
         let caNode = try CANode.create()
-        
+
         // Create EA key pair for testing
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         // Set up CA node with proper configuration
         let setupParams = CANodeManager.CANodeSetupParams(
             caNode: caNode.ffiHandle,
@@ -699,31 +693,31 @@ final class CATests: XCTestCase {
             eaPublicKeys: eaPublicKey,
             networkId: "test-network"
         )
-        
+
         try await caNode.setupComplete(params: setupParams)
-        
+
         // Verify CA node setup was successful by getting certificates
         let rootCa = try await caNode.getRootCACertificate()
         let issuingCa = try await caNode.getIssuingCACertificate()
-        
+
         XCTAssertFalse(rootCa.isEmpty, "Root CA certificate should be generated")
         XCTAssertFalse(issuingCa.isEmpty, "Issuing CA certificate should be generated")
         XCTAssertGreaterThan(rootCa.count, 100, "Root CA certificate should be substantial")
         XCTAssertGreaterThan(issuingCa.count, 100, "Issuing CA certificate should be substantial")
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
-    
+
     func testCaNodeSetupCompleteErrorHandling() async throws {
         // Test CA node setup error handling - matching Rust test_ca_node_setup_complete_null_ca_node
         // This test verifies proper error handling for invalid arguments
-        
+
         // Create EA key pair for testing
         let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
-        
+
         // Test with empty EA public keys - this should fail
         do {
             let caNode = try CANode.create()
@@ -736,13 +730,13 @@ final class CATests: XCTestCase {
                 eaPublicKeys: Data(), // Empty data should cause failure
                 networkId: "test-network"
             )
-            
+
             try await caNode.setupComplete(params: setupParams)
             XCTFail("Should fail with empty EA public keys")
         } catch {
             XCTAssertTrue(error is FFIError, "Should throw FFIError for empty EA public keys")
         }
-        
+
         // Clean up
         EAKeyManager.free(eaKeyPair)
     }
@@ -761,7 +755,7 @@ final class CATests: XCTestCase {
         }
 
         let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-        let _ = totalTime / Double(iterations) // Average time for reference
+        _ = totalTime / Double(iterations) // Average time for reference
 
         XCTAssertGreaterThan(totalTime, 0, "CA node creation should take some time")
     }
@@ -779,7 +773,7 @@ final class CATests: XCTestCase {
         }
 
         let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-        let _ = totalTime / Double(iterations) // Average time for reference
+        _ = totalTime / Double(iterations) // Average time for reference
 
         XCTAssertGreaterThan(totalTime, 0, "EA key pair creation should take some time")
     }

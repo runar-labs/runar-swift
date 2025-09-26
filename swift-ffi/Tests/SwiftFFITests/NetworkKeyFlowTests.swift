@@ -280,15 +280,15 @@ final class NetworkKeyFlowTests: XCTestCase {
         expectation.expectedFulfillmentCount = 3
 
         // Run concurrent operations
-        guard let mobileKeys = self.mobileKeys else {
+        guard let mobileKeys = mobileKeys else {
             XCTFail("Mobile keys not initialized")
             return
         }
-        guard let nodeKeys = self.nodeKeys else {
+        guard let nodeKeys = nodeKeys else {
             XCTFail("Node keys not initialized")
             return
         }
-        
+
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 do {
@@ -320,7 +320,7 @@ final class NetworkKeyFlowTests: XCTestCase {
                     XCTFail("Check network private key failed: \(error)")
                 }
             }
-            
+
             await group.waitForAll()
         }
 
@@ -332,34 +332,34 @@ final class NetworkKeyFlowTests: XCTestCase {
     func testNetworkKeyStatePersistence() async throws {
         // Test network key state persistence with proper implementation
         // This test verifies that network keys can be persisted and retrieved
-        
+
         // Generate network data key on mobile
         let networkDataKey = try await mobileKeys.generateNetworkDataKey()
         XCTAssertNotNil(networkDataKey, "Network data key should be generated")
-        
+
         // Get node agreement public key
         let nodeAgreementPublicKey = try await nodeKeys.getNodeAgreementPublicKey()
         XCTAssertNotNil(nodeAgreementPublicKey, "Node agreement public key should be available")
-        
+
         // Create network key message
         let networkKeyMessage = try await mobileKeys.createNetworkKeyMessage(
             networkPublicKey: networkDataKey,
             nodeAgreementPublicKey: nodeAgreementPublicKey
         )
         XCTAssertNotNil(networkKeyMessage, "Network key message should be created")
-        
+
         // Install network key on node
         try await nodeKeys.installNetworkKey(networkKeyMessage)
-        
+
         // Verify network key is installed by checking if node has the private key
         let hasNetworkPrivateKey = try await nodeKeys.hasNetworkPrivateKey(networkPublicKey: networkDataKey)
         XCTAssertTrue(hasNetworkPrivateKey, "Node should have network private key after installation")
-        
+
         // Test network encryption/decryption to verify persistence
         let testData = Data("Test network data for persistence".utf8)
         let encryptedData = try await nodeKeys.encryptForNetwork(data: testData, networkPublicKey: networkDataKey)
         XCTAssertNotNil(encryptedData, "Network data should be encrypted")
-        
+
         let decryptedData = try await nodeKeys.decryptNetworkData(encryptedEnvelope: encryptedData)
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
     }

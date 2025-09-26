@@ -15,7 +15,7 @@ extension XCTestCase {
             XCTFail("Expected no error but got: \(error). \(message())", file: file, line: line)
         }
     }
-    
+
     /// Assert that an async throwing expression throws an error
     func XCTAssertThrowsErrorAsync<T>(
         _ expression: @autoclosure () async throws -> T,

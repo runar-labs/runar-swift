@@ -207,10 +207,10 @@ final class InitializationTests: XCTestCase {
         // Test concurrent mobile key manager operations
         // Note: initializeUserRootKey is not idempotent, so we initialize once and then test concurrent access
         try await mobileKeyManager.initializeUserRootKey()
-        
+
         await withTaskGroup(of: Void.self) { group in
             // Add multiple concurrent tasks for mobile key manager
-            for i in 0..<5 {
+            for i in 0 ..< 5 {
                 group.addTask {
                     do {
                         // Each task gets public key (initialization already done)
@@ -222,7 +222,7 @@ final class InitializationTests: XCTestCase {
                     }
                 }
             }
-            
+
             // Wait for all mobile tasks to complete
             for await _ in group {
                 // All tasks completed
@@ -232,7 +232,7 @@ final class InitializationTests: XCTestCase {
         // Test concurrent node key manager operations
         await withTaskGroup(of: Void.self) { group in
             // Add multiple concurrent tasks for node key manager
-            for i in 0..<5 {
+            for i in 0 ..< 5 {
                 group.addTask {
                     do {
                         // Each task generates keys and gets public key
@@ -245,7 +245,7 @@ final class InitializationTests: XCTestCase {
                     }
                 }
             }
-            
+
             // Wait for all node tasks to complete
             for await _ in group {
                 // All tasks completed
@@ -264,10 +264,10 @@ final class InitializationTests: XCTestCase {
 
         // Initialize mobile key manager once before concurrent operations
         try await mobileKeyManager.initializeUserRootKey()
-        
+
         await withTaskGroup(of: Void.self) { group in
             // Add mobile key manager tasks
-            for i in 0..<3 {
+            for i in 0 ..< 3 {
                 group.addTask {
                     do {
                         let publicKey = try await mobileKeyManager.getUserPublicKey()
@@ -280,7 +280,7 @@ final class InitializationTests: XCTestCase {
             }
 
             // Add node key manager tasks
-            for i in 0..<3 {
+            for i in 0 ..< 3 {
                 group.addTask {
                     do {
                         try await nodeKeyManager.generateKeys()
@@ -292,7 +292,7 @@ final class InitializationTests: XCTestCase {
                     }
                 }
             }
-            
+
             // Wait for all tasks to complete
             for await _ in group {
                 // All tasks completed
@@ -308,7 +308,7 @@ final class InitializationTests: XCTestCase {
 
         await withTaskGroup(of: (MobileKeyManager?, NodeKeyManager?).self) { group in
             // Add multiple concurrent creation tasks
-            for i in 0..<10 {
+            for i in 0 ..< 10 {
                 group.addTask {
                     do {
                         let mobileManager = try await MobileKeyManager()
@@ -321,11 +321,11 @@ final class InitializationTests: XCTestCase {
                     }
                 }
             }
-            
+
             // Wait for all creation tasks to complete
             var mobileManagers: [MobileKeyManager] = []
             var nodeManagers: [NodeKeyManager] = []
-            
+
             for await (mobile, node) in group {
                 if let mobile = mobile {
                     mobileManagers.append(mobile)
@@ -334,7 +334,7 @@ final class InitializationTests: XCTestCase {
                     nodeManagers.append(node)
                 }
             }
-            
+
             XCTAssertEqual(mobileManagers.count, 10, "Should have created 10 mobile managers")
             XCTAssertEqual(nodeManagers.count, 10, "Should have created 10 node managers")
         }
@@ -351,10 +351,10 @@ final class InitializationTests: XCTestCase {
 
         // Initialize mobile key manager once before stress test
         try await mobileKeyManager.initializeUserRootKey()
-        
+
         await withTaskGroup(of: Void.self) { group in
             // Add many concurrent tasks
-            for i in 0..<20 {
+            for i in 0 ..< 20 {
                 group.addTask {
                     do {
                         if i % 2 == 0 {
@@ -367,7 +367,7 @@ final class InitializationTests: XCTestCase {
                             let publicKey = try await nodeKeyManager.getNodePublicKey()
                             XCTAssertFalse(publicKey.isEmpty, "Node public key should not be empty in stress task \(i)")
                         }
-                        
+
                         if i % 5 == 0 {
                             print("   ✅ Stress task \(i) completed")
                         }
@@ -376,7 +376,7 @@ final class InitializationTests: XCTestCase {
                     }
                 }
             }
-            
+
             // Wait for all stress tasks to complete
             for await _ in group {
                 // All tasks completed

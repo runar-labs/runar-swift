@@ -251,8 +251,8 @@ final class CaClientCrlTests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: try await caNode.getRootCACertificate(),
-            issuing_ca_der: try await caNode.getIssuingCACertificate()
+            root_ca_der: await caNode.getRootCACertificate(),
+            issuing_ca_der: await caNode.getIssuingCACertificate()
         )
 
         let caClient2 = try await nodeKeys.createCAClient(config: caClientConfig2)
@@ -377,7 +377,7 @@ final class CaClientCrlTests: XCTestCase {
         // Test concurrent CRL retrieval operations
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
-        guard let caClient = self.caClient else {
+        guard let caClient = caClient else {
             XCTFail("CA client not initialized")
             return
         }

@@ -69,6 +69,7 @@ alwaysApply: true
 ❌ Implementing features in isolation
 ❌ Simplified implementations
 ❌ fallbacks without explicit aproval an solid justification
+❌ Use of @unchecked Sendable  - completely prohibted. all code must use proper thread safe semantics aligned with Seift6 best practices
 
 
 ## REQUIRED

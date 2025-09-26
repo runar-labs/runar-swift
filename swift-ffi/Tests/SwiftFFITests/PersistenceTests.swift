@@ -37,10 +37,10 @@ final class PersistenceTests: XCTestCase {
     func testSetPersistenceDirectory() async throws {
         // Test setting a valid persistence directory
         try await keysHandle.setPersistenceDirectory(tempDir)
-        
+
         // Test that we can enable auto-persistence
         try await keysHandle.enableAutoPersistence(true)
-        
+
         // Test that we can get keystore capabilities
         let capabilities = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilities, "Should be able to get keystore capabilities")
@@ -49,7 +49,7 @@ final class PersistenceTests: XCTestCase {
     func testSetPersistenceDirectoryWithInvalidPath() async throws {
         // Test setting an invalid persistence directory
         let invalidPath = "/invalid/path/that/does/not/exist"
-        
+
         // Note: The FFI function may not validate the path immediately
         // It might only fail when actually trying to use the directory
         do {
@@ -67,13 +67,13 @@ final class PersistenceTests: XCTestCase {
     func testEnableAutoPersistence() async throws {
         // Set persistence directory first
         try await keysHandle.setPersistenceDirectory(tempDir)
-        
+
         // Test enabling auto-persistence
         try await keysHandle.enableAutoPersistence(true)
-        
+
         // Test that we can flush state
         try await keysHandle.flushState()
-        
+
         // Test that we can get keystore capabilities
         let capabilities = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilities, "Should be able to get keystore capabilities")
@@ -84,10 +84,10 @@ final class PersistenceTests: XCTestCase {
     func testWipePersistence() async throws {
         // Set persistence directory first
         try await keysHandle.setPersistenceDirectory(tempDir)
-        
+
         // Test wiping persistence
         try await keysHandle.wipePersistence()
-        
+
         // Test that we can still get keystore capabilities after wipe
         let capabilities = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilities, "Should be able to get keystore capabilities after wipe")
@@ -114,10 +114,10 @@ final class PersistenceTests: XCTestCase {
     func testFlushState() async throws {
         // Set persistence directory first
         try await keysHandle.setPersistenceDirectory(tempDir)
-        
+
         // Test flushing state
         try await keysHandle.flushState()
-        
+
         // Test that we can still get keystore capabilities after flush
         let capabilities = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilities, "Should be able to get keystore capabilities after flush")
@@ -140,7 +140,7 @@ final class PersistenceTests: XCTestCase {
         // Test registering Apple device keystore
         let label = "test-keystore"
         try await keysHandle.registerAppleDeviceKeystore(label: label)
-        
+
         // Test that we can still get keystore capabilities after registration
         let capabilities = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilities, "Should be able to get keystore capabilities after registration")
@@ -164,17 +164,17 @@ final class PersistenceTests: XCTestCase {
         // Test complete persistence lifecycle
         try await keysHandle.setPersistenceDirectory(tempDir)
         try await keysHandle.enableAutoPersistence(true)
-        
+
         // Test that we can get capabilities
         let capabilities = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilities, "Should be able to get keystore capabilities")
-        
+
         // Test flushing state
         try await keysHandle.flushState()
-        
+
         // Test wiping persistence
         try await keysHandle.wipePersistence()
-        
+
         // Test that we can still get capabilities after wipe
         let capabilitiesAfterWipe = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilitiesAfterWipe, "Should be able to get keystore capabilities after wipe")
@@ -184,12 +184,12 @@ final class PersistenceTests: XCTestCase {
         // Test that persistence state is maintained across operations
         try await keysHandle.setPersistenceDirectory(tempDir)
         try await keysHandle.enableAutoPersistence(true)
-        
+
         // Test that we can flush and still get capabilities
         try await keysHandle.flushState()
         let capabilities1 = try await keysHandle.getKeystoreCapabilities()
         XCTAssertNotNil(capabilities1, "Should be able to get keystore capabilities after flush")
-        
+
         // Test that we can flush again
         try await keysHandle.flushState()
         let capabilities2 = try await keysHandle.getKeystoreCapabilities()
@@ -201,7 +201,7 @@ final class PersistenceTests: XCTestCase {
     func testPersistenceErrorHandling() async throws {
         // Test error handling for invalid operations
         let invalidPath = "/invalid/path/that/does/not/exist"
-        
+
         do {
             try await keysHandle.setPersistenceDirectory(invalidPath)
             // If it doesn't throw an error, that's also acceptable behavior
@@ -209,7 +209,7 @@ final class PersistenceTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is FFIError, "Should throw FFIError for invalid path")
         }
-        
+
         // Test error handling for empty keystore label
         do {
             try await keysHandle.registerAppleDeviceKeystore(label: "")
@@ -225,14 +225,14 @@ final class PersistenceTests: XCTestCase {
     func testConcurrentPersistenceOperations() async throws {
         // Test concurrent persistence operations
         try await keysHandle.setPersistenceDirectory(tempDir)
-        
-        guard let keysHandle = self.keysHandle else {
+
+        guard let keysHandle = keysHandle else {
             XCTFail("Keys handle not initialized")
             return
         }
-        
+
         await withTaskGroup(of: Void.self) { group in
-            for i in 0..<5 {
+            for i in 0 ..< 5 {
                 group.addTask {
                     do {
                         try await keysHandle.flushState()
@@ -243,7 +243,7 @@ final class PersistenceTests: XCTestCase {
                     }
                 }
             }
-            
+
             // Wait for all tasks to complete
             for await _ in group {}
         }

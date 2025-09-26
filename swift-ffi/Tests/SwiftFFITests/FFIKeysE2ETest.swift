@@ -12,7 +12,6 @@ import XCTest
 @MainActor
 final class FFIKeysE2ETest: XCTestCase {
     func testKeysE2EGenerationAndExchange() async throws {
-
         // ==========================================
         // Mobile side - first time use - generate user keys
         // ==========================================
@@ -32,7 +31,6 @@ final class FFIKeysE2ETest: XCTestCase {
         // Get user CA public key
         let userCaPublicKey = try await mobileKeys.getCompactId(for: userPublicKey)
         XCTAssertFalse(userCaPublicKey.isEmpty, "User CA public key should not be empty")
-
 
         // ==========================================
         // Node first time use - enter in setup mode
@@ -81,11 +79,9 @@ final class FFIKeysE2ETest: XCTestCase {
         // Generate CSR for certificate
         let csrData = try await nodeKeys.generateCsrSetupToken()
         XCTAssertFalse(csrData.isEmpty, "CSR data should not be empty")
-
     }
 
     func testPrimitivesE2ECANodeFlow() async throws {
-
         // Set up logging
         try await FFILogger.setLogLevel(.debug)
         try await FFILogger.setLoggerNodeId("ca-node-test")
@@ -131,6 +127,5 @@ final class FFIKeysE2ETest: XCTestCase {
 
         let decryptedData = try await mobileKeys.decryptEnvelope(envelopeData: encryptedData)
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
-
     }
 }
