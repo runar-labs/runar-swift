@@ -32,7 +32,6 @@ public enum ServiceState: String, Codable, Sendable {
     }
 }
 
-@MainActor
 public protocol AbstractService: AnyObject {
     var name: String { get }
     var version: String { get }
@@ -51,7 +50,6 @@ public protocol AbstractService: AnyObject {
 
 // MARK: - ServiceBase Implementation
 
-@MainActor
 open class ServiceBase: AbstractService {
     public let name: String
     public let version: String

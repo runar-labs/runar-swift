@@ -2,7 +2,6 @@ import Foundation
 import RunarSerializer
 import SwiftCommon
 
-@MainActor
 public struct LifecycleContext {
     public let networkId: String
     public let servicePath: String
@@ -37,7 +36,6 @@ public struct LifecycleContext {
     }
 }
 
-@MainActor
 public struct RequestContext {
     public let networkId: String
     public let servicePath: String
@@ -47,7 +45,6 @@ public struct RequestContext {
     public let userProfilePublicKey: Data
 }
 
-@MainActor
 public struct EventContext {
     public let topic: String
     public let logger: RunarLogger
