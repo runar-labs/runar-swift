@@ -28,3 +28,5 @@ Before create a test check for existing tests properly, avoid duplication and te
 5) review the code and test code agains rust again at the end of each feature. To make sure it aligns 100% - nothing more, nothing less. 
 
 DO NOT USE @unchecked Sendable  ANYWHERE THIS IS PROHIBED IN OUR RULES
+
+We have implemented /Users/rafael/dev/runar-swift/swift-common/Sources/SwiftCommon/ShardedConcurrentMap.swift as the equivalent of RUST DAshMap .. so anywhere the rust code uses DAshMap u must use our ShardedConcurrentMap.

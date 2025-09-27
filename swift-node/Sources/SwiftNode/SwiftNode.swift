@@ -4,6 +4,117 @@ import SwiftCBOR
 import SwiftCommon
 import SwiftFFI
 
+// MARK: - Missing Rust Schema Types
+
+/// Action metadata structure matching Rust ActionMetadata
+public struct ActionMetadata: Sendable, Codable {
+    public let name: String
+    public let description: String
+    public let inputSchema: FieldSchema?
+    public let outputSchema: FieldSchema?
+    
+    public init(name: String, description: String, inputSchema: FieldSchema? = nil, outputSchema: FieldSchema? = nil) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+        self.outputSchema = outputSchema
+    }
+}
+
+/// Service metadata structure matching Rust ServiceMetadata
+public struct ServiceMetadata: Sendable, Codable {
+    public let networkId: String
+    public let servicePath: String
+    public let name: String
+    public let version: String
+    public let description: String
+    public let actions: [ActionMetadata]
+    public let registrationTime: UInt64
+    public let lastStartTime: UInt64?
+    
+    public init(
+        networkId: String,
+        servicePath: String,
+        name: String,
+        version: String,
+        description: String,
+        actions: [ActionMetadata] = [],
+        registrationTime: UInt64,
+        lastStartTime: UInt64? = nil
+    ) {
+        self.networkId = networkId
+        self.servicePath = servicePath
+        self.name = name
+        self.version = version
+        self.description = description
+        self.actions = actions
+        self.registrationTime = registrationTime
+        self.lastStartTime = lastStartTime
+    }
+}
+
+/// Schema data type enum matching Rust SchemaDataType
+public enum SchemaDataType: Sendable, Codable {
+    case string
+    case int32
+    case int64
+    case float
+    case double
+    case boolean
+    case timestamp
+    case binary
+    case object
+    case array
+    case reference(String)
+    case union([SchemaDataType])
+    case any
+}
+
+/// Field schema structure matching Rust FieldSchema
+public indirect enum FieldSchema: Sendable, Codable {
+    case primitive(
+        name: String,
+        dataType: SchemaDataType,
+        description: String? = nil,
+        nullable: Bool? = nil,
+        defaultValue: String? = nil
+    )
+    case object(
+        name: String,
+        properties: [String: FieldSchema],
+        description: String? = nil,
+        nullable: Bool? = nil,
+        defaultValue: String? = nil
+    )
+    case array(
+        name: String,
+        items: FieldSchema,
+        description: String? = nil,
+        nullable: Bool? = nil,
+        defaultValue: String? = nil
+    )
+    
+    public var name: String {
+        switch self {
+        case let .primitive(name, _, _, _, _),
+             let .object(name, _, _, _, _),
+             let .array(name, _, _, _, _):
+            return name
+        }
+    }
+    
+    public var dataType: SchemaDataType {
+        switch self {
+        case let .primitive(_, dataType, _, _, _):
+            return dataType
+        case .object:
+            return .object
+        case .array:
+            return .array
+        }
+    }
+}
+
 // MARK: - FFI Integration
 
 /// Type alias for FFIKeys to use real NodeKeyManager from swift-ffi
@@ -12,111 +123,103 @@ public typealias FFIKeys = NodeKeyManager
 // MARK: - Missing Types and Protocols
 
 /// Protocol for network transport implementations
+@MainActor
 public protocol NodeTransport: AnyObject {
-    func start() throws
-    func stop() throws
-    func sendRequest(path: String, payload: Data, correlationId: String) throws
-    func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) throws
-    func publish(topic: String, payload: Data, options: PublishOptions) throws
-    func subscribe(topic: String, subscriptionId: String) throws
-    func unsubscribe(subscriptionId: String) throws
-    func pollEvent() throws -> Data?
-    func localAddr() throws -> String
-    func updateLocalNodeInfo(_ nodeInfo: Data) throws
+    func start() async throws
+    func stop() async throws
+    func sendRequest(path: String, payload: Data, correlationId: String) async throws
+    func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) async throws
+    func publish(topic: String, payload: Data, options: PublishOptions) async throws
+    func subscribe(topic: String, subscriptionId: String) async throws
+    func unsubscribe(subscriptionId: String) async throws
+    func pollEvent() async throws -> Data?
+    func localAddr() async throws -> String
+    func updateLocalNodeInfo(_ nodeInfo: Data) async throws
 }
 
 /// Protocol for load balancing strategies
 public protocol LoadBalancingStrategy: Sendable {
-    mutating func selectHandler(handlers: [String]) -> String?
+    func selectHandler(handlers: [String]) async -> String?
 }
 
-/// Round-robin load balancer implementation
-public struct RoundRobinLoadBalancer: LoadBalancingStrategy {
-    private let lock = NSLock()
+/// Round-robin load balancer implementation (actor-based)
+public actor RoundRobinLoadBalancer: LoadBalancingStrategy {
     private var currentIndex: Int = 0
 
     public init() {}
 
-    public mutating func selectHandler(handlers: [String]) -> String? {
+    public func selectHandler(handlers: [String]) async -> String? {
         guard !handlers.isEmpty else { return nil }
-
-        lock.lock()
-        defer { lock.unlock() }
-
         let selected = handlers[currentIndex % handlers.count]
-        currentIndex += 1
+        currentIndex &+= 1
         return selected
     }
 }
 
 /// Protocol for node discovery
 public protocol NodeDiscovery: Sendable {
-    func start() throws
-    func stop() throws
+    func start() async throws
+    func stop() async throws
 }
 
-/// Placeholder transport implementation
-public final class PlaceholderTransport: NodeTransport {
-    public init() {}
-    
-    public func start() throws {
-        // Placeholder implementation
+// MARK: - Real Transport Implementation
+// TODO: Implement real transport using swift-ffi QuicTransport
+// This should match the Rust transporter functionality
+
+// MARK: - Real Discovery Implementation  
+// TODO: Implement real discovery using swift-ffi
+// This should match the Rust discovery functionality
+
+// MARK: - Resolver Cache (per-node)
+
+/// Per-node resolver cache with TTL semantics, avoiding global shared state.
+public actor ResolverCache {
+    private struct CacheEntry: Sendable { let resolver: LabelResolver; let expiresAt: Date }
+    private var storage: [String: CacheEntry] = [:]
+    private let capacity: Int
+    private let ttlSeconds: TimeInterval
+
+    public init(capacity: Int = 1000, ttlSeconds: TimeInterval = 300) {
+        self.capacity = capacity
+        self.ttlSeconds = ttlSeconds
     }
-    
-    public func stop() throws {
-        // Placeholder implementation
+
+    public func getOrCreateResolver(systemConfig: LabelResolverConfig, userProfilePublicKeys: [Data]) throws -> LabelResolver {
+        let key = ResolverCache.makeKey(systemConfig: systemConfig, userProfilePublicKeys: userProfilePublicKeys)
+        let now = Date()
+        if let entry = storage[key], entry.expiresAt > now {
+            return entry.resolver
+        }
+
+        // Evict expired entries
+        storage = storage.filter { $0.value.expiresAt > now }
+        // Enforce capacity (simple drop-oldest strategy)
+        if storage.count >= capacity {
+            let sorted = storage.sorted { $0.value.expiresAt < $1.value.expiresAt }
+            if let oldestKey = sorted.first?.key {
+                storage.removeValue(forKey: oldestKey)
+            }
+        }
+
+        let resolver = try LabelResolver.createContextResolver(
+            systemConfig: systemConfig,
+            userProfilePublicKeys: userProfilePublicKeys
+        )
+        storage[key] = CacheEntry(resolver: resolver, expiresAt: now.addingTimeInterval(ttlSeconds))
+        return resolver
     }
-    
-    public func sendRequest(path: String, payload: Data, correlationId: String) throws {
-        // Placeholder implementation
-    }
-    
-    public func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) throws {
-        // Placeholder implementation
-    }
-    
-    public func publish(topic: String, payload: Data, options: PublishOptions) throws {
-        // Placeholder implementation
-    }
-    
-    public func subscribe(topic: String, subscriptionId: String) throws {
-        // Placeholder implementation
-    }
-    
-    public func unsubscribe(subscriptionId: String) throws {
-        // Placeholder implementation
-    }
-    
-    public func pollEvent() throws -> Data? {
-        // Placeholder implementation
-        return nil
-    }
-    
-    public func localAddr() throws -> String {
-        // Placeholder implementation
-        return "127.0.0.1:0"
-    }
-    
-    public func updateLocalNodeInfo(_ nodeInfo: Data) throws {
-        // Placeholder implementation
+
+    private static func makeKey(systemConfig: LabelResolverConfig, userProfilePublicKeys: [Data]) -> String {
+        var hasher = Hasher()
+        for (label, value) in systemConfig.labelMappings.sorted(by: { $0.key < $1.key }) {
+            hasher.combine(label)
+            if let npk = value.networkPublicKey { hasher.combine(npk) }
+            if let spec = value.userKeySpec { hasher.combine(String(describing: spec)) }
+        }
+        for key in userProfilePublicKeys { hasher.combine(key) }
+        return String(hasher.finalize())
     }
 }
-
-/// Placeholder discovery implementation
-public final class PlaceholderDiscovery: NodeDiscovery {
-    public init() {}
-    
-    public func start() throws {
-        // Placeholder implementation
-    }
-    
-    public func stop() throws {
-        // Placeholder implementation
-    }
-}
-
-/// Type alias for ResolverCache to use real SerializationRegistry from RunarSerializer
-public typealias ResolverCache = SerializationRegistry
 
 /// Discovery provider configuration
 public struct DiscoveryProviderConfig: Sendable, Codable {
@@ -141,6 +244,7 @@ public struct DiscoveryOptions: Sendable, Codable {
 }
 
 /// Registry Service - provides information about registered services
+@MainActor
 public final class RegistryService: AbstractService {
     public let name: String = "RegistryService"
     public let version: String = "1.0.0"
@@ -187,9 +291,14 @@ public final class RegistryService: AbstractService {
         state = .stopped
         logger.info("Registry service stopped")
     }
+    
+    public func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
+    }
 }
 
 /// Keys Service - provides key management functionality
+@MainActor
 public final class KeysService: AbstractService {
     public let name: String = "KeysService"
     public let version: String = "1.0.0"
@@ -231,16 +340,149 @@ public final class KeysService: AbstractService {
         state = .stopped
         logger.info("Keys service stopped")
     }
+    
+    public func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
+    }
+}
+
+// MARK: - Context Structs
+
+/// Lifecycle context for service initialization, start, and stop operations
+public struct LifecycleContext: Sendable {
+    /// Network ID for the context
+    public let networkId: String
+    /// Service path - identifies the service within the network
+    public let servicePath: String
+    /// Optional configuration data
+    public let config: AnyValue?
+    /// Logger instance with service context
+    public let logger: RunarLogger
+    /// Node delegate for node operations
+    public let nodeDelegate: NodeDelegate
+    
+    public init(
+        networkId: String,
+        servicePath: String,
+        config: AnyValue? = nil,
+        logger: RunarLogger,
+        nodeDelegate: NodeDelegate
+    ) {
+        self.networkId = networkId
+        self.servicePath = servicePath
+        self.config = config
+        self.logger = logger
+        self.nodeDelegate = nodeDelegate
+    }
+    
+    /// Create a new LifecycleContext with a topic path and logger
+    public init(topicPath: TopicPath, nodeDelegate: NodeDelegate, logger: RunarLogger) {
+        self.networkId = topicPath.networkId
+        self.servicePath = topicPath.servicePath
+        self.config = nil
+        self.logger = logger
+        self.nodeDelegate = nodeDelegate
+    }
+    
+    /// Register an action handler for this service
+    public func registerAction(_ action: String, handler: @escaping ActionHandler) async throws {
+        try await nodeDelegate.registerAction(
+            networkId: networkId,
+            servicePath: servicePath,
+            action: action,
+            handler: handler
+        )
+    }
+}
+
+/// Request context for handling action requests
+public struct RequestContext: Sendable {
+    /// Complete topic path for this request
+    public let topicPath: TopicPath
+    /// Metadata for this request
+    public let metadata: [String: AnyValue]
+    /// Logger for this context
+    public let logger: RunarLogger
+    /// Path parameters extracted from template matching
+    public let pathParams: [String: String]
+    /// Node delegate for making requests or publishing events
+    public let nodeDelegate: NodeDelegate
+    
+    public init(
+        topicPath: TopicPath,
+        metadata: [String: AnyValue] = [:],
+        logger: RunarLogger,
+        pathParams: [String: String] = [:],
+        nodeDelegate: NodeDelegate
+    ) {
+        self.topicPath = topicPath
+        self.metadata = metadata
+        self.logger = logger
+        self.pathParams = pathParams
+        self.nodeDelegate = nodeDelegate
+    }
+}
+
+/// Event context for handling event publishing and subscription
+public struct EventContext: Sendable {
+    /// Complete topic path for this event
+    public let topicPath: TopicPath
+    /// Logger instance specific to this context
+    public let logger: RunarLogger
+    /// Node delegate for making requests or publishing events
+    public let nodeDelegate: NodeDelegate
+    /// Delivery options used when publishing this event
+    public let deliveryOptions: PublishOptions?
+    /// Whether this event is local or remote
+    public let isLocal: Bool
+    
+    public init(
+        topicPath: TopicPath,
+        logger: RunarLogger,
+        nodeDelegate: NodeDelegate,
+        deliveryOptions: PublishOptions? = nil,
+        isLocal: Bool = true
+    ) {
+        self.topicPath = topicPath
+        self.logger = logger
+        self.nodeDelegate = nodeDelegate
+        self.deliveryOptions = deliveryOptions
+        self.isLocal = isLocal
+    }
 }
 
 /// Protocol for node delegate
-public protocol NodeDelegate: AnyObject {
+public protocol NodeDelegate: AnyObject, Sendable {
     func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws
     func unregisterAction(networkId: String, servicePath: String, action: String) async throws
     func subscribeToEvents(networkId: String, servicePath: String, handler: @escaping EventHandler) async throws -> String
     func unsubscribeFromEvents(subscriptionId: String) async throws
     func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String
     func publish(topic: String, data: AnyValue?) async throws
+}
+
+/// Keys Delegate trait for keys service operations
+/// 
+/// INTENTION: Provide a dedicated interface for the Keys Service
+/// to interact with the Node without creating circular references.
+public protocol KeysDelegate: AnyObject {
+    func ensureSymmetricKey(keyName: String) async throws -> AnyValue
+}
+
+/// Registry Delegate trait for registry service operations
+///
+/// INTENTION: Provide a dedicated interface for the Registry Service
+/// to interact with the Node without creating circular references.
+public protocol RegistryDelegate: AnyObject {
+    func getLocalServiceState(servicePath: TopicPath) async -> ServiceState?
+    func getRemoteServiceState(servicePath: TopicPath) async -> ServiceState?
+    func getServiceMetadata(servicePath: TopicPath) async -> ServiceMetadata?
+    func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata]
+    func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata]
+    func registerRemoteActionHandler(topicPath: TopicPath, handler: ActionHandler) async throws
+    func removeRemoteActionHandler(topicPath: TopicPath) async throws
+    func registerRemoteEventHandler(topicPath: TopicPath, handler: EventHandler) async throws
+    func removeRemoteEventHandler(topicPath: TopicPath) async throws
 }
 
 /// Action handler type
@@ -699,12 +941,13 @@ public struct RetainedEventEntry: Sendable {
 // MARK: - Node
 
 /// Main Node implementation matching Rust structure
+@MainActor
 public final class Node {
     // MARK: - Core Properties
 
     /// Debounce state for notify_node_change
-    private let debounceNotifyTask: NSLock
     private var debounceTask: Task<Void, Never>?
+    
 
     /// Default network id to be used when services are added without a network ID
     public let networkId: String
@@ -725,35 +968,31 @@ public final class Node {
     public let serviceRegistry: ServiceRegistry
 
     /// Centralized peer directory (single source of truth)
-    private let remoteNodeInfo: NSLock
-    private var _remoteNodeInfo: [String: NodeInfo] = [:]
+    /// Matches Rust: Arc<DashMap<String, NodeInfo>>
+    private let remoteNodeInfo: ShardedConcurrentMap<String, NodeInfo>
 
     /// Debounce repeated discovery events per peer
-    private let discoverySeenTimes: NSLock
-    private var _discoverySeenTimes: [String: Date] = [:]
+    /// Matches Rust: Arc<DashMap<String, Instant>>
+    private let discoverySeenTimes: ShardedConcurrentMap<String, Date>
 
     /// Logger instance
     public let logger: RunarLogger
 
     /// Flag indicating if the node is running
-    private let running: NSLock
-    private var _running: Bool = false
+    private var running: Bool = false
 
     /// Flag indicating if this node supports networking
     /// This is set when networking is enabled in the config
     public let supportsNetworking: Bool
 
     /// Network transport for connecting to remote nodes
-    private let networkTransport: NSLock
-    private var _networkTransport: (any NodeTransport)?
+    private var networkTransport: (any NodeTransport)?
 
     /// Network discovery providers
-    private let networkDiscoveryProviders: NSLock
-    private var _networkDiscoveryProviders: [NodeDiscovery]?
+    private var networkDiscoveryProviders: [NodeDiscovery]?
 
     /// Load balancer for selecting remote handlers
-    private let loadBalancer: NSLock
-    private var _loadBalancer: LoadBalancingStrategy?
+    private var loadBalancer: RoundRobinLoadBalancer
 
     /// System label configuration for dynamic resolver creation
     public let systemLabelConfig: LabelResolverConfig
@@ -762,49 +1001,35 @@ public final class Node {
     public let labelResolverCache: ResolverCache
 
     /// Registry version for tracking changes
-    private let registryVersion: NSLock
-    private var _registryVersion: Int64 = 0
+    private var registryVersion: Int64 = 0
 
     /// Key manager containing node credentials
     public let keysManager: FFIKeys
 
     /// Service tasks for tracking service lifecycle
-    private let serviceTasks: NSLock
-    private var _serviceTasks: [ServiceTask] = []
+    private var serviceTasks: [ServiceTask] = []
 
     /// Local node information
     public let localNodeInfo: NodeInfo
 
     /// Retained event store: exact full topic -> deque of (timestamp, data)
-    private let retainedEvents: NSLock
-    private var _retainedEvents: [String: [RetainedEventEntry]] = [:]
+    /// Matches Rust: Arc<RetainedEventsMap> where RetainedEventsMap = DashMap<String, RetainedDeque>
+    private let retainedEvents: ShardedConcurrentMap<String, [RetainedEventEntry]>
 
     /// Index of exact topics for wildcard lookups
-    private let retainedIndex: NSLock
-    private var _retainedIndex: PathTrie<String> = PathTrie()
+    /// Matches Rust: Arc<RwLock<PathTrie<String>>>
+    private var retainedIndex: PathTrie<String> = PathTrie()
 
     // MARK: - Computed Properties
 
     /// Check if the node is currently running
-    public var isRunning: Bool {
-        running.lock()
-        defer { running.unlock() }
-        return _running
-    }
+    public var isRunning: Bool { running }
 
     /// Get the current registry version
-    public var currentRegistryVersion: Int64 {
-        registryVersion.lock()
-        defer { registryVersion.unlock() }
-        return _registryVersion
-    }
+    public var currentRegistryVersion: Int64 { registryVersion }
 
     /// Get the current service tasks
-    public var currentServiceTasks: [ServiceTask] {
-        serviceTasks.lock()
-        defer { serviceTasks.unlock() }
-        return _serviceTasks
-    }
+    public var currentServiceTasks: [ServiceTask] { serviceTasks }
 
     // MARK: - Initialization
 
@@ -844,12 +1069,12 @@ public final class Node {
     /// - Internal components fail to initialize
     public static func new(config: NodeConfig) async throws -> Node {
         // Apply logging configuration (default to Info level if none provided)
-        if let loggingConfig = config.loggingConfig {
+        if config.loggingConfig != nil {
             // Apply logging configuration here
             // This would integrate with the logging system
         } else {
             // Apply default Info logging when no configuration is provided
-            let defaultConfig = LoggingConfig.defaultInfo()
+            _ = LoggingConfig.defaultInfo()
             // Apply default logging configuration
         }
 
@@ -885,7 +1110,6 @@ public final class Node {
         )
 
         let node = Node(
-            debounceNotifyTask: NSLock(),
             debounceTask: nil as Task<Void, Never>?,
             networkId: defaultNetworkId,
             networkIds: networkIds,
@@ -893,29 +1117,22 @@ public final class Node {
             nodePublicKey: nodePublicKey,
             config: config,
             serviceRegistry: serviceRegistry,
-            remoteNodeInfo: NSLock(),
-            discoverySeenTimes: NSLock(),
+            remoteNodeInfo: ShardedConcurrentMap<String, NodeInfo>(),
+            discoverySeenTimes: ShardedConcurrentMap<String, Date>(),
             logger: logger,
-            running: NSLock(),
-            _running: false,
+            running: false,
             supportsNetworking: networkingEnabled,
-            networkTransport: NSLock(),
-            _networkTransport: nil as NodeTransport?,
-            networkDiscoveryProviders: NSLock(),
-            _networkDiscoveryProviders: nil as [NodeDiscovery]?,
-            loadBalancer: NSLock(),
-            _loadBalancer: nil as LoadBalancingStrategy?,
+            networkTransport: nil as NodeTransport?,
+            networkDiscoveryProviders: nil as [NodeDiscovery]?,
+            loadBalancer: RoundRobinLoadBalancer(),
             systemLabelConfig: config.labelResolverConfig,
-            labelResolverCache: SerializationRegistry.shared,
-            registryVersion: NSLock(),
-            _registryVersion: 0,
+            labelResolverCache: ResolverCache(capacity: 1000, ttlSeconds: 300),
+            registryVersion: 0,
             keysManager: keysManager,
-            serviceTasks: NSLock(),
-            _serviceTasks: [],
+            serviceTasks: [],
             localNodeInfo: localNodeInfo,
-            retainedEvents: NSLock(),
-            retainedIndex: NSLock(),
-            _retainedIndex: PathTrie<String>()
+            retainedEvents: ShardedConcurrentMap<String, [RetainedEventEntry]>(),
+            retainedIndex: PathTrie<String>()
         )
 
         // Register the registry service
@@ -937,7 +1154,6 @@ public final class Node {
     // MARK: - Private Initializer
 
     private init(
-        debounceNotifyTask: NSLock,
         debounceTask: Task<Void, Never>?,
         networkId: String,
         networkIds: [String],
@@ -945,31 +1161,23 @@ public final class Node {
         nodePublicKey: Data,
         config: NodeConfig,
         serviceRegistry: ServiceRegistry,
-        remoteNodeInfo: NSLock,
-        discoverySeenTimes: NSLock,
+        remoteNodeInfo: ShardedConcurrentMap<String, NodeInfo>,
+        discoverySeenTimes: ShardedConcurrentMap<String, Date>,
         logger: RunarLogger,
-        running: NSLock,
-        _running: Bool,
+        running: Bool,
         supportsNetworking: Bool,
-        networkTransport: NSLock,
-        _networkTransport: (any NodeTransport)?,
-        networkDiscoveryProviders: NSLock,
-        _networkDiscoveryProviders: [NodeDiscovery]?,
-        loadBalancer: NSLock,
-        _loadBalancer: LoadBalancingStrategy?,
+        networkTransport: (any NodeTransport)?,
+        networkDiscoveryProviders: [NodeDiscovery]?,
+        loadBalancer: RoundRobinLoadBalancer,
         systemLabelConfig: LabelResolverConfig,
         labelResolverCache: ResolverCache,
-        registryVersion: NSLock,
-        _registryVersion: Int64,
+        registryVersion: Int64,
         keysManager: FFIKeys,
-        serviceTasks: NSLock,
-        _serviceTasks: [ServiceTask],
+        serviceTasks: [ServiceTask],
         localNodeInfo: NodeInfo,
-        retainedEvents: NSLock,
-        retainedIndex: NSLock,
-        _retainedIndex: PathTrie<String>
+        retainedEvents: ShardedConcurrentMap<String, [RetainedEventEntry]>,
+        retainedIndex: PathTrie<String>
     ) {
-        self.debounceNotifyTask = debounceNotifyTask
         self.debounceTask = debounceTask
         self.networkId = networkId
         self.networkIds = networkIds
@@ -981,25 +1189,18 @@ public final class Node {
         self.discoverySeenTimes = discoverySeenTimes
         self.logger = logger
         self.running = running
-        self._running = _running
         self.supportsNetworking = supportsNetworking
         self.networkTransport = networkTransport
-        self._networkTransport = _networkTransport
         self.networkDiscoveryProviders = networkDiscoveryProviders
-        self._networkDiscoveryProviders = _networkDiscoveryProviders
         self.loadBalancer = loadBalancer
-        self._loadBalancer = _loadBalancer
         self.systemLabelConfig = systemLabelConfig
         self.labelResolverCache = labelResolverCache
         self.registryVersion = registryVersion
-        self._registryVersion = _registryVersion
         self.keysManager = keysManager
         self.serviceTasks = serviceTasks
-        self._serviceTasks = _serviceTasks
         self.localNodeInfo = localNodeInfo
         self.retainedEvents = retainedEvents
         self.retainedIndex = retainedIndex
-        self._retainedIndex = _retainedIndex
     }
 
     // MARK: - Core Methods
@@ -1038,7 +1239,7 @@ public final class Node {
     /// ```
     public func addService(_ service: AbstractService) async throws {
         // Set the service's network ID
-        service.networkId = networkId
+        service.setNetworkId(networkId)
         
         // Register the service instance with the registry
         try await serviceRegistry.registerServiceInstance(
@@ -1101,7 +1302,7 @@ public final class Node {
         }
 
         // Set the node as running
-        _running = true
+        running = true
 
         logger.info("Node is now running")
     }
@@ -1130,10 +1331,10 @@ public final class Node {
         await serviceRegistry.stopAllServices()
 
         // Shutdown network transport
-        _networkTransport = nil
+        networkTransport = nil
 
         // Set the node as not running
-        _running = false
+        running = false
 
         logger.info("Node has been stopped")
     }
@@ -1155,12 +1356,11 @@ public final class Node {
         
         logger.info("Network config: \(networkConfig)")
         
-        // Update local node info
-        let localNodeInfo = getLocalNodeInfo()
-        // Note: In a real implementation, this would update the stored localNodeInfo
+        // Update local node info (no-op placeholder for now; already stored at init)
+        _ = getLocalNodeInfo()
         
         // Initialize the network transport
-        if _networkTransport == nil {
+        if networkTransport == nil {
             logger.info("Initializing network transport...")
             
             // Create network transport using the factory pattern based on transport_type
@@ -1169,7 +1369,7 @@ public final class Node {
             try await transport.start()
             
             // Store the transport
-            _networkTransport = transport
+            networkTransport = transport
         }
         
         // Initialize discovery if enabled
@@ -1201,7 +1401,7 @@ public final class Node {
             }
             
             // Store the discovery providers
-            _networkDiscoveryProviders = discoveryProviders
+            networkDiscoveryProviders = discoveryProviders
         }
         
         logger.info("Networking components started successfully")
@@ -1209,9 +1409,9 @@ public final class Node {
     
     /// Create network transport based on configuration
     private func createTransport(networkConfig: NetworkConfig) async throws -> NodeTransport {
-        // This would create the actual transport based on networkConfig.transportType
-        // For now, return a placeholder that conforms to NodeTransport
-        return PlaceholderTransport()
+        // TODO: Implement real transport using swift-ffi QuicTransport
+        // This should match the Rust transporter functionality
+        throw NodeError.transportNotImplemented("Real transport implementation required")
     }
     
     /// Create discovery provider based on configuration
@@ -1219,9 +1419,9 @@ public final class Node {
         providerConfig: DiscoveryProviderConfig,
         discoveryOptions: DiscoveryOptions
     ) async throws -> NodeDiscovery {
-        // This would create the actual discovery provider
-        // For now, return a placeholder that conforms to NodeDiscovery
-        return PlaceholderDiscovery()
+        // TODO: Implement real discovery using swift-ffi
+        // This should match the Rust discovery functionality
+        throw NodeError.discoveryNotImplemented("Real discovery implementation required")
     }
     
     /// Get local node information
@@ -1274,6 +1474,8 @@ public enum NodeError: Error, Sendable {
     case serviceRegistrationFailed(String)
     case networkInitializationFailed(String)
     case invalidConfiguration(String)
+    case transportNotImplemented(String)
+    case discoveryNotImplemented(String)
 
     public var localizedDescription: String {
         switch self {
@@ -1287,6 +1489,10 @@ public enum NodeError: Error, Sendable {
             "Network initialization failed: \(message)"
         case let .invalidConfiguration(message):
             "Invalid configuration: \(message)"
+        case let .transportNotImplemented(message):
+            "Transport not implemented: \(message)"
+        case let .discoveryNotImplemented(message):
+            "Discovery not implemented: \(message)"
         }
     }
 }

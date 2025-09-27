@@ -32,6 +32,7 @@ public enum ServiceState: String, Codable, Sendable {
     }
 }
 
+@MainActor
 public protocol AbstractService: AnyObject {
     var name: String { get }
     var version: String { get }
@@ -40,6 +41,9 @@ public protocol AbstractService: AnyObject {
     var networkId: String? { get set }
     var state: ServiceState { get }
     var logger: RunarLogger { get }
+    
+    /// Set service network id
+    func setNetworkId(_ networkId: String)
 
     /// Initialize the service (renamed from 'init' due to Swift reserved keyword)
     /// Note: This diverges from Rust's 'init' method name due to Swift language constraints
@@ -50,7 +54,8 @@ public protocol AbstractService: AnyObject {
 
 // MARK: - ServiceBase Implementation
 
-open class ServiceBase: AbstractService {
+@MainActor
+public final class ServiceBase: AbstractService {
     public let name: String
     public let version: String
     public let path: String
@@ -160,17 +165,22 @@ open class ServiceBase: AbstractService {
 
     /// Override in subclasses to implement custom initialization logic
     /// Called by initService() - use performStart() for startup logic
-    open func performInitService(_: LifecycleContext) async throws {
+    public func performInitService(_: LifecycleContext) async throws {
         // Default implementation does nothing
     }
 
     /// Override in subclasses to implement custom start logic
-    open func performStart(_: LifecycleContext) async throws {
+    public func performStart(_: LifecycleContext) async throws {
         // Default implementation does nothing
     }
 
     /// Override in subclasses to implement custom stop logic
-    open func performStop(_: LifecycleContext) async throws {
+    public func performStop(_: LifecycleContext) async throws {
         // Default implementation does nothing
+    }
+    
+    /// Set service network id
+    public func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
     }
 }

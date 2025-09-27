@@ -28,14 +28,16 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftCommon", package: "swift-common"),
                 .product(name: "RunarSerializer", package: "swift-serializer"),
+                .product(name: "SwiftFFI", package: "swift-ffi")
             ],
             path: "Sources/SwiftNode"
         ),
         .testTarget(
             name: "SwiftNodeTests",
             dependencies: [
-                "SwiftNode", 
-                .product(name: "SwiftCBOR", package: "SwiftCBOR")
+                "SwiftNode",
+                .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+                .product(name: "SwiftFFI", package: "swift-ffi")
             ],
             path: "Tests/SwiftNodeTests"
         ),
