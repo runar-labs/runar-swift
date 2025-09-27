@@ -25,7 +25,7 @@ final class NodeRequestTests: XCTestCase {
         let node = try await Node.new(config: config)
 
         // Create a test service
-        let service = TestMathService()
+        let service = await TestMathService()
 
         // Add the service to the node
         try await node.addService(service)
@@ -57,7 +57,7 @@ final class NodeRequestTests: XCTestCase {
         let node = try await Node.new(config: config)
 
         // Create a test service
-        let service = TestMathService()
+        let service = await TestMathService()
 
         // Add the service to the node
         try await node.addService(service)

@@ -8,6 +8,7 @@ public enum ServiceState: String, Codable, Sendable {
     case initialized
     case starting
     case running
+    case paused
     case stopping
     case stopped
     case error
@@ -55,7 +56,7 @@ public protocol AbstractService: AnyObject {
 // MARK: - ServiceBase Implementation
 
 @MainActor
-public final class ServiceBase: AbstractService {
+public class ServiceBase: AbstractService {
     public let name: String
     public let version: String
     public let path: String
@@ -95,7 +96,7 @@ public final class ServiceBase: AbstractService {
             state = newState
         }
 
-        logger.info("Service \(name) state transition: \(oldState) -> \(newState)")
+        logger.trace("Service \(name) state transition: \(oldState) -> \(newState)")
 
         // Notify observers
         let observers = stateQueue.sync { stateObservers }
@@ -106,36 +107,36 @@ public final class ServiceBase: AbstractService {
 
     // MARK: - Lifecycle Implementation
 
-    public func initService(_ context: LifecycleContext) async throws {
+    open func initService(_ context: LifecycleContext) async throws {
         await transition(to: .initializing)
         do {
             try await performInitService(context)
             await transition(to: .initialized)
-            logger.info("Service \(name) initialized successfully")
+            logger.trace("Service \(name) initialized successfully")
         } catch {
             await transition(to: .error)
             throw error
         }
     }
 
-    public func start(_ context: LifecycleContext) async throws {
+    open func start(_ context: LifecycleContext) async throws {
         await transition(to: .starting)
         do {
             try await performStart(context)
             await transition(to: .running)
-            logger.info("Service \(name) started successfully")
+            logger.trace("Service \(name) started successfully")
         } catch {
             await transition(to: .error)
             throw error
         }
     }
 
-    public func stop(_ context: LifecycleContext) async throws {
+    open func stop(_ context: LifecycleContext) async throws {
         await transition(to: .stopping)
         do {
             try await performStop(context)
             await transition(to: .stopped)
-            logger.info("Service \(name) stopped successfully")
+            logger.trace("Service \(name) stopped successfully")
         } catch {
             await transition(to: .error)
             throw error
@@ -180,7 +181,7 @@ public final class ServiceBase: AbstractService {
     }
     
     /// Set service network id
-    public func setNetworkId(_ networkId: String) {
+    open func setNetworkId(_ networkId: String) {
         self.networkId = networkId
     }
 }

@@ -397,4 +397,10 @@ public final class PathTrie<T> {
         multiWildcard.removeAll()
         networks.removeAll()
     }
+    
+    /// Get all entries for a specific network
+    public func getAllEntries(networkId: String) -> [T] {
+        guard let netTrie = networks[networkId] else { return [] }
+        return netTrie.findAllConcretePaths()
+    }
 }

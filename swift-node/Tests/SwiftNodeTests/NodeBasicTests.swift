@@ -6,6 +6,7 @@ import SwiftFFI
 import XCTest
 
 /// Basic Node tests following the rules - no mocks, no shortcuts, real implementations
+@MainActor
 final class NodeBasicTests: XCTestCase {
     /// Test that verifies basic node creation functionality
     ///
@@ -88,39 +89,42 @@ final class NodeBasicTests: XCTestCase {
 }
 
 /// Test service implementation - real implementation, no mocks
-final class TestMathService: AbstractService {
-    let name: String = "TestMathService"
-    let version: String = "1.0.0"
-    let path: String = "math"
-    let description: String = "Test math service for unit tests"
-    let logger: RunarLogger
-    var networkId: String?
-    let state: ServiceState = .created
-
+@MainActor
+final class TestMathService: ServiceBase {
     init() {
-        logger = RunarLogger(component: .service)
+        super.init(
+            name: "TestMathService",
+            version: "1.0.0",
+            path: "math",
+            description: "Test math service for unit tests",
+            logger: RunarLogger(component: .service)
+        )
     }
 
-    func initService(_ context: LifecycleContext) async throws {
+    override func initService(_ context: LifecycleContext) async throws {
         // Register math actions
-        try await context.registerAction("add") { _ in
+        try await context.registerAction("add") { payload, requestContext in
             // Simple addition: return a fixed result for testing
             AnyValue.primitive(8.0)
         }
 
-        try await context.registerAction("multiply") { _ in
+        try await context.registerAction("multiply") { payload, requestContext in
             // Simple multiplication: return a fixed result for testing
             AnyValue.primitive(28.0)
         }
     }
 
-    func start(_: LifecycleContext) async throws {
+    override func start(_: LifecycleContext) async throws {
         // Service started successfully
-        logger.info("TestMathService started")
+        logger.trace("TestMathService started")
     }
 
-    func stop(_: LifecycleContext) async throws {
+    override func stop(_: LifecycleContext) async throws {
         // Service stopped successfully
-        logger.info("TestMathService stopped")
+        logger.trace("TestMathService stopped")
+    }
+    
+    override func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
     }
 }

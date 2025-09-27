@@ -30,3 +30,5 @@ Before create a test check for existing tests properly, avoid duplication and te
 DO NOT USE @unchecked Sendable  ANYWHERE THIS IS PROHIBED IN OUR RULES
 
 We have implemented /Users/rafael/dev/runar-swift/swift-common/Sources/SwiftCommon/ShardedConcurrentMap.swift as the equivalent of RUST DAshMap .. so anywhere the rust code uses DAshMap u must use our ShardedConcurrentMap.
+
+if u find a problem with the /Users/rafael/dev/runar-swift/swift-serializer or /Users/rafael/dev/runar-swift/swift-common package.. stop and providfe me the details.. DO NOT CHANGE IT witout my approaval.

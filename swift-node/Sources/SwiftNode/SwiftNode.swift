@@ -252,44 +252,207 @@ public final class RegistryService: AbstractService {
     public let description: String = "Internal registry service"
     
     public let logger: RunarLogger
-    private let nodeDelegate: NodeDelegate
+    private let registryDelegate: RegistryDelegate
     
     public var networkId: String?
     public private(set) var state: ServiceState = .created
     
-    public init(logger: RunarLogger, nodeDelegate: NodeDelegate) {
+    public init(logger: RunarLogger, registryDelegate: RegistryDelegate) {
         self.logger = logger
-        self.nodeDelegate = nodeDelegate
+        self.registryDelegate = registryDelegate
     }
     
     public func initService(_ context: LifecycleContext) async throws {
+        logger.trace("RegistryService.initService: Starting action registration")
+        
         // Register registry actions
-        try await context.registerAction("services/list") { _ in
-            // Return list of all services
-            return AnyValue.map([:])
+        try await context.registerAction("services/list") { [weak self] payload, requestContext in
+            guard let self = self else { return AnyValue.list([]) }
+            
+            // Get includeInternalServices parameter (default to false)
+            self.logger.trace("RegistryService.services/list: payload = \(String(describing: payload))")
+            let includeInternal: Bool
+            if let payload = payload {
+                self.logger.trace("RegistryService.services/list: payload type = \(type(of: payload))")
+                do {
+                    let paramsDict = try await payload.asType() as [String: AnyValue]
+                    self.logger.trace("RegistryService.services/list: paramsDict = \(paramsDict)")
+                    if let includeInternalValue = paramsDict["includeInternal"] {
+                        self.logger.trace("RegistryService.services/list: includeInternalValue = \(includeInternalValue)")
+                        self.logger.trace("RegistryService.services/list: includeInternalValue type = \(type(of: includeInternalValue))")
+                        includeInternal = try await includeInternalValue.asType() as Bool
+                        self.logger.trace("RegistryService.services/list: includeInternal = \(includeInternal)")
+                    } else {
+                        self.logger.trace("RegistryService.services/list: includeInternal key not found")
+                        includeInternal = false
+                    }
+                } catch {
+                    self.logger.error("RegistryService.services/list: Failed to parse payload: \(error)")
+                    self.logger.trace("RegistryService.services/list: includeInternal = false (default due to error)")
+                    includeInternal = false
+                }
+            } else {
+                self.logger.trace("RegistryService.services/list: No payload provided")
+                includeInternal = false
+            }
+            
+            // Get all service metadata
+            let allMetadata = try await self.registryDelegate.getAllServiceMetadata(includeInternalServices: includeInternal)
+            
+            // Convert to AnyValue list (matching Rust implementation)
+            let metadataList = Array(allMetadata.values).map { metadata in
+                AnyValue.struct(metadata)
+            }
+            
+            return AnyValue.list(metadataList)
         }
         
-        try await context.registerAction("services/{service_path}") { params in
-            // Return service information
-            return AnyValue.map([:])
+        try await context.registerAction("services/{service_path}") { [weak self] payload, requestContext in
+            guard let self = self else { return AnyValue.map([:]) }
+            
+            self.logger.trace("RegistryService.services/{service_path}: Called with context: \(String(describing: requestContext))")
+            
+            // Extract service_path parameter from path parameters
+            guard let servicePathString = requestContext.pathParams["service_path"] else {
+                self.logger.warning("RegistryService.services/{service_path}: Missing service_path parameter")
+                throw ServiceRegistryError.invalidTopicPath("Missing service_path parameter")
+            }
+            
+            self.logger.trace("RegistryService.services/{service_path}: Looking for service: \(servicePathString)")
+            
+            // Create TopicPath using networkId from requestContext
+            let servicePath = try TopicPath(networkId: requestContext.networkId, 
+                                          segments: servicePathString.split(separator: "/").map(String.init))
+            
+            // Get service metadata
+            if let metadata = await self.registryDelegate.getServiceMetadata(servicePath: servicePath) {
+                // Service found, return metadata as struct (matching Rust behavior)
+                self.logger.trace("RegistryService.services/{service_path}: Found service metadata: \(metadata.name)")
+                let result = AnyValue.struct(metadata)
+                self.logger.trace("RegistryService.services/{service_path}: Returning metadata result")
+                return result
+            } else {
+                // Service not found, return null (matching Rust behavior)
+                self.logger.trace("RegistryService.services/{service_path}: Service not found: \(servicePathString)")
+                return AnyValue.null()
+            }
         }
         
-        try await context.registerAction("services/{service_path}/state") { params in
-            // Return service state
-            return AnyValue.map([:])
+        try await context.registerAction("services/{service_path}/state") { [weak self] payload, requestContext in
+            guard let self = self else { return AnyValue.null() }
+            
+            self.logger.trace("RegistryService.services/{service_path}/state: Called with context: \(String(describing: requestContext))")
+            
+            // Extract service_path parameter from path parameters
+            guard let servicePathString = requestContext.pathParams["service_path"] else {
+                self.logger.warning("RegistryService.services/{service_path}/state: Missing service_path parameter")
+                throw ServiceRegistryError.invalidTopicPath("Missing service_path parameter")
+            }
+            
+            self.logger.trace("RegistryService.services/{service_path}/state: Looking for service state: \(servicePathString)")
+            
+            // Create TopicPath using networkId from requestContext
+            let servicePath = try TopicPath(networkId: requestContext.networkId, 
+                                          segments: servicePathString.split(separator: "/").map(String.init))
+            
+            // Get service state
+            guard let state = await self.registryDelegate.getLocalServiceState(servicePath: servicePath) else {
+                self.logger.warning("RegistryService.services/{service_path}/state: Service not found: \(servicePathString)")
+                return AnyValue.null()
+            }
+            
+            // Return ServiceState directly as primitive (matching Rust behavior)
+            let result = AnyValue.primitive(state.rawValue)
+            self.logger.trace("RegistryService.services/{service_path}/state: state.rawValue = \(state.rawValue)")
+            self.logger.trace("RegistryService.services/{service_path}/state: servicePathString = \(servicePathString)")
+            self.logger.trace("RegistryService.services/{service_path}/state: Returning result: \(result)")
+            return result
         }
         
+        // Register pause service action
+        try await context.registerAction("services/{service_path}/pause") { [weak self] payload, requestContext in
+            guard let self = self else { return AnyValue.null() }
+            
+            self.logger.trace("RegistryService.services/{service_path}/pause: Called with context: \(String(describing: requestContext))")
+            
+            // Extract service_path parameter from path parameters
+            guard let servicePathString = requestContext.pathParams["service_path"] else {
+                self.logger.warning("RegistryService.services/{service_path}/pause: Missing service_path parameter")
+                throw ServiceRegistryError.invalidTopicPath("Missing service_path parameter")
+            }
+            
+            self.logger.trace("RegistryService.services/{service_path}/pause: Looking for service to pause: \(servicePathString)")
+            
+            // Create TopicPath using networkId from requestContext
+            let servicePath = try TopicPath(networkId: requestContext.networkId, 
+                                          segments: servicePathString.split(separator: "/").map(String.init))
+            
+            // Get current state first to check if service exists
+            if let currentState = await self.registryDelegate.getLocalServiceState(servicePath: servicePath) {
+                // Validate that the service can be paused
+                try await self.registryDelegate.validatePauseTransition(servicePath: servicePath)
+                try await self.registryDelegate.updateLocalServiceStateIfValid(
+                    servicePath: servicePath,
+                    newState: .paused,
+                    currentState: currentState
+                )
+                
+                self.logger.trace("RegistryService.services/{service_path}/pause: Service '\(servicePathString)' paused successfully")
+                return AnyValue.primitive(ServiceState.paused.rawValue)
+            } else {
+                self.logger.trace("RegistryService.services/{service_path}/pause: Service '\(servicePathString)' not found")
+                return AnyValue.null()
+            }
+        }
+        
+        // Register resume service action
+        try await context.registerAction("services/{service_path}/resume") { [weak self] payload, requestContext in
+            guard let self = self else { return AnyValue.null() }
+            
+            self.logger.trace("RegistryService.services/{service_path}/resume: Called with context: \(String(describing: requestContext))")
+            
+            // Extract service_path parameter from path parameters
+            guard let servicePathString = requestContext.pathParams["service_path"] else {
+                self.logger.warning("RegistryService.services/{service_path}/resume: Missing service_path parameter")
+                throw ServiceRegistryError.invalidTopicPath("Missing service_path parameter")
+            }
+            
+            self.logger.trace("RegistryService.services/{service_path}/resume: Looking for service to resume: \(servicePathString)")
+            
+            // Create TopicPath using networkId from requestContext
+            let servicePath = try TopicPath(networkId: requestContext.networkId, 
+                                          segments: servicePathString.split(separator: "/").map(String.init))
+            
+            // Get current state first to check if service exists
+            if let currentState = await self.registryDelegate.getLocalServiceState(servicePath: servicePath) {
+                // Validate that the service can be resumed
+                try await self.registryDelegate.validateResumeTransition(servicePath: servicePath)
+                try await self.registryDelegate.updateLocalServiceStateIfValid(
+                    servicePath: servicePath,
+                    newState: .running,
+                    currentState: currentState
+                )
+                
+                self.logger.trace("RegistryService.services/{service_path}/resume: Service '\(servicePathString)' resumed successfully")
+                return AnyValue.primitive(ServiceState.running.rawValue)
+            } else {
+                self.logger.trace("RegistryService.services/{service_path}/resume: Service '\(servicePathString)' not found")
+                return AnyValue.null()
+            }
+        }
+        
+        logger.trace("RegistryService.initService: Action registration completed")
         state = .initialized
     }
     
     public func start(_: LifecycleContext) async throws {
         state = .running
-        logger.info("Registry service started")
+        logger.trace("Registry service started")
     }
     
     public func stop(_: LifecycleContext) async throws {
         state = .stopped
-        logger.info("Registry service stopped")
+        logger.trace("Registry service stopped")
     }
     
     public func setNetworkId(_ networkId: String) {
@@ -318,12 +481,12 @@ public final class KeysService: AbstractService {
     
     public func initService(_ context: LifecycleContext) async throws {
         // Register keys actions
-        try await context.registerAction("ensure_symmetric_key") { params in
+        try await context.registerAction("ensure_symmetric_key") { payload, requestContext in
             // Ensure symmetric key exists
             return AnyValue.map([:])
         }
         
-        try await context.registerAction("get_public_key") { params in
+        try await context.registerAction("get_public_key") { payload, requestContext in
             // Get public key
             return AnyValue.map([:])
         }
@@ -333,12 +496,12 @@ public final class KeysService: AbstractService {
     
     public func start(_: LifecycleContext) async throws {
         state = .running
-        logger.info("Keys service started")
+        logger.trace("Keys service started")
     }
     
     public func stop(_: LifecycleContext) async throws {
         state = .stopped
-        logger.info("Keys service stopped")
+        logger.trace("Keys service stopped")
     }
     
     public func setNetworkId(_ networkId: String) {
@@ -399,6 +562,8 @@ public struct LifecycleContext: Sendable {
 public struct RequestContext: Sendable {
     /// Complete topic path for this request
     public let topicPath: TopicPath
+    /// Network ID for this request
+    public let networkId: String
     /// Metadata for this request
     public let metadata: [String: AnyValue]
     /// Logger for this context
@@ -410,12 +575,14 @@ public struct RequestContext: Sendable {
     
     public init(
         topicPath: TopicPath,
+        networkId: String,
         metadata: [String: AnyValue] = [:],
         logger: RunarLogger,
         pathParams: [String: String] = [:],
         nodeDelegate: NodeDelegate
     ) {
         self.topicPath = topicPath
+        self.networkId = networkId
         self.metadata = metadata
         self.logger = logger
         self.pathParams = pathParams
@@ -473,7 +640,7 @@ public protocol KeysDelegate: AnyObject {
 ///
 /// INTENTION: Provide a dedicated interface for the Registry Service
 /// to interact with the Node without creating circular references.
-public protocol RegistryDelegate: AnyObject {
+public protocol RegistryDelegate: AnyObject, Sendable {
     func getLocalServiceState(servicePath: TopicPath) async -> ServiceState?
     func getRemoteServiceState(servicePath: TopicPath) async -> ServiceState?
     func getServiceMetadata(servicePath: TopicPath) async -> ServiceMetadata?
@@ -483,10 +650,19 @@ public protocol RegistryDelegate: AnyObject {
     func removeRemoteActionHandler(topicPath: TopicPath) async throws
     func registerRemoteEventHandler(topicPath: TopicPath, handler: EventHandler) async throws
     func removeRemoteEventHandler(topicPath: TopicPath) async throws
+    
+    /// Update service state only if the transition is valid
+    func updateLocalServiceStateIfValid(servicePath: TopicPath, newState: ServiceState, currentState: ServiceState) async throws
+    
+    /// Validate that a service can be paused
+    func validatePauseTransition(servicePath: TopicPath) async throws
+    
+    /// Validate that a service can be resumed
+    func validateResumeTransition(servicePath: TopicPath) async throws
 }
 
 /// Action handler type
-public typealias ActionHandler = @Sendable (AnyValue?) async throws -> AnyValue
+public typealias ActionHandler = @Sendable (AnyValue?, RequestContext) async throws -> AnyValue
 
 /// Event handler type
 public typealias EventHandler = @Sendable (AnyValue?) async -> Void
@@ -938,6 +1114,85 @@ public struct RetainedEventEntry: Sendable {
     }
 }
 
+/// Actor-based retained deque for storing events with TTL and capacity management
+/// Matches Rust: type RetainedDeque = VecDeque<(Instant, Option<ArcValue>)>
+public actor RetainedDeque {
+    /// Maximum number of retained events per topic (matches Rust MAX_RETAIN_PER_TOPIC = 16)
+    public static let maxRetainPerTopic: Int = 16
+    
+    /// Storage for retained events
+    private var entries: [RetainedEventEntry] = []
+    
+    /// Capacity limit for this deque
+    private let capacity: Int
+    
+    /// TTL in seconds for event retention
+    private let ttlSeconds: TimeInterval
+    
+    public init(capacity: Int = 16, ttlSeconds: TimeInterval = 300) {
+        self.capacity = capacity
+        self.ttlSeconds = ttlSeconds
+    }
+    
+    /// Append a new event entry to the deque
+    /// - Parameters:
+    ///   - entry: The event entry to append
+    public func append(_ entry: RetainedEventEntry) {
+        // Prune expired entries first
+        pruneExpired(now: entry.timestamp)
+        
+        // Enforce capacity by dropping oldest entries
+        while entries.count >= capacity {
+            entries.removeFirst()
+        }
+        
+        // Add the new entry
+        entries.append(entry)
+    }
+    
+    /// Append a new event with current timestamp
+    /// - Parameters:
+    ///   - timestamp: Timestamp for the event (defaults to current time)
+    ///   - data: Event data (optional)
+    public func append(timestamp: Date = Date(), data: AnyValue?) {
+        let entry = RetainedEventEntry(timestamp: timestamp, data: data)
+        append(entry)
+    }
+    
+    /// Prune expired entries based on TTL
+    /// - Parameter now: Current time for TTL calculation
+    public func pruneExpired(now: Date = Date()) {
+        let cutoffTime = now.addingTimeInterval(-ttlSeconds)
+        entries.removeAll { $0.timestamp < cutoffTime }
+    }
+    
+    /// Get the latest events up to the specified limit
+    /// - Parameter limit: Maximum number of events to return
+    /// - Returns: Array of latest events (most recent first)
+    public func getLatest(limit: Int) -> [RetainedEventEntry] {
+        pruneExpired()
+        let count = min(limit, entries.count)
+        return Array(entries.suffix(count).reversed())
+    }
+    
+    /// Get all events in the deque (for snapshot)
+    /// - Returns: Array of all events (oldest first)
+    public func snapshot() -> [RetainedEventEntry] {
+        pruneExpired()
+        return entries
+    }
+    
+    /// Get the count of retained events
+    public var count: Int {
+        entries.count
+    }
+    
+    /// Check if the deque is empty
+    public var isEmpty: Bool {
+        entries.isEmpty
+    }
+}
+
 // MARK: - Node
 
 /// Main Node implementation matching Rust structure
@@ -1014,7 +1269,7 @@ public final class Node {
 
     /// Retained event store: exact full topic -> deque of (timestamp, data)
     /// Matches Rust: Arc<RetainedEventsMap> where RetainedEventsMap = DashMap<String, RetainedDeque>
-    private let retainedEvents: ShardedConcurrentMap<String, [RetainedEventEntry]>
+    private let retainedEvents: ShardedConcurrentMap<String, RetainedDeque>
 
     /// Index of exact topics for wildcard lookups
     /// Matches Rust: Arc<RwLock<PathTrie<String>>>
@@ -1096,10 +1351,10 @@ public final class Node {
 
         let nodePublicKey = try await keysManager.getNodePublicKey()
 
-        let nodeId = CompactId.compactId(from: nodePublicKey)
+        let nodeId = try await keysManager.getCompactId(for: nodePublicKey)
         // logger.setContext(nodeId) // RunarLogger doesn't have setContext method
 
-        logger.info("Successfully loaded existing node credentials.")
+        logger.trace("Successfully loaded existing node credentials.")
 
         let localNodeInfo = NodeInfo(
             nodePublicKey: nodePublicKey,
@@ -1131,14 +1386,14 @@ public final class Node {
             keysManager: keysManager,
             serviceTasks: [],
             localNodeInfo: localNodeInfo,
-            retainedEvents: ShardedConcurrentMap<String, [RetainedEventEntry]>(),
+            retainedEvents: ShardedConcurrentMap<String, RetainedDeque>(),
             retainedIndex: PathTrie<String>()
         )
 
         // Register the registry service
         let registryService = RegistryService(
             logger: logger,
-            nodeDelegate: node
+            registryDelegate: node
         )
         try await node.addService(registryService)
 
@@ -1175,7 +1430,7 @@ public final class Node {
         keysManager: FFIKeys,
         serviceTasks: [ServiceTask],
         localNodeInfo: NodeInfo,
-        retainedEvents: ShardedConcurrentMap<String, [RetainedEventEntry]>,
+        retainedEvents: ShardedConcurrentMap<String, RetainedDeque>,
         retainedIndex: PathTrie<String>
     ) {
         self.debounceTask = debounceTask
@@ -1211,6 +1466,180 @@ public final class Node {
             systemConfig: systemLabelConfig,
             userProfilePublicKeys: userProfileKeys
         )
+    }
+
+    /// Publish an event with optional retention
+    ///
+    /// This method publishes an event to local subscribers and optionally retains it
+    /// for late subscribers based on the publish options.
+    ///
+    /// # Arguments
+    ///
+    /// * `topic` - The topic to publish to
+    /// * `data` - The event data to publish
+    /// * `options` - Optional publish options including retention settings
+    ///
+    /// # Process
+    ///
+    /// 1. Notify local subscribers immediately
+    /// 2. If retention is configured, store the event in retained events
+    /// 3. Update the retained index for wildcard lookups
+    /// 4. Broadcast to remote nodes if requested
+    ///
+    /// # Examples
+    ///
+    /// ```swift
+    /// // Publish without retention
+    /// try await node.publish("my-topic", data: AnyValue.string("hello"))
+    ///
+    /// // Publish with retention
+    /// try await node.publish("my-topic", data: AnyValue.string("hello"), 
+    ///                        options: PublishOptions(retainFor: 60))
+    /// ```
+    public func publish(topic: String, data: AnyValue?, options: PublishOptions? = nil) async throws {
+        // Parse topic path
+        let topicPath: TopicPath
+        do {
+            topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
+        } catch {
+            logger.error("Failed to create TopicPath for topic '\(topic)': \(error)")
+            throw NodeError.invalidConfiguration("Invalid topic path: \(topic)")
+        }
+
+        // Notify local subscribers first
+        logger.debug("Publishing event to topic: \(topic) with data: \(String(describing: data))")
+        await serviceRegistry.publish(topic: topic, data: data, networkId: networkId)
+
+        let publishOptions = options ?? PublishOptions()
+
+        // Retain event locally if configured
+        if let retainFor = publishOptions.retainFor {
+            let key = topicPath.asString()
+            let now = Date()
+            
+            // Get or create retained deque for this topic
+            let deque: RetainedDeque
+            if let existingDeque = await retainedEvents.get(key) {
+                deque = existingDeque
+            } else {
+                deque = RetainedDeque(capacity: RetainedDeque.maxRetainPerTopic, ttlSeconds: retainFor)
+                _ = await retainedEvents.insert(deque, for: key)
+            }
+            
+            // Append the event to the deque
+            await deque.append(timestamp: now, data: data)
+            
+            // Update retained index for wildcard lookups
+            retainedIndex.setValue(topic: topicPath, content: key)
+            
+            logger.debug("Retained event for topic '\(key)' with TTL \(retainFor)s")
+        }
+
+        // Broadcast to remote nodes if requested and networking is enabled
+        if publishOptions.broadcast && supportsNetworking {
+            // TODO: Implement remote broadcasting when networking is available
+            logger.debug("Remote broadcasting not yet implemented")
+        }
+    }
+
+    /// Subscribe to events with optional includePast support
+    ///
+    /// This method subscribes to events on a topic and optionally delivers
+    /// retained events that occurred within the specified lookback window.
+    ///
+    /// # Arguments
+    ///
+    /// * `topic` - The topic to subscribe to
+    /// * `callback` - The event handler callback
+    /// * `options` - Optional subscription options including includePast
+    ///
+    /// # Returns
+    ///
+    /// Returns a subscription ID that can be used to unsubscribe
+    ///
+    /// # Examples
+    ///
+    /// ```swift
+    /// // Subscribe without includePast
+    /// let subscriptionId = try await node.subscribe("my-topic") { data in
+    ///     print("Received event: \(data)")
+    /// }
+    ///
+    /// // Subscribe with includePast
+    /// let subscriptionId = try await node.subscribe("my-topic", 
+    ///     options: EventRegistrationOptions(includePast: 60)) { data in
+    ///     print("Received event: \(data)")
+    /// }
+    /// ```
+    public func subscribe(topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
+        // Parse topic path
+        let topicPath: TopicPath
+        do {
+            topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
+        } catch {
+            logger.error("Failed to create TopicPath for topic '\(topic)': \(error)")
+            throw NodeError.invalidConfiguration("Invalid topic path: \(topic)")
+        }
+
+        // Register the subscription with the correct networkId
+        let subscriptionId = try await serviceRegistry.subscribeToEvents(
+            networkId: networkId,
+            servicePath: topic,
+            handler: callback
+        )
+
+        // Deliver past events if requested
+        if let includePast = options?.includePast {
+            let now = Date()
+            let cutoff = now.addingTimeInterval(-includePast)
+            
+            // Find matching topics for wildcard patterns
+            let matchedKeys: [String]
+            if topicPath.isPattern {
+                // For now, just check exact topic since wildcard matching is not implemented
+                let exactKey = topicPath.asString()
+                if await retainedEvents.get(exactKey) != nil {
+                    matchedKeys = [exactKey]
+                } else {
+                    matchedKeys = []
+                }
+            } else {
+                // For exact topics, check if we have retained events
+                let exactKey = topicPath.asString()
+                if await retainedEvents.get(exactKey) != nil {
+                    matchedKeys = [exactKey]
+                } else {
+                    matchedKeys = []
+                }
+            }
+            
+            // Find the newest retained event within the cutoff time
+            var newestEvent: (date: Date, data: AnyValue?, key: String)?
+            
+            for key in matchedKeys {
+                if let deque = await retainedEvents.get(key) {
+                    let events = await deque.snapshot()
+                    for event in events.reversed() { // Check newest first
+                        if event.timestamp >= cutoff {
+                            if newestEvent == nil || event.timestamp > newestEvent!.date {
+                                newestEvent = (event.timestamp, event.data, key)
+                            }
+                            break // Found the newest event for this topic
+                        }
+                    }
+                }
+            }
+            
+            // Deliver the newest retained event if found
+            if let (_, data, _) = newestEvent {
+                logger.debug("Delivering retained event to new subscriber for topic '\(topic)'")
+                await callback(data)
+            } else {
+                logger.debug("No retained event found for topic '\(topic)' within lookback window")
+            }
+        }
+
+        return subscriptionId
     }
 
     /// Add a service to this node.
@@ -1265,11 +1694,11 @@ public final class Node {
                 servicePath: service.path,
                 newState: ServiceState.running
             )
-            logger.info("Service started: \(topic)")
+            logger.trace("Service started: \(topic)")
         } else {
             // Keep instance to start later during node.start()
             // This would be handled by the service registry
-            logger.info("Service initialized: \(topic)")
+            logger.trace("Service initialized: \(topic)")
         }
     }
 
@@ -1291,10 +1720,10 @@ public final class Node {
     /// try await node.start()
     /// ```
     public func start() async throws {
-        logger.info("Node started networkId=\(networkId)")
+        logger.trace("Node started networkId=\(networkId)")
 
         // Start all registered services
-        try await serviceRegistry.startAllServices()
+        try await serviceRegistry.startAllServices(networkId: networkId)
 
         // Initialize network transport if networking is enabled
         if supportsNetworking {
@@ -1304,7 +1733,7 @@ public final class Node {
         // Set the node as running
         running = true
 
-        logger.info("Node is now running")
+        logger.trace("Node is now running")
     }
 
     /// Stop the node and all its services.
@@ -1325,7 +1754,7 @@ public final class Node {
     /// await node.stop()
     /// ```
     public func stop() async {
-        logger.info("Node stopped")
+        logger.trace("Node stopped")
 
         // Stop all registered services
         await serviceRegistry.stopAllServices()
@@ -1336,17 +1765,57 @@ public final class Node {
         // Set the node as not running
         running = false
 
-        logger.info("Node has been stopped")
+        logger.trace("Node has been stopped")
+    }
+    
+    /// Wait for all services to start
+    ///
+    /// This method waits for all registered services to complete their startup process.
+    public func waitForServicesToStart() async throws {
+        logger.trace("Waiting for services to start")
+        
+        // Wait for all services to be in running state
+        let services = serviceRegistry.getAllEntries(networkId: networkId)
+        for serviceEntry in services {
+            // Wait for service to be in running state
+            var attempts = 0
+            let maxAttempts = 100 // 10 seconds with 100ms intervals
+            
+            while attempts < maxAttempts {
+                if let state = await serviceRegistry.getLocalServiceState(servicePath: serviceEntry.serviceTopic) {
+                    if state == .running {
+                        break
+                    }
+                }
+                
+                try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                attempts += 1
+            }
+            
+            if attempts >= maxAttempts {
+                logger.warning("Service \(serviceEntry.serviceTopic.asString()) did not start within timeout")
+            }
+        }
+        
+        logger.trace("All services started")
+    }
+    
+    /// Make a request to a service
+    ///
+    /// This method forwards the request to the ServiceRegistry for processing.
+    public func request(_ path: String, payload: AnyValue?, networkId: String?) async throws -> AnyValue {
+        let actualNetworkId = networkId ?? self.networkId
+        return try await serviceRegistry.request(path, payload: payload, networkId: actualNetworkId)
     }
 
     // MARK: - Private Helper Methods
 
     /// Initialize network transport for remote communication
     private func initializeNetworkTransport() async throws {
-        logger.info("Starting networking components...")
+        logger.trace("Starting networking components...")
         
         guard supportsNetworking else {
-            logger.info("Networking is disabled, skipping network initialization")
+            logger.trace("Networking is disabled, skipping network initialization")
             return
         }
         
@@ -1354,14 +1823,14 @@ public final class Node {
             throw NodeError.invalidConfiguration("Network configuration is required")
         }
         
-        logger.info("Network config: \(networkConfig)")
+        logger.trace("Network config: \(networkConfig)")
         
         // Update local node info (no-op placeholder for now; already stored at init)
         _ = getLocalNodeInfo()
         
         // Initialize the network transport
         if networkTransport == nil {
-            logger.info("Initializing network transport...")
+            logger.trace("Initializing network transport...")
             
             // Create network transport using the factory pattern based on transport_type
             let transport = try await createTransport(networkConfig: networkConfig)
@@ -1374,7 +1843,7 @@ public final class Node {
         
         // Initialize discovery if enabled
         if let discoveryOptions = networkConfig.discoveryOptions {
-            logger.info("Initializing node discovery providers...")
+            logger.trace("Initializing node discovery providers...")
             
             // Check if any providers are configured
             if networkConfig.discoveryProviders.isEmpty {
@@ -1385,7 +1854,7 @@ public final class Node {
             
             // Iterate through all discovery providers and initialize each one
             for providerConfig in networkConfig.discoveryProviders {
-                logger.info("Creating discovery provider: \(providerConfig)")
+                logger.trace("Creating discovery provider: \(providerConfig)")
                 
                 // Create discovery provider instance
                 let discoveryProvider = try await createDiscoveryProvider(
@@ -1394,7 +1863,7 @@ public final class Node {
                 )
                 
                 // Start announcing on this provider
-                logger.info("Starting to announce on discovery provider")
+                logger.trace("Starting to announce on discovery provider")
                 try await discoveryProvider.start()
                 
                 discoveryProviders.append(discoveryProvider)
@@ -1404,7 +1873,7 @@ public final class Node {
             networkDiscoveryProviders = discoveryProviders
         }
         
-        logger.info("Networking components started successfully")
+        logger.trace("Networking components started successfully")
     }
     
     /// Create network transport based on configuration
@@ -1456,12 +1925,63 @@ extension Node: NodeDelegate {
         await serviceRegistry.unsubscribeFromEvents(subscriptionId: subscriptionId)
     }
 
-    public func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
-        try await serviceRegistry.subscribe(topic: topic, options: options, callback: callback)
-    }
 
     public func publish(topic: String, data: AnyValue?) async throws {
-        await serviceRegistry.publish(topic: topic, data: data, networkId: networkId)
+        try await publish(topic: topic, data: data, options: nil)
+    }
+}
+
+// MARK: - RegistryDelegate Implementation
+
+extension Node: RegistryDelegate {
+    public func getLocalServiceState(servicePath: TopicPath) async -> ServiceState? {
+        await serviceRegistry.getLocalServiceState(servicePath: servicePath)
+    }
+    
+    public func getRemoteServiceState(servicePath: TopicPath) async -> ServiceState? {
+        // TODO: Implement remote service state lookup when networking is available
+        return nil
+    }
+    
+    public func getServiceMetadata(servicePath: TopicPath) async -> ServiceMetadata? {
+        await serviceRegistry.getServiceMetadata(servicePath: servicePath)
+    }
+    
+    public func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
+        serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: includeInternalServices)
+    }
+    
+    public func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
+        // TODO: Implement actions metadata lookup
+        return []
+    }
+    
+    public func registerRemoteActionHandler(topicPath: TopicPath, handler: ActionHandler) async throws {
+        // TODO: Implement remote action handler registration when networking is available
+    }
+    
+    public func removeRemoteActionHandler(topicPath: TopicPath) async throws {
+        // TODO: Implement remote action handler removal when networking is available
+    }
+    
+    public func registerRemoteEventHandler(topicPath: TopicPath, handler: EventHandler) async throws {
+        // TODO: Implement remote event handler registration when networking is available
+    }
+    
+    public func removeRemoteEventHandler(topicPath: TopicPath) async throws {
+        // TODO: Implement remote event handler removal when networking is available
+    }
+    
+    public func updateLocalServiceStateIfValid(servicePath: TopicPath, newState: ServiceState, currentState: ServiceState) async throws {
+        try await serviceRegistry.updateLocalServiceStateIfValid(servicePath: servicePath, newState: newState, currentState: currentState)
+    }
+    
+    public func validatePauseTransition(servicePath: TopicPath) async throws {
+        try await serviceRegistry.validatePauseTransition(servicePath: servicePath)
+    }
+    
+    public func validateResumeTransition(servicePath: TopicPath) async throws {
+        try await serviceRegistry.validateResumeTransition(servicePath: servicePath)
     }
 }
 

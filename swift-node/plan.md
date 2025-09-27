@@ -49,20 +49,25 @@ Detailed Plan:
 - keys_manager: Arc<RwLock<NodeKeyManager>>
 ```
 
-### 1.3 ServiceRegistry Local Implementation
-**Current Issues:**
-- Current ServiceRegistry is a simplified version
-- Missing critical Rust functionality for local services
-- Data structures don't match Rust implementation
+### 1.4 Swift 6 Concurrency Baseline (Non-Negotiable)
+- Use @MainActor isolation for `Node` and `ServiceRegistry` to replace Rust's `Arc<RwLock<...>>` for coordinator types. No `NSLock`.
+- Use `ShardedConcurrentMap<Key, Value>` (actor-based) for DashMap equivalents where Value is Sendable and accessed concurrently.
+- Do not store non-Sendable values (e.g., service instances) inside `ShardedConcurrentMap`. Keep them on the main actor.
+- Replace lock-based round-robin with an actor-based `RoundRobinLoadBalancer` (async `selectHandler`).
+- Implement a per-node `ResolverCache` actor (capacity + TTL). No shared/global caches.
+- All transport/discovery protocols are async-only and owned/used on the main actor.
 
-**Required Local-First Implementation:**
-- Implement exact Rust ServiceRegistry structure for local services
-- Add `local_action_handlers: Arc<RwLock<PathTrie<LocalActionEntryValue>>>`
-- Add `event_subscriptions: Arc<RwLock<PathTrie<SubscriptionVec>>>`
-- Add `subscription_id_to_topic_path: Arc<DashMap<String, TopicPath>>`
-- Add `local_services: Arc<RwLock<PathTrie<Arc<ServiceEntry>>>>`
-- Add `local_service_states: Arc<DashMap<String, ServiceState>>`
-- Implement all local service methods from Rust ServiceRegistry
+### 1.5 Node.new Initialization (Must Match Rust Intent)
+- Initialize deterministically (no placeholders):
+  - `load_balancer`: new `RoundRobinLoadBalancer()`
+  - `label_resolver_cache`: new per-node `ResolverCache(capacity: 1000, ttl=300s)`
+  - `registry_version`: `0` (Int64)
+  - `remote_node_info`: `ShardedConcurrentMap<String, NodeInfo>()`
+  - `discovery_seen_times`: `ShardedConcurrentMap<String, Date>()`
+  - `retained_events`: map topic → `RetainedDeque` actor (see Phase 3)
+  - `retained_index`: empty `PathTrie<String>`
+- Extract `keysManager` from config, validate presence, compute `nodeId` from public key.
+- Register internal services (`RegistryService`, `KeysService`) with real registration, no mocks.
 
 ## PHASE 2: Local Service Registry (Core Local Functionality)
 
@@ -79,6 +84,16 @@ Detailed Plan:
 - Add `local_action_handlers: Arc<RwLock<PathTrie<LocalActionEntryValue>>>`
 - Implement service registration, lookup, and state management
 - Add service metadata tracking and introspection
+
+### 2.3 Swift 6 Implementation Guidance (Critical)
+- ServiceRegistry is `@MainActor`. All its state is main-actor protected (no `NSLock`, no `DispatchQueue`).
+- Use these structures:
+  - `localActionHandlers: PathTrie<(ActionHandler, TopicPath, ActionMetadata?)>` (tuple matches Rust)
+  - `localServices: PathTrie<ServiceEntry>` and `localServicesList: [TopicPath: ServiceEntry]` on the main actor (do not store services in concurrent maps).
+  - `localServiceStates: ShardedConcurrentMap<String, ServiceState>` and `remoteServiceStates` as needed.
+  - `subscriptionIdToTopicPath` and `subscriptionIdToServiceTopicPath`: `ShardedConcurrentMap<String, TopicPath>`.
+- Action registration must always populate `ActionMetadata` like Rust (name, description, schemas optional).
+- Request handling resolves path via `PathTrie` and invokes handler with a `RequestContext`.
 
 ### 2.2 Local Action Handling
 **Current Issues:**
@@ -109,18 +124,41 @@ Detailed Plan:
 - Add subscription metadata and introspection methods
 - Support wildcard pattern matching for subscriptions
 
-### 3.2 Local Event Publishing and Dispatch
-**Current Issues:**
-- Basic event publishing exists but doesn't match Rust
-- Missing proper event dispatch to multiple subscribers
-- No event retention system
+### 3.3 Actor-Based Retained Deque (Design and APIs)
+- Rust types:
+  - `type RetainedDeque = VecDeque<(Instant, Option<ArcValue>)>`
+  - `type RetainedEventsMap = DashMap<String, RetainedDeque>`
+- Swift 6 equivalents:
+  - `public struct RetainedEventEntry: Sendable { timestamp: Date; data: AnyValue? }`
+  - `public actor RetainedDeque`:
+    - Storage: `private var entries: [RetainedEventEntry] = []`
+    - Config: `capacity: Int`, `ttlSeconds: TimeInterval`
+    - APIs:
+      - `append(_ entry: RetainedEventEntry)`
+      - `append(timestamp: Date = Date(), data: AnyValue?)`
+      - `pruneExpired(now: Date = Date())`
+      - `getLatest(limit: Int) -> [RetainedEventEntry]`
+      - `snapshot() -> [RetainedEventEntry]`
+    - Behavior: prune on append; enforce capacity by dropping oldest.
+  - `typealias RetainedEventsMap = ShardedConcurrentMap<String, RetainedDeque>` (keys = exact topics).
 
-**Required Local Implementation:**
-- Implement proper event publishing to local subscribers
-- Add support for multiple subscribers to same topic
-- Implement event dispatch with proper error handling
-- Add event retention system for local events
-- Support event filtering and wildcard matching
+### 3.4 Wiring Retained Events into Publish/Subscribe
+- `ServiceRegistry` remains `@MainActor` with `PathTrie<SubscriptionVec>`.
+- Publish flow (local-only Phase 1):
+  - Parse `TopicPath` (fail fast on invalid).
+  - If `retain` or `retainFor` set:
+    - TTL = `retainFor ?? defaultTTLFromConfig`.
+    - Obtain `RetainedDeque` from `retained_events` (create if missing with capacity/ttl).
+    - `await deque.append(timestamp: Date(), data: payload)`.
+  - Notify subscribers for the exact topic.
+- Include-past on subscribe (optional for Phase 1):
+  - If `includePast` window is specified, fetch retained entries within window and deliver before live events.
+- Wildcards:
+  - Track exact topics in `retained_index: PathTrie<String>` to support future wildcard lookups.
+
+### 3.5 Error Handling and Determinism
+- No fallbacks. Invalid `TopicPath` → deterministic error/skip.
+- If deque creation fails (invalid config), fail fast with a clear error.
 
 ## PHASE 4: Local Service Lifecycle and Task Management
 
@@ -137,31 +175,23 @@ Detailed Plan:
 - Implement service state transitions and validation
 - Add service health monitoring and reporting
 
-### 4.2 Service Registry Integration
-**Current Issues:**
-- Service registry doesn't properly integrate with node lifecycle
-- Missing service metadata management
-- No proper service introspection
-
-**Required Local Implementation:**
-- Integrate service registry with node lifecycle
-- Add proper service metadata management
-- Implement service introspection and debugging
-- Add service health monitoring and reporting
-- Support service pause/resume functionality
+### 4.3 Swift 6 Guidance
+- Lifecycle transitions happen on `@MainActor` in services and registry.
+- `ServiceTask` storage is a main-actor array; expose read-only snapshots as needed.
+- Do not capture services across threads; all cross-boundary calls are `async` and main-actor confined.
 
 ## PHASE 5: Local Testing & Validation
 
 ### 5.1 Port Rust Local Tests
 **Required Implementation:**
-- Port `test_node_create()` - Basic node creation without networking
-- Port `test_node_add_service()` - Service registration and lifecycle
-- Port `test_node_request()` - Local service action calls (MathService add operation)
-- Port `test_node_events()` - Local event publish/subscribe
-- Port `test_local_event_dispatch_multiple_subscribers()` - Multiple subscribers
-- Port `test_math_service_plus_external_subscription()` - Service + external events
-- Port `test_node_event_metadata_registration()` - Service registry metadata
-- Port `test_node_lifecycle()` - Start/stop lifecycle
+- `test_node_create()`
+- `test_node_add_service()`
+- `test_node_request()`
+- `test_node_events()`
+- `test_local_event_dispatch_multiple_subscribers()`
+- `test_math_service_plus_external_subscription()`
+- `test_node_event_metadata_registration()`
+- `test_node_lifecycle()`
 
 ### 5.2 Local Test Validation
 **Required Implementation:**
@@ -172,6 +202,12 @@ Detailed Plan:
 - Validate node lifecycle (start/stop) works properly
 - Add performance tests for local operations
 
+### 5.3 Test Design Details (No Mocks)
+- Node: create with real `NodeKeyManager`, verify `nodeId`, `isRunning` transitions.
+- ServiceRegistry: register a real test service; verify actions and `ActionMetadata`.
+- Events: publish live-only vs. retained; includePast behavior; multiple subscribers.
+- RetainedDeque: capacity and TTL enforcement tests.
+
 ## PHASE 6: Network Integration (Remote Features)
 
 ### 6.1 Transport and Discovery Integration
@@ -181,78 +217,45 @@ Detailed Plan:
 - No discovery event handling
 
 **Required Implementation:**
-- Add `network_transport: Arc<RwLock<Option<NetworkTransport>>>`
-- Add `network_discovery_providers: Arc<RwLock<Option<[NodeDiscovery]>>>`
-- Add `remote_node_info: Arc<DashMap<String, NodeInfo>>`
-- Add `discovery_seen_times: Arc<DashMap<String, Instant>>`
+- Add transports, discovery providers, peer info, discovery timing, etc.
 - Implement proper discovery event handling
 - Add discovery configuration and provider management
 
-### 6.2 Peer Management
-**Current Issues:**
-- Missing centralized peer directory
-- No proper peer state management
-- Missing discovery event debouncing
-
-**Required Implementation:**
-- Implement peer connection/disconnection lifecycle
-- Add peer metadata management and updates
-- Implement discovery debouncing and filtering
-- Add peer health monitoring and reporting
+### 6.3 Swift 6 Preparation (Do Not Implement Yet in Phase 1)
+- Protocols must be async-first (`start/stop/send/publish/...` are `async throws`).
+- Ownership on `@MainActor`; internal I/O happens under the hood in their own actors/threads.
+- No placeholders: keep unimplemented but throwing explicit errors until Phase 6.
 
 ## PHASE 7: Remote Services and Load Balancing
 
 ### 7.1 Load Balancing Strategy
-**Current Issues:**
-- Missing load balancing for remote services
-- No strategy pattern implementation
-- Round-robin logic is hardcoded
-
 **Required Implementation:**
-- Add `load_balancer: Arc<RwLock<LoadBalancingStrategy>>`
-- Implement `LoadBalancingStrategy` protocol
-- Add `RoundRobinLoadBalancer` implementation
-- Add load balancing configuration and strategy selection
+- Add `load_balancer`
+- Implement `LoadBalancingStrategy`
+- Add `RoundRobinLoadBalancer`
+- Add strategy selection
 
-### 7.2 Remote Service Management
-**Current Issues:**
-- Basic remote service tracking exists
-- Missing proper remote service lifecycle
-- No remote service state management
-
-**Required Implementation:**
-- Add `remote_services: Arc<RwLock<PathTrie<Arc<RemoteService>>>>>`
-- Add `remote_service_states: Arc<DashMap<String, ServiceState>>`
-- Implement remote service lifecycle management
-- Add remote service metadata and introspection
+### 7.3 Swift 6 Guidance
+- Use an actor-based `RoundRobinLoadBalancer` with `selectHandler(handlers:) async -> String?`.
+- Keep strategy references on `@MainActor` in `Node`.
 
 ## PHASE 8: Label Resolver and Serialization Integration
 
 ### 8.1 Label Resolver System Integration
 **Current Status:**
-- ✅ Complete label resolver system exists in `swift-serializer` package
-- ✅ `LabelResolver` with proper configuration and validation
-- ✅ `LabelResolverConfig` with static label mappings
-- ✅ `SerializationContext` with keystore and resolver integration
+- ✅ Complete label resolver system exists in `swift-serializer`
 
 **Required Node Integration:**
-- Add `system_label_config: Arc<LabelResolverConfig>` to Node
-- Add `label_resolver_cache: Arc<ResolverCache>` to Node
+- Add `system_label_config` to Node
+- Add `label_resolver_cache` to Node
 - Initialize label resolver from NodeConfig in Node constructor
 - Pass label resolver to SerializationContext for all serialization operations
 
-### 8.2 Serialization Context Management
-**Current Status:**
-- ✅ Complete serialization system exists in `swift-serializer` package
-- ✅ `SerializationContext` with keystore, resolver, networkId, and profilePublicKey
-- ✅ `SerializationRegistry` for type registration and wire name management
-- ✅ Full encryption/decryption support with `CommonKeyManager` integration
-
-**Required Node Integration:**
-- Initialize `SerializationContext` with proper keystore and resolver
-- Use existing `SerializationRegistry.shared` for type management
-- Integrate serialization context creation in request/response handling
-- Leverage existing `AnyValue` serialization system
+### 8.3 Swift 6 Guidance
+- Implement `ResolverCache` as a per-node actor with `(capacity, ttlSeconds)`.
+- Key by `(LabelResolverConfig + userProfilePublicKeys)`; prune expired entries on access.
+- Create resolver via `LabelResolver.createContextResolver(systemConfig:userProfilePublicKeys:)`.
+- Build `SerializationContext` on demand for actions/events with proper resolver and keystore.
 
 ## PHASE 9: Remote Testing & Validation
 
@@ -263,7 +266,7 @@ Detailed Plan:
 - Missing service error handling
 
 **Required Implementation:**
-- Add `service_tasks: Arc<RwLock<[ServiceTask]>>`
+- Add `service_tasks`
 - Implement proper service task lifecycle
 - Add service error handling and recovery
 - Implement service state transitions and validation
@@ -276,7 +279,7 @@ Detailed Plan:
 
 **Required Implementation:**
 - Integrate service registry with node lifecycle
-- Add proper service metadata management
+- Add service metadata management
 - Implement service introspection and debugging
 - Add service health monitoring and reporting
 
@@ -296,44 +299,16 @@ Detailed Plan:
 
 ### 7.2 Test Data and Vectors
 **Current Status:**
-- ✅ Comprehensive test vector system exists in `swift-ffi` package
-- ✅ Cross-language CBOR validation between Swift and Rust (`FFITypesCrossValidationTests.swift`)
-- ✅ Rust validation script (`validate_swift_vectors.rs`) for serializer compatibility
-- ✅ Test vector generation for FFI types and serializer types
-- ✅ Round-trip serialization validation
+- ✅ Comprehensive test vector system exists in `swift-ffi`
+- ✅ Cross-language CBOR validation between Swift and Rust
+- ✅ Test vector generation
 
-**Required Node-Specific Implementation:**
-- Port Rust Node tests to Swift Node tests
-- Add Node-specific test vectors for service registry, peer management, etc.
-- Extend existing cross-validation to include Node-specific types
-- Add integration tests using existing test vector infrastructure
-- Add edge case and error condition tests for Node functionality
-
-## PHASE 8: Documentation and Examples
-
-### 8.1 API Documentation
-**Current Issues:**
-- Missing comprehensive API documentation
-- No usage examples
-- Missing migration guide
-
-**Required Implementation:**
-- Add comprehensive API documentation
-- Create usage examples and tutorials
-- Add migration guide from current implementation
-- Add performance and best practices guide
-
-### 8.2 Code Quality and Standards
-**Current Issues:**
-- Code doesn't follow all Swift best practices
-- Missing proper error handling patterns
-- No consistent naming conventions
-
-**Required Implementation:**
-- Apply Swift coding standards throughout
-- Implement consistent error handling patterns
-- Add proper logging and debugging support
-- Add code quality metrics and monitoring
+### 7.3 Common Pitfalls and How We Avoid Them
+- Do not use `NSLock` or ad-hoc `DispatchQueue` in place of Rust `DashMap`/`RwLock`. Use `@MainActor` for coordinators and `ShardedConcurrentMap` for concurrent maps.
+- Never store `AbstractService` or any non-Sendable in `ShardedConcurrentMap`. Keep services on `@MainActor` only.
+- No `@unchecked Sendable` anywhere.
+- Avoid duplicate schema/metadata types across packages. Prefer a single canonical definition and provide conversion helpers if wire types differ.
+- Fail early on invalid configuration—no hidden fallbacks.
 
 ## IMPLEMENTATION ORDER
 
@@ -356,14 +331,14 @@ Detailed Plan:
 ### LOCAL-FIRST TESTING STRATEGY
 
 **Phase 5 Local Tests (Based on Rust Tests):**
-- `test_node_create()` - Basic node creation without networking
-- `test_node_add_service()` - Service registration and lifecycle
-- `test_node_request()` - Local service action calls (e.g., MathService add operation)
-- `test_node_events()` - Local event publish/subscribe
-- `test_local_event_dispatch_multiple_subscribers()` - Multiple subscribers to same topic
-- `test_math_service_plus_external_subscription()` - Service + external event subscription
-- `test_node_event_metadata_registration()` - Service registry metadata
-- `test_node_lifecycle()` - Start/stop lifecycle
+- `test_node_create()`
+- `test_node_add_service()`
+- `test_node_request()`
+- `test_node_events()`
+- `test_local_event_dispatch_multiple_subscribers()`
+- `test_math_service_plus_external_subscription()`
+- `test_node_event_metadata_registration()`
+- `test_node_lifecycle()`
 
 **Success Criteria for Local Phase:**
 - [ ] All local Rust tests ported and passing in Swift
@@ -372,6 +347,13 @@ Detailed Plan:
 - [ ] Service registry metadata is correct
 - [ ] Node lifecycle (start/stop) works properly
 - [ ] No networking dependencies in local tests
+
+### Additional Acceptance for Phase 1 (Swift 6)
+- [ ] No `NSLock` used in `Node` or `ServiceRegistry`
+- [ ] No `@unchecked Sendable` anywhere
+- [ ] `RoundRobinLoadBalancer` implemented as an actor
+- [ ] `ResolverCache` implemented as a per-node actor
+- [ ] Retained events implemented with `RetainedDeque` actor and integrated into publish
 
 ## EXISTING INFRASTRUCTURE TO LEVERAGE
 
