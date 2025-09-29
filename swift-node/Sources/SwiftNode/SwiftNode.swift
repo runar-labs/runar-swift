@@ -1670,35 +1670,128 @@ public final class Node {
         // Set the service's network ID
         service.setNetworkId(networkId)
         
-        // Register the service instance with the registry
-        try await serviceRegistry.registerServiceInstance(
-            service: service,
-            networkId: networkId
-        )
-
-        let topic = "\(networkId):\(service.path)"
-        let context = LifecycleContext(
+        let servicePath = service.path
+        let serviceName = service.name
+        
+        logger.trace("Adding service '\(serviceName)' to node using path \(servicePath)")
+        
+        // Create a proper topic path for the service (matching Rust pattern)
+        let serviceTopic: TopicPath
+        do {
+            serviceTopic = try TopicPath(networkId: networkId, segments: servicePath.split(separator: "/").map(String.init))
+        } catch {
+            logger.error("Failed to create topic path for service name:\(serviceName) path:\(servicePath) error:\(error)")
+            throw NodeError.invalidServicePath("Failed to create topic path for service \(serviceName): \(error)")
+        }
+        
+        // Create a lifecycle context for initialization (matching Rust pattern)
+        let initContext = LifecycleContext(
             networkId: networkId,
-            servicePath: service.path,
+            servicePath: servicePath,
             config: nil,
             logger: logger,
             nodeDelegate: self
         )
-
-        try await service.initService(context)
-
-        if isRunning {
-            // Node already started: start service immediately and mark running
-            try await service.start(context)
+        
+        // Initialize the service using the context (matching Rust pattern)
+        do {
+            try await service.initService(initContext)
+        } catch {
+            logger.error("Failed to initialize service: \(serviceName), error: \(error)")
+            // Update service state to error (matching Rust pattern)
             try await serviceRegistry.updateLocalServiceState(
-                servicePath: service.path,
+                servicePath: serviceTopic.asString(),
+                newState: ServiceState.error
+            )
+            // Publish error event (matching Rust pattern)
+            try await publish(
+                topic: "$registry/services/\(servicePath)/state/error",
+                data: AnyValue.primitive(serviceTopic.asString()),
+                options: PublishOptions(retainFor: 10.0)
+            )
+            throw NodeError.serviceInitializationFailed("Failed to initialize service: \(error)")
+        }
+        
+        // Update service state to initialized (matching Rust pattern)
+        try await serviceRegistry.updateLocalServiceState(
+            servicePath: serviceTopic.asString(),
+            newState: ServiceState.initialized
+        )
+        
+        // Publish initialized event (matching Rust pattern)
+        try await publish(
+            topic: "$registry/services/\(servicePath)/state/initialized",
+            data: AnyValue.primitive(serviceTopic.asString()),
+            options: PublishOptions(retainFor: 10.0)
+        )
+        
+        // Service initialized successfully, create the ServiceEntry and register it (matching Rust pattern)
+        let now = UInt64(Date().timeIntervalSince1970)
+        
+        let serviceEntry = ServiceEntry(
+            serviceTopic: serviceTopic,
+            service: service,
+            state: ServiceState.initialized,
+            registrationTime: now,
+            lastStartTime: nil // Will be set when the service is started
+        )
+        
+        // Register the service with the registry (matching Rust pattern)
+        try await serviceRegistry.registerLocalService(serviceEntry)
+        
+        // If the node is already running, start the service immediately (matching Rust pattern)
+        if isRunning {
+            try await startService(serviceTopic: serviceTopic, serviceEntry: serviceEntry)
+        }
+    }
+    
+    /// Start a specific service (matching Rust pattern)
+    private func startService(serviceTopic: TopicPath, serviceEntry: ServiceEntry) async throws {
+        let servicePath = serviceEntry.service.path
+        let serviceName = serviceEntry.service.name
+        
+        logger.trace("Starting service '\(serviceName)' with path \(servicePath)")
+        
+        // Create lifecycle context for starting
+        let startContext = LifecycleContext(
+            networkId: serviceTopic.networkId,
+            servicePath: servicePath,
+            config: nil,
+            logger: logger,
+            nodeDelegate: self
+        )
+        
+        // Start the service
+        do {
+            try await serviceEntry.service.start(startContext)
+            
+            // Update service state to running
+            try await serviceRegistry.updateLocalServiceState(
+                servicePath: serviceTopic.asString(),
                 newState: ServiceState.running
             )
-            logger.trace("Service started: \(topic)")
-        } else {
-            // Keep instance to start later during node.start()
-            // This would be handled by the service registry
-            logger.trace("Service initialized: \(topic)")
+            
+            // Note: We can't update the ServiceEntry directly since it's a struct,
+            // but the state is tracked in the registry
+            
+            logger.trace("Service '\(serviceName)' started successfully")
+        } catch {
+            logger.error("Failed to start service '\(serviceName)': \(error)")
+            
+            // Update service state to error
+            try await serviceRegistry.updateLocalServiceState(
+                servicePath: serviceTopic.asString(),
+                newState: ServiceState.error
+            )
+            
+            // Publish error event
+            try await publish(
+                topic: "$registry/services/\(servicePath)/state/error",
+                data: AnyValue.primitive(serviceTopic.asString()),
+                options: PublishOptions(retainFor: 10.0)
+            )
+            
+            throw NodeError.serviceInitializationFailed("Failed to start service '\(serviceName)': \(error)")
         }
     }
 
@@ -1948,7 +2041,7 @@ extension Node: RegistryDelegate {
     }
     
     public func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
-        serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: includeInternalServices)
+        await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: includeInternalServices)
     }
     
     public func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
@@ -1996,6 +2089,8 @@ public enum NodeError: Error, Sendable {
     case invalidConfiguration(String)
     case transportNotImplemented(String)
     case discoveryNotImplemented(String)
+    case invalidServicePath(String)
+    case serviceInitializationFailed(String)
 
     public var localizedDescription: String {
         switch self {
@@ -2009,6 +2104,10 @@ public enum NodeError: Error, Sendable {
             "Network initialization failed: \(message)"
         case let .invalidConfiguration(message):
             "Invalid configuration: \(message)"
+        case let .invalidServicePath(message):
+            "Invalid service path: \(message)"
+        case let .serviceInitializationFailed(message):
+            "Service initialization failed: \(message)"
         case let .transportNotImplemented(message):
             "Transport not implemented: \(message)"
         case let .discoveryNotImplemented(message):

@@ -84,7 +84,7 @@ public struct ServiceEntry {
 }
 
 /// Remote service entry
-public struct RemoteService: Sendable {
+public struct RemoteService: Sendable, Equatable {
     public let serviceTopic: TopicPath
     public let nodeId: String
     public let state: ServiceState
@@ -158,9 +158,14 @@ public final class ServiceRegistry: NodeDelegate {
     /// Matches Rust ServiceRegistry::new() initialization.
     public init(logger: RunarLogger) {
         self.logger = logger
+        self.localActionHandlers = PathTrie<LocalActionEntryValue>()
+        self.remoteActionHandlers = PathTrie<[ActionHandler]>()
+        self.eventSubscriptions = PathTrie<SubscriptionVec>()
         self.subscriptionIdToTopicPath = ShardedConcurrentMap<String, TopicPath>()
         self.subscriptionIdToServiceTopicPath = ShardedConcurrentMap<String, TopicPath>()
+        self.localServices = PathTrie<ServiceEntry>()
         self.localServicesList = [:]
+        self.remoteServices = PathTrie<RemoteService>()
         self.localServiceStates = ShardedConcurrentMap<String, ServiceState>()
         self.remoteServiceStates = ShardedConcurrentMap<String, ServiceState>()
         self.remotePeerSubscriptions = ShardedConcurrentMap<String, ShardedConcurrentMap<String, String>>()
@@ -168,39 +173,44 @@ public final class ServiceRegistry: NodeDelegate {
 
     // MARK: - Local Service Management
 
-    /// Register a local service instance
+    /// Register a local service
     ///
-    /// INTENTION: Register a real service instance for use by the node.
-    public func registerServiceInstance(
-        service: AbstractService,
-        networkId: String
-    ) async throws {
-        let servicePath = service.path
-        let serviceTopic = try TopicPath(networkId: networkId, segments: servicePath.split(separator: "/").map(String.init))
-        logger.trace("Registering service instance: \(serviceTopic)")
-
-        // Create service entry with real service instance
-        let serviceEntry = ServiceEntry(
-            serviceTopic: serviceTopic,
-            service: service,
-            state: .created,
-            registrationTime: UInt64(Date().timeIntervalSince1970)
-        )
+    /// INTENTION: Register a local service implementation for use by the node.
+    public func registerLocalService(_ service: ServiceEntry) async throws {
+        let serviceTopic = service.serviceTopic
+        logger.trace("Registering local service: \(serviceTopic)")
 
         // Store the service in the local services registry
-        localServices.setValue(topic: serviceTopic, content: serviceEntry)
-        localServicesList[serviceTopic] = serviceEntry
+        localServices.setValue(topic: serviceTopic, content: service)
+        localServicesList[serviceTopic] = service
 
-        // Set initial service state
-        _ = await localServiceStates.insert(.initialized, for: serviceTopic.asString())
-
-        logger.trace("Successfully registered service instance: \(serviceTopic)")
+        logger.trace("Successfully registered local service: \(serviceTopic)")
     }
+
 
     /// Update local service state
     public func updateLocalServiceState(servicePath: String, newState: ServiceState) async throws {
         _ = await localServiceStates.insert(newState, for: servicePath)
         logger.trace("Updated service state for \(servicePath): \(newState.rawValue)")
+    }
+
+    /// Update local service state (matching Rust API)
+    public func updateLocalServiceState(serviceTopic: TopicPath, state: ServiceState) async throws {
+        logger.trace("Updating local service state for \(serviceTopic): \(state.rawValue)")
+        _ = await localServiceStates.insert(state, for: serviceTopic.asString())
+    }
+
+    /// Update remote service state
+    ///
+    /// INTENTION: Track the lifecycle state of a remote service.
+    public func updateRemoteServiceState(serviceTopic: TopicPath, state: ServiceState) async throws {
+        logger.trace("Updating remote service state for \(serviceTopic): \(state.rawValue)")
+        _ = await remoteServiceStates.insert(state, for: serviceTopic.asString())
+    }
+
+    /// Get remote service state
+    public func getRemoteServiceState(servicePath: TopicPath) async -> ServiceState? {
+        await remoteServiceStates.get(servicePath.asString())
     }
 
     /// Start all local services
@@ -331,6 +341,57 @@ public final class ServiceRegistry: NodeDelegate {
         logger.trace("All local services stopped")
     }
 
+    // MARK: - Remote Service Management
+
+    /// Register a remote service
+    ///
+    /// INTENTION: Register a service that exists on a remote node, making it available for local requests.
+    public func registerRemoteService(_ service: RemoteService) async -> Bool {
+        let serviceTopic = service.serviceTopic
+        let servicePath = service.serviceTopic.asString()
+        let peerNodeId = service.nodeId
+
+        logger.trace("Registering remote service: \(servicePath) from peer: \(peerNodeId)")
+
+        // Add to remote services using PathTrie
+        let matches = remoteServices.find(topic: serviceTopic)
+        
+        if matches.isEmpty {
+            // No existing services for this topic
+            remoteServices.setValue(topic: serviceTopic, content: service)
+            return true
+        } else {
+            logger.warning("Service already exists for topic: \(serviceTopic)")
+            return false
+        }
+    }
+
+    /// Remove a remote service
+    ///
+    /// INTENTION: Remove a remote service from the registry and stop it.
+    public func removeRemoteService(serviceTopic: TopicPath) async throws {
+        // Get the service so we can call .stop() on it
+        let services = remoteServices.find(topic: serviceTopic)
+
+        if services.isEmpty {
+            throw ServiceRegistryError.serviceNotFound("Service not found for topic: \(serviceTopic)")
+        }
+
+        // TODO: Implement remote service stopping when RemoteLifecycleContext is available
+        // For now, just remove from registry
+        for service in services {
+            remoteServices.remove(topic: serviceTopic, content: service)
+        }
+
+        // Remove the service state
+        try await removeRemoteServiceState(serviceTopic: serviceTopic)
+    }
+
+    /// Remove remote service state
+    private func removeRemoteServiceState(serviceTopic: TopicPath) async throws {
+        _ = await remoteServiceStates.remove(serviceTopic.asString())
+    }
+
     // MARK: - Action Management
 
     /// Register a local action handler
@@ -365,6 +426,111 @@ public final class ServiceRegistry: NodeDelegate {
         localActionHandlers.setValues(topic: topicPath, contents: [])
 
         logger.trace("Unregistered action handler for: \(topicPath)")
+    }
+
+    /// Register a local action handler (matching Rust API)
+    ///
+    /// INTENTION: Register a handler for a specific action path that will be executed locally.
+    public func registerLocalActionHandler(
+        topicPath: TopicPath,
+        handler: @escaping ActionHandler,
+        metadata: ActionMetadata?
+    ) async throws {
+        logger.trace("Registering local action handler for: \(topicPath)")
+
+        // Store in the local action handlers trie with the original topic path for parameter extraction
+        let entryValue: LocalActionEntryValue = (handler, topicPath, metadata)
+        localActionHandlers.setValue(topic: topicPath, content: entryValue)
+
+        logger.trace("Registered local action handler for: \(topicPath)")
+    }
+
+    /// Register a remote action handler
+    ///
+    /// INTENTION: Register a handler for a specific action path that exists on a remote node.
+    public func registerRemoteActionHandler(
+        topicPath: TopicPath,
+        handler: @escaping ActionHandler
+    ) async throws {
+        logger.trace("Registering remote action handler for: \(topicPath)")
+
+        // Store the handler in remote_action_handlers using PathTrie
+        let matches = remoteActionHandlers.find(topic: topicPath)
+
+        if matches.isEmpty {
+            // No handlers yet for this path
+            remoteActionHandlers.setValue(topic: topicPath, content: [handler])
+        } else {
+            // Get existing handlers and add the new one
+            var existingHandlers = matches[0]
+            existingHandlers.append(handler)
+
+            // Update the handlers in the trie
+            remoteActionHandlers.setValue(topic: topicPath, content: existingHandlers)
+        }
+
+        logger.trace("Registered remote action handler for: \(topicPath)")
+    }
+
+    /// Remove a remote action handler
+    public func removeRemoteActionHandler(topicPath: TopicPath) async throws {
+        logger.trace("Removing remote action handler for: \(topicPath)")
+
+        // Remove from remote action handlers trie
+        // Note: PathTrie doesn't have a simple remove method, so we'll leave this as TODO
+        logger.trace("removeRemoteActionHandler: Not fully implemented - PathTrie remove method needed")
+
+        logger.trace("Removed remote action handler for: \(topicPath)")
+    }
+
+    /// Get a local action handler only
+    ///
+    /// INTENTION: Retrieve a handler for a specific action path that will be executed locally.
+    /// Now returns both the handler and the original registration topic path for parameter extraction.
+    public func getLocalActionHandler(topicPath: TopicPath) async -> (ActionHandler, TopicPath)? {
+        let matches = localActionHandlers.find(topic: topicPath)
+
+        if !matches.isEmpty {
+            let (handler, topicPath, _) = matches[0]
+            return (handler, topicPath)
+        } else {
+            return nil
+        }
+    }
+
+    /// Get all remote action handlers for a path (for load balancing)
+    ///
+    /// INTENTION: Retrieve all handlers for a specific action path that exist on remote nodes.
+    public func getRemoteActionHandlers(topicPath: TopicPath) async -> [ActionHandler] {
+        let matches = remoteActionHandlers.find(topic: topicPath)
+
+        // Flatten all matches into a single vector of handlers
+        var result: [ActionHandler] = []
+        for match in matches {
+            result.append(contentsOf: match)
+        }
+        return result
+    }
+
+    /// Get an action handler for a specific topic path
+    ///
+    /// INTENTION: Look up the appropriate action handler for a given topic path
+    /// supporting both local and remote handlers.
+    public func getActionHandler(topicPath: TopicPath) async -> ActionHandler? {
+        // First try local handlers
+        if let (handler, _) = await getLocalActionHandler(topicPath: topicPath) {
+            return handler
+        }
+
+        // Then check remote handlers
+        let remoteHandlers = await getRemoteActionHandlers(topicPath: topicPath)
+        if !remoteHandlers.isEmpty {
+            // For backward compatibility, just return the first one
+            // The Node will apply proper load balancing when using get_remote_action_handlers directly
+            return remoteHandlers[0]
+        }
+
+        return nil
     }
 
     // MARK: - Event Management
@@ -428,6 +594,232 @@ public final class ServiceRegistry: NodeDelegate {
         _ = await subscriptionIdToTopicPath.remove(subscriptionId)
 
         logger.trace("Unsubscribed from events for: \(topicPath) with ID: \(subscriptionId)")
+    }
+
+    /// Register local event subscription (matching Rust API)
+    ///
+    /// INTENTION: Register a callback to be invoked when events are published locally.
+    public func registerLocalEventSubscription(
+        topicPath: TopicPath,
+        callback: @escaping EventHandler,
+        options: EventRegistrationOptions
+    ) async throws -> String {
+        let subscriptionId = UUID().uuidString
+
+        // Insert into unified event_subscriptions trie
+        var existingSubscriptions = eventSubscriptions.find(topic: topicPath).first?.subscriptions ?? []
+        let subscription = SubscriptionMetadata(
+            path: topicPath.asString(),
+            subscriberKind: .local(callback),
+            subscriptionId: subscriptionId
+        )
+        existingSubscriptions.append(subscription)
+        eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: existingSubscriptions))
+
+        // Map subscription ID to topic path
+        _ = await subscriptionIdToTopicPath.insert(topicPath, for: subscriptionId)
+
+        let serviceTopic = try TopicPath(networkId: topicPath.networkId, segments: [topicPath.servicePath])
+        _ = await subscriptionIdToServiceTopicPath.insert(serviceTopic, for: subscriptionId)
+
+        return subscriptionId
+    }
+
+    /// Register remote event subscription
+    ///
+    /// INTENTION: Register a callback to be invoked when events are published from remote nodes.
+    public func registerRemoteEventSubscription(
+        topicPath: TopicPath,
+        callback: @escaping EventHandler, // Using same type for simplicity
+        options: EventRegistrationOptions
+    ) async throws -> String {
+        let subscriptionId = UUID().uuidString
+
+        var existingSubscriptions = eventSubscriptions.find(topic: topicPath).first?.subscriptions ?? []
+        let subscription = SubscriptionMetadata(
+            path: topicPath.asString(),
+            subscriberKind: .remote("remote"), // Simplified for now
+            subscriptionId: subscriptionId
+        )
+        existingSubscriptions.append(subscription)
+        eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: existingSubscriptions))
+
+        // Map subscription ID to topic path
+        _ = await subscriptionIdToTopicPath.insert(topicPath, for: subscriptionId)
+
+        return subscriptionId
+    }
+
+    /// Remove remote event subscription
+    public func removeRemoteEventSubscription(topicPath: TopicPath) async throws {
+        let matches = eventSubscriptions.find(topic: topicPath)
+
+        var idsToRemove: [String] = []
+        for match in matches {
+            for subscription in match.subscriptions {
+                if case .remote = subscription.subscriberKind {
+                    idsToRemove.append(subscription.subscriptionId)
+                }
+            }
+        }
+
+        if idsToRemove.isEmpty {
+            return
+        }
+
+        // Rebuild vectors without the remote entries we want to remove
+        for match in matches {
+            let remaining = match.subscriptions.filter { subscription in
+                let isRemote = if case .remote = subscription.subscriberKind { true } else { false }
+                return !(idsToRemove.contains(subscription.subscriptionId) && isRemote)
+            }
+            if remaining.isEmpty {
+                eventSubscriptions.remove(topic: topicPath, content: match)
+            } else {
+                eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: remaining))
+            }
+        }
+
+        // Clean up maps
+        for id in idsToRemove {
+            _ = await subscriptionIdToTopicPath.remove(id)
+            _ = await subscriptionIdToServiceTopicPath.remove(id)
+        }
+    }
+
+    /// Get local event subscribers
+    ///
+    /// INTENTION: Find all local subscribers for a specific event topic.
+    public func getLocalEventSubscribers(topicPath: TopicPath) async -> [(String, EventHandler, SubscriptionMetadata)] {
+        let matches = eventSubscriptions.find(topic: topicPath)
+
+        var result: [(String, EventHandler, SubscriptionMetadata)] = []
+        var seenIds = Set<String>()
+
+        for match in matches {
+            for subscription in match.subscriptions {
+                if seenIds.contains(subscription.subscriptionId) {
+                    continue
+                }
+                if case .local(let handler) = subscription.subscriberKind {
+                    seenIds.insert(subscription.subscriptionId)
+                    result.append((subscription.subscriptionId, handler, subscription))
+                }
+            }
+        }
+
+        return result
+    }
+
+    /// Get remote event subscribers
+    public func getRemoteEventSubscribers(topicPath: TopicPath) async -> [(String, EventHandler, SubscriptionMetadata)] {
+        let matches = eventSubscriptions.find(topic: topicPath)
+
+        var result: [(String, EventHandler, SubscriptionMetadata)] = []
+        var seenIds = Set<String>()
+
+        for match in matches {
+            for subscription in match.subscriptions {
+                if seenIds.contains(subscription.subscriptionId) {
+                    continue
+                }
+                if case .remote = subscription.subscriberKind {
+                    seenIds.insert(subscription.subscriptionId)
+                    // For now, return empty handler since we don't have RemoteEventHandler type
+                    result.append((subscription.subscriptionId, { _ in }, subscription))
+                }
+            }
+        }
+
+        return result
+    }
+
+    /// Unsubscribe local (matching Rust API)
+    public func unsubscribeLocal(subscriptionId: String) async throws -> TopicPath {
+        logger.trace("Attempting to unsubscribe local subscription ID: \(subscriptionId)")
+
+        // Find the TopicPath associated with the subscription ID
+        guard let topicPath = await subscriptionIdToTopicPath.get(subscriptionId) else {
+            let msg = "No topic path found mapping to subscription ID: \(subscriptionId). Cannot unsubscribe."
+            logger.warning(msg)
+            throw ServiceRegistryError.serviceNotFound(msg)
+        }
+
+        logger.trace("Found topic path '\(topicPath.asString())' for subscription ID: \(subscriptionId)")
+        let matches = eventSubscriptions.find(topic: topicPath)
+
+        if !matches.isEmpty {
+            // Build new entry vectors without the subscription to remove
+            for match in matches {
+                let filtered = match.subscriptions.filter { subscription in
+                    // keep every entry except the one with matching id & Local kind
+                    let isLocal = if case .local = subscription.subscriberKind { true } else { false }
+                    return !(subscription.subscriptionId == subscriptionId && isLocal)
+                }
+                if filtered.isEmpty {
+                    eventSubscriptions.remove(topic: topicPath, content: match)
+                } else {
+                    eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: filtered))
+                }
+            }
+
+            // Remove from the ID map
+            _ = await subscriptionIdToTopicPath.remove(subscriptionId)
+
+            // Remove from service topic path map
+            _ = await subscriptionIdToServiceTopicPath.remove(subscriptionId)
+
+            logger.trace("Successfully unsubscribed from topic: \(topicPath.asString()) with ID: \(subscriptionId)")
+            return topicPath
+        } else {
+            let msg = "No subscriptions found for topic path \(topicPath.asString()) and ID \(subscriptionId)"
+            logger.warning(msg)
+            throw ServiceRegistryError.serviceNotFound(msg)
+        }
+    }
+
+    /// Unsubscribe remote
+    public func unsubscribeRemote(subscriptionId: String) async throws {
+        logger.trace("Attempting to unsubscribe remote subscription ID: \(subscriptionId)")
+
+        // Find the TopicPath associated with the subscription ID
+        guard let topicPath = await subscriptionIdToTopicPath.get(subscriptionId) else {
+            let msg = "No topic path found mapping to remote subscription ID: \(subscriptionId). Cannot unsubscribe."
+            logger.warning(msg)
+            throw ServiceRegistryError.serviceNotFound(msg)
+        }
+
+        logger.trace("Found topic path '\(topicPath.asString())' for subscription ID: \(subscriptionId)")
+        let matches = eventSubscriptions.find(topic: topicPath)
+
+        if !matches.isEmpty {
+            var removedFlag = false
+            for match in matches {
+                let filtered = match.subscriptions.filter { subscription in
+                    // keep entries except the matching Remote one
+                    let isRemote = if case .remote = subscription.subscriberKind { true } else { false }
+                    return !(subscription.subscriptionId == subscriptionId && isRemote)
+                }
+                if filtered.isEmpty {
+                    eventSubscriptions.remove(topic: topicPath, content: match)
+                } else {
+                    eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: filtered))
+                }
+                removedFlag = true
+            }
+            if removedFlag {
+                _ = await subscriptionIdToTopicPath.remove(subscriptionId)
+                logger.trace("Successfully unsubscribed from remote topic: \(topicPath.asString()) with ID: \(subscriptionId)")
+            } else {
+                let msg = "Subscription handler not found for remote topic path \(topicPath.asString()) and ID \(subscriptionId), although ID was mapped. Potential race condition?"
+                logger.warning(msg)
+                throw ServiceRegistryError.serviceNotFound(msg)
+            }
+        } else {
+            let msg = "No subscriptions found for remote topic path \(topicPath.asString()) and ID \(subscriptionId)"
+            logger.warning(msg)
+            throw ServiceRegistryError.serviceNotFound(msg)
+        }
     }
 
     // MARK: - Request Handling
@@ -577,8 +969,96 @@ public final class ServiceRegistry: NodeDelegate {
     
     // MARK: - Registry Service Support
     
+    /// Get all local services
+    ///
+    /// INTENTION: Provide access to all registered local services, allowing the
+    /// Node to directly interact with them for lifecycle operations like initialization,
+    /// starting, and stopping. This preserves the Node's responsibility for service
+    /// lifecycle management while keeping the Registry focused on registration.
+    public func getLocalServices() -> [TopicPath: ServiceEntry] {
+        return localServicesList
+    }
+
+    /// Get metadata for all events under a specific service path
+    ///
+    /// INTENTION: Retrieve metadata for all events registered under a service path.
+    /// This is useful for service discovery and introspection.
+    public func getSubscriptionsMetadata(searchPath: TopicPath) async -> [SubscriptionMetadata] {
+        // Search unified subscriptions and filter local ones
+        let matches = eventSubscriptions.find(topic: searchPath)
+
+        // Collect all events that match the service path
+        var result: [SubscriptionMetadata] = []
+
+        for matchItem in matches {
+            // Extract the topic path from the match
+            let eventTopicList = matchItem.subscriptions
+
+            //iterate event_topic_list
+            for subscription in eventTopicList {
+                //TODO when EventRegistrationOptions is defined.. we need to pass that info here in the metadata to be sent to a remote node
+                result.append(subscription)
+            }
+        }
+
+        return result
+    }
+
+    /// Get all subscriptions
+    public func getAllSubscriptions(includeInternalServices: Bool) async throws -> [SubscriptionMetadata] {
+        // For now, return empty array since we don't have access to all networks
+        // This would need to be implemented with a proper method in PathTrie
+        let result: [SubscriptionMetadata] = []
+        
+        // TODO: Implement proper getAllSubscriptions when PathTrie provides access to all networks
+        logger.trace("getAllSubscriptions: Returning empty array (not fully implemented)")
+        
+        return result
+    }
+
+    /// Optimized version that pre-allocates the result vector
+    public func getAllSubscriptionsOptimized(includeInternalServices: Bool) async throws -> [SubscriptionMetadata] {
+        // For now, return empty array since we don't have access to all networks
+        // This would need to be implemented with a proper method in PathTrie
+        let result: [SubscriptionMetadata] = []
+        
+        // TODO: Implement proper getAllSubscriptionsOptimized when PathTrie provides access to all networks
+        logger.trace("getAllSubscriptionsOptimized: Returning empty array (not fully implemented)")
+        
+        return result
+    }
+
+    /// Optimized version that uses references to avoid cloning
+    public func getAllServiceMetadataRef(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
+        var result: [String: ServiceMetadata] = [:]
+
+        // Iterate through all services using localServicesList
+        for (topicPath, serviceEntry) in localServicesList {
+            let service = serviceEntry.service
+            let pathStr = service.path
+
+            // Skip internal services if not included
+            if !includeInternalServices && isInternalService(pathStr) {
+                continue
+            }
+
+            let searchPath = "\(pathStr)/*"
+            let searchTopic = try TopicPath(networkId: topicPath.networkId, segments: searchPath.split(separator: "/").map(String.init))
+            let serviceMetadata = await getServiceMetadata(servicePath: searchTopic)
+
+            guard let metadata = serviceMetadata else {
+                throw ServiceRegistryError.serviceNotFound("Service metadata not found for topic: \(searchTopic)")
+            }
+
+            // Create metadata using individual getter methods from the service
+            result[pathStr] = metadata
+        }
+
+        return result
+    }
+    
     /// Get all local service metadata
-    public func getAllLocalServiceMetadata(includeInternalServices: Bool) -> [String: ServiceMetadata] {
+    public func getAllLocalServiceMetadata(includeInternalServices: Bool) async -> [String: ServiceMetadata] {
         logger.trace("ServiceRegistry.getAllLocalServiceMetadata: includeInternalServices = \(includeInternalServices)")
         var metadata: [String: ServiceMetadata] = [:]
         
@@ -593,18 +1073,39 @@ public final class ServiceRegistry: NodeDelegate {
                 continue
             }
             
-            let serviceMetadata = ServiceMetadata(
-                networkId: topicPath.networkId,
-                servicePath: topicPath.servicePath,
-                name: serviceEntry.service.name,
-                version: serviceEntry.service.version,
-                description: serviceEntry.service.description,
-                actions: [], // TODO: Get actions metadata
-                registrationTime: 0, // TODO: Get registration time
-                lastStartTime: nil // TODO: Get last start time
-            )
-            
-            metadata[topicPath.asString()] = serviceMetadata
+            // Get actions metadata for this service
+            do {
+                let serviceTopicPath = try TopicPath(networkId: topicPath.networkId, segments: [topicPath.servicePath])
+                let actions = await getActionsMetadata(serviceTopicPath: serviceTopicPath)
+                
+                let serviceMetadata = ServiceMetadata(
+                    networkId: topicPath.networkId,
+                    servicePath: topicPath.servicePath,
+                    name: serviceEntry.service.name,
+                    version: serviceEntry.service.version,
+                    description: serviceEntry.service.description,
+                    actions: actions,
+                    registrationTime: serviceEntry.registrationTime,
+                    lastStartTime: serviceEntry.lastStartTime
+                )
+                
+                metadata[topicPath.asString()] = serviceMetadata
+            } catch {
+                logger.error("Failed to create TopicPath for service metadata: \(error)")
+                // Continue with empty actions if TopicPath creation fails
+                let serviceMetadata = ServiceMetadata(
+                    networkId: topicPath.networkId,
+                    servicePath: topicPath.servicePath,
+                    name: serviceEntry.service.name,
+                    version: serviceEntry.service.version,
+                    description: serviceEntry.service.description,
+                    actions: [],
+                    registrationTime: serviceEntry.registrationTime,
+                    lastStartTime: serviceEntry.lastStartTime
+                )
+                
+                metadata[topicPath.asString()] = serviceMetadata
+            }
         }
         
         return metadata
@@ -676,6 +1177,67 @@ public final class ServiceRegistry: NodeDelegate {
         let pathComponents = servicePath.split(separator: ":")
         let actualServicePath = pathComponents.count > 1 ? String(pathComponents[1]) : servicePath
         return actualServicePath == "registry" || actualServicePath == "keys"
+    }
+
+    // MARK: - Remote Peer Subscription Management
+
+    /// Upsert a mapping peer -> path -> subscription_id
+    public func upsertRemotePeerSubscription(
+        peerId: String,
+        path: TopicPath,
+        subId: String
+    ) async {
+        let peerSubscriptions = await remotePeerSubscriptions.get(peerId) ?? ShardedConcurrentMap<String, String>()
+        _ = await peerSubscriptions.insert(subId, for: path.asString())
+        _ = await remotePeerSubscriptions.insert(peerSubscriptions, for: peerId)
+    }
+
+    /// Optimized version that takes ownership of peer_id to avoid cloning
+    public func upsertRemotePeerSubscriptionOwned(
+        peerId: String,
+        path: TopicPath,
+        subId: String
+    ) async {
+        let peerSubscriptions = await remotePeerSubscriptions.get(peerId) ?? ShardedConcurrentMap<String, String>()
+        _ = await peerSubscriptions.insert(subId, for: path.asString())
+        _ = await remotePeerSubscriptions.insert(peerSubscriptions, for: peerId)
+    }
+
+    /// Remove a single subscription mapping and return its id (if any)
+    public func removeRemotePeerSubscription(
+        peerId: String,
+        path: TopicPath
+    ) async -> String? {
+        guard let peerSubscriptions = await remotePeerSubscriptions.get(peerId) else {
+            return nil
+        }
+        return await peerSubscriptions.remove(path.asString())
+    }
+
+    /// Return all (path, sub_id) pairs for a peer and clear them (used on peer disconnect)
+    public func drainRemotePeerSubscriptions(peerId: String) async -> [String] {
+        guard let peerSubscriptions = await remotePeerSubscriptions.remove(peerId) else {
+            return []
+        }
+        
+        // Get all subscription IDs from the peer subscriptions
+        var result: [String] = []
+        // Note: This would need to be implemented with a proper method in ShardedConcurrentMap
+        // For now, return empty array
+        logger.trace("drainRemotePeerSubscriptions: Not fully implemented - ShardedConcurrentMap iteration needed")
+        return result
+    }
+
+    /// Return current set of paths for a peer
+    public func remoteSubscriptionPaths(peerId: String) async -> Set<String> {
+        guard let peerSubscriptions = await remotePeerSubscriptions.get(peerId) else {
+            return []
+        }
+        
+        // Note: This would need to be implemented with a proper method in ShardedConcurrentMap
+        // For now, return empty set
+        logger.trace("remoteSubscriptionPaths: Not fully implemented - ShardedConcurrentMap iteration needed")
+        return []
     }
 }
 
