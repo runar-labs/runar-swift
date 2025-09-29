@@ -38,33 +38,10 @@ if u find a problem with the /Users/rafael/dev/runar-swift/swift-serializer or /
 Review 01- issues:
 
 ### **1. Network Message Structure Mismatch**
+ ALREADY SOLVED IN TEH FFI PACKAGE.. now the requestCallback return the proper NetworkMessage..
+ 
+ Both NetworkMessage and NetworkMessagePayloadItem both validated agains rust for proper CBOR
 
-**Rust Implementation:**
-```rust
-// Rust uses structured NetworkMessage
-pub struct NetworkMessage {
-    pub source_node_id: String,
-    pub destination_node_id: String,
-    pub message_type: u8,
-    pub payload: NetworkMessagePayloadItem,
-}
-
-pub struct NetworkMessagePayloadItem {
-    pub path: String,
-    pub payload_bytes: Vec<u8>,
-    pub correlation_id: String,
-    pub profile_public_keys: Vec<Vec<u8>>,
-    pub network_public_key: Option<Vec<u8>>,
-}
-```
-
-**Swift Implementation:**
-```swift
-// Swift uses separate parameters - NO STRUCTURED MESSAGE
-requestCallback: { requestId, path, payload, sourcePeerId, correlationId in
-    return Data() // Just returns raw data - WRONG.. the Callback shuold return a prtoper NetworkMessage and the CBOR serialiszation to DATA should be done internaly in the FFI layer
-}
-```
 
 ### **2. CBOR Serialization/Deserialization Missing**
 

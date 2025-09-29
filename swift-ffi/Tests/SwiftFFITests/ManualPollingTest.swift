@@ -112,10 +112,15 @@ final class ManualPollingTest: XCTestCase {
         print("ManualPollingTest - Sending request and waiting for response...")
         let responseData = try await transportB.request(requestParams)
         
-        // Verify we got the expected response
-        let responseString = String(data: responseData, encoding: .utf8) ?? ""
-        XCTAssertEqual(responseString, "world", "Should have received correct response")
-        print("ManualPollingTest - Received response: \(responseString)")
+        // Verify we got the expected response (now a CBOR-serialized NetworkMessage)
+        do {
+            let responseMessage: NetworkMessage = try CodableCBORDecoder().decode(NetworkMessage.self, from: responseData)
+            XCTAssertEqual(responseMessage.payload.payloadBytes, Data("world".utf8), "Should have received correct response payload")
+            XCTAssertEqual(responseMessage.messageType, 5, "Should be a response message type")
+            print("ManualPollingTest - Received response: \(String(data: responseMessage.payload.payloadBytes, encoding: .utf8) ?? "")")
+        } catch {
+            XCTFail("Failed to deserialize NetworkMessage response: \(error)")
+        }
 
         // Step 18: Verify that transport A received the request (this should be handled by callbacks)
         // The request callback on transport A should have been called and returned the response
