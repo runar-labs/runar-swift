@@ -167,35 +167,36 @@ final class NodeEventTests: XCTestCase {
 
 /// Test service that publishes events - real implementation, no mocks
 @MainActor
-final class TestEventService: ServiceBase {
+final class TestEventService: AbstractService {
+    let name: String = "TestEventService"
+    let version: String = "1.0.0"
+    let path: String = "test"
+    let description: String = "Test event service for unit tests"
+    let logger: RunarLogger
+    var networkId: String?
+    
     init() {
-        super.init(
-            name: "TestEventService",
-            version: "1.0.0",
-            path: "test",
-            description: "Test event service for unit tests",
-            logger: RunarLogger(component: .service)
-        )
+        self.logger = RunarLogger(component: .service)
     }
 
-    override func initService(_ context: LifecycleContext) async throws {
+    func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
+    }
+
+    func initService(_ context: LifecycleContext) async throws {
         // Register a trigger action that just returns success
         try await context.registerAction("trigger") { payload, requestContext in
             AnyValue.primitive("triggered")
         }
     }
 
-    override func start(_: LifecycleContext) async throws {
+    func start(_: LifecycleContext) async throws {
         // Service started successfully
         logger.trace("TestEventService started")
     }
 
-    override func stop(_: LifecycleContext) async throws {
+    func stop(_: LifecycleContext) async throws {
         // Service stopped successfully
         logger.trace("TestEventService stopped")
-    }
-    
-    override func setNetworkId(_ networkId: String) {
-        self.networkId = networkId
     }
 }

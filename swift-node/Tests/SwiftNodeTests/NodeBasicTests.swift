@@ -90,18 +90,23 @@ final class NodeBasicTests: XCTestCase {
 
 /// Test service implementation - real implementation, no mocks
 @MainActor
-final class TestMathService: ServiceBase {
+final class TestMathService: AbstractService {
+    let name: String = "TestMathService"
+    let version: String = "1.0.0"
+    let path: String = "math"
+    let description: String = "Test math service for unit tests"
+    let logger: RunarLogger
+    var networkId: String?
+    
     init() {
-        super.init(
-            name: "TestMathService",
-            version: "1.0.0",
-            path: "math",
-            description: "Test math service for unit tests",
-            logger: RunarLogger(component: .service)
-        )
+        self.logger = RunarLogger(component: .service)
     }
 
-    override func initService(_ context: LifecycleContext) async throws {
+    func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
+    }
+
+    func initService(_ context: LifecycleContext) async throws {
         // Register math actions
         try await context.registerAction("add") { payload, requestContext in
             // Simple addition: return a fixed result for testing
@@ -114,17 +119,13 @@ final class TestMathService: ServiceBase {
         }
     }
 
-    override func start(_: LifecycleContext) async throws {
+    func start(_: LifecycleContext) async throws {
         // Service started successfully
         logger.trace("TestMathService started")
     }
 
-    override func stop(_: LifecycleContext) async throws {
+    func stop(_: LifecycleContext) async throws {
         // Service stopped successfully
         logger.trace("TestMathService stopped")
-    }
-    
-    override func setNetworkId(_ networkId: String) {
-        self.networkId = networkId
     }
 }

@@ -255,7 +255,6 @@ public final class RegistryService: AbstractService {
     private let registryDelegate: RegistryDelegate
     
     public var networkId: String?
-    public private(set) var state: ServiceState = .created
     
     public init(logger: RunarLogger, registryDelegate: RegistryDelegate) {
         self.logger = logger
@@ -442,16 +441,13 @@ public final class RegistryService: AbstractService {
         }
         
         logger.trace("RegistryService.initService: Action registration completed")
-        state = .initialized
     }
     
     public func start(_: LifecycleContext) async throws {
-        state = .running
         logger.trace("Registry service started")
     }
     
     public func stop(_: LifecycleContext) async throws {
-        state = .stopped
         logger.trace("Registry service stopped")
     }
     
@@ -472,7 +468,6 @@ public final class KeysService: AbstractService {
     private let nodeDelegate: NodeDelegate
     
     public var networkId: String?
-    public private(set) var state: ServiceState = .created
     
     public init(logger: RunarLogger, nodeDelegate: NodeDelegate) {
         self.logger = logger
@@ -490,17 +485,13 @@ public final class KeysService: AbstractService {
             // Get public key
             return AnyValue.map([:])
         }
-        
-        state = .initialized
     }
     
     public func start(_: LifecycleContext) async throws {
-        state = .running
         logger.trace("Keys service started")
     }
     
     public func stop(_: LifecycleContext) async throws {
-        state = .stopped
         logger.trace("Keys service stopped")
     }
     

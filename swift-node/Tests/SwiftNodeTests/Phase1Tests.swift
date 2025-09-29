@@ -233,26 +233,31 @@ extension Phase1Tests {
 // MARK: - Mock Test Service
 
 @MainActor
-private class MockTestService: ServiceBase {
+private class MockTestService: AbstractService {
+    let name: String = "MockTestService"
+    let version: String = "1.0.0"
+    let path: String = "test/service"
+    let description: String = "A mock test service"
+    let logger: RunarLogger
+    var networkId: String?
+    
     init() {
-        super.init(
-            name: "MockTestService",
-            version: "1.0.0",
-            path: "test/service",
-            description: "A mock test service",
-            logger: RunarLogger(component: .service)
-        )
+        self.logger = RunarLogger(component: .service)
     }
 
-    override func initService(_: LifecycleContext) async throws {
+    func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
+    }
+
+    func initService(_: LifecycleContext) async throws {
         // Mock implementation
     }
 
-    override func start(_: LifecycleContext) async throws {
+    func start(_: LifecycleContext) async throws {
         // Mock implementation
     }
 
-    override func stop(_: LifecycleContext) async throws {
+    func stop(_: LifecycleContext) async throws {
         // Mock implementation
     }
 }

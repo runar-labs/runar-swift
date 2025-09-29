@@ -362,21 +362,27 @@ func createTestLabelResolverConfig(networkPublicKey: Data) -> LabelResolverConfi
 /// - Context usage for logging
 /// - Service lifecycle management
 @MainActor
-final class MathService: ServiceBase {
+final class MathService: AbstractService {
+    let name: String
+    let version: String = "1.0.0"
+    let path: String
+    let description: String = "Math service for testing"
+    let logger: RunarLogger
+    var networkId: String?
+    
     private var counter: Int = 0
     
     init(name: String, path: String) {
-        let logger = RunarLogger(component: .service)
-        super.init(
-            name: name,
-            version: "1.0.0",
-            path: path,
-            description: "Math service for testing",
-            logger: logger
-        )
+        self.name = name
+        self.path = path
+        self.logger = RunarLogger(component: .service)
     }
     
-    override func initService(_ context: LifecycleContext) async throws {
+    func setNetworkId(_ networkId: String) {
+        self.networkId = networkId
+    }
+    
+    func initService(_ context: LifecycleContext) async throws {
         // Log the service information being initialized
         context.logger.trace("Initializing MathService with name: \(name), path: \(path)")
         
@@ -410,13 +416,13 @@ final class MathService: ServiceBase {
         context.logger.trace("MathService initialized")
     }
     
-    override func start(_ context: LifecycleContext) async throws {
+    func start(_ context: LifecycleContext) async throws {
         // Reset counter on start
         counter = 0
         context.logger.trace("MathService started")
     }
     
-    override func stop(_ context: LifecycleContext) async throws {
+    func stop(_ context: LifecycleContext) async throws {
         context.logger.trace("MathService stopped")
     }
     

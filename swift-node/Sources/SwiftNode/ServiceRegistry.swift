@@ -253,11 +253,8 @@ public final class ServiceRegistry: NodeDelegate {
         case (.paused, .running):
             // Valid transition: Paused -> Running
             try await updateLocalServiceState(servicePath: servicePath.asString(), newState: newState)
-        case (.created, .initializing):
-            // Valid transition: Created -> Initializing
-            try await updateLocalServiceState(servicePath: servicePath.asString(), newState: newState)
-        case (.initializing, .initialized):
-            // Valid transition: Initializing -> Initialized
+        case (.created, .initialized):
+            // Valid transition: Created -> Initialized
             try await updateLocalServiceState(servicePath: servicePath.asString(), newState: newState)
         case (.initialized, .running):
             // Valid transition: Initialized -> Running
