@@ -43,6 +43,7 @@ final class FFITypesCrossValidationTests: XCTestCase {
             ("CaStatus", validateCaStatus),
             ("ChainResponse", validateChainResponse),
             ("CaErrorResponse", validateCaErrorResponse),
+            ("NodeInfo", validateNodeInfo),
             ("NetworkMessagePayloadItem", validateNetworkMessagePayloadItem),
             ("NetworkMessage", validateNetworkMessage),
         ]
@@ -377,5 +378,28 @@ final class FFITypesCrossValidationTests: XCTestCase {
 
         // Verify both can be decoded and are equal
         XCTAssertEqual(swiftMessage, rustMessage, "NetworkMessage validation failed - Swift and Rust data don't match")
+    }
+
+    /// Test NodeInfo CBOR compatibility with Rust
+    private func validateNodeInfo(swiftDir: URL, rustDir: URL) async throws {
+        // Test basic NodeInfo
+        let swiftBasicData = try Data(contentsOf: swiftDir.appendingPathComponent("node_info_basic.bin"))
+        let rustBasicData = try Data(contentsOf: rustDir.appendingPathComponent("node_info_basic.bin"))
+
+        let swiftBasicNode: NodeInfo = try CodableCBORDecoder().decode(NodeInfo.self, from: swiftBasicData)
+        let rustBasicNode: NodeInfo = try CodableCBORDecoder().decode(NodeInfo.self, from: rustBasicData)
+
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftBasicNode, rustBasicNode, "NodeInfo basic validation failed - Swift and Rust data don't match")
+
+        // Test NodeInfo with metadata
+        let swiftMetadataData = try Data(contentsOf: swiftDir.appendingPathComponent("node_info_with_metadata.bin"))
+        let rustMetadataData = try Data(contentsOf: rustDir.appendingPathComponent("node_info_with_metadata.bin"))
+
+        let swiftMetadataNode: NodeInfo = try CodableCBORDecoder().decode(NodeInfo.self, from: swiftMetadataData)
+        let rustMetadataNode: NodeInfo = try CodableCBORDecoder().decode(NodeInfo.self, from: rustMetadataData)
+
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftMetadataNode, rustMetadataNode, "NodeInfo with metadata validation failed - Swift and Rust data don't match")
     }
 }

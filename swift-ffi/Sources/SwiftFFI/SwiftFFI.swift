@@ -3952,7 +3952,7 @@ public enum EnrollmentTokenUtils {
 // MARK: - Network Message Structures
 
 /// Swift representation of NetworkMessagePayloadItem structure from Rust
-public struct NetworkMessagePayloadItem: Codable, Equatable {
+public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
     /// The path/topic associated with this payload
     public let path: String
     
@@ -4028,7 +4028,7 @@ public struct NetworkMessagePayloadItem: Codable, Equatable {
 }
 
 /// Swift representation of NetworkMessage structure from Rust
-public struct NetworkMessage: Codable, Equatable {
+public struct NetworkMessage: Codable, Equatable, Sendable {
     /// Source node identifier
     public let sourceNodeId: String
     
@@ -4056,10 +4056,42 @@ public struct NetworkMessage: Codable, Equatable {
     }
 }
 
+// MARK: - Handshake Structures
+
+/// Connection role for handshake process
+public enum ConnectionRole: String, Codable, Sendable, Equatable {
+    case initiator = "Initiator"
+    case responder = "Responder"
+}
+
+/// Handshake data exchanged during peer connection
+public struct HandshakeData: Codable, Sendable, Equatable {
+    /// Node information for the connecting peer
+    public let nodeInfo: NodeInfo
+    
+    /// Nonce for handshake process
+    public let nonce: UInt64
+    
+    /// Role of the peer in the connection
+    public let role: ConnectionRole
+    
+    public init(nodeInfo: NodeInfo, nonce: UInt64, role: ConnectionRole) {
+        self.nodeInfo = nodeInfo
+        self.nonce = nonce
+        self.role = role
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case nodeInfo = "node_info"
+        case nonce
+        case role
+    }
+}
+
 // MARK: - CBOR Structures for Transport
 
 /// Swift representation of NodeInfo structure from Rust
-public struct NodeInfo: Codable {
+public struct NodeInfo: Codable, Equatable, Sendable {
     public let nodePublicKey: Data
     public let networkIds: [String]
     public let addresses: [String]
@@ -4081,10 +4113,34 @@ public struct NodeInfo: Codable {
         case nodeMetadata = "node_metadata"
         case version
     }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Decode nodePublicKey as array of bytes and convert to Data
+        let nodePublicKeyArray = try container.decode([UInt8].self, forKey: .nodePublicKey)
+        self.nodePublicKey = Data(nodePublicKeyArray)
+        
+        self.networkIds = try container.decode([String].self, forKey: .networkIds)
+        self.addresses = try container.decode([String].self, forKey: .addresses)
+        self.nodeMetadata = try container.decode(NodeMetadata.self, forKey: .nodeMetadata)
+        self.version = try container.decode(Int64.self, forKey: .version)
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        // Encode nodePublicKey as array of bytes
+        try container.encode(Array(nodePublicKey), forKey: .nodePublicKey)
+        try container.encode(networkIds, forKey: .networkIds)
+        try container.encode(addresses, forKey: .addresses)
+        try container.encode(nodeMetadata, forKey: .nodeMetadata)
+        try container.encode(version, forKey: .version)
+    }
 }
 
 /// Swift representation of NodeMetadata structure from Rust
-public struct NodeMetadata: Codable {
+public struct NodeMetadata: Codable, Equatable, Sendable {
     public let services: [ServiceMetadata]
     public let subscriptions: [SubscriptionMetadata]
 
@@ -4095,7 +4151,7 @@ public struct NodeMetadata: Codable {
 }
 
 /// Swift representation of ServiceMetadata structure from Rust
-public struct ServiceMetadata: Codable {
+public struct ServiceMetadata: Codable, Equatable, Sendable {
     public let networkId: String
     public let servicePath: String
     public let name: String
@@ -4129,7 +4185,7 @@ public struct ServiceMetadata: Codable {
 }
 
 /// Swift representation of ActionMetadata structure from Rust
-public struct ActionMetadata: Codable {
+public struct ActionMetadata: Codable, Equatable, Sendable {
     public let name: String
     public let description: String
     public let inputSchema: FieldSchema?
@@ -4151,7 +4207,7 @@ public struct ActionMetadata: Codable {
 }
 
 /// Swift representation of SubscriptionMetadata structure from Rust
-public struct SubscriptionMetadata: Codable {
+public struct SubscriptionMetadata: Codable, Equatable, Sendable {
     public let path: String
 
     public init(path: String) {
@@ -4160,7 +4216,7 @@ public struct SubscriptionMetadata: Codable {
 }
 
 /// Swift representation of FieldSchema structure from Rust
-public struct FieldSchema: Codable {
+public struct FieldSchema: Codable, Equatable, Sendable {
     public let dataType: SchemaDataType
     public let required: Bool
     public let description: String?
@@ -4179,7 +4235,7 @@ public struct FieldSchema: Codable {
 }
 
 /// Swift representation of SchemaDataType enum from Rust
-public enum SchemaDataType: String, Codable {
+public enum SchemaDataType: String, Codable, Equatable, Sendable {
     case string = "String"
     case int32 = "Int32"
     case int64 = "Int64"
@@ -4656,14 +4712,18 @@ public struct TransportEvent: Codable, Sendable, Equatable {
     public let requestId: String?
     public let correlationId: String?
     public let payload: [UInt8]?
+    public let peerNodeId: String?
+    public let nodeInfo: NodeInfo?
 
-    public init(type: String, v: Int? = nil, path: String? = nil, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil) {
+    public init(type: String, v: Int? = nil, path: String? = nil, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil, peerNodeId: String? = nil, nodeInfo: NodeInfo? = nil) {
         self.type = type
         self.v = v
         self.path = path
         self.requestId = requestId
         self.correlationId = correlationId
         self.payload = payload
+        self.peerNodeId = peerNodeId
+        self.nodeInfo = nodeInfo
     }
 
     enum CodingKeys: String, CodingKey {
@@ -4673,6 +4733,8 @@ public struct TransportEvent: Codable, Sendable, Equatable {
         case requestId = "request_id"
         case correlationId = "correlation_id"
         case payload
+        case peerNodeId = "peer_node_id"
+        case nodeInfo = "node_info"
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -4685,6 +4747,14 @@ public struct TransportEvent: Codable, Sendable, Equatable {
         // Deterministic: encode payload as byte string if present
         if let payload {
             try container.encode(Data(payload), forKey: .payload)
+        }
+        try container.encodeIfPresent(peerNodeId, forKey: .peerNodeId)
+        
+        // node_info should be encoded as a serialized byte string to match Rust behavior
+        if let nodeInfo = nodeInfo {
+            let nodeInfoEncoder = CodableCBOREncoder()
+            let nodeInfoData = try nodeInfoEncoder.encode(nodeInfo)
+            try container.encode(nodeInfoData, forKey: .nodeInfo)
         }
     }
 
@@ -4701,6 +4771,16 @@ public struct TransportEvent: Codable, Sendable, Equatable {
             payload = [UInt8](data)
         } else {
             payload = nil
+        }
+        
+        peerNodeId = try container.decodeIfPresent(String.self, forKey: .peerNodeId)
+        
+        // node_info is sent as a serialized byte string from Rust, not as a nested object
+        if let nodeInfoData = try container.decodeIfPresent(Data.self, forKey: .nodeInfo) {
+            let nodeInfoDecoder = CodableCBORDecoder()
+            nodeInfo = try nodeInfoDecoder.decode(NodeInfo.self, from: nodeInfoData)
+        } else {
+            nodeInfo = nil
         }
     }
 }
@@ -5243,13 +5323,18 @@ public actor QuicTransport {
 
         switch event.type {
         case "PeerConnected":
-            if let peerId = event.path {
-                callbacks.peerConnectedCallback?(peerId)
+            if let peerId = event.peerNodeId,
+               let nodeInfo = event.nodeInfo {
+                callbacks.peerConnectedCallback?(peerId, nodeInfo)
+            } else {
+                logger.warning("QuicTransport.handleEvent() - PeerConnected event missing peerNodeId or nodeInfo")
             }
 
         case "PeerDisconnected":
-            if let peerId = event.path {
+            if let peerId = event.peerNodeId {
                 callbacks.peerDisconnectedCallback?(peerId)
+            } else {
+                logger.warning("QuicTransport.handleEvent() - PeerDisconnected event missing peerNodeId")
             }
 
         case "RequestReceived":
@@ -5372,7 +5457,10 @@ public actor QuicTransport {
 // MARK: - Transport Callback Types
 
 /// Callback for when a peer connects
-public typealias PeerConnectedCallback = @Sendable (String) -> Void
+/// - Parameters:
+///   - peerId: The ID of the connected peer
+///   - nodeInfo: The node information for the connected peer
+public typealias PeerConnectedCallback = @Sendable (String, NodeInfo) -> Void
 
 /// Callback for when a peer disconnects
 public typealias PeerDisconnectedCallback = @Sendable (String) -> Void

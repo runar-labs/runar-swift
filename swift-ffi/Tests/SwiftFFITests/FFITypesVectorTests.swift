@@ -32,6 +32,7 @@ final class FFITypesVectorTests: XCTestCase {
         // Transport types (task11.md requirement)
         // Note: QuicTransportOptions doesn't implement Serialize in Rust, so we skip it for now
         try generatePeerInfo()
+        try generateNodeInfo()
         try generateTransportRequestParams()
         try generateTransportPublishParams()
         try generateTransportCompleteRequestParams()
@@ -250,6 +251,52 @@ final class FFITypesVectorTests: XCTestCase {
         let encoder = CodableCBOREncoder()
         let data = try encoder.encode(peerInfo)
         try data.write(to: outputDir.appendingPathComponent("peer_info_basic.bin"))
+    }
+
+    private func generateNodeInfo() throws {
+        // Basic node info
+        let basicNode = NodeInfo(
+            nodePublicKey: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]),
+            networkIds: ["test-network"],
+            addresses: ["127.0.0.1:8080"],
+            nodeMetadata: NodeMetadata(
+                services: [],
+                subscriptions: []
+            ),
+            version: 1
+        )
+
+        let encoder = CodableCBOREncoder()
+        let basicData = try encoder.encode(basicNode)
+        try basicData.write(to: outputDir.appendingPathComponent("node_info_basic.bin"))
+
+        // Node info with metadata
+        let nodeWithMetadata = NodeInfo(
+            nodePublicKey: Data([32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]),
+            networkIds: ["test-network", "another-network"],
+            addresses: ["127.0.0.1:8080", "192.168.1.100:8080"],
+            nodeMetadata: NodeMetadata(
+                services: [
+                    ServiceMetadata(
+                        networkId: "test-network",
+                        servicePath: "/api/test",
+                        name: "test-service",
+                        version: "1.0.0",
+                        description: "A test service",
+                        actions: [],
+                        registrationTime: 1234567890,
+                        lastStartTime: 1234567891
+                    )
+                ],
+                subscriptions: [
+                    SubscriptionMetadata(path: "test-topic")
+                ]
+            ),
+            version: 2
+        )
+
+        let metadataData = try encoder.encode(nodeWithMetadata)
+        try metadataData.write(to: outputDir.appendingPathComponent("node_info_with_metadata.bin"))
     }
 
     private func generateTransportRequestParams() throws {
