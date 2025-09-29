@@ -43,6 +43,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
             ("CaStatus", validateCaStatus),
             ("ChainResponse", validateChainResponse),
             ("CaErrorResponse", validateCaErrorResponse),
+            ("NetworkMessagePayloadItem", validateNetworkMessagePayloadItem),
+            ("NetworkMessage", validateNetworkMessage),
         ]
 
         var passed = 0
@@ -351,5 +353,29 @@ final class FFITypesCrossValidationTests: XCTestCase {
 
         // Verify both can be decoded and are equal
         XCTAssertEqual(swiftPublish, rustPublish, "TransportPublishParams validation failed - Swift and Rust data don't match")
+    }
+
+    /// Test NetworkMessagePayloadItem CBOR compatibility with Rust
+    private func validateNetworkMessagePayloadItem(swiftDir: URL, rustDir: URL) async throws {
+        let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("network_message_payload_item_basic.bin"))
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("network_message_payload_item_basic.bin"))
+
+        let swiftPayload: NetworkMessagePayloadItem = try CodableCBORDecoder().decode(NetworkMessagePayloadItem.self, from: swiftData)
+        let rustPayload: NetworkMessagePayloadItem = try CodableCBORDecoder().decode(NetworkMessagePayloadItem.self, from: rustData)
+
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftPayload, rustPayload, "NetworkMessagePayloadItem validation failed - Swift and Rust data don't match")
+    }
+
+    /// Test NetworkMessage CBOR compatibility with Rust
+    private func validateNetworkMessage(swiftDir: URL, rustDir: URL) async throws {
+        let swiftData = try Data(contentsOf: swiftDir.appendingPathComponent("network_message_basic.bin"))
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("network_message_basic.bin"))
+
+        let swiftMessage: NetworkMessage = try CodableCBORDecoder().decode(NetworkMessage.self, from: swiftData)
+        let rustMessage: NetworkMessage = try CodableCBORDecoder().decode(NetworkMessage.self, from: rustData)
+
+        // Verify both can be decoded and are equal
+        XCTAssertEqual(swiftMessage, rustMessage, "NetworkMessage validation failed - Swift and Rust data don't match")
     }
 }

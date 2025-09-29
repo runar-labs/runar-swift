@@ -4,6 +4,7 @@ import SwiftCBOR
 import SwiftCommon
 import SwiftFFI
 
+
 // MARK: - Missing Rust Schema Types
 
 /// Action metadata structure matching Rust ActionMetadata
@@ -123,8 +124,7 @@ public typealias FFIKeys = NodeKeyManager
 // MARK: - Missing Types and Protocols
 
 /// Protocol for network transport implementations
-@MainActor
-public protocol NodeTransport: AnyObject {
+public protocol NodeTransport: AnyObject, Sendable {
     func start() async throws
     func stop() async throws
     func sendRequest(path: String, payload: Data, correlationId: String) async throws
@@ -320,8 +320,8 @@ public final class RegistryService: AbstractService {
             self.logger.trace("RegistryService.services/{service_path}: Looking for service: \(servicePathString)")
             
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId, 
-                                          segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath(networkId: requestContext.networkId,
+                                              segments: servicePathString.split(separator: "/").map(String.init))
             
             // Get service metadata
             if let metadata = await self.registryDelegate.getServiceMetadata(servicePath: servicePath) {
@@ -351,8 +351,8 @@ public final class RegistryService: AbstractService {
             self.logger.trace("RegistryService.services/{service_path}/state: Looking for service state: \(servicePathString)")
             
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId, 
-                                          segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath(networkId: requestContext.networkId,
+                                              segments: servicePathString.split(separator: "/").map(String.init))
             
             // Get service state
             guard let state = await self.registryDelegate.getLocalServiceState(servicePath: servicePath) else {
@@ -383,8 +383,8 @@ public final class RegistryService: AbstractService {
             self.logger.trace("RegistryService.services/{service_path}/pause: Looking for service to pause: \(servicePathString)")
             
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId, 
-                                          segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath(networkId: requestContext.networkId,
+                                              segments: servicePathString.split(separator: "/").map(String.init))
             
             // Get current state first to check if service exists
             if let currentState = await self.registryDelegate.getLocalServiceState(servicePath: servicePath) {
@@ -419,8 +419,8 @@ public final class RegistryService: AbstractService {
             self.logger.trace("RegistryService.services/{service_path}/resume: Looking for service to resume: \(servicePathString)")
             
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId, 
-                                          segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath(networkId: requestContext.networkId,
+                                              segments: servicePathString.split(separator: "/").map(String.init))
             
             // Get current state first to check if service exists
             if let currentState = await self.registryDelegate.getLocalServiceState(servicePath: servicePath) {
@@ -834,6 +834,14 @@ public struct NodeConfig: Sendable {
     /// This field is private and must be set via `withKeyManager()`.
     /// Contains the node's cryptographic keys and certificates.
     private var keyManager: FFIKeys?
+    
+    /// Get the key manager for this configuration
+    internal func getKeyManager() throws -> FFIKeys {
+        guard let keyManager = keyManager else {
+            throw NodeError.missingKeyManager("Key manager not set in configuration")
+        }
+        return keyManager
+    }
 
     /// Create a new Node configuration with the specified network ID.
     ///
@@ -1489,13 +1497,7 @@ public final class Node {
     /// ```
     public func publish(topic: String, data: AnyValue?, options: PublishOptions? = nil) async throws {
         // Parse topic path
-        let topicPath: TopicPath
-        do {
-            topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
-        } catch {
-            logger.error("Failed to create TopicPath for topic '\(topic)': \(error)")
-            throw NodeError.invalidConfiguration("Invalid topic path: \(topic)")
-        }
+        let topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
 
         // Notify local subscribers first
         logger.debug("Publishing event to topic: \(topic) with data: \(String(describing: data))")
@@ -1505,7 +1507,7 @@ public final class Node {
 
         // Retain event locally if configured
         if let retainFor = publishOptions.retainFor {
-            let key = topicPath.asString()
+            let key = topicPath.rawPath
             let now = Date()
             
             // Get or create retained deque for this topic
@@ -1564,13 +1566,7 @@ public final class Node {
     /// ```
     public func subscribe(topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
         // Parse topic path
-        let topicPath: TopicPath
-        do {
-            topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
-        } catch {
-            logger.error("Failed to create TopicPath for topic '\(topic)': \(error)")
-            throw NodeError.invalidConfiguration("Invalid topic path: \(topic)")
-        }
+        let topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
 
         // Register the subscription with the correct networkId
         let subscriptionId = try await serviceRegistry.subscribeToEvents(
@@ -1588,7 +1584,7 @@ public final class Node {
             let matchedKeys: [String]
             if topicPath.isPattern {
                 // For now, just check exact topic since wildcard matching is not implemented
-                let exactKey = topicPath.asString()
+                let exactKey = topicPath.rawPath
                 if await retainedEvents.get(exactKey) != nil {
                     matchedKeys = [exactKey]
                 } else {
@@ -1596,7 +1592,7 @@ public final class Node {
                 }
             } else {
                 // For exact topics, check if we have retained events
-                let exactKey = topicPath.asString()
+                let exactKey = topicPath.rawPath
                 if await retainedEvents.get(exactKey) != nil {
                     matchedKeys = [exactKey]
                 } else {
@@ -1667,13 +1663,7 @@ public final class Node {
         logger.trace("Adding service '\(serviceName)' to node using path \(servicePath)")
         
         // Create a proper topic path for the service (matching Rust pattern)
-        let serviceTopic: TopicPath
-        do {
-            serviceTopic = try TopicPath(networkId: networkId, segments: servicePath.split(separator: "/").map(String.init))
-        } catch {
-            logger.error("Failed to create topic path for service name:\(serviceName) path:\(servicePath) error:\(error)")
-            throw NodeError.invalidServicePath("Failed to create topic path for service \(serviceName): \(error)")
-        }
+        let serviceTopic = try TopicPath(networkId: networkId, segments: servicePath.split(separator: "/").map(String.init))
         
         // Create a lifecycle context for initialization (matching Rust pattern)
         let initContext = LifecycleContext(
@@ -1691,13 +1681,13 @@ public final class Node {
             logger.error("Failed to initialize service: \(serviceName), error: \(error)")
             // Update service state to error (matching Rust pattern)
             try await serviceRegistry.updateLocalServiceState(
-                servicePath: serviceTopic.asString(),
+                servicePath: serviceTopic.rawPath,
                 newState: ServiceState.error
             )
             // Publish error event (matching Rust pattern)
             try await publish(
                 topic: "$registry/services/\(servicePath)/state/error",
-                data: AnyValue.primitive(serviceTopic.asString()),
+                data: AnyValue.primitive(serviceTopic.rawPath),
                 options: PublishOptions(retainFor: 10.0)
             )
             throw NodeError.serviceInitializationFailed("Failed to initialize service: \(error)")
@@ -1705,14 +1695,14 @@ public final class Node {
         
         // Update service state to initialized (matching Rust pattern)
         try await serviceRegistry.updateLocalServiceState(
-            servicePath: serviceTopic.asString(),
+            servicePath: serviceTopic.rawPath,
             newState: ServiceState.initialized
         )
         
         // Publish initialized event (matching Rust pattern)
         try await publish(
             topic: "$registry/services/\(servicePath)/state/initialized",
-            data: AnyValue.primitive(serviceTopic.asString()),
+            data: AnyValue.primitive(serviceTopic.rawPath),
             options: PublishOptions(retainFor: 10.0)
         )
         
@@ -1758,7 +1748,7 @@ public final class Node {
             
             // Update service state to running
             try await serviceRegistry.updateLocalServiceState(
-                servicePath: serviceTopic.asString(),
+                servicePath: serviceTopic.rawPath,
                 newState: ServiceState.running
             )
             
@@ -1771,14 +1761,14 @@ public final class Node {
             
             // Update service state to error
             try await serviceRegistry.updateLocalServiceState(
-                servicePath: serviceTopic.asString(),
+                servicePath: serviceTopic.rawPath,
                 newState: ServiceState.error
             )
             
             // Publish error event
             try await publish(
                 topic: "$registry/services/\(servicePath)/state/error",
-                data: AnyValue.primitive(serviceTopic.asString()),
+                data: AnyValue.primitive(serviceTopic.rawPath),
                 options: PublishOptions(retainFor: 10.0)
             )
             
@@ -1877,7 +1867,7 @@ public final class Node {
             }
             
             if attempts >= maxAttempts {
-                logger.warning("Service \(serviceEntry.serviceTopic.asString()) did not start within timeout")
+                logger.warning("Service \(serviceEntry.serviceTopic.rawPath) did not start within timeout")
             }
         }
         
@@ -1962,9 +1952,61 @@ public final class Node {
     
     /// Create network transport based on configuration
     private func createTransport(networkConfig: NetworkConfig) async throws -> NodeTransport {
-        // TODO: Implement real transport using swift-ffi QuicTransport
-        // This should match the Rust transporter functionality
-        throw NodeError.transportNotImplemented("Real transport implementation required")
+        logger.trace("Creating QUIC transport")
+        
+        // Get the local node info to pass to the transport (currently unused)
+        let _ = getLocalNodeInfo()
+        
+        // Create transport options matching Rust implementation
+        let transportOptions = QuicTransportOptions(
+            requestTimeoutSeconds: UInt64(config.requestTimeoutMs / 1000),
+            bindAddr: networkConfig.bindAddress ?? "127.0.0.1:0"
+        )
+        
+        // Create callbacks for network events
+        let callbacks = TransportCallbacks(
+            peerConnectedCallback: { [weak self] peerNodeId in
+                Task { @MainActor in
+                    await self?.handlePeerConnected(peerNodeId: peerNodeId)
+                }
+            },
+            peerDisconnectedCallback: { [weak self] peerNodeId in
+                Task { @MainActor in
+                    await self?.handlePeerDisconnected(peerNodeId: peerNodeId)
+                }
+            },
+            requestCallback: { requestId, path, payload, sourcePeerId, correlationId in
+                // TODO: Implement synchronous network request handling
+                // This is a limitation - the FFI transport expects synchronous callbacks
+                // but our Node processing is async. We need to either:
+                // 1. Make Node processing synchronous, or
+                // 2. Use a different approach for network message handling
+                return Data() // Return empty data for now
+            },
+            eventCallback: { [weak self] requestId, path, payload, sourcePeerId, correlationId in
+                Task { @MainActor in
+                    await self?.handleNetworkEvent(
+                        requestId: requestId,
+                        path: path,
+                        payload: payload,
+                        sourcePeerId: sourcePeerId,
+                        correlationId: correlationId
+                    )
+                }
+            }
+        )
+        
+        // Create the QuicTransport using the key manager  
+        let keyManager: FFIKeys = try config.getKeyManager()
+        let transport = try await QuicTransport.create(
+            keys: keyManager,
+            options: transportOptions,
+            callbacks: callbacks,
+            logger: logger
+        )
+        
+        logger.trace("QUIC transport created successfully")
+        return transport
     }
     
     /// Create discovery provider based on configuration
@@ -1987,6 +2029,184 @@ public final class Node {
         // Generate a compact ID from the public key
         // This should match the Rust implementation
         publicKey.prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+    
+    // MARK: - Network Message Handling
+    
+    /// Handle peer connected event
+    private func handlePeerConnected(peerNodeId: String) async {
+        logger.trace("Peer connected: \(peerNodeId)")
+        
+        // TODO: Implement peer connection handling
+        // This should match the Rust handle_peer_connected implementation
+        // - Store peer info in remote_node_info
+        // - Update service registry with remote services
+        // - Handle discovery events
+    }
+    
+    /// Handle peer disconnected event
+    private func handlePeerDisconnected(peerNodeId: String) async {
+        logger.trace("Peer disconnected: \(peerNodeId)")
+        
+        // TODO: Implement peer disconnection handling
+        // This should match the Rust cleanup_disconnected_peer implementation
+        // - Remove peer from remote_node_info
+        // - Clean up remote services
+        // - Update service registry
+    }
+    
+    /// Handle incoming network request
+    private func handleNetworkRequest(
+        requestId: String,
+        path: String,
+        payload: Data,
+        sourcePeerId: String,
+        correlationId: String?
+    ) async -> Data {
+        logger.trace("Handling network request: path=\(path), correlationId=\(correlationId ?? "nil")")
+        
+        do {
+            // Parse the topic path
+            let topicPath = try TopicPath.parse(path)
+            let networkId = topicPath.networkId
+            
+            // TODO: Implement proper payload deserialization from network data
+            // For now, create a null value - this needs to be implemented with proper CBOR deserialization
+            let deserializedPayload = AnyValue.null()
+            
+            let paramsOption = deserializedPayload.isNull ? nil : deserializedPayload
+            
+            // Create request context (currently unused due to sync callback limitation)
+            let _ = RequestContext(
+                topicPath: topicPath,
+                networkId: networkId,
+                metadata: [:],
+                logger: logger,
+                pathParams: [:],
+                nodeDelegate: self
+            )
+            
+            // Process the local request (currently unused due to sync callback limitation)
+            let _ = try await serviceRegistry.request(
+                path,
+                payload: paramsOption,
+                networkId: networkId
+            )
+            
+            // TODO: Implement proper response serialization for network transport
+            // For now, return empty data - this needs to be implemented with proper CBOR serialization
+            let serializedResponse = Data()
+            
+            logger.trace("Network request completed successfully: correlationId=\(correlationId ?? "nil")")
+            return serializedResponse
+            
+        } catch {
+            logger.error("Network request failed: \(error)")
+            
+            // Create error response (currently unused due to sync callback limitation)
+            let _ = AnyValue.map([
+                "error": AnyValue.primitive(true),
+                "message": AnyValue.primitive(error.localizedDescription)
+            ])
+            
+            // TODO: Implement proper error response serialization
+            // For now, return empty data - this needs to be implemented with proper CBOR serialization
+            return Data()
+        }
+    }
+    
+    /// Handle incoming network event
+    private func handleNetworkEvent(
+        requestId: String,
+        path: String,
+        payload: Data,
+        sourcePeerId: String,
+        correlationId: String?
+    ) async {
+        logger.trace("Handling network event: path=\(path), correlationId=\(correlationId ?? "nil")")
+        
+        do {
+            // Parse the topic path
+            let topicPath = try TopicPath.parse(path)
+            
+            // TODO: Implement proper payload deserialization from network data
+            // For now, create a null value - this needs to be implemented with proper CBOR deserialization
+            let deserializedPayload = AnyValue.null()
+            
+            let payloadOption = deserializedPayload.isNull ? nil : deserializedPayload
+            
+            // Create event context (currently unused since EventHandler doesn't take context)
+            let _ = EventContext(
+                topicPath: topicPath,
+                logger: logger,
+                nodeDelegate: self,
+                deliveryOptions: nil,
+                isLocal: false
+            )
+            
+            // Get subscribers for this topic
+            let subscribers = await serviceRegistry.getLocalEventSubscribers(topicPath: topicPath)
+            
+            if subscribers.isEmpty {
+                logger.trace("No subscribers found for topic: \(topicPath.rawPath)")
+                return
+            }
+            
+            // Dispatch to all subscribers
+            for (_, handler, _) in subscribers {
+                await handler(payloadOption)
+            }
+            
+            logger.trace("Network event dispatched successfully")
+            
+        } catch {
+            logger.error("Network event handling failed: \(error)")
+        }
+    }
+}
+
+// MARK: - QuicTransport NodeTransport Conformance
+
+@MainActor
+extension QuicTransport: NodeTransport {
+    public func sendRequest(path: String, payload: Data, correlationId: String) async throws {
+        // TODO: Implement request sending
+        throw NodeError.transportNotImplemented("Request sending not implemented")
+    }
+    
+    public func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) async throws {
+        // TODO: Implement request completion
+        throw NodeError.transportNotImplemented("Request completion not implemented")
+    }
+    
+    public func publish(topic: String, payload: Data, options: PublishOptions) async throws {
+        // TODO: Implement event publishing
+        throw NodeError.transportNotImplemented("Event publishing not implemented")
+    }
+    
+    public func subscribe(topic: String, subscriptionId: String) async throws {
+        // TODO: Implement event subscription
+        throw NodeError.transportNotImplemented("Event subscription not implemented")
+    }
+    
+    public func unsubscribe(subscriptionId: String) async throws {
+        // TODO: Implement event unsubscription
+        throw NodeError.transportNotImplemented("Event unsubscription not implemented")
+    }
+    
+    public func pollEvent() async throws -> Data? {
+        // TODO: Implement event polling
+        throw NodeError.transportNotImplemented("Event polling not implemented")
+    }
+    
+    public func localAddr() async throws -> String {
+        // TODO: Implement local address retrieval
+        throw NodeError.transportNotImplemented("Local address retrieval not implemented")
+    }
+    
+    public func updateLocalNodeInfo(_ nodeInfo: Data) async throws {
+        // TODO: Implement local node info update
+        throw NodeError.transportNotImplemented("Local node info update not implemented")
     }
 }
 

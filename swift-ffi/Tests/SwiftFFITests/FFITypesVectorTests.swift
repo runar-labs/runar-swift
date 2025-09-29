@@ -36,6 +36,10 @@ final class FFITypesVectorTests: XCTestCase {
         try generateTransportPublishParams()
         try generateTransportCompleteRequestParams()
 
+        // Network Message types (task13.md requirement)
+        try generateNetworkMessagePayloadItem()
+        try generateNetworkMessage()
+
         print("✅ All FFI types test vectors generated successfully")
     }
 
@@ -287,5 +291,45 @@ final class FFITypesVectorTests: XCTestCase {
         let encoder = CodableCBOREncoder()
         let data = try encoder.encode(params)
         try data.write(to: outputDir.appendingPathComponent("transport_complete_request_params_basic.bin"))
+    }
+
+    // MARK: - Network Message Types Generation (task13.md requirement)
+
+    private func generateNetworkMessagePayloadItem() throws {
+        let payload = NetworkMessagePayloadItem(
+            path: "/api/test",
+            payloadBytes: Data("test payload data".utf8),
+            correlationId: "corr_123",
+            networkPublicKey: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+            profilePublicKeys: [
+                Data([11, 12, 13, 14, 15]),
+                Data([16, 17, 18, 19, 20])
+            ]
+        )
+
+        let encoder = CodableCBOREncoder()
+        let data = try encoder.encode(payload)
+        try data.write(to: outputDir.appendingPathComponent("network_message_payload_item_basic.bin"))
+    }
+
+    private func generateNetworkMessage() throws {
+        let payload = NetworkMessagePayloadItem(
+            path: "/api/request",
+            payloadBytes: Data("request data".utf8),
+            correlationId: "req_123",
+            networkPublicKey: Data([1, 2, 3, 4, 5]),
+            profilePublicKeys: [Data([6, 7, 8, 9, 10])]
+        )
+
+        let message = NetworkMessage(
+            sourceNodeId: "node_123",
+            destinationNodeId: "node_456",
+            messageType: 4, // MESSAGE_TYPE_REQUEST
+            payload: payload
+        )
+
+        let encoder = CodableCBOREncoder()
+        let data = try encoder.encode(message)
+        try data.write(to: outputDir.appendingPathComponent("network_message_basic.bin"))
     }
 }

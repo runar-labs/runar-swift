@@ -3949,6 +3949,113 @@ public enum EnrollmentTokenUtils {
     }
 }
 
+// MARK: - Network Message Structures
+
+/// Swift representation of NetworkMessagePayloadItem structure from Rust
+public struct NetworkMessagePayloadItem: Codable, Equatable {
+    /// The path/topic associated with this payload
+    public let path: String
+    
+    /// The serialized value/payload data as bytes
+    public let payloadBytes: Data
+    
+    /// Correlation ID
+    public let correlationId: String
+    
+    /// Network public key for encryption context
+    public let networkPublicKey: Data?
+    
+    /// Profile public keys
+    public let profilePublicKeys: [Data]
+    
+    public init(path: String, payloadBytes: Data, correlationId: String, networkPublicKey: Data? = nil, profilePublicKeys: [Data] = []) {
+        self.path = path
+        self.payloadBytes = payloadBytes
+        self.correlationId = correlationId
+        self.networkPublicKey = networkPublicKey
+        self.profilePublicKeys = profilePublicKeys
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case path
+        case payloadBytes = "payload_bytes"
+        case correlationId = "correlation_id"
+        case networkPublicKey = "network_public_key"
+        case profilePublicKeys = "profile_public_keys"
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        
+        // Encode as array of bytes to match Rust Vec<u8> serialization
+        try container.encode([UInt8](payloadBytes), forKey: .payloadBytes)
+        try container.encode(correlationId, forKey: .correlationId)
+        
+        // Encode networkPublicKey as array of bytes if present
+        if let networkKey = networkPublicKey {
+            try container.encode([UInt8](networkKey), forKey: .networkPublicKey)
+        } else {
+            try container.encodeNil(forKey: .networkPublicKey)
+        }
+        
+        // Encode profilePublicKeys as array of byte arrays
+        let profileKeysAsBytes = profilePublicKeys.map { [UInt8]($0) }
+        try container.encode(profileKeysAsBytes, forKey: .profilePublicKeys)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        
+        // Decode from array of bytes to match Rust Vec<u8> serialization
+        let payloadBytesArray = try container.decode([UInt8].self, forKey: .payloadBytes)
+        payloadBytes = Data(payloadBytesArray)
+        
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        
+        // Decode networkPublicKey from array of bytes if present
+        if let networkKeyArray = try container.decodeIfPresent([UInt8].self, forKey: .networkPublicKey) {
+            networkPublicKey = Data(networkKeyArray)
+        } else {
+            networkPublicKey = nil
+        }
+        
+        // Decode profilePublicKeys from array of byte arrays
+        let profileKeysAsBytes = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
+        profilePublicKeys = profileKeysAsBytes.map { Data($0) }
+    }
+}
+
+/// Swift representation of NetworkMessage structure from Rust
+public struct NetworkMessage: Codable, Equatable {
+    /// Source node identifier
+    public let sourceNodeId: String
+    
+    /// Destination node identifier (MUST be specified)
+    public let destinationNodeId: String
+    
+    /// Message type (Request, Response, Event, etc.)
+    public let messageType: UInt32
+    
+    /// Single payload for this message
+    public let payload: NetworkMessagePayloadItem
+    
+    public init(sourceNodeId: String, destinationNodeId: String, messageType: UInt32, payload: NetworkMessagePayloadItem) {
+        self.sourceNodeId = sourceNodeId
+        self.destinationNodeId = destinationNodeId
+        self.messageType = messageType
+        self.payload = payload
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case sourceNodeId = "source_node_id"
+        case destinationNodeId = "destination_node_id"
+        case messageType = "message_type"
+        case payload
+    }
+}
+
 // MARK: - CBOR Structures for Transport
 
 /// Swift representation of NodeInfo structure from Rust
@@ -5159,19 +5266,22 @@ public actor QuicTransport {
 
                 // Call the request callback and get the response
                 logger.info("QuicTransport.handleEvent() - Calling request callback for requestId: \(requestId)")
-                if let responsePayload = callbacks.requestCallback(requestId, path, Data(payload), sourcePeerId, correlationId) {
-                    // Send the response back to the peer
-                    let completeParams = TransportCompleteRequestParams(
-                        requestId: requestId,
-                        responsePayload: responsePayload,
-                        profilePublicKeys: [] // Would be extracted from context
-                    )
-
+                if let responseMessage = callbacks.requestCallback(requestId, path, Data(payload), sourcePeerId, correlationId) {
+                    // Serialize the NetworkMessage to CBOR data
                     do {
+                        let responseData = try CodableCBOREncoder().encode(responseMessage)
+                        
+                        // Send the response back to the peer
+                        let completeParams = TransportCompleteRequestParams(
+                            requestId: requestId,
+                            responsePayload: responseData,
+                            profilePublicKeys: responseMessage.payload.profilePublicKeys
+                        )
+
                         try await completeRequest(completeParams)
                         logger.trace("QuicTransport.handleEvent() - Request completed successfully")
                     } catch {
-                        logger.error("QuicTransport.handleEvent() - Failed to complete request: \(error)")
+                        logger.error("QuicTransport.handleEvent() - Failed to serialize NetworkMessage response: \(error)")
                     }
                 } else {
                     logger.trace("QuicTransport.handleEvent() - Request callback returned no response")
@@ -5274,7 +5384,8 @@ public typealias PeerDisconnectedCallback = @Sendable (String) -> Void
 ///   - payload: The request payload
 ///   - sourcePeerId: The ID of the peer that sent the request
 ///   - correlationId: Optional correlation ID
-public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> Data?
+/// - Returns: NetworkMessage response or nil if no response
+public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> NetworkMessage?
 
 /// Callback for handling P2P event messages (fire and forget, no response)
 /// - Parameters:

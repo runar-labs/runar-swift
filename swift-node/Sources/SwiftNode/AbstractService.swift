@@ -159,6 +159,16 @@ public protocol AbstractService: AnyObject {
     ///
     /// Initialization errors should be propagated to enable reporting and
     /// proper error handling.
+    ///
+    /// # NOTE: Method Name Difference from Rust
+    ///
+    /// This method is named `initService` instead of `init` (as in Rust) because
+    /// `init` is a reserved keyword in Swift and cannot be used as a method name.
+    /// This is a language constraint, not a design choice. The functionality,
+    /// intent, and behavior are identical to Rust's `init` method.
+    ///
+    /// Rust: `async fn init(&self, context: LifecycleContext) -> Result<()>`
+    /// Swift: `func initService(_ context: LifecycleContext) async throws`
     func initService(_ context: LifecycleContext) async throws
 
     /// Start the service
