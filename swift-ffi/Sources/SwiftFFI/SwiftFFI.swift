@@ -4606,7 +4606,7 @@ public struct TransportCompleteRequestParams: Codable, Equatable {
 }
 
 /// Swift representation of PeerInfo from Rust
-public struct PeerInfo: Codable, Equatable {
+public struct PeerInfo: Codable, Equatable, Sendable {
     public let publicKey: Data // Vec<u8> in Rust - encoded as array of bytes
     public let addresses: [String]
 
@@ -4711,9 +4711,10 @@ public struct TransportEvent: Codable, Sendable, Equatable {
     public let correlationId: String?
     public let payload: [UInt8]?
     public let peerNodeId: String?
+    public let peerInfo: PeerInfo?
     public let nodeInfo: NodeInfo?
 
-    public init(type: String, v: Int? = nil, path: String? = nil, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil, peerNodeId: String? = nil, nodeInfo: NodeInfo? = nil) {
+    public init(type: String, v: Int? = nil, path: String? = nil, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil, peerNodeId: String? = nil, peerInfo: PeerInfo? = nil, nodeInfo: NodeInfo? = nil) {
         self.type = type
         self.v = v
         self.path = path
@@ -4721,6 +4722,7 @@ public struct TransportEvent: Codable, Sendable, Equatable {
         self.correlationId = correlationId
         self.payload = payload
         self.peerNodeId = peerNodeId
+        self.peerInfo = peerInfo
         self.nodeInfo = nodeInfo
     }
     
@@ -4733,6 +4735,7 @@ public struct TransportEvent: Codable, Sendable, Equatable {
         case correlationId = "correlation_id"
         case payload
         case peerNodeId = "peer_node_id"
+        case peerInfo = "peer_info"  // Map peer_info to peerInfo
         case nodeInfo = "node_info"  // Map node_info to nodeInfo
     }
     
@@ -4752,6 +4755,14 @@ public struct TransportEvent: Codable, Sendable, Equatable {
         }
         
         peerNodeId = try container.decodeIfPresent(String.self, forKey: .peerNodeId)
+        
+        // peer_info is sent as a serialized byte string from Rust, not as a nested object
+        if let peerInfoData = try container.decodeIfPresent(Data.self, forKey: .peerInfo) {
+            let peerInfoDecoder = CodableCBORDecoder()
+            peerInfo = try peerInfoDecoder.decode(PeerInfo.self, from: peerInfoData)
+        } else {
+            peerInfo = nil
+        }
         
         // node_info is sent as a serialized byte string from Rust, not as a nested object
         if let nodeInfoData = try container.decodeIfPresent(Data.self, forKey: .nodeInfo) {
@@ -4774,6 +4785,13 @@ public struct TransportEvent: Codable, Sendable, Equatable {
             try container.encode(Data(payload), forKey: .payload)
         }
         try container.encodeIfPresent(peerNodeId, forKey: .peerNodeId)
+        
+        // peer_info should be encoded as a serialized byte string to match Rust behavior
+        if let peerInfo = peerInfo {
+            let peerInfoEncoder = CodableCBOREncoder()
+            let peerInfoData = try peerInfoEncoder.encode(peerInfo)
+            try container.encode(peerInfoData, forKey: .peerInfo)
+        }
         
         // node_info should be encoded as a serialized byte string to match Rust behavior
         if let nodeInfo = nodeInfo {
@@ -5348,20 +5366,21 @@ public actor QuicTransport {
         switch event.type {
         case "PeerDiscovered":
             // Handle peer discovery - this should trigger the handshake process
-            logger.info("QuicTransport.handleEvent() - PeerDiscovered event - peerNodeId: \(event.peerNodeId ?? "nil"), nodeInfo: \(event.nodeInfo != nil ? "present" : "nil")")
+            logger.info("QuicTransport.handleEvent() - PeerDiscovered event - peerNodeId: \(event.peerNodeId ?? "nil"), peerInfo: \(event.peerInfo != nil ? "present" : "nil")")
             
             // For PeerDiscovered events, peerNodeId might not be present in the CBOR data
-            // We need to derive it from the NodeInfo or use a placeholder
+            // We need to derive it from the peerInfo or use a placeholder
             let peerId: String
             if let existingPeerId = event.peerNodeId {
                 peerId = existingPeerId
-            } else if let nodeInfo = event.nodeInfo {
-                // Derive peerId from NodeInfo - use the first address or a hash of the public key
-                if let firstAddress = nodeInfo.addresses.first {
+                logger.info("QuicTransport.handleEvent() - Using provided peerNodeId: \(peerId)")
+            } else if let peerInfo = event.peerInfo {
+                // peerInfo is now a proper PeerInfo struct with publicKey and addresses
+                if let firstAddress = peerInfo.addresses.first {
                     peerId = firstAddress
                 } else {
                     // Use a hash of the public key as peerId
-                    let publicKeyData = nodeInfo.nodePublicKey
+                    let publicKeyData = peerInfo.publicKey
                     let hash = publicKeyData.withUnsafeBytes { bytes in
                         // Simple hash of the public key
                         var hash = 0
@@ -5372,22 +5391,26 @@ public actor QuicTransport {
                     }
                     peerId = "peer_\(hash)"
                 }
-                logger.info("QuicTransport.handleEvent() - Derived peerId from NodeInfo: \(peerId)")
+                logger.info("QuicTransport.handleEvent() - Derived peerId from peerInfo: \(peerId), addresses: \(peerInfo.addresses)")
             } else {
-                logger.warning("QuicTransport.handleEvent() - PeerDiscovered event missing both peerNodeId and nodeInfo")
+                logger.warning("QuicTransport.handleEvent() - PeerDiscovered event missing both peerNodeId and peerInfo")
                 return
             }
             
-            if let nodeInfo = event.nodeInfo {
-                // For PeerDiscovered, we should initiate the handshake process
-                // This is different from PeerConnected which means handshake is complete
-                logger.info("QuicTransport.handleEvent() - Initiating handshake with peer: \(peerId)")
-                // TODO: Implement handshake initiation logic here
-                // For now, we'll treat it as a connected peer to trigger the callback
-                callbacks.peerConnectedCallback?(peerId, nodeInfo)
-            } else {
-                logger.warning("QuicTransport.handleEvent() - PeerDiscovered event missing nodeInfo")
-            }
+            // For PeerDiscovered, we should initiate the handshake process
+            // This is different from PeerConnected which means handshake is complete
+            logger.info("QuicTransport.handleEvent() - Initiating handshake with peer: \(peerId)")
+            // TODO: Implement handshake initiation logic here
+            // For now, we'll create a minimal NodeInfo for the callback
+            // The actual NodeInfo will be exchanged during the handshake process
+            let minimalNodeInfo = NodeInfo(
+                nodePublicKey: Data(), // Will be filled during handshake
+                networkIds: [],
+                addresses: [],
+                nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+                version: 1
+            )
+            callbacks.peerConnectedCallback?(peerId, minimalNodeInfo)
 
         case "PeerConnected":
             if let peerId = event.peerNodeId,
