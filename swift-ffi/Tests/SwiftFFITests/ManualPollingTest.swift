@@ -25,8 +25,8 @@ final class ManualPollingTest: XCTestCase {
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try await keysA.setLocalNodeInfo(nodeInfoCbor)
-        try await keysB.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
+        // This will be set when creating the transport
 
         // Step 4: Generate CSR for node A and process through mobile CA - exactly like Rust
         let csrA = try await keysA.generateCsrSetupToken()
@@ -69,6 +69,7 @@ final class ManualPollingTest: XCTestCase {
         // Step 8: Create transport A and start it
         let loggerA = RunarLogger(component: .custom)
         let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
+        try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
 
         // Step 9: Get local address for transport A
@@ -83,6 +84,7 @@ final class ManualPollingTest: XCTestCase {
         // Step 11: Create transport B and start it
         let loggerB = RunarLogger(component: .custom)
         let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
+        try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
 
         // Step 12: Get public key for node A

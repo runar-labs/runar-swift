@@ -265,10 +265,6 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Throws: FFIError if the operation fails
     func getNodeAgreementPublicKey() async throws -> Data
 
-    /// Set local node information
-    /// - Parameter nodeInfoCbor: Node information in CBOR format
-    /// - Throws: FFIError if the operation fails
-    func setLocalNodeInfo(_ nodeInfoCbor: Data) async throws
 
     /// Get agreement public key (alias for getNodeAgreementPublicKey)
     /// - Returns: The agreement public key
@@ -3065,17 +3061,6 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         return try await getNodeAgreementPublicKey()
     }
 
-    public func setLocalNodeInfo(_ nodeInfoCbor: Data) async throws {
-        // Copy handle to local to avoid capturing actor state in closures
-        let nodeHandle = handle
-        let (code, err) = withRnErrorCode { errPtr in
-            nodeInfoCbor.withUnsafeBytes { raw in
-                rn_keys_set_local_node_info(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
-            }
-        }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to set local node info") }
-    }
 
     /// Get compact ID for a public key
     /// - Parameter key: Public key data
@@ -4748,7 +4733,7 @@ public struct TransportEvent: Codable, Sendable, Equatable {
         case correlationId = "correlation_id"
         case payload
         case peerNodeId = "peer_node_id"
-        case nodeInfo = "peer_info"  // Map peer_info to nodeInfo
+        case nodeInfo = "node_info"  // Map node_info to nodeInfo
     }
     
     public init(from decoder: Decoder) throws {
@@ -5153,6 +5138,31 @@ public actor QuicTransport {
             throw FFIError.operationFailed("Failed to update local node info")
         }
         logger.info("QuicTransport.updateLocalNodeInfo() - Local node info updated successfully")
+    }
+
+    /// Set local node information (initial setup)
+    /// - Parameter nodeInfoCbor: Node information in CBOR format
+    /// - Throws: FFIError if setup fails
+    public func setLocalNodeInfo(_ nodeInfoCbor: Data) async throws {
+        logger.trace("QuicTransport.setLocalNodeInfo() - Setting local node info from CBOR")
+        // Copy handle to local to avoid capturing actor state in closures
+        let transportHandle = handle
+        let (code, err) = withRnErrorCode { errPtr in
+            nodeInfoCbor.withUnsafeBytes { raw in
+                logger.trace("QuicTransport.setLocalNodeInfo() - About to call rn_transport_set_local_node_info")
+                return rn_transport_set_local_node_info(transportHandle, raw.bindMemory(to: UInt8.self).baseAddress, nodeInfoCbor.count, errPtr)
+            }
+        }
+        logger.trace("QuicTransport.setLocalNodeInfo() - FFI call completed, code: \(code)")
+        if let error = err {
+            logger.error("QuicTransport.setLocalNodeInfo() - FFI error: \(error)")
+            throw error
+        }
+        guard code == 0 else {
+            logger.error("QuicTransport.setLocalNodeInfo() - FFI operation failed with code: \(code)")
+            throw FFIError.operationFailed("Failed to set local node info")
+        }
+        logger.debug("QuicTransport.setLocalNodeInfo() - Local node info set successfully")
     }
 
     /// Send a request

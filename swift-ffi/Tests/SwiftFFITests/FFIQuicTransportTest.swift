@@ -58,8 +58,8 @@ final class FFIQuicTransportTest: XCTestCase {
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try await keysA.setLocalNodeInfo(nodeInfoCbor)
-        try await keysB.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
+        // This will be set when creating the transport
 
         // Step 4: Generate CSR for node A and process through mobile CA - exactly like Rust
         let csrA = try await keysA.generateCsrSetupToken()
@@ -117,6 +117,7 @@ final class FFIQuicTransportTest: XCTestCase {
         // Step 8: Create transport A and start it - exactly like Rust
         let loggerA = RunarLogger(component: .custom)
         let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
+        try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
 
         // Step 9: Get local address for transport A - exactly like Rust
@@ -131,6 +132,7 @@ final class FFIQuicTransportTest: XCTestCase {
         // Step 11: Create transport B and start it - exactly like Rust
         let loggerB = RunarLogger(component: .custom)
         let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
+        try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
 
         // Step 12: Get public key for node A - exactly like Rust
@@ -218,7 +220,7 @@ final class FFIQuicTransportTest: XCTestCase {
         // Set node info
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
-        try await keys.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
 
         // Generate CSR and install certificate
         let csr = try await keys.generateCsrSetupToken()
@@ -234,6 +236,7 @@ final class FFIQuicTransportTest: XCTestCase {
         )
         let logger = RunarLogger(component: .custom)
         let transport = try await QuicTransport.create(keys: keys, options: transportOptions, callbacks: callbacks, logger: logger)
+        try await transport.setLocalNodeInfo(nodeInfoCbor)
 
         // Test start/stop idempotence - multiple starts should not fail
         try await transport.start()
@@ -268,8 +271,8 @@ final class FFIQuicTransportTest: XCTestCase {
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try await keysA.setLocalNodeInfo(nodeInfoCbor)
-        try await keysB.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
+        // This will be set when creating the transport
 
         // Generate CSR for node A
         let csrA = try await keysA.generateCsrSetupToken()
@@ -290,6 +293,7 @@ final class FFIQuicTransportTest: XCTestCase {
         )
         let loggerA = RunarLogger(component: .custom)
         let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
+        try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
 
         // Get local address for transport A
@@ -302,6 +306,7 @@ final class FFIQuicTransportTest: XCTestCase {
         )
         let loggerB = RunarLogger(component: .custom)
         let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
+        try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
 
         // Get public key for node A
@@ -343,7 +348,7 @@ final class FFIQuicTransportTest: XCTestCase {
         // Set node info
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
-        try await keys.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
 
         // Generate CSR and install certificate
         let csr = try await keys.generateCsrSetupToken()
@@ -359,6 +364,7 @@ final class FFIQuicTransportTest: XCTestCase {
         )
         let logger = RunarLogger(component: .custom)
         let transport = try await QuicTransport.create(keys: keys, options: transportOptions, callbacks: callbacks, logger: logger)
+        try await transport.setLocalNodeInfo(nodeInfoCbor)
         XCTAssertNotNil(transport, "Transport should be created successfully")
 
         // Start transport

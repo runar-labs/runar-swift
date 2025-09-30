@@ -19,8 +19,8 @@ final class PeerConnectionTests: XCTestCase {
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
         
-        try await keysA.setLocalNodeInfo(nodeInfoCbor)
-        try await keysB.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
+        // This will be set when creating the transport
         
         // Generate CSR for node A and process through mobile CA
         let csrA = try await keysA.generateCsrSetupToken()
@@ -64,6 +64,7 @@ final class PeerConnectionTests: XCTestCase {
         
         let loggerA = RunarLogger(component: .custom)
         let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
+        try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
         
         // Create transport B with minimal callbacks
@@ -72,6 +73,7 @@ final class PeerConnectionTests: XCTestCase {
         )
         let loggerB = RunarLogger(component: .custom)
         let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
+        try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
         
         // Get local address for transport A

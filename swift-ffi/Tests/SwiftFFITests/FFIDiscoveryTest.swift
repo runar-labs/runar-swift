@@ -65,8 +65,8 @@ final class FFIDiscoveryTest: XCTestCase {
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try await keysA.setLocalNodeInfo(nodeInfoCbor)
-        try await keysB.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
+        // This will be set when creating the transport
 
         // Generate and install certificates for both nodes
         let csrA = try await keysA.generateCsrSetupToken()
@@ -86,6 +86,7 @@ final class FFIDiscoveryTest: XCTestCase {
         )
         let loggerA = RunarLogger(component: .custom)
         let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
+        try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
 
         let callbacksB = TransportCallbacks(
@@ -93,6 +94,7 @@ final class FFIDiscoveryTest: XCTestCase {
         )
         let loggerB = RunarLogger(component: .custom)
         let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
+        try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
 
         // Create discovery options with unique multicast group
@@ -183,8 +185,8 @@ final class FFIDiscoveryTest: XCTestCase {
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
-        try await keysA.setLocalNodeInfo(nodeInfoCbor)
-        try await keysB.setLocalNodeInfo(nodeInfoCbor)
+        // Note: NodeInfo is now set on the transport, not on keys
+        // This will be set when creating the transport
 
         // Create transport options
         let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
@@ -195,6 +197,7 @@ final class FFIDiscoveryTest: XCTestCase {
         )
         let loggerA = RunarLogger(component: .custom)
         let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
+        try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
 
         let callbacksB = TransportCallbacks(
@@ -202,6 +205,7 @@ final class FFIDiscoveryTest: XCTestCase {
         )
         let loggerB = RunarLogger(component: .custom)
         let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
+        try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
 
         // Create discovery options with short TTL for testing
