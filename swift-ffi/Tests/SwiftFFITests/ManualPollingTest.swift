@@ -23,7 +23,7 @@ final class ManualPollingTest: XCTestCase {
 
         // Step 3: Set node info for both nodes - exactly like Rust
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
+        _ = try await CBORHelper.encodeNodeInfo(nodeInfo)
 
         // Note: NodeInfo is now set on the transport, not on keys
         // This will be set when creating the transport
@@ -68,8 +68,7 @@ final class ManualPollingTest: XCTestCase {
 
         // Step 8: Create transport A and start it
         let loggerA = RunarLogger(component: .custom)
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
-        try await transportA.setLocalNodeInfo(nodeInfoCbor)
+        let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.start()
 
         // Step 9: Get local address for transport A
@@ -83,8 +82,7 @@ final class ManualPollingTest: XCTestCase {
 
         // Step 11: Create transport B and start it
         let loggerB = RunarLogger(component: .custom)
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
-        try await transportB.setLocalNodeInfo(nodeInfoCbor)
+        let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)
         try await transportB.start()
 
         // Step 12: Get public key for node A

@@ -1492,6 +1492,7 @@ func ffi_create_discovery(
 @inline(__always)
 func ffi_create_transport(
     _ handle: UnsafeMutableRawPointer,
+    nodeInfoCbor: Data,
     optionsCbor: Data
 ) throws -> UnsafeMutableRawPointer {
     // Copy handle to local to avoid capturing actor state in closures
@@ -1500,8 +1501,18 @@ func ffi_create_transport(
 
     let (code, err) = withRnErrorCode { errPtr in
         HandleLockRegistry.shared.withLock(for: nodeHandle) {
-            optionsCbor.withUnsafeBytes { raw in
-                rn_transport_new_with_keys(nodeHandle, raw.bindMemory(to: UInt8.self).baseAddress, optionsCbor.count, &outTransport, errPtr)
+            nodeInfoCbor.withUnsafeBytes { nodeRaw in
+                optionsCbor.withUnsafeBytes { optRaw in
+                    rn_transport_new_with_keys(
+                        nodeHandle,
+                        nodeRaw.bindMemory(to: UInt8.self).baseAddress,
+                        nodeInfoCbor.count,
+                        optRaw.bindMemory(to: UInt8.self).baseAddress,
+                        optionsCbor.count,
+                        &outTransport,
+                        errPtr
+                    )
+                }
             }
         }
     }
@@ -3268,14 +3279,15 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     }
 
     /// Create a transport handle with this node's handle (typed API)
-    public func createTransportHandle(options: FFIQuicTransportOptions) async throws -> HandleToken {
-        // Encode options to CBOR internally (pure encoding, no MainActor)
+    public func createTransportHandle(nodeInfo: NodeInfo, options: FFIQuicTransportOptions) async throws -> HandleToken {
+        // Encode inputs to CBOR internally (pure encoding, no MainActor)
         let optionsCbor = try CodableCBOREncoder().encode(options)
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
-        let transportHandle = try ffi_create_transport(handle, optionsCbor: optionsCbor)
+        let transportHandle = try ffi_create_transport(handle, nodeInfoCbor: nodeInfoCbor, optionsCbor: optionsCbor)
         let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
         return token
     }
@@ -3287,7 +3299,9 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
-        let transportHandle = try ffi_create_transport(handle, optionsCbor: optionsCbor)
+        // Legacy path no longer used for new API. Keep signature to avoid ripple; default NodeInfo empty will fail fast in Rust if called.
+        let emptyNodeInfo = try CodableCBOREncoder().encode(NodeInfo(nodePublicKey: Data(), networkIds: [], addresses: [], nodeMetadata: NodeMetadata(services: [], subscriptions: []), version: 1))
+        let transportHandle = try ffi_create_transport(handle, nodeInfoCbor: emptyNodeInfo, optionsCbor: optionsCbor)
         let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
         return token
     }
@@ -4805,7 +4819,7 @@ public struct TransportEvent: Codable, Sendable, Equatable {
 // MARK: - Discovery Options
 
 /// Swift representation of DiscoveryOptions from Rust FFI
-public struct DiscoveryOptions: Codable {
+public struct DiscoveryOptions: Codable, Sendable {
     public let multicastGroup: String
     public let announceIntervalMs: UInt32
     public let discoveryTimeoutMs: UInt32
@@ -4965,10 +4979,10 @@ public actor QuicTransport {
     ///   - callbacks: Transport callbacks for handling events
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
-    public static func create(keys: NodeKeyManager, options: QuicTransportOptions, callbacks: TransportCallbacks, logger: RunarLogger) async throws -> QuicTransport {
+    public static func create(keys: NodeKeyManager, nodeInfo: NodeInfo, options: QuicTransportOptions, callbacks: TransportCallbacks, logger: RunarLogger) async throws -> QuicTransport {
         // Convert QuicTransportOptions to FFIQuicTransportOptions for FFI layer
         let ffiOptions = options.toFFIOptions()
-        let token = try await keys.createTransportHandle(options: ffiOptions)
+        let token = try await keys.createTransportHandle(nodeInfo: nodeInfo, options: ffiOptions)
         return try QuicTransport(token: token, callbacks: callbacks, logger: logger, options: options)
     }
 

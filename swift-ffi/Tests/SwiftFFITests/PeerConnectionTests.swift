@@ -63,7 +63,8 @@ final class PeerConnectionTests: XCTestCase {
         )
         
         let loggerA = RunarLogger(component: .custom)
-        let transportA = try await QuicTransport.create(keys: keysA, options: transportOptions, callbacks: callbacksA, logger: loggerA)
+        let localNodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
+        let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
         
@@ -72,7 +73,7 @@ final class PeerConnectionTests: XCTestCase {
             requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
         )
         let loggerB = RunarLogger(component: .custom)
-        let transportB = try await QuicTransport.create(keys: keysB, options: transportOptions, callbacks: callbacksB, logger: loggerB)
+        let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)
         try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
         
