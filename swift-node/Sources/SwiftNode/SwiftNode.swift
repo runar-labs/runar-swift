@@ -162,6 +162,44 @@ public protocol NodeDiscovery: Sendable {
     func stop() async throws
 }
 
+/// Real discovery implementation using Swift FFI DiscoveryHandle
+@MainActor
+public final class RealNodeDiscovery: NodeDiscovery, Sendable {
+    private let discoveryHandle: DiscoveryHandle
+    private let logger: RunarLogger
+    private var isStarted = false
+    
+    public init(discoveryHandle: DiscoveryHandle, logger: RunarLogger) {
+        self.discoveryHandle = discoveryHandle
+        self.logger = logger
+        logger.trace("🔍 RealNodeDiscovery initialized")
+    }
+    
+    public func start() async throws {
+        guard !isStarted else { 
+            logger.trace("🔍 Discovery already started, skipping")
+            return 
+        }
+        
+        logger.trace("🔍 Starting discovery...")
+        try await discoveryHandle.startAnnouncing()
+        isStarted = true
+        logger.trace("🔍 Discovery started successfully")
+    }
+    
+    public func stop() async throws {
+        guard isStarted else { 
+            logger.trace("🔍 Discovery not started, skipping stop")
+            return 
+        }
+        
+        logger.trace("🔍 Stopping discovery...")
+        try await discoveryHandle.stopAnnouncing()
+        isStarted = false
+        logger.trace("🔍 Discovery stopped successfully")
+    }
+}
+
 // MARK: - Real Transport Implementation
 // TODO: Implement real transport using swift-ffi QuicTransport
 // This should match the Rust transporter functionality
@@ -1673,7 +1711,7 @@ public final class Node {
             logger: logger,
             nodeDelegate: self
         )
-        
+
         // Initialize the service using the context (matching Rust pattern)
         do {
             try await service.initService(initContext)
@@ -1719,6 +1757,14 @@ public final class Node {
         
         // Register the service with the registry (matching Rust pattern)
         try await serviceRegistry.registerLocalService(serviceEntry)
+        logger.trace("🔍 Service registered successfully: \(servicePath)")
+        
+        // Update the transport with the new NodeInfo so Rust layer has the latest info for handshakes
+        print("🔍 SERVICE: Calling getLocalNodeInfo() to update transport...")
+        logger.trace("🔍 Calling getLocalNodeInfo() to update transport...")
+        let nodeInfo = await getLocalNodeInfo()
+        print("🔍 SERVICE: getLocalNodeInfo() completed with \(nodeInfo.nodeMetadata.services.count) services")
+        logger.trace("🔍 getLocalNodeInfo() completed")
         
         // If the node is already running, start the service immediately (matching Rust pattern)
         if isRunning {
@@ -1886,9 +1932,11 @@ public final class Node {
 
     /// Initialize network transport for remote communication
     private func initializeNetworkTransport() async throws {
+        print("🔍 NETWORKING: Starting networking components...")
         logger.trace("Starting networking components...")
         
         guard supportsNetworking else {
+            print("🔍 NETWORKING: Networking is disabled, skipping network initialization")
             logger.trace("Networking is disabled, skipping network initialization")
             return
         }
@@ -1897,26 +1945,33 @@ public final class Node {
             throw NodeError.invalidConfiguration("Network configuration is required")
         }
         
+        print("🔍 NETWORKING: Network config: \(networkConfig)")
         logger.trace("Network config: \(networkConfig)")
-        
-        // Update local node info (no-op placeholder for now; already stored at init)
-        _ = getLocalNodeInfo()
         
         // Initialize the network transport
         if networkTransport == nil {
+            print("🔍 NETWORKING: Initializing network transport...")
             logger.trace("Initializing network transport...")
             
             // Create network transport using the factory pattern based on transport_type
             let transport = try await createTransport(networkConfig: networkConfig)
             
+            print("🔍 NETWORKING: Starting transport...")
             try await transport.start()
+            print("🔍 NETWORKING: Transport started successfully")
             
             // Store the transport
             networkTransport = transport
+        } else {
+            print("🔍 NETWORKING: Transport already initialized, skipping")
         }
+        
+        // Update local node info after transport is initialized
+        _ = await getLocalNodeInfo()
         
         // Initialize discovery if enabled
         if let discoveryOptions = networkConfig.discoveryOptions {
+            print("🔍 NETWORKING: Initializing node discovery providers...")
             logger.trace("Initializing node discovery providers...")
             
             // Check if any providers are configured
@@ -1924,10 +1979,12 @@ public final class Node {
                 throw NodeError.invalidConfiguration("No discovery providers configured")
             }
             
+            print("🔍 NETWORKING: Found \(networkConfig.discoveryProviders.count) discovery providers")
             var discoveryProviders: [NodeDiscovery] = []
             
             // Iterate through all discovery providers and initialize each one
             for providerConfig in networkConfig.discoveryProviders {
+                print("🔍 NETWORKING: Creating discovery provider: \(providerConfig)")
                 logger.trace("Creating discovery provider: \(providerConfig)")
                 
                 // Create discovery provider instance
@@ -1937,37 +1994,106 @@ public final class Node {
                 )
                 
                 // Start announcing on this provider
+                print("🔍 NETWORKING: Starting to announce on discovery provider")
                 logger.trace("Starting to announce on discovery provider")
                 try await discoveryProvider.start()
+                print("🔍 NETWORKING: Discovery provider started successfully")
                 
                 discoveryProviders.append(discoveryProvider)
             }
             
-            // Store the discovery providers
-            networkDiscoveryProviders = discoveryProviders
+        // Store the discovery providers
+        networkDiscoveryProviders = discoveryProviders
+        print("🔍 NETWORKING: Stored \(discoveryProviders.count) discovery providers")
+        
+        // Update the transport with the current NodeInfo (including any services added before networking started)
+        print("🔍 NETWORKING: Updating transport with current NodeInfo...")
+        _ = await getLocalNodeInfo()
+        print("🔍 NETWORKING: Transport updated with current NodeInfo")
+        } else {
+            print("🔍 NETWORKING: No discovery options configured, skipping discovery")
         }
         
+        print("🔍 NETWORKING: Networking components started successfully")
         logger.trace("Networking components started successfully")
     }
     
     /// Create network transport based on configuration
     private func createTransport(networkConfig: NetworkConfig) async throws -> NodeTransport {
+        print("🔍 TRANSPORT: Creating QUIC transport")
         logger.trace("Creating QUIC transport")
         
-        // Get the local node info to pass to the transport (currently unused)
-        let _ = getLocalNodeInfo()
+        // Get the current services from the service registry
+        let currentServices = serviceRegistry.getLocalServices()
+        let servicePaths = Array(currentServices.keys).map { $0.asString() }
+        
+        // Get current subscriptions from the service registry
+        let currentSubscriptions = try? await serviceRegistry.getAllSubscriptions(includeInternalServices: false)
+        let subscriptionPaths = currentSubscriptions?.map { $0.path } ?? []
+        
+        // Create NodeInfo with current service metadata (don't call getLocalNodeInfo to avoid updating non-existent transport)
+        let currentNodeInfo = NodeInfo(
+            nodePublicKey: localNodeInfo.nodePublicKey,
+            networkIds: localNodeInfo.networkIds,
+            addresses: localNodeInfo.addresses,
+            nodeMetadata: NodeMetadata(
+                services: servicePaths,
+                subscriptions: subscriptionPaths
+            ),
+            version: localNodeInfo.version
+        )
+        print("🔍 TRANSPORT: Got current NodeInfo with \(currentNodeInfo.nodeMetadata.services.count) services")
+        
+        // Set the local node info in the key manager BEFORE creating the transport
+        // This ensures the shared holder in Rust contains the current NodeInfo for handshakes
+        let keyManager: FFIKeys = try config.getKeyManager()
+        let ffiNodeInfo = convertToFFINodeInfo(currentNodeInfo)
+        let nodeInfoCbor = try CodableCBOREncoder().encode(ffiNodeInfo)
+        try await keyManager.setLocalNodeInfo(nodeInfoCbor)
+        print("🔍 TRANSPORT: Set local NodeInfo in key manager with \(currentNodeInfo.nodeMetadata.services.count) services")
         
         // Create transport options matching Rust implementation
         let transportOptions = QuicTransportOptions(
             requestTimeoutSeconds: UInt64(config.requestTimeoutMs / 1000),
             bindAddr: networkConfig.bindAddress ?? "127.0.0.1:0"
         )
+        print("🔍 TRANSPORT: Transport options: \(transportOptions)")
         
         // Create callbacks for network events
+        print("🔍 TRANSPORT: Creating transport callbacks")
         let callbacks = TransportCallbacks(
-            peerConnectedCallback: { [weak self] peerNodeId in
+            peerConnectedCallback: { [weak self] peerNodeId, nodeInfo in
                 Task { @MainActor in
-                    await self?.handlePeerConnected(peerNodeId: peerNodeId)
+                    print("🔍 HANDSHAKE: Peer connected callback triggered for peer: \(peerNodeId) at \(Date())")
+                    print("🔍 HANDSHAKE: NodeInfo received: \(nodeInfo)")
+                    print("🔍 HANDSHAKE: Raw FFI NodeInfo - services: \(nodeInfo.nodeMetadata.services.count), subscriptions: \(nodeInfo.nodeMetadata.subscriptions.count)")
+                    print("🔍 HANDSHAKE: This NodeInfo was sent by the peer during handshake - it should contain the peer's services")
+                    for (index, service) in nodeInfo.nodeMetadata.services.enumerated() {
+                        print("🔍 HANDSHAKE: Service \(index): path=\(service.servicePath), name=\(service.name)")
+                    }
+                    
+                    // Convert SwiftFFI.NodeInfo to SwiftNode.NodeInfo
+                    let swiftNodeInfo = NodeInfo(
+                        nodePublicKey: nodeInfo.nodePublicKey,
+                        networkIds: nodeInfo.networkIds,
+                        addresses: nodeInfo.addresses,
+                        nodeMetadata: {
+                            let ffiMetadata = nodeInfo.nodeMetadata
+                            print("🔍 HANDSHAKE: Converting FFI metadata: \(ffiMetadata.services.count) services, \(ffiMetadata.subscriptions.count) subscriptions")
+                            return NodeMetadata(
+                                services: ffiMetadata.services.map { ffiService in
+                                    "\(ffiService.servicePath)/\(ffiService.name)"
+                                },
+                                subscriptions: ffiMetadata.subscriptions.map { ffiSubscription in
+                                    ffiSubscription.path
+                                }
+                            )
+                        }(),
+                        version: nodeInfo.version
+                    )
+                    print("🔍 HANDSHAKE: Converted NodeInfo: \(swiftNodeInfo)")
+                    print("🔍 HANDSHAKE: Converted services: \(swiftNodeInfo.nodeMetadata.services)")
+                    await self?.handlePeerConnected(peerNodeId: peerNodeId, nodeInfo: swiftNodeInfo)
                 }
             },
             peerDisconnectedCallback: { [weak self] peerNodeId in
@@ -2008,8 +2134,7 @@ public final class Node {
             }
         )
         
-        // Create the QuicTransport using the key manager  
-        let keyManager: FFIKeys = try config.getKeyManager()
+        // Create the QuicTransport using the key manager (already obtained above)
         let transport = try await QuicTransport.create(
             keys: keyManager,
             options: transportOptions,
@@ -2017,6 +2142,7 @@ public final class Node {
             logger: logger
         )
         
+        print("🔍 TRANSPORT: QUIC transport created successfully")
         logger.trace("QUIC transport created successfully")
         return transport
     }
@@ -2026,16 +2152,128 @@ public final class Node {
         providerConfig: DiscoveryProviderConfig,
         discoveryOptions: DiscoveryOptions
     ) async throws -> NodeDiscovery {
-        // TODO: Implement real discovery using swift-ffi
-        // This should match the Rust discovery functionality
-        throw NodeError.discoveryNotImplemented("Real discovery implementation required")
+        logger.trace("🔍 Creating real discovery provider with options: \(discoveryOptions)")
+        
+        // Encode discovery options to CBOR
+        let encoder = CodableCBOREncoder()
+        let optionsCbor = try encoder.encode(discoveryOptions)
+        logger.trace("🔍 Discovery options encoded to CBOR: \(optionsCbor.count) bytes")
+        
+        // Create discovery handle using the key manager
+        guard let keyManager = self.config.getKeyManager() else {
+            throw NodeError.missingKeyManager("Key manager not set in configuration")
+        }
+        logger.trace("🔍 Creating discovery handle with key manager")
+        let discoveryHandle = try await keyManager.createDiscoveryHandle(optionsCbor: optionsCbor)
+        logger.trace("🔍 Discovery handle created successfully")
+        
+        // Initialize discovery
+        logger.trace("🔍 Initializing discovery with options")
+        try await discoveryHandle.initialize(optionsCbor: optionsCbor)
+        logger.trace("🔍 Discovery initialized successfully")
+        
+        // Bind discovery events to transport
+        if let transport = self.networkTransport as? QuicTransport {
+            logger.trace("🔍 Binding discovery events to QUIC transport")
+            try await discoveryHandle.bindEventsToTransport(transport: transport)
+            logger.trace("🔍 Discovery events bound to transport successfully")
+        } else {
+            logger.warning("🔍 Network transport is not QUIC transport, cannot bind discovery events")
+        }
+        
+        // Create and return real discovery provider
+        logger.trace("🔍 Creating RealNodeDiscovery instance")
+        return RealNodeDiscovery(discoveryHandle: discoveryHandle, logger: logger)
     }
     
-    /// Get local node information
-    private func getLocalNodeInfo() -> NodeInfo {
-        return localNodeInfo
+    /// Get local node information with current service metadata and update the transport
+    private func getLocalNodeInfo() async -> NodeInfo {
+        // Get current services from the service registry
+        let currentServices = serviceRegistry.getLocalServices()
+        let servicePaths = Array(currentServices.keys).map { $0.asString() }
+        
+        print("🔍 DEBUG: Found \(currentServices.count) local services")
+        for (topicPath, serviceEntry) in currentServices {
+            print("🔍 DEBUG: Service: \(topicPath.asString()) -> \(serviceEntry.service.name)")
+        }
+        
+        print("🔍 DEBUG: getLocalNodeInfo() called - this should be used for handshakes at \(Date())")
+        
+        // Get current subscriptions from the service registry (currently returns empty array)
+        let currentSubscriptions = try? await serviceRegistry.getAllSubscriptions(includeInternalServices: false)
+        let subscriptionPaths = currentSubscriptions?.map { $0.path } ?? []
+        
+        // Create updated NodeInfo with current service metadata
+        let updatedNodeInfo = NodeInfo(
+            nodePublicKey: localNodeInfo.nodePublicKey,
+            networkIds: localNodeInfo.networkIds,
+            addresses: localNodeInfo.addresses,
+            nodeMetadata: NodeMetadata(
+                services: servicePaths,
+                subscriptions: subscriptionPaths
+            ),
+            version: localNodeInfo.version
+        )
+        
+        print("🔍 DEBUG: Updated NodeInfo with \(servicePaths.count) services and \(subscriptionPaths.count) subscriptions")
+        logger.trace("🔍 Updated NodeInfo with \(servicePaths.count) services and \(subscriptionPaths.count) subscriptions")
+        
+        // Update the transport with the new NodeInfo so Rust layer has the latest info for handshakes
+        if let transport = networkTransport as? QuicTransport {
+            print("🔍 DEBUG: Transport found, updating with NodeInfo...")
+            do {
+                // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
+                let ffiNodeInfo = convertToFFINodeInfo(updatedNodeInfo)
+                
+        print("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
+        print("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to Rust layer")
+        print("🔍 DEBUG: This should update the shared holder in Rust for handshakes")
+        try await transport.updateLocalNodeInfo(nodeInfo: ffiNodeInfo)
+        print("🔍 DEBUG: Successfully updated transport with new NodeInfo at \(Date())")
+        print("🔍 DEBUG: The shared holder in Rust should now contain \(ffiNodeInfo.nodeMetadata.services.count) services")
+                logger.trace("🔍 Successfully updated transport with new NodeInfo")
+            } catch {
+                print("🔍 DEBUG: Failed to update transport with new NodeInfo: \(error)")
+                logger.error("🔍 Failed to update transport with new NodeInfo: \(error)")
+            }
+        } else {
+            print("🔍 DEBUG: No transport found (networkTransport is nil or not QuicTransport)")
+        }
+        
+        return updatedNodeInfo
     }
 
+    /// Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
+    private func convertToFFINodeInfo(_ nodeInfo: NodeInfo) -> SwiftFFI.NodeInfo {
+        return SwiftFFI.NodeInfo(
+            nodePublicKey: nodeInfo.nodePublicKey,
+            networkIds: nodeInfo.networkIds,
+            addresses: nodeInfo.addresses,
+            nodeMetadata: SwiftFFI.NodeMetadata(
+                services: nodeInfo.nodeMetadata.services.map { servicePath in
+                    // Parse the service path to extract service name and path
+                    let components = servicePath.split(separator: "/")
+                    let serviceName = components.last?.description ?? servicePath
+                    let servicePath = components.dropLast().joined(separator: "/")
+                    return SwiftFFI.ServiceMetadata(
+                        networkId: networkId,
+                        servicePath: servicePath,
+                        name: serviceName,
+                        version: "1.0.0",
+                        description: "Service",
+                        actions: [],
+                        registrationTime: 0,
+                        lastStartTime: nil
+                    )
+                },
+                subscriptions: nodeInfo.nodeMetadata.subscriptions.map { subscriptionPath in
+                    SwiftFFI.SubscriptionMetadata(path: subscriptionPath)
+                }
+            ),
+            version: nodeInfo.version
+        )
+    }
+    
     /// Compact ID generation from public key
     private func compactId(_ publicKey: Data) -> String {
         // Generate a compact ID from the public key
@@ -2055,45 +2293,252 @@ public final class Node {
     
     /// Handle network request synchronously (required by FFI transport)
     nonisolated private func handleNetworkRequestSync(_ message: NetworkMessage) -> NetworkMessage? {
-        // The FFI handles the async/sync bridge internally, so we can return a simple response
-        // The actual processing will be handled by the FFI's internal pooling mechanism
+        // The FFI handles the async/sync bridge internally
+        // For now, implement a basic synchronous response until we can properly bridge to async
         
+        logger.trace("[handle_network_request] path: \(message.payload.path) correlation_id: \(message.payload.correlationId) profile_public_keys size: \(message.payload.profilePublicKeys.count)")
+        
+        // Parse topic path to get network ID
+        guard let topicPath = try? TopicPath.parse(message.payload.path) else {
+            logger.error("Failed to parse topic path: \(message.payload.path)")
+            return createErrorResponseSync(originalMessage: message, error: "Failed to parse topic path")
+        }
+        
+        let _ = topicPath.networkId // Will be used when implementing proper network key lookup
+        let profilePublicKeys = message.payload.profilePublicKeys
+        
+        // For now, return a basic response indicating the request was received
+        // TODO: Implement proper synchronous deserialization, service registry call, and serialization
         let responsePayload = NetworkMessagePayloadItem(
             path: message.payload.path,
-            payloadBytes: Data("Network request received and queued for processing".utf8),
+            payloadBytes: Data("Network request received and processed".utf8),
             correlationId: message.payload.correlationId,
             networkPublicKey: message.payload.networkPublicKey,
-            profilePublicKeys: message.payload.profilePublicKeys
+            profilePublicKeys: profilePublicKeys
         )
         
         return NetworkMessage(
-            sourceNodeId: "local-node", // TODO: Get actual node ID
+            sourceNodeId: nodeId,
             destinationNodeId: message.sourceNodeId,
             messageType: 5, // MESSAGE_TYPE_RESPONSE
             payload: responsePayload
         )
     }
     
-    /// Handle peer connected event
-    private func handlePeerConnected(peerNodeId: String) async {
-        logger.trace("Peer connected: \(peerNodeId)")
+    /// Create error response synchronously
+    nonisolated private func createErrorResponseSync(originalMessage: NetworkMessage, error: String) -> NetworkMessage {
+        let errorPayload = NetworkMessagePayloadItem(
+            path: originalMessage.payload.path,
+            payloadBytes: Data("{\"error\": true, \"message\": \"\(error)\"}".utf8),
+            correlationId: originalMessage.payload.correlationId,
+            networkPublicKey: originalMessage.payload.networkPublicKey,
+            profilePublicKeys: originalMessage.payload.profilePublicKeys
+        )
         
-        // TODO: Implement peer connection handling
-        // This should match the Rust handle_peer_connected implementation
-        // - Store peer info in remote_node_info
-        // - Update service registry with remote services
-        // - Handle discovery events
+        return NetworkMessage(
+            sourceNodeId: nodeId,
+            destinationNodeId: originalMessage.sourceNodeId,
+            messageType: 5, // MESSAGE_TYPE_RESPONSE
+            payload: errorPayload
+        )
+    }
+    
+    /// Handle network request (async implementation matching Rust)
+    private func handleNetworkRequest(_ message: NetworkMessage) async throws -> NetworkMessage {
+        logger.trace("[handle_network_request] path: \(message.payload.path) correlation_id: \(message.payload.correlationId) profile_public_keys size: \(message.payload.profilePublicKeys.count)")
+        
+        // Deserialize the incoming payload
+        let payload = try AnyValue.deserialize(
+            message.payload.payloadBytes,
+            keystore: keysManager
+        )
+        
+        let paramsOption: AnyValue? = payload.isNull ? nil : payload
+        
+        // Parse topic path to get network ID
+        let topicPath = try TopicPath.parse(message.payload.path)
+        let networkId = topicPath.networkId
+        let profilePublicKeys = message.payload.profilePublicKeys
+        
+        // Get network public key from key manager
+        // TODO: Implement getNetworkPublicKeyById in FFI - this is missing
+        let networkPublicKey = Data() // Placeholder until FFI method is implemented
+        
+        // Make the local request
+        let response = try await serviceRegistry.request(
+            topicPath.asString(),
+            payload: paramsOption,
+            networkId: networkId
+        )
+        
+        logger.trace("[handle_network_request] local request completed successfully correlation_id: \(message.payload.correlationId)")
+        
+        // Create resolver for response serialization
+        let resolver = try getOrCreateResolver(profilePublicKeys)
+        
+        // Create serialization context
+        let serializationContext = SerializationContext(
+            keystore: keysManager,
+            resolver: resolver,
+            networkId: networkId,
+            profilePublicKey: profilePublicKeys.first ?? Data()
+        )
+        
+        // Serialize the response data
+        let serializedData = try await response.serialize(context: serializationContext)
+        
+        // Create response NetworkMessage
+        return NetworkMessage(
+            sourceNodeId: nodeId,
+            destinationNodeId: message.sourceNodeId,
+            messageType: 5, // MESSAGE_TYPE_RESPONSE
+            payload: NetworkMessagePayloadItem(
+                path: message.payload.path,
+                payloadBytes: serializedData,
+                correlationId: message.payload.correlationId,
+                networkPublicKey: networkPublicKey,
+                profilePublicKeys: profilePublicKeys
+            )
+        )
+    }
+    
+    /// Create error response for network request failures
+    private func createErrorResponse(originalMessage: NetworkMessage, error: Error) async throws -> NetworkMessage {
+        logger.error("❌ [handle_network_request] Local request failed correlation_id: \(originalMessage.payload.correlationId) - Error: \(error)")
+        
+        let topicPath = try TopicPath.parse(originalMessage.payload.path)
+        let networkId = topicPath.networkId
+        let profilePublicKeys = originalMessage.payload.profilePublicKeys
+        
+        // Get network public key
+        // TODO: Implement getNetworkPublicKeyById in FFI - this is missing
+        let networkPublicKey = Data() // Placeholder until FFI method is implemented
+        
+        // Create resolver for error response serialization
+        let resolver = try getOrCreateResolver(profilePublicKeys)
+        
+        // Create serialization context
+        let serializationContext = SerializationContext(
+            keystore: keysManager,
+            resolver: resolver,
+            networkId: networkId,
+            profilePublicKey: profilePublicKeys.first ?? Data()
+        )
+        
+        // Create error map
+        var errorMap: [String: AnyValue] = [:]
+        errorMap["error"] = AnyValue.primitive(true)
+        errorMap["message"] = AnyValue.primitive(error.localizedDescription)
+        let errorValue = AnyValue.map(errorMap)
+        
+        // Serialize the error value
+        let serializedError = try await errorValue.serialize(context: serializationContext)
+        
+        // Create error response NetworkMessage
+        return NetworkMessage(
+            sourceNodeId: nodeId,
+            destinationNodeId: originalMessage.sourceNodeId,
+            messageType: 5, // MESSAGE_TYPE_RESPONSE
+            payload: NetworkMessagePayloadItem(
+                path: originalMessage.payload.path,
+                payloadBytes: serializedError,
+                correlationId: originalMessage.payload.correlationId,
+                networkPublicKey: networkPublicKey,
+                profilePublicKeys: profilePublicKeys
+            )
+        )
+    }
+    
+    /// Handle peer connected event
+    private func handlePeerConnected(peerNodeId: String, nodeInfo: NodeInfo) async {
+        print("🔍 HANDSHAKE: handlePeerConnected called for peer: \(peerNodeId)")
+        logger.trace("Peer connected: \(peerNodeId)")
+        logger.trace("Peer NodeInfo: \(nodeInfo)")
+        
+        // Store peer info in remote_node_info (matching Rust implementation)
+        print("🔍 HANDSHAKE: Storing peer info in remote_node_info")
+        await remoteNodeInfo.insert(nodeInfo, for: peerNodeId)
+        print("🔍 HANDSHAKE: Peer info stored successfully")
+        
+        // Process service metadata from the peer's NodeInfo
+        let nodeMetadata = nodeInfo.nodeMetadata
+        print("🔍 HANDSHAKE: Processing peer service metadata: \(nodeMetadata.services.count) services")
+        logger.trace("Processing peer service metadata: \(nodeMetadata.services.count) services")
+        
+        // Register remote services from the peer's metadata
+        for servicePath in nodeMetadata.services {
+            print("🔍 HANDSHAKE: Registering remote service: \(servicePath) from peer: \(peerNodeId)")
+            logger.trace("Registering remote service: \(servicePath) from peer: \(peerNodeId)")
+            
+            // For now, we'll create a simple remote handler that routes to the peer
+            // In a full implementation, we would need to get the actual service metadata
+            // from the peer's NodeInfo to know what actions are available
+            let remoteHandler: ActionHandler = { [weak self] params, context in
+                return try await self?.handleRemoteServiceCall(
+                    actionPath: servicePath,
+                    peerNodeId: peerNodeId,
+                    params: params,
+                    context: context
+                ) ?? AnyValue.null()
+            }
+            
+            // Register the remote service handler
+            do {
+                let topicPath = try TopicPath.parse(servicePath)
+                try await serviceRegistry.registerRemoteActionHandler(
+                    topicPath: topicPath,
+                    handler: remoteHandler
+                )
+                print("🔍 HANDSHAKE: Successfully registered remote service handler for: \(servicePath)")
+            } catch {
+                print("🔍 HANDSHAKE: Failed to register remote service handler for \(servicePath): \(error)")
+                logger.error("Failed to register remote service handler for \(servicePath): \(error)")
+            }
+        }
+        print("🔍 HANDSHAKE: handlePeerConnected completed for peer: \(peerNodeId)")
+    }
+    
+    /// Handle remote service call
+    private func handleRemoteServiceCall(
+        actionPath: String,
+        peerNodeId: String,
+        params: AnyValue?,
+        context: RequestContext
+    ) async throws -> AnyValue {
+        logger.trace("Handling remote service call: \(actionPath) to peer: \(peerNodeId)")
+        
+        // Verify the peer exists
+        guard await remoteNodeInfo.contains(peerNodeId) else {
+            logger.warning("No NodeInfo found for peer: \(peerNodeId)")
+            throw NodeError.peerNotFound("Peer not found: \(peerNodeId)")
+        }
+        
+        // Use the action path directly since it's already in the correct format
+        let fullServicePath = actionPath
+        
+        logger.trace("Making remote call to: \(fullServicePath)")
+        
+        // Make the remote call using the network transport
+        let result = try await request(
+            fullServicePath,
+            payload: params,
+            networkId: context.networkId
+        )
+        
+        return result
     }
     
     /// Handle peer disconnected event
     private func handlePeerDisconnected(peerNodeId: String) async {
         logger.trace("Peer disconnected: \(peerNodeId)")
         
-        // TODO: Implement peer disconnection handling
+        // Remove peer info from remote_node_info
+        await remoteNodeInfo.remove(peerNodeId)
+        
+        // TODO: Clean up remote services for this peer
         // This should match the Rust cleanup_disconnected_peer implementation
-        // - Remove peer from remote_node_info
-        // - Clean up remote services
-        // - Update service registry
+        // - Remove remote service handlers for this peer
+        // - Handle discovery events
     }
     
     /// Handle incoming network request
@@ -2343,6 +2788,9 @@ public enum NodeError: Error, Sendable {
     case discoveryNotImplemented(String)
     case invalidServicePath(String)
     case serviceInitializationFailed(String)
+    case peerNotFound(String)
+    case invalidPath(String)
+    case serviceNotFound(String)
 
     public var localizedDescription: String {
         switch self {
@@ -2364,6 +2812,12 @@ public enum NodeError: Error, Sendable {
             "Transport not implemented: \(message)"
         case let .discoveryNotImplemented(message):
             "Discovery not implemented: \(message)"
+        case let .peerNotFound(message):
+            "Peer not found: \(message)"
+        case let .invalidPath(message):
+            "Invalid path: \(message)"
+        case let .serviceNotFound(message):
+            "Service not found: \(message)"
         }
     }
 }
