@@ -365,8 +365,8 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
     
     for i in 0..<count {
         print("🔍 CONFIG: Creating config for node \(i)")
-        // Create a unique network ID for each node
-        let networkId = "test-network-\(i)"
+        // All nodes should be on the same network to communicate
+        let networkId = "test-network"
         print("🔍 CONFIG: Network ID: \(networkId)")
         
         // Create key manager for this node
@@ -375,15 +375,9 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
         print("🔍 CONFIG: Key manager created for node \(i)")
         
         // Set local node info (required for transport creation)
-        print("🔍 CONFIG: Setting local node info for node \(i)")
-        let nodePublicKey = try await keyManager.getNodePublicKey()
-        let nodeInfo = SwiftFFI.CBORHelper.createMinimalNodeInfo(
-            nodePublicKey: nodePublicKey,
-            networkId: networkId
-        )
-        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
-        try await keyManager.setLocalNodeInfo(nodeInfoCbor)
-        print("🔍 CONFIG: Local node info set for node \(i)")
+        // Note: NodeInfo is now managed at the transport level, not keys level
+        // The transport will be created with the current NodeInfo when the node starts
+        print("🔍 CONFIG: NodeInfo will be set at transport level when node starts")
         
         // Generate and install certificate for QUIC transport
         print("🔍 CONFIG: Generating certificate for node \(i)")

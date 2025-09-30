@@ -215,24 +215,36 @@ public final class ServiceRegistry: NodeDelegate {
 
     /// Start all local services
     public func startAllServices(networkId: String) async throws {
+        print("🔍 DEBUG: Starting all local services for networkId: \(networkId)")
         logger.trace("Starting all local services")
 
         let services = localServices.getAllEntries(networkId: networkId)
+        print("🔍 DEBUG: Found \(services.count) services to start")
 
         for serviceEntry in services {
+            print("🔍 DEBUG: Starting service: \(serviceEntry.serviceTopic.asString())")
             let context = LifecycleContext(
-                networkId: networkId,
-                servicePath: serviceEntry.serviceTopic.asString(),
-                config: nil,
-                logger: logger,
-                nodeDelegate: self
+                topicPath: serviceEntry.serviceTopic,
+                nodeDelegate: self,
+                logger: logger
             )
 
+            // First initialize the service (registers action handlers)
+            print("🔍 DEBUG: Initializing service: \(serviceEntry.serviceTopic.asString())")
+            try await serviceEntry.service.initService(context)
+            try await updateLocalServiceState(
+                servicePath: serviceEntry.serviceTopic.asString(),
+                newState: ServiceState.initialized
+            )
+            
+            // Then start the service (begins active operations)
+            print("🔍 DEBUG: Starting service: \(serviceEntry.serviceTopic.asString())")
             try await serviceEntry.service.start(context)
             try await updateLocalServiceState(
                 servicePath: serviceEntry.serviceTopic.asString(),
                 newState: ServiceState.running
             )
+            print("🔍 DEBUG: Service started successfully: \(serviceEntry.serviceTopic.asString())")
         }
 
         logger.trace("All local services started")
@@ -407,6 +419,7 @@ public final class ServiceRegistry: NodeDelegate {
 
         localActionHandlers.setValue(topic: topicPath, content: entryValue)
 
+        print("🔍 DEBUG: Registered action handler for: \(topicPath)")
         logger.trace("Registered action handler for: \(topicPath)")
         logger.trace("Action handler function: \(String(describing: handler))")
     }
@@ -827,12 +840,36 @@ public final class ServiceRegistry: NodeDelegate {
         let cleanPath = path.hasPrefix("$") ? String(path.dropFirst()) : path
         let topicPath = try TopicPath(networkId: networkId, segments: cleanPath.split(separator: "/").map(String.init))
         
+        print("🔍 DEBUG: ServiceRegistry.request: Looking for handler for path: \(path), topicPath: \(topicPath)")
         logger.trace("ServiceRegistry.request: Looking for handler for path: \(path), topicPath: \(topicPath)")
 
-        // Look up local action handler
-        let handlers = localActionHandlers.find(topic: topicPath)
-        logger.trace("ServiceRegistry.request: Found \(handlers.count) handlers for path: \(path)")
+        // Look up local action handler first
+        let localHandlers = localActionHandlers.find(topic: topicPath)
+        print("🔍 DEBUG: ServiceRegistry.request: Found \(localHandlers.count) local handlers for path: \(path)")
+        logger.trace("ServiceRegistry.request: Found \(localHandlers.count) local handlers for path: \(path)")
+        
+        // If no local handlers found, look up remote action handlers
+        let handlers: [LocalActionEntryValue]
+        if localHandlers.isEmpty {
+            let remoteHandlers = remoteActionHandlers.find(topic: topicPath)
+            print("🔍 DEBUG: ServiceRegistry.request: Found \(remoteHandlers.count) remote handlers for path: \(path)")
+            logger.trace("ServiceRegistry.request: Found \(remoteHandlers.count) remote handlers for path: \(path)")
+            
+            // Convert remote handlers to local format for processing
+            handlers = remoteHandlers.flatMap { $0 }.map { handler in
+                // Create a dummy LocalActionEntryValue for remote handlers
+                let dummyTopicPath = topicPath
+                let dummyMetadata = ActionMetadata(name: "remote", description: "Remote handler")
+                return (handler, dummyTopicPath, dummyMetadata)
+            }
+        } else {
+            handlers = localHandlers
+        }
+        
+        print("🔍 DEBUG: ServiceRegistry.request: Total handlers found: \(handlers.count) for path: \(path)")
+        logger.trace("ServiceRegistry.request: Total handlers found: \(handlers.count) for path: \(path)")
         for (index, handler) in handlers.enumerated() {
+            print("🔍 DEBUG: ServiceRegistry.request: Handler \(index): \(handler)")
             logger.trace("ServiceRegistry.request: Handler \(index): \(handler)")
         }
         

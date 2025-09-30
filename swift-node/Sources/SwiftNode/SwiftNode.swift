@@ -1759,12 +1759,14 @@ public final class Node {
         try await serviceRegistry.registerLocalService(serviceEntry)
         logger.trace("🔍 Service registered successfully: \(servicePath)")
         
-        // Update the transport with the new NodeInfo so Rust layer has the latest info for handshakes
-        print("🔍 SERVICE: Calling getLocalNodeInfo() to update transport...")
-        logger.trace("🔍 Calling getLocalNodeInfo() to update transport...")
-        let nodeInfo = await getLocalNodeInfo()
-        print("🔍 SERVICE: getLocalNodeInfo() completed with \(nodeInfo.nodeMetadata.services.count) services")
-        logger.trace("🔍 getLocalNodeInfo() completed")
+        // Update the transport with the new NodeInfo if the node is already running
+        // If the node is not yet started, the transport will be created with the current NodeInfo when it starts
+        if isRunning {
+            print("🔍 SERVICE: Node is running, updating transport with new NodeInfo...")
+            await updateTransportNodeInfo()
+        } else {
+            print("🔍 SERVICE: Node not yet started, transport will be created with current NodeInfo when started")
+        }
         
         // If the node is already running, start the service immediately (matching Rust pattern)
         if isRunning {
@@ -1781,15 +1783,21 @@ public final class Node {
         
         // Create lifecycle context for starting
         let startContext = LifecycleContext(
-            networkId: serviceTopic.networkId,
-            servicePath: servicePath,
-            config: nil,
-            logger: logger,
-            nodeDelegate: self
+            topicPath: serviceTopic,
+            nodeDelegate: self,
+            logger: logger
         )
         
         // Start the service
         do {
+            // First initialize the service (registers action handlers)
+            try await serviceEntry.service.initService(startContext)
+            try await serviceRegistry.updateLocalServiceState(
+                servicePath: serviceTopic.rawPath,
+                newState: ServiceState.initialized
+            )
+            
+            // Then start the service (begins active operations)
             try await serviceEntry.service.start(startContext)
             
             // Update service state to running
@@ -1843,11 +1851,18 @@ public final class Node {
         logger.trace("Node started networkId=\(networkId)")
 
         // Start all registered services
+        print("🔍 DEBUG: About to start all local services for networkId: \(networkId)")
         try await serviceRegistry.startAllServices(networkId: networkId)
+        print("🔍 DEBUG: All local services started successfully")
 
         // Initialize network transport if networking is enabled
         if supportsNetworking {
             try await initializeNetworkTransport()
+            
+            // Update the transport with current NodeInfo after it's created
+            // This ensures the transport has the latest NodeInfo with all services
+            print("🔍 START: Updating transport with current NodeInfo after creation...")
+            await updateTransportNodeInfo()
         }
 
         // Set the node as running
@@ -2023,34 +2038,13 @@ public final class Node {
         print("🔍 TRANSPORT: Creating QUIC transport")
         logger.trace("Creating QUIC transport")
         
-        // Get the current services from the service registry
-        let currentServices = serviceRegistry.getLocalServices()
-        let servicePaths = Array(currentServices.keys).map { $0.asString() }
-        
-        // Get current subscriptions from the service registry
-        let currentSubscriptions = try? await serviceRegistry.getAllSubscriptions(includeInternalServices: false)
-        let subscriptionPaths = currentSubscriptions?.map { $0.path } ?? []
-        
-        // Create NodeInfo with current service metadata (don't call getLocalNodeInfo to avoid updating non-existent transport)
-        let currentNodeInfo = NodeInfo(
-            nodePublicKey: localNodeInfo.nodePublicKey,
-            networkIds: localNodeInfo.networkIds,
-            addresses: localNodeInfo.addresses,
-            nodeMetadata: NodeMetadata(
-                services: servicePaths,
-                subscriptions: subscriptionPaths
-            ),
-            version: localNodeInfo.version
-        )
+        // Get the current NodeInfo (this is just a getter, no transport update)
+        let currentNodeInfo = await getLocalNodeInfo()
         print("🔍 TRANSPORT: Got current NodeInfo with \(currentNodeInfo.nodeMetadata.services.count) services")
         
-        // Set the local node info in the key manager BEFORE creating the transport
-        // This ensures the shared holder in Rust contains the current NodeInfo for handshakes
-        let keyManager: FFIKeys = try config.getKeyManager()
-        let ffiNodeInfo = convertToFFINodeInfo(currentNodeInfo)
-        let nodeInfoCbor = try CodableCBOREncoder().encode(ffiNodeInfo)
-        try await keyManager.setLocalNodeInfo(nodeInfoCbor)
-        print("🔍 TRANSPORT: Set local NodeInfo in key manager with \(currentNodeInfo.nodeMetadata.services.count) services")
+        // Note: The transport will be created with transport-scoped NodeInfo storage
+        // The initial NodeInfo will be set when the transport is created
+        print("🔍 TRANSPORT: Transport will use transport-scoped NodeInfo storage")
         
         // Create transport options matching Rust implementation
         let transportOptions = QuicTransportOptions(
@@ -2134,7 +2128,8 @@ public final class Node {
             }
         )
         
-        // Create the QuicTransport using the key manager (already obtained above)
+        // Create the QuicTransport using the key manager
+        let keyManager: FFIKeys = try config.getKeyManager()
         let transport = try await QuicTransport.create(
             keys: keyManager,
             options: transportOptions,
@@ -2186,7 +2181,7 @@ public final class Node {
         return RealNodeDiscovery(discoveryHandle: discoveryHandle, logger: logger)
     }
     
-    /// Get local node information with current service metadata and update the transport
+    /// Get local node information with current service metadata (GETTER ONLY)
     private func getLocalNodeInfo() async -> NodeInfo {
         // Get current services from the service registry
         let currentServices = serviceRegistry.getLocalServices()
@@ -2196,8 +2191,6 @@ public final class Node {
         for (topicPath, serviceEntry) in currentServices {
             print("🔍 DEBUG: Service: \(topicPath.asString()) -> \(serviceEntry.service.name)")
         }
-        
-        print("🔍 DEBUG: getLocalNodeInfo() called - this should be used for handshakes at \(Date())")
         
         // Get current subscriptions from the service registry (currently returns empty array)
         let currentSubscriptions = try? await serviceRegistry.getAllSubscriptions(includeInternalServices: false)
@@ -2218,29 +2211,35 @@ public final class Node {
         print("🔍 DEBUG: Updated NodeInfo with \(servicePaths.count) services and \(subscriptionPaths.count) subscriptions")
         logger.trace("🔍 Updated NodeInfo with \(servicePaths.count) services and \(subscriptionPaths.count) subscriptions")
         
-        // Update the transport with the new NodeInfo so Rust layer has the latest info for handshakes
-        if let transport = networkTransport as? QuicTransport {
-            print("🔍 DEBUG: Transport found, updating with NodeInfo...")
-            do {
-                // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
-                let ffiNodeInfo = convertToFFINodeInfo(updatedNodeInfo)
-                
-        print("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
-        print("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to Rust layer")
-        print("🔍 DEBUG: This should update the shared holder in Rust for handshakes")
-        try await transport.updateLocalNodeInfo(nodeInfo: ffiNodeInfo)
-        print("🔍 DEBUG: Successfully updated transport with new NodeInfo at \(Date())")
-        print("🔍 DEBUG: The shared holder in Rust should now contain \(ffiNodeInfo.nodeMetadata.services.count) services")
-                logger.trace("🔍 Successfully updated transport with new NodeInfo")
-            } catch {
-                print("🔍 DEBUG: Failed to update transport with new NodeInfo: \(error)")
-                logger.error("🔍 Failed to update transport with new NodeInfo: \(error)")
-            }
-        } else {
+        return updatedNodeInfo
+    }
+    
+    /// Update the transport with current NodeInfo (SETTER ONLY)
+    private func updateTransportNodeInfo() async {
+        guard let transport = networkTransport as? QuicTransport else {
             print("🔍 DEBUG: No transport found (networkTransport is nil or not QuicTransport)")
+            return
         }
         
-        return updatedNodeInfo
+        print("🔍 DEBUG: Transport found, updating with NodeInfo...")
+        do {
+            // Get current NodeInfo
+            let currentNodeInfo = await getLocalNodeInfo()
+            
+            // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
+            let ffiNodeInfo = convertToFFINodeInfo(currentNodeInfo)
+            
+            print("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
+            print("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to transport")
+            print("🔍 DEBUG: This should update the transport-scoped NodeInfo storage for handshakes")
+            try await transport.updateLocalNodeInfo(nodeInfo: ffiNodeInfo)
+            print("🔍 DEBUG: Successfully updated transport with new NodeInfo at \(Date())")
+            print("🔍 DEBUG: The transport-scoped NodeInfo storage should now contain \(ffiNodeInfo.nodeMetadata.services.count) services")
+            logger.trace("🔍 Successfully updated transport with new NodeInfo")
+        } catch {
+            print("🔍 DEBUG: Failed to update transport with new NodeInfo: \(error)")
+            logger.error("🔍 Failed to update transport with new NodeInfo: \(error)")
+        }
     }
 
     /// Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
