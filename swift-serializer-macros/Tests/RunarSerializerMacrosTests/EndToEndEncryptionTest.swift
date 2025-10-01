@@ -192,7 +192,7 @@ final class EndToEndEncryptionTest: XCTestCase {
     func testDebugEncryptionFlow() async throws {
         // Set up logging for both Rust FFI layer and Swift layer
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("debug-encryption-test")
+        try await FFILogger.setLoggerContext("debug-encryption-test")
 
         // Create mobile keystore and initialize user root key
         let mobileKeystore = try await MobileKeyManager()
@@ -251,7 +251,7 @@ final class EndToEndEncryptionTest: XCTestCase {
     func testFullEncryptionFlowWithRegistry() async throws {
         // Set up logging for both Rust FFI layer and Swift layer
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("full-encryption-test")
+        try await FFILogger.setLoggerContext("full-encryption-test")
 
         // Create mobile keystore and initialize user root key
         let mobileKeystore = try await MobileKeyManager()

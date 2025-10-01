@@ -35,18 +35,18 @@ public struct LoggingConfig: Sendable {
     public let level: LogLevel
     public let includeTimestamp: Bool
     public let includeComponent: Bool
-    public let includeNodeId: Bool
+    public let includeContext: Bool
 
     public init(
         level: LogLevel = .info,
         includeTimestamp: Bool = true,
         includeComponent: Bool = true,
-        includeNodeId: Bool = true
+        includeContext: Bool = true
     ) {
         self.level = level
         self.includeTimestamp = includeTimestamp
         self.includeComponent = includeComponent
-        self.includeNodeId = includeNodeId
+        self.includeContext = includeContext
     }
 }
 
@@ -55,12 +55,12 @@ public struct LoggingConfig: Sendable {
 public final class RunarLogger: Sendable {
     private let component: Component
     private let config: LoggingConfig
-    private let nodeId: String?
+    private let context: String?
 
-    public init(component: Component, config: LoggingConfig = LoggingConfig(), nodeId: String? = nil) {
+    public init(component: Component, config: LoggingConfig = LoggingConfig(), context: String? = nil) {
         self.component = component
         self.config = config
-        self.nodeId = nodeId
+        self.context = context
     }
 
     public static func newRoot(component: Component, config: LoggingConfig = LoggingConfig()) -> RunarLogger {
@@ -68,7 +68,7 @@ public final class RunarLogger: Sendable {
     }
 
     public func child(component: Component) -> RunarLogger {
-        RunarLogger(component: component, config: config, nodeId: nodeId)
+        RunarLogger(component: component, config: config, context: context)
     }
 
     public func trace(_ message: String, file: String = #file, line: Int = #line, function: String = #function) {
@@ -103,12 +103,12 @@ public final class RunarLogger: Sendable {
 
         parts.append("[\(level.rawValue)]")
 
-        if config.includeComponent {
+        if config.includeComponent && component != .custom {
             parts.append("[\(component.displayName)]")
         }
 
-        if config.includeNodeId, let nodeId {
-            parts.append("[Node:\(nodeId)]")
+        if config.includeContext, let context {
+            parts.append("[\(context)]")
         }
 
         parts.append(message)

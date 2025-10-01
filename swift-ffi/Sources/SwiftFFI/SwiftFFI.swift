@@ -470,10 +470,10 @@ public class FFILogger {
     /// Set the node ID for the Rust FFI logger context
     /// - Parameter nodeId: The node ID to set for logging context
     /// - Throws: FFIError if the operation fails
-    public static func setLoggerNodeId(_ nodeId: String) async throws {
+    public static func setLoggerContext(_ nodeId: String) async throws {
         let (result, error) = withRnError { errPtr in
             nodeId.withCString { cNodeId in
-                rn_set_logger_node_id(cNodeId, errPtr)
+                rn_set_logger_context(cNodeId, errPtr)
             }
         }
 
@@ -3343,19 +3343,6 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         return token
     }
 
-    /// Legacy internal: Create a transport handle from raw CBOR
-    /// This remains internal to support typed API implementation
-    func createTransportHandle(optionsCbor: Data) async throws -> HandleToken {
-        // Copy handle to local to avoid capturing actor state in closures
-        let handle = self.handle
-
-        // Call nonisolated helper - no suspension during FFI
-        // Legacy path no longer used for new API. Keep signature to avoid ripple; default NodeInfo empty will fail fast in Rust if called.
-        let emptyNodeInfo = try CodableCBOREncoder().encode(NodeInfo(nodePublicKey: Data(), networkIds: [], addresses: [], nodeMetadata: NodeMetadata(services: [], subscriptions: []), version: 1))
-        let transportHandle = try ffi_create_transport(handle, nodeInfoCbor: emptyNodeInfo, optionsCbor: optionsCbor)
-        let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
-        return token
-    }
 }
 
 /// Mobile key manager implementation
@@ -4767,8 +4754,6 @@ public struct TransportPublishParams: Codable, Equatable {
     }
 }
 
-// Legacy TransportEvent struct removed - replaced with typed event structs
-
 // MARK: - Discovery Options
 
 /// Swift representation of DiscoveryOptions from Rust FFI
@@ -5059,11 +5044,11 @@ public actor DiscoveryHandle {
     private func startInternalPolling() {
         guard !isPolling else { return }
         isPolling = true
-
+        logger.info("DiscoveryHandle internal polling - Task started")
+        
         pollingTask = Task { [weak self] in
             guard let self = self else { return }
-            logger.info("DiscoveryHandle internal polling - Task started")
-
+            
             while await self.isPolling {
                 logger.trace("DiscoveryHandle internal polling - Polling for discovery events")
                 do {
@@ -5206,8 +5191,6 @@ public actor QuicTransport {
         logger.info("QuicTransport.start() - Starting internal polling")
         startInternalPolling()
     }
-
-    // Removed legacy heterogeneous pollEvent() — replaced by typed per-event polls (see below)
 
     /// Connect to a peer
     /// - Parameter peerInfo: Peer information (encoded to CBOR internally)
@@ -5567,7 +5550,7 @@ public actor QuicTransport {
                     var eventProcessed = false
 
                     if let req = try await self.pollRequest() {
-                        logger.debug("QuicTransport internal polling - Request event received: path=\(req.path) corr=\(req.correlationId)")
+                        logger.trace("QuicTransport internal polling - Request event received: path=\(req.path) corr=\(req.correlationId)")
                         // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
                         Task.detached { [weak self] in
                             await self?.handleRequestEvent(req)
@@ -5576,7 +5559,7 @@ public actor QuicTransport {
                     }
 
                     if let ev = try await self.pollEvent() {
-                        logger.debug("QuicTransport internal polling - Event received: path=\(ev.path) corr=\(ev.correlationId)")
+                        logger.trace("QuicTransport internal polling - Event received: path=\(ev.path) corr=\(ev.correlationId)")
                         // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
                         Task.detached { [weak self] in
                             await self?.handleTransportEvent(ev)
@@ -5585,7 +5568,7 @@ public actor QuicTransport {
                     }
 
                     if let resp = try await self.pollResponse() {
-                        logger.debug("QuicTransport internal polling - Response received: corr=\(resp.correlationId)")
+                        logger.trace("QuicTransport internal polling - Response received: corr=\(resp.correlationId)")
                         // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
                         Task.detached { [weak self] in
                             await self?.handleResponseEvent(resp)
@@ -5594,7 +5577,7 @@ public actor QuicTransport {
                     }
 
                     if let pc = try await self.pollPeerConnected() {
-                        logger.info("QuicTransport internal polling - PeerConnected: \(pc.nodeId)")
+                        logger.trace("QuicTransport internal polling - PeerConnected: \(pc.nodeId)")
                         // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
                         Task.detached { [weak self] in
                             await self?.handlePeerConnected(pc)
@@ -5603,7 +5586,7 @@ public actor QuicTransport {
                     }
 
                     if let pd = try await self.pollPeerDisconnected() {
-                        logger.info("QuicTransport internal polling - PeerDisconnected: \(pd)")
+                        logger.trace("QuicTransport internal polling - PeerDisconnected: \(pd)")
                         // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
                         Task.detached { [weak self] in
                             await self?.handlePeerDisconnected(pd)
@@ -5622,7 +5605,7 @@ public actor QuicTransport {
                 // Small delay to prevent busy waiting
                 try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
             }
-            logger.debug("QuicTransport internal polling - Task ended")
+            logger.info("QuicTransport internal polling - Task ended")
         }
     }
 
@@ -5657,12 +5640,14 @@ public actor QuicTransport {
                 )
 
                 try await completeRequest(completeParams)
-                logger.debug("QuicTransport.handleRequestEvent() - Request completed successfully")
+                logger.trace("QuicTransport.handleRequestEvent() - Request completed successfully")
             } catch {
                 logger.error("QuicTransport.handleRequestEvent() - Failed to serialize NetworkMessage response: \(error)")
             }
         } else {
             logger.debug("QuicTransport.handleRequestEvent() - Request callback returned no response")
+            //TODO this is wrong.. when the callback dor not return anything (meaning null)
+            //we still need to send a reponse back with a null value. a reqeust always needs a reponse.
         }
     }
 
@@ -5691,9 +5676,7 @@ public actor QuicTransport {
         logger.info("QuicTransport.handlePeerDisconnected() - nodeId=\(nodeId)")
         callbacks.peerDisconnectedCallback?(nodeId)
     }
-
-    // Legacy handleEvent method removed - replaced with typed event handlers
-
+ 
     /// Get local address
     /// - Returns: Local address string
     /// - Throws: FFIError if getting address fails

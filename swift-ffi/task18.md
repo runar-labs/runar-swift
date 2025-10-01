@@ -268,3 +268,78 @@ Cross-language guarantees:
 - [ ] Verify proper separation of concerns between Discovery and Transport
 
 Once these steps are complete, the Swift layer will be fully aligned with the new Rust architecture, with **ZERO LEGACY CODE**, proper separation between Discovery and Transport APIs, deterministic decoding, better type safety, and cleaner separation of concerns. **NO BACKWARD COMPATIBILITY** - this is a complete refactor to the latest design.
+
+## Lessons Learned from Handshake Test Implementation
+
+### 1. Certificate Setup is NOT Complex
+**Lesson**: The certificate setup pattern is straightforward and well-established in existing tests. Always follow the existing pattern:
+```swift
+// Create node key managers
+let keysA = try await NodeKeyManager()
+let keysB = try await NodeKeyManager()
+
+// Create mobile key manager for CA
+let keysCA = try await MobileKeyManager()
+
+// Generate CSR and install certificate for A
+let csrA = try await keysA.generateCsrSetupToken()
+let certA = try await keysCA.processSetupToken(csrA)
+try await keysA.installCertificate(certA)
+
+// Generate CSR and install certificate for B
+let csrB = try await keysB.generateCsrSetupToken()
+let certB = try await keysCA.processSetupToken(csrB)
+try await keysB.installCertificate(certB)
+```
+
+### 2. Use Existing Helper Methods
+**Lesson**: Don't manually create complex objects when helper methods exist:
+- Use `CBORHelper.createMinimalNodeInfo()` for basic NodeInfo
+- Use `CBORHelper.createMinimalSwiftTransportOptions()` for transport options
+- Follow existing test patterns instead of reinventing
+
+### 3. API Mismatches Were MY Mistakes
+**Lesson**: The Swift FFI API is fully aligned with Rust FFI API. All "mismatches" were actually:
+- Wrong variable names (typos)
+- Wrong parameter names (`publicKey` vs `nodePublicKey`, `metadata` vs `nodeMetadata`)
+- Not using existing helper methods
+- Not following existing test patterns
+
+### 4. Proper NodeInfo for Handshake Tests
+**Lesson**: For comprehensive handshake tests, create complete NodeInfo with all fields populated:
+```swift
+// Create complete NodeInfo with all fields for comprehensive testing
+let completeNodeInfo = NodeInfo(
+    nodePublicKey: Data("test_public_key".utf8),
+    networkIds: ["network1", "network2"],
+    addresses: ["127.0.0.1:8080", "192.168.1.100:8080"],
+    nodeMetadata: NodeMetadata(
+        services: [serviceMetadata],
+        subscriptions: [subscriptionMetadata]
+    ),
+    version: 1
+)
+```
+
+### 5. Test Validation Strategy
+**Lesson**: For handshake tests, validate that ALL fields of NodeInfo are correctly transmitted:
+- Assert on `nodePublicKey`, `networkIds`, `addresses`
+- Assert on `nodeMetadata.services` and `nodeMetadata.subscriptions`
+- Assert on `version` field
+- Verify CBOR serialization/deserialization round-trip
+
+### 6. No Shortcuts or Deletions
+**Lesson**: Never delete test files due to "complexity" - this violates code standards. Always:
+- Do proper analysis of actual issues
+- Follow existing patterns
+- Use existing helper methods
+- Read actual struct definitions
+- Implement complete, production-ready tests
+
+### 7. Code Standards Compliance
+**Lesson**: Follow the code standards strictly:
+- NO MOCKS, NO SHORTCUTS, NO HACKS
+- Complete features fully or not at all
+- Use real implementations only
+- Proper error handling and logging
+- Production-ready code only

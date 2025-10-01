@@ -36,7 +36,7 @@ final class RustParityEncryptionTest: XCTestCase {
     private let logger = RunarLogger(
         component: .serializer,
         config: LoggingConfig(level: .trace),
-        nodeId: "test-node"
+        context: "test-node"
     )
     
     override func setUp() async throws {
@@ -50,7 +50,7 @@ final class RustParityEncryptionTest: XCTestCase {
         logger.info("Rust FFI logger set to trace level")
         
         // Set Swift logger node ID for context
-        try await FFILogger.setLoggerNodeId("test-node")
+        try await FFILogger.setLoggerContext("test-node")
         logger.info("Rust FFI logger node ID set to test-node")
         
         logger.info("Logging setup complete - both Rust and Swift layers at trace level")

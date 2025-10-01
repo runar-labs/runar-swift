@@ -20,7 +20,7 @@ final class FFIDiscoveryTest: XCTestCase {
     func testBasicDiscoverySetup() async throws {
         // Set up logging
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("discovery-setup-test")
+        try await FFILogger.setLoggerContext("discovery-setup-test")
 
         // Create keys for discovery
         let keys = try await NodeKeyManager()
@@ -51,7 +51,7 @@ final class FFIDiscoveryTest: XCTestCase {
     func testDiscoveryWithTransport() async throws {
         // Set up logging
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("discovery-transport-test")
+        try await FFILogger.setLoggerContext("discovery-transport-test")
 
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
@@ -184,7 +184,7 @@ final class FFIDiscoveryTest: XCTestCase {
     func testDiscoveryTTLAndDebounce() async throws {
         // Set up logging
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("discovery-ttl-test")
+        try await FFILogger.setLoggerContext("discovery-ttl-test")
 
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()

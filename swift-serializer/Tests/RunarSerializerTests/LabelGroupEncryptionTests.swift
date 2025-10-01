@@ -19,7 +19,7 @@ final class LabelGroupEncryptionTests: XCTestCase {
 
         // Set up logging for both Rust FFI layer and Swift layer
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("label-group-test")
+        try await FFILogger.setLoggerContext("label-group-test")
 
         // Create mobile keystore and initialize user root key
         mobileKeystore = try await MobileKeyManager()

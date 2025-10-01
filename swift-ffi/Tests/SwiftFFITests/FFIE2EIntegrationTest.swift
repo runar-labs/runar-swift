@@ -71,9 +71,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         try await FFILogger.setLogLevel(.trace)
         logger.debug("DEBUG: FFILogger.setLogLevel(.trace) completed successfully")
 
-        logger.debug("DEBUG: About to call FFILogger.setLoggerNodeId")
-        try await FFILogger.setLoggerNodeId("e2e-integration-test")
-        logger.debug("DEBUG: FFILogger.setLoggerNodeId completed successfully")
+        logger.debug("DEBUG: About to call FFILogger.setLoggerContext")
+        try await FFILogger.setLoggerContext("e2e-integration-test")
+        logger.debug("DEBUG: FFILogger.setLoggerContext completed successfully")
 
         // ==========================================
         // Phase 1: CA Node Infrastructure Setup

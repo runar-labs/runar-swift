@@ -45,7 +45,7 @@ final class FFIQuicTransportTest: XCTestCase {
     func testTwoTransportsRequestResponseAndPublishEvents() async throws {
         // Set up logging to match Rust test
         try await FFILogger.setLogLevel(.trace)
-        try await FFILogger.setLoggerNodeId("two-transports-test")
+        try await FFILogger.setLoggerContext("two-transports-test")
 
         // Step 1: Create two node key managers (A and B) - exactly like Rust
         let keysA = try await NodeKeyManager()
@@ -208,7 +208,7 @@ final class FFIQuicTransportTest: XCTestCase {
     func testTransportStartStopIdempotence() async throws {
         // Set up logging
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("idempotence-test")
+        try await FFILogger.setLoggerContext("idempotence-test")
 
         // Create keys for the transport
         let keys = try await NodeKeyManager()
@@ -256,7 +256,7 @@ final class FFIQuicTransportTest: XCTestCase {
     func testBasicTransportConnection() async throws {
         // Set up logging
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("connection-test")
+        try await FFILogger.setLoggerContext("connection-test")
 
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
@@ -333,7 +333,7 @@ final class FFIQuicTransportTest: XCTestCase {
     func testBasicTransportSetup() async throws {
         // Set up logging
         try await FFILogger.setLogLevel(.debug)
-        try await FFILogger.setLoggerNodeId("setup-test")
+        try await FFILogger.setLoggerContext("setup-test")
 
         // Create node key manager
         let keys = try await NodeKeyManager()

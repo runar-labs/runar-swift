@@ -19,7 +19,7 @@ final class CATests: XCTestCase {
         // Set up logging
         do {
             try await FFILogger.setLogLevel(.trace)
-            try await FFILogger.setLoggerNodeId("ca-tests")
+            try await FFILogger.setLoggerContext("ca-tests")
 
             // Create node keys handle
             nodeKeys = try await NodeKeyManager()
