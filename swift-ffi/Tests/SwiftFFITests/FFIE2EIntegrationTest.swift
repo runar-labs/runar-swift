@@ -16,6 +16,15 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+        
         // Initialize all resources to nil
         caNode = nil
         server = nil
@@ -54,7 +63,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         try await super.tearDown()
     }
 
-    func createLogger() -> RunarLogger { RunarLogger(component: .custom) }
+    func createLogger() -> RunarLogger { RunarLogger.root(component: .custom("FFIE2EIntegrationTest")) }
 
     func encode<T: Codable>(_ value: T) throws -> Data { try CodableCBOREncoder().encode(value) }
     func decode<T: Codable>(_ type: T.Type, from data: Data) throws -> T { try CodableCBORDecoder().decode(type, from: data) }

@@ -4,15 +4,15 @@ import os
 
 // MARK: - Logging Types
 
-public enum Component: String, Sendable {
-    case ffi = "FFI"
-    case network = "NETWORK"
-    case service = "SERVICE"
-    case registry = "REGISTRY"
-    case transporter = "TRANSPORTER"
-    case serializer = "SERIALIZER"
-    case node = "NODE"
-    case custom = "CUSTOM"
+public enum Component: Sendable {
+    case ffi
+    case network
+    case service
+    case registry
+    case transporter
+    case serializer
+    case node
+    case custom(String)
 
     public var displayName: String {
         switch self {
@@ -23,7 +23,14 @@ public enum Component: String, Sendable {
         case .transporter: "Transporter"
         case .serializer: "Serializer"
         case .node: "Node"
-        case .custom: "Custom"
+        case .custom(let customName): customName
+        }
+    }
+    
+    public var shouldShowInHierarchy: Bool {
+        switch self {
+        case .custom: true  // Custom components should show their custom string values
+        default: true
         }
     }
 }
@@ -260,16 +267,15 @@ public final class RunarLogger: Sendable {
         let currentConfig = getCurrentConfig()
         var parts: [String] = []
 
-        // Timestamp
+        // Timestamp and Level together
         if currentConfig.includeTimestamp {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let timestamp = formatter.string(from: Date())
-            parts.append("[\(timestamp)]")
+            parts.append("[\(timestamp) \(level.rawValue)]")
+        } else {
+            parts.append("[\(level.rawValue)]")
         }
-
-        // Level
-        parts.append("[\(level.rawValue)]")
 
         // Component hierarchy and context
         if currentConfig.includeComponent || currentConfig.includeContext {
@@ -292,7 +298,10 @@ public final class RunarLogger: Sendable {
 
         // Build hierarchy from current to root
         while let logger = current {
-            components.insert(logger.component.displayName, at: 0)
+            // Only include components that should show in hierarchy
+            if logger.component.shouldShowInHierarchy {
+                components.insert(logger.component.displayName, at: 0)
+            }
             if let context = logger.context {
                 contexts.insert(context, at: 0)
             }

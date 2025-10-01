@@ -37,7 +37,7 @@ final class CaClientCrlTests: XCTestCase {
 
         do {
             // Configure CA node exactly like Rust test: create EA pair, get EA pub key CBOR, pass directly to setupComplete
-            let eaManager = EAKeyManager(logger: RunarLogger(component: .custom))
+            let eaManager = EAKeyManager(logger: RunarLogger.root(component: .custom("CaClientCrlTests")))
             let eaHandle = try await eaManager.createKeyPair()
             defer { EAKeyManager.free(eaHandle) }
             let eaPublicKeyCbor = try await eaManager.getPublicKey(eaHandle)

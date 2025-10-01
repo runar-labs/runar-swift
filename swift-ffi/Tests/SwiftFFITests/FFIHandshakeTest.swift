@@ -46,6 +46,8 @@ final class SynchronizedArray<T: Sendable>: @unchecked Sendable {
 @MainActor
 final class FFIHandshakeTest: XCTestCase {
     // MARK: - Test Setup
+    
+    private var testLogger: RunarLogger!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -53,6 +55,17 @@ final class FFIHandshakeTest: XCTestCase {
         // Set up logging to match Rust test - both FFI and Swift loggers at trace level
         try await FFILogger.setLogLevel(.trace)
         try await FFILogger.setLoggerContext("handshake-test")
+        
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+        
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("FFIHandshakeTest"))
     }
 
     override func tearDown() async throws {
@@ -120,16 +133,19 @@ final class FFIHandshakeTest: XCTestCase {
     /// Test handshake dataflow where NodeInfo is exchanged between peers
     /// This mirrors the Rust test_handshake_dataflow_nodeinfo_exchange exactly
     func testHandshakeDataflowNodeInfoExchange() async throws {
-        print("🔗 Starting handshake dataflow test...")
+        testLogger.debug("Starting handshake dataflow test")
 
         // Step 1: Create keys for both peers - exactly like Rust
+        testLogger.trace("Creating keys for both peers")
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
 
         // Step 2: Create mobile key manager for CA - exactly like Rust
+        testLogger.trace("Creating mobile key manager for CA")
         let keysCA = try await MobileKeyManager()
 
         // Step 3: Generate certificates for both peers - exactly like Rust
+        testLogger.trace("Generating certificates for both peers")
         let csrA = try await keysA.generateCsrSetupToken()
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
@@ -137,8 +153,10 @@ final class FFIHandshakeTest: XCTestCase {
         let csrB = try await keysB.generateCsrSetupToken()
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
+        testLogger.debug("Certificates generated and installed for both peers")
 
         // Step 4: Create different NodeInfo for each peer to verify exchange - exactly like Rust
+        testLogger.trace("Creating NodeInfo for both peers")
         let publicKeyA = try await keysA.getNodePublicKey()
         let publicKeyB = try await keysB.getNodePublicKey()
 
@@ -167,88 +185,105 @@ final class FFIHandshakeTest: XCTestCase {
         )
 
         // Step 5: Create transport options - exactly like Rust
+        testLogger.trace("Creating transport options")
         let transportOptions = createTransportOptions()
 
         // Step 6: Set up callbacks for transport A - exactly like Rust
+        testLogger.trace("Setting up callbacks for transport A")
         let peerConnectedEventsA = SynchronizedArray<PeerConnectedEvent>()
         let peerDisconnectedEventsA = SynchronizedArray<String>()
+        
+        // Create local logger reference for callbacks
+        let callbackLoggerA = testLogger.child(component: .custom("callbackA"))
 
         let callbacksA = TransportCallbacks(
             peerConnectedCallback: { nodeId, nodeInfo in
                 let event = PeerConnectedEvent(nodeId: nodeId, nodeInfo: nodeInfo)
                 peerConnectedEventsA.append(event)
-                print("✅ Transport A received peer_connected event for peer: \(nodeId)")
-                print("   NodeInfo: \(nodeInfo)")
+                callbackLoggerA.debug("Transport A received peer_connected event for peer: \(nodeId)")
+                callbackLoggerA.trace("NodeInfo: \(nodeInfo)")
             },
             peerDisconnectedCallback: { nodeId in
                 peerDisconnectedEventsA.append(nodeId)
-                print("✅ Transport A received peer_disconnected event for peer: \(nodeId)")
+                callbackLoggerA.debug("Transport A received peer_disconnected event for peer: \(nodeId)")
             },
             requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
         )
 
         // Step 7: Create transport A (server) - exactly like Rust
-        let traceConfig = LoggerConfig(level: .trace, includeTimestamp: true, includeComponent: true, includeContext: true)
-        let loggerA = RunarLogger(component: .custom, config: traceConfig)
+        testLogger.trace("Creating transport A (server)")
+        let transportLoggerA = testLogger.child(component: .custom("transportA"))
         let transportA = try await QuicTransport.create(
             keys: keysA,
             nodeInfo: nodeInfoA,
             options: transportOptions,
             callbacks: callbacksA,
-            logger: loggerA
+            logger: transportLoggerA
         )
         try await transportA.start()
+        testLogger.debug("Transport A started successfully")
 
         // Step 8: Set NodeInfo for transport A - exactly like Rust
+        testLogger.trace("Setting NodeInfo for transport A")
         let nodeInfoACbor = try CodableCBOREncoder().encode(nodeInfoA)
         try await transportA.setLocalNodeInfo(nodeInfoACbor)
 
         // Step 9: Get local address for transport A - exactly like Rust
+        testLogger.trace("Getting local address for transport A")
         let localAddrA = try await transportA.getLocalAddr()
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
+        testLogger.debug("Transport A local address: \(localAddrA)")
 
         // Step 10: Set up callbacks for transport B - exactly like Rust
+        testLogger.trace("Setting up callbacks for transport B")
         let peerConnectedEventsB = SynchronizedArray<PeerConnectedEvent>()
         let peerDisconnectedEventsB = SynchronizedArray<String>()
+        
+        // Create local logger reference for callbacks
+        let callbackLoggerB = testLogger.child(component: .custom("callbackB"))
 
         let callbacksB = TransportCallbacks(
             peerConnectedCallback: { nodeId, nodeInfo in
                 let event = PeerConnectedEvent(nodeId: nodeId, nodeInfo: nodeInfo)
                 peerConnectedEventsB.append(event)
-                print("✅ Transport B received peer_connected event for peer: \(nodeId)")
-                print("   NodeInfo: \(nodeInfo)")
+                callbackLoggerB.debug("Transport B received peer_connected event for peer: \(nodeId)")
+                callbackLoggerB.trace("NodeInfo: \(nodeInfo)")
             },
             peerDisconnectedCallback: { nodeId in
                 peerDisconnectedEventsB.append(nodeId)
-                print("✅ Transport B received peer_disconnected event for peer: \(nodeId)")
+                callbackLoggerB.debug("Transport B received peer_disconnected event for peer: \(nodeId)")
             },
             requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
         )
 
         // Step 11: Create transport B (client) - exactly like Rust
-        let loggerB = RunarLogger(component: .custom, config: traceConfig)
+        testLogger.trace("Creating transport B (client)")
+        let transportLoggerB = testLogger.child(component: .custom("transportB"))
         let transportB = try await QuicTransport.create(
             keys: keysB,
             nodeInfo: nodeInfoB,
             options: transportOptions,
             callbacks: callbacksB,
-            logger: loggerB
+            logger: transportLoggerB
         )
         try await transportB.start()
+        testLogger.debug("Transport B started successfully")
 
         // Step 12: Set NodeInfo for transport B - exactly like Rust
+        testLogger.trace("Setting NodeInfo for transport B")
         let nodeInfoBCbor = try CodableCBOREncoder().encode(nodeInfoB)
         try await transportB.setLocalNodeInfo(nodeInfoBCbor)
 
         // Step 13: Create peer info for connection - exactly like Rust
+        testLogger.trace("Creating peer info for connection")
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
 
         // Step 14: Connect transport B to transport A - exactly like Rust
-        print("🔗 Initiating connection from B to A...")
+        testLogger.debug("Initiating connection from B to A")
         try await transportB.connectPeer(peerInfo: peerInfo)
 
         // Step 15: Wait for peer_connected events on both sides - exactly like Rust
-        print("⏳ Waiting for peer_connected events...")
+        testLogger.trace("Waiting for peer_connected events")
 
         // Wait up to 5 seconds for both peers to connect - exactly like Rust
         let maxWaitTime = 5.0
@@ -283,12 +318,12 @@ final class FFIHandshakeTest: XCTestCase {
         XCTAssertEqual(receivedNodeInfoB.nodeMetadata.subscriptions, nodeInfoA.nodeMetadata.subscriptions, "B should receive A's subscriptions")
         XCTAssertEqual(receivedNodeInfoB.version, nodeInfoA.version, "B should receive A's version")
 
-        print("🎉 Handshake dataflow test completed successfully!")
-        print("   - Both peers exchanged NodeInfo correctly")
-        print("   - NodeInfo content matches expected values")
+        testLogger.debug("Handshake dataflow test completed successfully!")
+        testLogger.trace("Both peers exchanged NodeInfo correctly")
+        testLogger.trace("NodeInfo content matches expected values")
 
         // Step 18: Test peer_disconnected event - exactly like Rust
-        print("🔌 Testing peer_disconnected event...")
+        testLogger.trace("Testing peer_disconnected event")
 
         // Stop transport A to trigger disconnection
         try await transportA.stop()
@@ -311,16 +346,19 @@ final class FFIHandshakeTest: XCTestCase {
     /// Test NodeInfo update during connection
     /// This mirrors the Rust test_handshake_nodeinfo_update_during_connection exactly
     func testHandshakeNodeInfoUpdateDuringConnection() async throws {
-        print("🔄 Starting NodeInfo update during connection test...")
+        testLogger.debug("Starting NodeInfo update during connection test")
 
         // Step 1: Create keys for both peers - exactly like Rust
+        testLogger.trace("Creating keys for both peers")
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
 
         // Step 2: Create mobile key manager for CA - exactly like Rust
+        testLogger.trace("Creating mobile key manager for CA")
         let keysCA = try await MobileKeyManager()
 
         // Step 3: Generate certificates for both peers - exactly like Rust
+        testLogger.trace("Generating certificates for both peers")
         let csrA = try await keysA.generateCsrSetupToken()
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
@@ -328,8 +366,10 @@ final class FFIHandshakeTest: XCTestCase {
         let csrB = try await keysB.generateCsrSetupToken()
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
+        testLogger.debug("Certificates generated and installed for both peers")
 
         // Step 4: Create initial NodeInfo for A - exactly like Rust
+        testLogger.trace("Creating initial NodeInfo for transport A")
         let publicKeyA = try await keysA.getNodePublicKey()
         let publicKeyB = try await keysB.getNodePublicKey()
 
@@ -379,14 +419,14 @@ final class FFIHandshakeTest: XCTestCase {
         )
 
         // Step 8: Create transport A (server) - exactly like Rust
-        let traceConfig = LoggerConfig(level: .trace, includeTimestamp: true, includeComponent: true, includeContext: true)
-        let loggerA = RunarLogger(component: .custom, config: traceConfig)
+        testLogger.trace("Creating transport A (server)")
+        let transportLoggerA = testLogger.child(component: .custom("transportA"))
         let transportA = try await QuicTransport.create(
             keys: keysA,
             nodeInfo: nodeInfoAInitial,
             options: transportOptions,
             callbacks: callbacksA,
-            logger: loggerA
+            logger: transportLoggerA
         )
         try await transportA.start()
 
@@ -401,24 +441,28 @@ final class FFIHandshakeTest: XCTestCase {
         // Step 11: Set up callbacks for transport B - exactly like Rust
         let peerConnectedEventsB = SynchronizedArray<PeerConnectedEvent>()
 
+        // Create local logger reference for callbacks
+        let callbackLoggerB = testLogger.child(component: .custom("callbackB"))
+        
         let callbacksB = TransportCallbacks(
             peerConnectedCallback: { nodeId, nodeInfo in
                 let event = PeerConnectedEvent(nodeId: nodeId, nodeInfo: nodeInfo)
                 peerConnectedEventsB.append(event)
-                print("✅ Transport B received peer_connected event for peer: \(nodeId)")
-                print("   NodeInfo: \(nodeInfo)")
+                callbackLoggerB.debug("Transport B received peer_connected event for peer: \(nodeId)")
+                callbackLoggerB.trace("NodeInfo: \(nodeInfo)")
             },
             requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
         )
 
         // Step 12: Create transport B (client) - exactly like Rust
-        let loggerB = RunarLogger(component: .custom, config: traceConfig)
+        testLogger.trace("Creating transport B (client)")
+        let transportLoggerB = testLogger.child(component: .custom("transportB"))
         let transportB = try await QuicTransport.create(
             keys: keysB,
             nodeInfo: nodeInfoB,
             options: transportOptions,
             callbacks: callbacksB,
-            logger: loggerB
+            logger: transportLoggerB
         )
         try await transportB.start()
 
@@ -446,9 +490,10 @@ final class FFIHandshakeTest: XCTestCase {
         XCTAssertEqual(initialNodeInfo.nodeMetadata.services, nodeInfoAInitial.nodeMetadata.services, "Should receive initial services")
         XCTAssertEqual(initialNodeInfo.version, nodeInfoAInitial.version, "Should receive initial version")
 
-        print("🔄 Testing NodeInfo update during connection...")
+        testLogger.debug("Testing NodeInfo update during connection")
 
         // Step 16: Update NodeInfo on transport A - exactly like Rust
+        testLogger.trace("Updating NodeInfo on transport A")
         let nodeInfoAUpdatedCbor = try CodableCBOREncoder().encode(nodeInfoAUpdated)
         try await transportA.setLocalNodeInfo(nodeInfoAUpdatedCbor)
 
@@ -461,7 +506,7 @@ final class FFIHandshakeTest: XCTestCase {
             for event in peerConnectedEventsB.array {
                 if event.nodeInfo.nodeMetadata.services == nodeInfoAUpdated.nodeMetadata.services &&
                    event.nodeInfo.version == nodeInfoAUpdated.version {
-                    print("✅ Received updated NodeInfo: \(event.nodeInfo)")
+                    testLogger.debug("Received updated NodeInfo: \(event.nodeInfo)")
                     updateReceived = true
                     break
                 }
@@ -477,9 +522,9 @@ final class FFIHandshakeTest: XCTestCase {
         // Note: The update_peers functionality might not be fully implemented in the FFI layer
         // This test documents the expected behavior for future implementation
         if updateReceived {
-            print("🎉 NodeInfo update test completed successfully!")
+            testLogger.debug("NodeInfo update test completed successfully!")
         } else {
-            print("⚠️  NodeInfo update not received - this may be expected if update_peers is not fully implemented in FFI layer")
+            testLogger.debug("NodeInfo update not received - this may be expected if update_peers is not fully implemented in FFI layer")
         }
 
         // Step 18: Cleanup - exactly like Rust

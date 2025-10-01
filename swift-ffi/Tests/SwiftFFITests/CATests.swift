@@ -20,6 +20,14 @@ final class CATests: XCTestCase {
         do {
             try await FFILogger.setLogLevel(.trace)
             try await FFILogger.setLoggerContext("ca-tests")
+            
+            // Set global logger config to trace level for all tests
+            LoggerConfigManager.shared.globalConfig = LoggerConfig(
+                level: .trace,
+                includeTimestamp: true,
+                includeComponent: true,
+                includeContext: true
+            )
 
             // Create node keys handle
             nodeKeys = try await NodeKeyManager()
@@ -63,7 +71,7 @@ final class CATests: XCTestCase {
         let caNode = try CANode.create()
 
         // Create EA key pair for testing
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("testCaNodeSetupCompleteHappyPath")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -99,7 +107,7 @@ final class CATests: XCTestCase {
         let caNode = try CANode.create()
 
         // Create EA key pair for proper CA setup
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("testCaNodeCreateShared")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -193,7 +201,7 @@ final class CATests: XCTestCase {
     func testCaClientNewHappyPath() async throws {
         // Test CA client creation with proper setup - matching Rust test_ca_client_new_stub
         let caNode = try CANode.create()
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -241,7 +249,7 @@ final class CATests: XCTestCase {
         // Test CA client enrollment
         // Prepare CA certs
         let caNode = try CANode.create()
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -285,7 +293,7 @@ final class CATests: XCTestCase {
         // Test CA client renewal
         // Prepare CA certs
         let caNode = try CANode.create()
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -329,7 +337,7 @@ final class CATests: XCTestCase {
         // Test CA client revocation
         // Prepare CA certs
         let caNode = try CANode.create()
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -373,7 +381,7 @@ final class CATests: XCTestCase {
         // Test CA client chain retrieval
         // Prepare CA certs
         let caNode = try CANode.create()
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -417,7 +425,7 @@ final class CATests: XCTestCase {
         // Test CA client status retrieval
         // Prepare CA certs
         let caNode = try CANode.create()
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -461,7 +469,7 @@ final class CATests: XCTestCase {
 
     func testEaKeyManagerCreateKeyPair() async throws {
         // Test EA key pair creation
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         XCTAssertNotNil(eaKeyPair, "EA key pair should be created successfully")
 
@@ -471,7 +479,7 @@ final class CATests: XCTestCase {
 
     func testEaKeyManagerGetPublicKey() async throws {
         // Test getting EA public key
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let publicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
         XCTAssertFalse(publicKey.isEmpty, "Public key should not be empty")
@@ -482,7 +490,7 @@ final class CATests: XCTestCase {
 
     func testEaKeyManagerGenerateEnrollmentToken() async throws {
         // Test enrollment token generation
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
 
         let tokenParams = EAKeyManager.EnrollmentTokenParams(
@@ -528,7 +536,7 @@ final class CATests: XCTestCase {
         // Test CA client error handling with invalid parameters
         // Prepare CA certs
         let caNode = try CANode.create()
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -576,7 +584,7 @@ final class CATests: XCTestCase {
         let caNode = try CANode.create()
 
         // Create EA key pair
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -612,7 +620,7 @@ final class CATests: XCTestCase {
         let caNode = try CANode.create()
 
         // Create EA key pair
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -679,7 +687,7 @@ final class CATests: XCTestCase {
         let caNode = try CANode.create()
 
         // Create EA key pair for testing
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -714,7 +722,7 @@ final class CATests: XCTestCase {
         // This test verifies proper error handling for invalid arguments
 
         // Create EA key pair for testing
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -766,7 +774,7 @@ final class CATests: XCTestCase {
 
         let startTime = CFAbsoluteTimeGetCurrent()
 
-        let eaKeyManager = EAKeyManager(logger: RunarLogger(component: .custom))
+        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         for _ in 0 ..< iterations {
             let eaKeyPair = try await eaKeyManager.createKeyPair()
             EAKeyManager.free(eaKeyPair)

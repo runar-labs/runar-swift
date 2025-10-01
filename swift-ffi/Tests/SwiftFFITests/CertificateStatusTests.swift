@@ -38,7 +38,7 @@ final class CertificateStatusTests: XCTestCase {
 
         do {
             // Configure CA node first (before creating shared/server) to ensure server uses the configured CAs
-            let eaManager = EAKeyManager(logger: RunarLogger(component: .custom))
+            let eaManager = EAKeyManager(logger: RunarLogger.root(component: .custom("CertificateStatusTests")))
             let eaHandle = try await eaManager.createKeyPair()
             let eaPublicKey = try await eaManager.getPublicKey(eaHandle)
             let setupParams = CANodeManager.CANodeSetupParams(

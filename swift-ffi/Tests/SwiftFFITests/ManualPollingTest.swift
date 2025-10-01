@@ -67,7 +67,7 @@ final class ManualPollingTest: XCTestCase {
         )
 
         // Step 8: Create transport A and start it
-        let loggerA = RunarLogger(component: .custom)
+        let loggerA = RunarLogger.root(component: .custom("ManualPollingTest"))
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.start()
 
@@ -81,7 +81,7 @@ final class ManualPollingTest: XCTestCase {
         )
 
         // Step 11: Create transport B and start it
-        let loggerB = RunarLogger(component: .custom)
+        let loggerB = RunarLogger.root(component: .custom("ManualPollingTest"))
         let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)
         try await transportB.start()
 

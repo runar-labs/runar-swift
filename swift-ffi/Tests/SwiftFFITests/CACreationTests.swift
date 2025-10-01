@@ -4,7 +4,7 @@ import SwiftCommon
 import XCTest
 
 final class CACreationTests: XCTestCase {
-    func createLogger() -> RunarLogger { RunarLogger(component: .custom) }
+    func createLogger() -> RunarLogger { RunarLogger.root(component: .custom("CACreationTests")) }
 
     func testCreateRootCA() async throws {
         let logger = createLogger()

@@ -7,7 +7,7 @@ import XCTest
 @available(macOS 12.0, *)
 @MainActor
 final class CANodeSetupTests: XCTestCase {
-    func createLogger() -> RunarLogger { RunarLogger(component: .custom) }
+    func createLogger() -> RunarLogger { RunarLogger.root(component: .custom("CANodeSetupTests")) }
 
     func encode<T: Codable>(_ value: T) throws -> Data { try CodableCBOREncoder().encode(value) }
 

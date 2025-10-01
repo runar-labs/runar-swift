@@ -772,7 +772,7 @@ func ffi_node_generate_csr(
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    let logger = RunarLogger(component: .custom)
+    let logger = RunarLogger.root(component: .custom("ffi"))
     let threadId = pthread_mach_thread_np(pthread_self())
     logger.trace("ffi_node_generate_csr: ENTER thread=\(threadId) nodeHandle=\(nodeHandle)")
 
@@ -1431,9 +1431,8 @@ func ffi_create_ca_client(
     _ handle: UnsafeMutableRawPointer,
     configCbor: Data
 ) throws -> UnsafeMutableRawPointer {
-    let logger = RunarLogger(component: .custom)
-    logger.info("ffi_create_ca_client() - Creating CA client")
-    logger.debug("ffi_create_ca_client() - Config CBOR length: \(configCbor.count)")
+    let logger = RunarLogger.root(component: .custom("ffi"))
+    logger.debug("ffi_create_ca_client() - Creating CA client Config - CBOR length: \(configCbor.count)")
 
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
@@ -2120,7 +2119,7 @@ public struct CaServerConfig {
 
 // MARK: - Logger bridge (use SwiftCommon's RunarLogger)
 
-// Test creates RunarLogger(component: .custom). Type comes from SwiftCommon.
+// Test creates RunarLogger.root(component: .custom). Type comes from SwiftCommon.
 
 public class EAKeyManager {
     public struct EnrollmentTokenParams {
@@ -2224,7 +2223,7 @@ public class CANode {
     }
 
     public nonisolated static func create() throws -> CANode {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.info("CANode.create() - Starting CA Node creation")
         var handle: UnsafeMutableRawPointer?
         logger.trace("CANode.create() - About to call rn_keys_ca_node_new_shared")
@@ -2248,7 +2247,7 @@ public class CANode {
     }
 
     public nonisolated func setupComplete(params: CANodeManager.CANodeSetupParams) async throws {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.info("CANode.setupComplete() - Starting setup with params")
         logger.debug("CANode.setupComplete() - Root CA Subject: \(params.rootCaSubject)")
         logger.debug("CANode.setupComplete() - Issuing CA Subject: \(params.issuingCaSubject)")
@@ -2472,7 +2471,7 @@ public final class SharedCANode {
 
 public extension CANode {
     func getRootCACertificate() async throws -> Data {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.debug("CANode.getRootCACertificate() - Getting Root CA certificate")
         // Copy handle to local to avoid capturing actor state in closures
         let caHandle = ffiHandle
@@ -2502,7 +2501,7 @@ public extension CANode {
     }
 
     func getIssuingCACertificate() async throws -> Data {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.debug("CANode.getIssuingCACertificate() - Getting Issuing CA certificate")
         // Copy handle to local to avoid capturing actor state in closures
         let caHandle = ffiHandle
@@ -2568,7 +2567,7 @@ public extension CANode {
     /// - Parameter eaPublicKeys: Enrollment authority public keys data
     /// - Throws: FFIError if the operation fails
     func configureEnrollmentAuthority(eaPublicKeys: Data) async throws {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.debug("CANode.configureEnrollmentAuthority() - Configuring EA with keys length: \(eaPublicKeys.count)")
 
         // Copy handle to local to avoid capturing actor state in closures
@@ -2736,7 +2735,7 @@ public class CA {
     /// - Returns: A new CA instance representing the root CA
     /// - Throws: FFIError if creation fails
     public nonisolated static func createRootCA(subject: String) throws -> CA {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.info("CA.createRootCA() - Starting root CA creation with subject: \(subject)")
 
         var handle: UnsafeMutableRawPointer?
@@ -2774,7 +2773,7 @@ public class CA {
         validityDays: UInt32,
         serial: UInt64
     ) throws -> CA {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.info("CA.createIssuingCA() - Starting issuing CA creation with subject: \(subject)")
 
         var handle: UnsafeMutableRawPointer?
@@ -2802,7 +2801,7 @@ public class CA {
     /// - Returns: The certificate data in DER format
     /// - Throws: FFIError if retrieval fails
     public nonisolated func getCertificateDER() async throws -> Data {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.trace("CA.getCertificateDER() - About to call rn_keys_ca_get_certificate_der")
 
         var outPtr: UnsafeMutablePointer<UInt8>?
@@ -2831,7 +2830,7 @@ public class CA {
     /// - Returns: The certificate subject string
     /// - Throws: FFIError if retrieval fails
     public nonisolated func getCertificateSubject() async throws -> String {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.trace("CA.getCertificateSubject() - About to call rn_keys_ca_get_certificate_subject")
 
         var outPtr: UnsafeMutablePointer<CChar>?
@@ -3727,14 +3726,14 @@ public actor CAClient {
     // Use NodeKeyManager factory to create instances; keep this internal
     public init(token: HandleToken) throws {
         handle = try HandleRegistry.shared.claim(kind: .caClient, token: token)
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         let threadId = pthread_mach_thread_np(pthread_self())
         Task { @MainActor in CAClient._inc() }
         logger.trace("CAClient.init: thread=\(threadId) clientHandle=\(handle)")
     }
 
     public func enroll(bootstrapAddress: String, request: Data) async throws -> Data {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.info("CAClient.enroll() - Starting enrollment")
         logger.debug("CAClient.enroll() - Bootstrap address: \(bootstrapAddress)")
         logger.debug("CAClient.enroll() - Request data length: \(request.count)")
@@ -3865,7 +3864,7 @@ public actor CAClient {
     }
 
     deinit {
-        let logger = RunarLogger(component: .custom)
+        let logger = RunarLogger.root(component: .custom("ffi"))
         let threadId = pthread_mach_thread_np(pthread_self())
         logger.trace("CAClient.deinit: thread=\(threadId) clientHandle=\(handle)")
         rn_transport_ca_client_free(handle)
@@ -4925,7 +4924,7 @@ public struct TransportResponseEvent: Codable, Sendable, Equatable {
 /// Handle for Discovery operations
 public actor DiscoveryHandle {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
-    private let logger = RunarLogger(component: .custom)
+    private let logger = RunarLogger.root(component: .custom("discovery"))
 
     public init(token: HandleToken) throws {
         handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
