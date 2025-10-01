@@ -18,7 +18,7 @@ import XCTest
 /// the test - it just uses the new callback-based API instead of manual polling.
 @testable import SwiftFFI
 
-// Use the TransportEvent from SwiftFFI instead of defining our own
+// Legacy TransportEvent removed - using typed event structs
 
 /// Thread-safe box for capturing values in callbacks
 actor Box<T> {
@@ -81,12 +81,12 @@ final class FFIQuicTransportTest: XCTestCase {
         let eventIdBox = Box<String?>(nil)
 
         let callbacksA = TransportCallbacks(
-            requestCallback: { receivedRequestId, path, payload, sourcePeerId, correlationId in
+            requestCallback: { receivedRequestId, path, _, sourcePeerId, correlationId in
                 Task {
                     await requestIdBox.setValue(receivedRequestId)
                     requestReceived.fulfill()
                 }
-                
+
                 // Create a NetworkMessage response
                 let responsePayload = NetworkMessagePayloadItem(
                     path: path,
@@ -95,17 +95,17 @@ final class FFIQuicTransportTest: XCTestCase {
                     networkPublicKey: nil,
                     profilePublicKeys: []
                 )
-                
+
                 let responseMessage = NetworkMessage(
                     sourceNodeId: "test_node_a",
                     destinationNodeId: sourcePeerId,
                     messageType: 5, // MESSAGE_TYPE_RESPONSE
                     payload: responsePayload
                 )
-                
+
                 return responseMessage
             },
-            eventCallback: { receivedEventId, path, payload, sourcePeerId, correlationId in
+            eventCallback: { receivedEventId, _, _, _, _ in
                 Task {
                     await eventIdBox.setValue(receivedEventId)
                     eventReceived.fulfill()

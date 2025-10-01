@@ -46,6 +46,10 @@ final class FFITypesCrossValidationTests: XCTestCase {
             ("NodeInfo", validateNodeInfo),
             ("NetworkMessagePayloadItem", validateNetworkMessagePayloadItem),
             ("NetworkMessage", validateNetworkMessage),
+            ("PeerConnectedEvent", validatePeerConnectedEventRustToSwift),
+            ("TransportRequestEvent", validateTransportRequestEventRustToSwift),
+            ("TransportEventEvent", validateTransportEventEventRustToSwift),
+            ("TransportResponseEvent", validateTransportResponseEventRustToSwift),
         ]
 
         var passed = 0
@@ -278,7 +282,7 @@ final class FFITypesCrossValidationTests: XCTestCase {
         print("=== Testing New Transport Types CBOR Compatibility ===")
         // Note: QuicTransportOptions doesn't implement Serialize in Rust, so we skip it for now
         try await validatePeerInfo()
-        try await validateTransportEvent()
+        // TransportEvent removed - replaced with typed event structs
         try await validateTransportRequestParams()
         try await validateTransportCompleteRequestParams()
         try await validateTransportPublishParams()
@@ -304,11 +308,39 @@ final class FFITypesCrossValidationTests: XCTestCase {
         XCTAssertEqual(swiftPeer, rustPeer, "PeerInfo validation failed - Swift and Rust data don't match")
     }
 
-    /// Test TransportEvent CBOR compatibility with Rust
-    private func validateTransportEvent() async throws {
-        // TransportEvent doesn't exist in Rust yet, so we skip this validation
-        // This is a placeholder for when TransportEvent is implemented in Rust
-        print("⚠️  TransportEvent validation skipped - not implemented in Rust yet")
+    // TransportEvent validation removed - replaced with typed event structs
+
+    // MARK: - Typed Transport Events (Rust -> Swift validation)
+
+    private func validatePeerConnectedEventRustToSwift(swiftDir _: URL, rustDir: URL) async throws {
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("peer_connected_event_basic.bin"))
+        let event: PeerConnectedEvent = try CodableCBORDecoder().decode(PeerConnectedEvent.self, from: rustData)
+        XCTAssertFalse(event.nodeId.isEmpty, "PeerConnectedEvent.nodeId should not be empty")
+        // Basic sanity on NodeInfo
+        XCTAssertFalse(event.nodeInfo.nodePublicKey.isEmpty, "PeerConnectedEvent.nodeInfo.nodePublicKey should not be empty")
+    }
+
+    private func validateTransportRequestEventRustToSwift(swiftDir _: URL, rustDir: URL) async throws {
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("transport_request_event_basic.bin"))
+        let event: TransportRequestEvent = try CodableCBORDecoder().decode(TransportRequestEvent.self, from: rustData)
+        XCTAssertEqual(event.path, "/echo")
+        XCTAssertEqual(event.correlationId, "c1")
+        XCTAssertEqual(event.payload, Data("hello".utf8))
+    }
+
+    private func validateTransportEventEventRustToSwift(swiftDir _: URL, rustDir: URL) async throws {
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("transport_event_event_basic.bin"))
+        let event: TransportEventEvent = try CodableCBORDecoder().decode(TransportEventEvent.self, from: rustData)
+        XCTAssertEqual(event.path, "/event")
+        XCTAssertEqual(event.correlationId, "e1")
+        XCTAssertEqual(event.payload, Data("evt".utf8))
+    }
+
+    private func validateTransportResponseEventRustToSwift(swiftDir _: URL, rustDir: URL) async throws {
+        let rustData = try Data(contentsOf: rustDir.appendingPathComponent("transport_response_event_basic.bin"))
+        let event: TransportResponseEvent = try CodableCBORDecoder().decode(TransportResponseEvent.self, from: rustData)
+        XCTAssertEqual(event.correlationId, "c1")
+        XCTAssertEqual(event.payload, Data("world".utf8))
     }
 
     /// Test TransportRequestParams CBOR compatibility with Rust

@@ -388,9 +388,11 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
         
         // Create network config with QUIC transport and discovery
         print("🔍 CONFIG: Creating network config for node \(i)")
-        let discoveryOptions = DiscoveryOptions(
-            enabled: true,
-            interval: 1.0
+        let discoveryOptions = SwiftFFI.DiscoveryOptions(
+            multicastGroup: "224.0.0.251:5353",
+            announceIntervalMs: 1000,
+            discoveryTimeoutMs: 5000,
+            debounceWindowMs: 200
         )
         let discoveryProvider = DiscoveryProviderConfig(
             type: "mdns",

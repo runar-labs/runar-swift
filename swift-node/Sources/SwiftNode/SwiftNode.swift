@@ -271,15 +271,6 @@ public struct DiscoveryProviderConfig: Sendable, Codable {
 }
 
 /// Discovery options
-public struct DiscoveryOptions: Sendable, Codable {
-    public let enabled: Bool
-    public let interval: TimeInterval
-    
-    public init(enabled: Bool = true, interval: TimeInterval = 5.0) {
-        self.enabled = enabled
-        self.interval = interval
-    }
-}
 
 /// Registry Service - provides information about registered services
 @MainActor
@@ -773,7 +764,7 @@ public struct NetworkConfig: Sendable, Codable {
     /// Maximum chunk size in bytes
     public let maxChunkSize: UInt32
     /// Discovery options
-    public let discoveryOptions: DiscoveryOptions?
+    public let discoveryOptions: SwiftFFI.DiscoveryOptions?
     /// Discovery providers
     public let discoveryProviders: [DiscoveryProviderConfig]
 
@@ -785,7 +776,7 @@ public struct NetworkConfig: Sendable, Codable {
         maxConnections: UInt32 = 100,
         maxMessageSize: UInt32 = 1024 * 1024, // 1MB
         maxChunkSize: UInt32 = 64 * 1024, // 64KB
-        discoveryOptions: DiscoveryOptions? = nil,
+        discoveryOptions: SwiftFFI.DiscoveryOptions? = nil,
         discoveryProviders: [DiscoveryProviderConfig] = []
     ) {
         self.transportType = transportType
@@ -2145,7 +2136,7 @@ public final class Node {
     /// Create discovery provider based on configuration
     private func createDiscoveryProvider(
         providerConfig: DiscoveryProviderConfig,
-        discoveryOptions: DiscoveryOptions
+        discoveryOptions: SwiftFFI.DiscoveryOptions
     ) async throws -> NodeDiscovery {
         logger.trace("🔍 Creating real discovery provider with options: \(discoveryOptions)")
         

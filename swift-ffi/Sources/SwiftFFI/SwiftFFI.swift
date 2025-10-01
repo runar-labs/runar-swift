@@ -265,7 +265,6 @@ public protocol NodeOnly: CommonKeyManager {
     /// - Throws: FFIError if the operation fails
     func getNodeAgreementPublicKey() async throws -> Data
 
-
     /// Get agreement public key (alias for getNodeAgreementPublicKey)
     /// - Returns: The agreement public key
     /// - Throws: FFIError if the operation fails
@@ -1487,6 +1486,59 @@ func ffi_create_discovery(
     guard code == 0 else { throw FFIError.operationFailed("Failed to create discovery") }
     guard let discoveryHandle = outPtr else { throw FFIError.operationFailed("Discovery handle is null") }
     return discoveryHandle
+}
+
+// MARK: - Discovery FFI Poll Helpers
+
+@inline(__always)
+func ffi_poll_discovery_discovered(_ handle: UnsafeMutableRawPointer) throws -> Data? {
+    var outPtr: UnsafeMutablePointer<UInt8>?
+    var outLen = 0
+
+    let (code, err) = withRnErrorCode { errPtr in
+        rn_discovery_poll_discovered(handle, &outPtr, &outLen, errPtr)
+    }
+
+    if let error = err { throw error }
+    guard code == 0 else { throw FFIError.operationFailed("Failed to poll discovery_discovered") }
+    guard outLen > 0 else { return nil }
+
+    let data = try copyBytesAndFree(outPtr, outLen)
+    return data
+}
+
+@inline(__always)
+func ffi_poll_discovery_updated(_ handle: UnsafeMutableRawPointer) throws -> Data? {
+    var outPtr: UnsafeMutablePointer<UInt8>?
+    var outLen = 0
+
+    let (code, err) = withRnErrorCode { errPtr in
+        rn_discovery_poll_updated(handle, &outPtr, &outLen, errPtr)
+    }
+
+    if let error = err { throw error }
+    guard code == 0 else { throw FFIError.operationFailed("Failed to poll discovery_updated") }
+    guard outLen > 0 else { return nil }
+
+    let data = try copyBytesAndFree(outPtr, outLen)
+    return data
+}
+
+@inline(__always)
+func ffi_poll_discovery_lost(_ handle: UnsafeMutableRawPointer) throws -> Data? {
+    var outPtr: UnsafeMutablePointer<UInt8>?
+    var outLen = 0
+
+    let (code, err) = withRnErrorCode { errPtr in
+        rn_discovery_poll_lost(handle, &outPtr, &outLen, errPtr)
+    }
+
+    if let error = err { throw error }
+    guard code == 0 else { throw FFIError.operationFailed("Failed to poll discovery_lost") }
+    guard outLen > 0 else { return nil }
+
+    let data = try copyBytesAndFree(outPtr, outLen)
+    return data
 }
 
 @inline(__always)
@@ -3072,7 +3124,6 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         return try await getNodeAgreementPublicKey()
     }
 
-
     /// Get compact ID for a public key
     /// - Parameter key: Public key data
     /// - Returns: Compact ID string
@@ -3954,19 +4005,19 @@ public enum EnrollmentTokenUtils {
 public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
     /// The path/topic associated with this payload
     public let path: String
-    
+
     /// The serialized value/payload data as bytes
     public let payloadBytes: Data
-    
+
     /// Correlation ID
     public let correlationId: String
-    
+
     /// Network public key for encryption context
     public let networkPublicKey: Data?
-    
+
     /// Profile public keys
     public let profilePublicKeys: [Data]
-    
+
     public init(path: String, payloadBytes: Data, correlationId: String, networkPublicKey: Data? = nil, profilePublicKeys: [Data] = []) {
         self.path = path
         self.payloadBytes = payloadBytes
@@ -3974,7 +4025,7 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
         self.networkPublicKey = networkPublicKey
         self.profilePublicKeys = profilePublicKeys
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case path
         case payloadBytes = "payload_bytes"
@@ -3982,44 +4033,44 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
         case networkPublicKey = "network_public_key"
         case profilePublicKeys = "profile_public_keys"
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(path, forKey: .path)
-        
+
         // Encode as array of bytes to match Rust Vec<u8> serialization
         try container.encode([UInt8](payloadBytes), forKey: .payloadBytes)
         try container.encode(correlationId, forKey: .correlationId)
-        
+
         // Encode networkPublicKey as array of bytes if present
         if let networkKey = networkPublicKey {
             try container.encode([UInt8](networkKey), forKey: .networkPublicKey)
         } else {
             try container.encodeNil(forKey: .networkPublicKey)
         }
-        
+
         // Encode profilePublicKeys as array of byte arrays
         let profileKeysAsBytes = profilePublicKeys.map { [UInt8]($0) }
         try container.encode(profileKeysAsBytes, forKey: .profilePublicKeys)
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         path = try container.decode(String.self, forKey: .path)
-        
+
         // Decode from array of bytes to match Rust Vec<u8> serialization
         let payloadBytesArray = try container.decode([UInt8].self, forKey: .payloadBytes)
         payloadBytes = Data(payloadBytesArray)
-        
+
         correlationId = try container.decode(String.self, forKey: .correlationId)
-        
+
         // Decode networkPublicKey from array of bytes if present
         if let networkKeyArray = try container.decodeIfPresent([UInt8].self, forKey: .networkPublicKey) {
             networkPublicKey = Data(networkKeyArray)
         } else {
             networkPublicKey = nil
         }
-        
+
         // Decode profilePublicKeys from array of byte arrays
         let profileKeysAsBytes = try container.decode([[UInt8]].self, forKey: .profilePublicKeys)
         profilePublicKeys = profileKeysAsBytes.map { Data($0) }
@@ -4030,23 +4081,23 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
 public struct NetworkMessage: Codable, Equatable, Sendable {
     /// Source node identifier
     public let sourceNodeId: String
-    
+
     /// Destination node identifier (MUST be specified)
     public let destinationNodeId: String
-    
+
     /// Message type (Request, Response, Event, etc.)
     public let messageType: UInt32
-    
+
     /// Single payload for this message
     public let payload: NetworkMessagePayloadItem
-    
+
     public init(sourceNodeId: String, destinationNodeId: String, messageType: UInt32, payload: NetworkMessagePayloadItem) {
         self.sourceNodeId = sourceNodeId
         self.destinationNodeId = destinationNodeId
         self.messageType = messageType
         self.payload = payload
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case sourceNodeId = "source_node_id"
         case destinationNodeId = "destination_node_id"
@@ -4067,19 +4118,19 @@ public enum ConnectionRole: String, Codable, Sendable, Equatable {
 public struct HandshakeData: Codable, Sendable, Equatable {
     /// Node information for the connecting peer
     public let nodeInfo: NodeInfo
-    
+
     /// Nonce for handshake process
     public let nonce: UInt64
-    
+
     /// Role of the peer in the connection
     public let role: ConnectionRole
-    
+
     public init(nodeInfo: NodeInfo, nonce: UInt64, role: ConnectionRole) {
         self.nodeInfo = nodeInfo
         self.nonce = nonce
         self.role = role
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case nodeInfo = "node_info"
         case nonce
@@ -4106,16 +4157,16 @@ public struct NodeInfo: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case nodePublicKey = "node_public_key"  // Keep original field name for encoding
+        case nodePublicKey = "node_public_key" // Keep original field name for encoding
         case networkIds = "network_ids"
         case addresses
         case nodeMetadata = "node_metadata"
         case version
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         // Try to decode nodePublicKey - handle both field names for compatibility
         let nodePublicKeyArray: [UInt8]
         if let nodePublicKeyData = try? container.decode([UInt8].self, forKey: .nodePublicKey) {
@@ -4125,23 +4176,23 @@ public struct NodeInfo: Codable, Equatable, Sendable {
             let altContainer = try decoder.container(keyedBy: AlternativeCodingKeys.self)
             nodePublicKeyArray = try altContainer.decode([UInt8].self, forKey: .nodePublicKey)
         }
-        self.nodePublicKey = Data(nodePublicKeyArray)
-        
+        nodePublicKey = Data(nodePublicKeyArray)
+
         // Handle missing fields gracefully for PeerDiscovered events
-        self.networkIds = try container.decodeIfPresent([String].self, forKey: .networkIds) ?? []
-        self.addresses = try container.decodeIfPresent([String].self, forKey: .addresses) ?? []
-        self.nodeMetadata = try container.decodeIfPresent(NodeMetadata.self, forKey: .nodeMetadata) ?? NodeMetadata(services: [], subscriptions: [])
-        self.version = try container.decodeIfPresent(Int64.self, forKey: .version) ?? 1
+        networkIds = try container.decodeIfPresent([String].self, forKey: .networkIds) ?? []
+        addresses = try container.decodeIfPresent([String].self, forKey: .addresses) ?? []
+        nodeMetadata = try container.decodeIfPresent(NodeMetadata.self, forKey: .nodeMetadata) ?? NodeMetadata(services: [], subscriptions: [])
+        version = try container.decodeIfPresent(Int64.self, forKey: .version) ?? 1
     }
-    
+
     // Alternative coding keys for compatibility with different field names
     private enum AlternativeCodingKeys: String, CodingKey {
         case nodePublicKey = "public_key"
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        
+
         // Encode nodePublicKey as array of bytes
         try container.encode(Array(nodePublicKey), forKey: .nodePublicKey)
         try container.encode(networkIds, forKey: .networkIds)
@@ -4320,7 +4371,7 @@ public struct QuicTransportOptions: Sendable {
 
     /// Create FFIQuicTransportOptions from this QuicTransportOptions
     /// This is used internally to convert to FFI format
-    internal func toFFIOptions() -> FFIQuicTransportOptions {
+    func toFFIOptions() -> FFIQuicTransportOptions {
         return FFIQuicTransportOptions(
             bindAddr: bindAddr,
             handshakeTimeoutMs: handshakeTimeoutMs,
@@ -4716,105 +4767,7 @@ public struct TransportPublishParams: Codable, Equatable {
     }
 }
 
-/// Transport event surfaced to Swift API (decoded from CBOR internally)
-public struct TransportEvent: Codable, Sendable, Equatable {
-    public let type: String
-    public let v: Int?
-    public let path: String?
-    public let requestId: String?
-    public let correlationId: String?
-    public let payload: [UInt8]?
-    public let peerNodeId: String?
-    public let peerInfo: PeerInfo?
-    public let nodeInfo: NodeInfo?
-
-    public init(type: String, v: Int? = nil, path: String? = nil, requestId: String? = nil, correlationId: String? = nil, payload: [UInt8]? = nil, peerNodeId: String? = nil, peerInfo: PeerInfo? = nil, nodeInfo: NodeInfo? = nil) {
-        self.type = type
-        self.v = v
-        self.path = path
-        self.requestId = requestId
-        self.correlationId = correlationId
-        self.payload = payload
-        self.peerNodeId = peerNodeId
-        self.peerInfo = peerInfo
-        self.nodeInfo = nodeInfo
-    }
-    
-    // Custom Codable implementation to handle field name mapping
-    private enum CodingKeys: String, CodingKey {
-        case type
-        case v
-        case path
-        case requestId = "request_id"
-        case correlationId = "correlation_id"
-        case payload
-        case peerNodeId = "peer_node_id"
-        case peerInfo = "peer_info"  // Map peer_info to peerInfo
-        case nodeInfo = "node_info"  // Map node_info to nodeInfo
-    }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        type = try container.decode(String.self, forKey: .type)
-        v = try container.decodeIfPresent(Int.self, forKey: .v)
-        path = try container.decodeIfPresent(String.self, forKey: .path)
-        requestId = try container.decodeIfPresent(String.self, forKey: .requestId)
-        correlationId = try container.decodeIfPresent(String.self, forKey: .correlationId)
-
-        // Deterministic: decode payload strictly as byte string if present
-        if let data = try container.decodeIfPresent(Data.self, forKey: .payload) {
-            payload = [UInt8](data)
-        } else {
-            payload = nil
-        }
-        
-        peerNodeId = try container.decodeIfPresent(String.self, forKey: .peerNodeId)
-        
-        // peer_info is sent as a serialized byte string from Rust, not as a nested object
-        if let peerInfoData = try container.decodeIfPresent(Data.self, forKey: .peerInfo) {
-            let peerInfoDecoder = CodableCBORDecoder()
-            peerInfo = try peerInfoDecoder.decode(PeerInfo.self, from: peerInfoData)
-        } else {
-            peerInfo = nil
-        }
-        
-        // node_info is sent as a serialized byte string from Rust, not as a nested object
-        if let nodeInfoData = try container.decodeIfPresent(Data.self, forKey: .nodeInfo) {
-            let nodeInfoDecoder = CodableCBORDecoder()
-            nodeInfo = try nodeInfoDecoder.decode(NodeInfo.self, from: nodeInfoData)
-        } else {
-            nodeInfo = nil
-        }
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(type, forKey: .type)
-        try container.encodeIfPresent(v, forKey: .v)
-        try container.encodeIfPresent(path, forKey: .path)
-        try container.encodeIfPresent(requestId, forKey: .requestId)
-        try container.encodeIfPresent(correlationId, forKey: .correlationId)
-        // Deterministic: encode payload as byte string if present
-        if let payload {
-            try container.encode(Data(payload), forKey: .payload)
-        }
-        try container.encodeIfPresent(peerNodeId, forKey: .peerNodeId)
-        
-        // peer_info should be encoded as a serialized byte string to match Rust behavior
-        if let peerInfo = peerInfo {
-            let peerInfoEncoder = CodableCBOREncoder()
-            let peerInfoData = try peerInfoEncoder.encode(peerInfo)
-            try container.encode(peerInfoData, forKey: .peerInfo)
-        }
-        
-        // node_info should be encoded as a serialized byte string to match Rust behavior
-        if let nodeInfo = nodeInfo {
-            let nodeInfoEncoder = CodableCBOREncoder()
-            let nodeInfoData = try nodeInfoEncoder.encode(nodeInfo)
-            try container.encode(nodeInfoData, forKey: .nodeInfo)
-        }
-    }
-}
+// Legacy TransportEvent struct removed - replaced with typed event structs
 
 // MARK: - Discovery Options
 
@@ -4844,11 +4797,150 @@ public struct DiscoveryOptions: Codable, Sendable {
     }
 }
 
+// MARK: - Typed Transport Events (Swift counterparts of Rust structs)
+
+public struct PeerConnectedEvent: Codable, Sendable, Equatable {
+    public let nodeId: String
+    public let nodeInfo: NodeInfo
+
+    public init(nodeId: String, nodeInfo: NodeInfo) {
+        self.nodeId = nodeId
+        self.nodeInfo = nodeInfo
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case nodeId = "node_id"
+        case nodeInfo = "node_info"
+    }
+}
+
+public struct TransportRequestEvent: Codable, Sendable, Equatable {
+    public let requestId: String
+    public let path: String
+    public let correlationId: String
+    public let payload: Data
+    public let profilePublicKey: Data
+
+    public init(requestId: String, path: String, correlationId: String, payload: Data, profilePublicKey: Data) {
+        self.requestId = requestId
+        self.path = path
+        self.correlationId = correlationId
+        self.payload = payload
+        self.profilePublicKey = profilePublicKey
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case path
+        case correlationId = "correlation_id"
+        case payload
+        case profilePublicKey = "profile_public_key"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        requestId = try container.decode(String.self, forKey: .requestId)
+        path = try container.decode(String.self, forKey: .path)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        if let data = try? container.decode(Data.self, forKey: .payload) {
+            payload = data
+        } else {
+            let bytes = try container.decode([UInt8].self, forKey: .payload)
+            payload = Data(bytes)
+        }
+        if let data = try? container.decode(Data.self, forKey: .profilePublicKey) {
+            profilePublicKey = data
+        } else {
+            let bytes = try container.decode([UInt8].self, forKey: .profilePublicKey)
+            profilePublicKey = Data(bytes)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(path, forKey: .path)
+        try container.encode(correlationId, forKey: .correlationId)
+        try container.encode(payload, forKey: .payload)
+        try container.encode(profilePublicKey, forKey: .profilePublicKey)
+    }
+}
+
+public struct TransportEventEvent: Codable, Sendable, Equatable {
+    public let path: String
+    public let correlationId: String
+    public let payload: Data
+
+    public init(path: String, correlationId: String, payload: Data) {
+        self.path = path
+        self.correlationId = correlationId
+        self.payload = payload
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case correlationId = "correlation_id"
+        case payload
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        if let data = try? container.decode(Data.self, forKey: .payload) {
+            payload = data
+        } else {
+            let bytes = try container.decode([UInt8].self, forKey: .payload)
+            payload = Data(bytes)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(correlationId, forKey: .correlationId)
+        try container.encode(payload, forKey: .payload)
+    }
+}
+
+public struct TransportResponseEvent: Codable, Sendable, Equatable {
+    public let correlationId: String
+    public let payload: Data
+
+    public init(correlationId: String, payload: Data) {
+        self.correlationId = correlationId
+        self.payload = payload
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case correlationId = "correlation_id"
+        case payload
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        if let data = try? container.decode(Data.self, forKey: .payload) {
+            payload = data
+        } else {
+            let bytes = try container.decode([UInt8].self, forKey: .payload)
+            payload = Data(bytes)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(correlationId, forKey: .correlationId)
+        try container.encode(payload, forKey: .payload)
+    }
+}
+
 // MARK: - Discovery Handle
 
 /// Handle for Discovery operations
 public actor DiscoveryHandle {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
+    private let logger = RunarLogger(component: .custom)
 
     public init(token: HandleToken) throws {
         handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
@@ -4877,19 +4969,6 @@ public actor DiscoveryHandle {
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to initialize discovery") }
-    }
-
-    /// Bind discovery events to transport
-    public func bindEventsToTransport(transport: QuicTransport) async throws {
-        let (code, err) = withRnErrorCode { errPtr in
-            rn_discovery_bind_events_to_transport(
-                self.handle,
-                transport.rawHandle,
-                errPtr
-            )
-        }
-        if let error = err { throw error }
-        guard code == 0 else { throw FFIError.operationFailed("Failed to bind discovery events to transport") }
     }
 
     /// Start announcing this node
@@ -4940,6 +5019,121 @@ public actor DiscoveryHandle {
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to update local peer info") }
     }
+
+    // MARK: - Discovery Polling Methods
+
+    /// Poll for discovered peers
+    public func pollDiscovered() async throws -> PeerInfo? {
+        let data = try ffi_poll_discovery_discovered(handle)
+        guard let data = data else { return nil }
+        return try CodableCBORDecoder().decode(PeerInfo.self, from: data)
+    }
+
+    /// Poll for updated peer information
+    public func pollUpdated() async throws -> PeerInfo? {
+        let data = try ffi_poll_discovery_updated(handle)
+        guard let data = data else { return nil }
+        return try CodableCBORDecoder().decode(PeerInfo.self, from: data)
+    }
+
+    /// Poll for lost peers
+    public func pollLost() async throws -> String? {
+        let data = try ffi_poll_discovery_lost(handle)
+        guard let data = data else { return nil }
+        return try CodableCBORDecoder().decode(String.self, from: data)
+    }
+
+    // MARK: - Discovery Callback System
+
+    private var callbacks: DiscoveryCallbacks?
+    private var isPolling = false
+    private var pollingTask: Task<Void, Never>?
+
+    /// Set discovery callbacks and start internal polling
+    public func setCallbacks(_ callbacks: DiscoveryCallbacks) {
+        self.callbacks = callbacks
+        startInternalPolling()
+    }
+
+    /// Start internal polling for discovery events
+    private func startInternalPolling() {
+        guard !isPolling else { return }
+        isPolling = true
+
+        pollingTask = Task { [weak self] in
+            guard let self = self else { return }
+            logger.info("DiscoveryHandle internal polling - Task started")
+
+            while await self.isPolling {
+                logger.trace("DiscoveryHandle internal polling - Polling for discovery events")
+                do {
+                    var eventProcessed = false
+
+                    if let discovered = try await self.pollDiscovered() {
+                        logger.debug("DiscoveryHandle internal polling - Peer discovered: \(discovered.addresses)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handleDiscoveryDiscovered(discovered)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if let updated = try await self.pollUpdated() {
+                        logger.debug("DiscoveryHandle internal polling - Peer updated: \(updated.addresses)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handleDiscoveryUpdated(updated)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if let lost = try await self.pollLost() {
+                        logger.debug("DiscoveryHandle internal polling - Peer lost: \(lost)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handleDiscoveryLost(lost)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if !eventProcessed {
+                        logger.trace("DiscoveryHandle internal polling - No discovery events available")
+                    }
+                } catch {
+                    // Log error but continue polling
+                    logger.error("DiscoveryHandle internal polling error: \(error)")
+                }
+
+                // Small delay to prevent busy waiting
+                try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            }
+            logger.debug("DiscoveryHandle internal polling - Task ended")
+        }
+    }
+
+    /// Stop internal polling
+    public func stopPolling() {
+        isPolling = false
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    // MARK: - Discovery Event Handlers
+
+    private func handleDiscoveryDiscovered(_ peerInfo: PeerInfo) async {
+        logger.info("DiscoveryHandle.handleDiscoveryDiscovered() - peer: \(peerInfo.addresses)")
+        callbacks?.discoveredCallback?(peerInfo)
+    }
+
+    private func handleDiscoveryUpdated(_ peerInfo: PeerInfo) async {
+        logger.info("DiscoveryHandle.handleDiscoveryUpdated() - peer: \(peerInfo.addresses)")
+        callbacks?.updatedCallback?(peerInfo)
+    }
+
+    private func handleDiscoveryLost(_ nodeId: String) async {
+        logger.info("DiscoveryHandle.handleDiscoveryLost() - nodeId: \(nodeId)")
+        callbacks?.lostCallback?(nodeId)
+    }
 }
 
 // MARK: - Transport Handle
@@ -4952,7 +5146,7 @@ public actor QuicTransport {
     private let options: QuicTransportOptions
     private var pollingTask: Task<Void, Never>?
     private var isPolling = false
-    
+
     // Response delivery mechanism for request() method
     private var pendingRequests: [String: CheckedContinuation<Data, Error>] = [:]
 
@@ -5013,57 +5207,7 @@ public actor QuicTransport {
         startInternalPolling()
     }
 
-    /// Poll for events (internal use only)
-    /// - Returns: Event if available, nil if no events
-    /// - Throws: FFIError if polling fails
-    public func pollEvent() async throws -> TransportEvent? {
-        logger.trace("QuicTransport.pollEvent() - Polling for events")
-        // Copy handle to local to avoid capturing actor state in closures
-        let transportHandle = handle
-
-        let (code, err, outEvent, outLen) = try await withCheckedThrowingContinuation { continuation in
-            var outEvent: UnsafeMutablePointer<UInt8>?
-            var outLen = 0
-            let (code, err) = withRnErrorCode { errPtr in
-                logger.trace("QuicTransport.pollEvent() - About to call rn_transport_poll_event")
-                return rn_transport_poll_event(transportHandle, &outEvent, &outLen, errPtr)
-            }
-            continuation.resume(returning: (code, err, outEvent, outLen))
-        }
-        logger.info("QuicTransport.pollEvent() - FFI call completed, code: \(code), outLen: \(outLen)")
-        if let error = err {
-            logger.error("QuicTransport.pollEvent() - FFI error: \(error)")
-            throw error
-        }
-        guard code == 0 else {
-            logger.error("QuicTransport.pollEvent() - FFI operation failed with code: \(code)")
-            throw FFIError.operationFailed("Failed to poll event")
-        }
-
-        if outLen == 0 {
-            logger.debug("QuicTransport.pollEvent() - No events available")
-            return nil
-        }
-
-        logger.debug("QuicTransport.pollEvent() - Event available, decoding")
-        let data = try copyBytesAndFree(outEvent, outLen)
-        let prefixHex = data.prefix(64).map { String(format: "%02x", $0) }.joined()
-        logger.trace("QuicTransport.pollEvent() - CBOR length=\(data.count) bytes, first64=\(prefixHex)")
-        
-        // Log the raw CBOR data for debugging
-        let cborString = data.map { String(format: "%02x", $0) }.joined(separator: " ")
-        logger.info("QuicTransport.pollEvent() - Raw CBOR data: \(cborString)")
-        
-        let decoder = CodableCBORDecoder()
-        do {
-            let event = try decoder.decode(TransportEvent.self, from: data)
-            logger.trace("QuicTransport.pollEvent() - Decoded TransportEvent type=\(event.type) path=\(event.path ?? "nil") correlationId=\(event.correlationId ?? "nil") payloadLen=\(event.payload?.count ?? 0)")
-            return event
-        } catch {
-            logger.error("QuicTransport.pollEvent() - CBOR decode failed: \(error)")
-            throw error
-        }
-    }
+    // Removed legacy heterogeneous pollEvent() — replaced by typed per-event polls (see below)
 
     /// Connect to a peer
     /// - Parameter peerInfo: Peer information (encoded to CBOR internally)
@@ -5145,6 +5289,78 @@ public actor QuicTransport {
         return outConnected
     }
 
+    // MARK: Typed per-event polls
+
+    public func pollPeerConnected() async throws -> PeerConnectedEvent? {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let transportHandle = handle
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_poll_peer_connected(transportHandle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to poll peer_connected") }
+        guard outLen > 0 else { return nil }
+        let data = try copyBytesAndFree(outPtr, outLen)
+        return try CodableCBORDecoder().decode(PeerConnectedEvent.self, from: data)
+    }
+
+    public func pollPeerDisconnected() async throws -> String? {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let transportHandle = handle
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_poll_peer_disconnected(transportHandle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to poll peer_disconnected") }
+        guard outLen > 0 else { return nil }
+        let data = try copyBytesAndFree(outPtr, outLen)
+        return try CodableCBORDecoder().decode(String.self, from: data)
+    }
+
+    public func pollRequest() async throws -> TransportRequestEvent? {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let transportHandle = handle
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_poll_request(transportHandle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to poll request") }
+        guard outLen > 0 else { return nil }
+        let data = try copyBytesAndFree(outPtr, outLen)
+        return try CodableCBORDecoder().decode(TransportRequestEvent.self, from: data)
+    }
+
+    public func pollEvent() async throws -> TransportEventEvent? {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let transportHandle = handle
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_poll_event(transportHandle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to poll event") }
+        guard outLen > 0 else { return nil }
+        let data = try copyBytesAndFree(outPtr, outLen)
+        return try CodableCBORDecoder().decode(TransportEventEvent.self, from: data)
+    }
+
+    public func pollResponse() async throws -> TransportResponseEvent? {
+        var outPtr: UnsafeMutablePointer<UInt8>?
+        var outLen = 0
+        let transportHandle = handle
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_transport_poll_response(transportHandle, &outPtr, &outLen, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to poll response") }
+        guard outLen > 0 else { return nil }
+        let data = try copyBytesAndFree(outPtr, outLen)
+        return try CodableCBORDecoder().decode(TransportResponseEvent.self, from: data)
+    }
+
     /// Update local node information
     /// - Parameter nodeInfo: Node information (encoded to CBOR internally)
     /// - Throws: FFIError if update fails
@@ -5204,11 +5420,11 @@ public actor QuicTransport {
         logger.trace("QuicTransport.request() - Sending request")
         let requestCbor = try CodableCBOREncoder().encode(request)
         logger.trace("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
-        
+
         // Use the correlation ID from the request parameters
         let correlationId = request.correlationId
         logger.trace("QuicTransport.request() - Using correlation ID: \(correlationId)")
-        
+
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -5233,7 +5449,7 @@ public actor QuicTransport {
         return try await withCheckedThrowingContinuation { continuation in
             // Store the continuation to be resumed when response arrives
             pendingRequests[correlationId] = continuation
-            
+
             // Set up timeout
             Task {
                 try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds timeout
@@ -5271,7 +5487,7 @@ public actor QuicTransport {
             throw FFIError.operationFailed("Failed to publish event")
         }
         logger.info("QuicTransport.publish() - Event published successfully")
-        
+
         // Give the async task time to complete
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         logger.trace("QuicTransport.publish() - Async task should have completed")
@@ -5346,13 +5562,57 @@ public actor QuicTransport {
             logger.info("QuicTransport internal polling - Task started")
 
             while await self.isPolling {
-                logger.info("QuicTransport internal polling - Polling for events")
+                logger.trace("QuicTransport internal polling - Polling for events")
                 do {
-                    if let event = try await self.pollEvent() {
-                        logger.info("QuicTransport internal polling - Event received: \(event.type)")
-                        await self.handleEvent(event)
-                    } else {
-                        logger.info("QuicTransport internal polling - No events available")
+                    var eventProcessed = false
+
+                    if let req = try await self.pollRequest() {
+                        logger.debug("QuicTransport internal polling - Request event received: path=\(req.path) corr=\(req.correlationId)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handleRequestEvent(req)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if let ev = try await self.pollEvent() {
+                        logger.debug("QuicTransport internal polling - Event received: path=\(ev.path) corr=\(ev.correlationId)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handleTransportEvent(ev)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if let resp = try await self.pollResponse() {
+                        logger.debug("QuicTransport internal polling - Response received: corr=\(resp.correlationId)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handleResponseEvent(resp)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if let pc = try await self.pollPeerConnected() {
+                        logger.info("QuicTransport internal polling - PeerConnected: \(pc.nodeId)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handlePeerConnected(pc)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if let pd = try await self.pollPeerDisconnected() {
+                        logger.info("QuicTransport internal polling - PeerDisconnected: \(pd)")
+                        // Fire-and-forget - don't wait for completion to avoid blocking the polling loop
+                        Task.detached { [weak self] in
+                            await self?.handlePeerDisconnected(pd)
+                        }
+                        eventProcessed = true
+                    }
+
+                    if !eventProcessed {
+                        logger.trace("QuicTransport internal polling - No events available")
                     }
                 } catch {
                     // Log error but continue polling
@@ -5373,148 +5633,66 @@ public actor QuicTransport {
         pollingTask = nil
     }
 
-    /// Handle incoming events and call appropriate callbacks
-    private func handleEvent(_ event: TransportEvent) async {
-        logger.info("QuicTransport.handleEvent() - Handling event: \(event.type)")
+    // New typed handlers
+    private func handleRequestEvent(_ event: TransportRequestEvent) async {
+        logger.info("QuicTransport.handleRequestEvent() - path=\(event.path) corr=\(event.correlationId)")
 
-        switch event.type {
-        case "PeerDiscovered":
-            // Handle peer discovery - this should trigger the handshake process
-            logger.info("QuicTransport.handleEvent() - PeerDiscovered event - peerNodeId: \(event.peerNodeId ?? "nil"), peerInfo: \(event.peerInfo != nil ? "present" : "nil")")
-            
-            // For PeerDiscovered events, peerNodeId might not be present in the CBOR data
-            // We need to derive it from the peerInfo or use a placeholder
-            let peerId: String
-            if let existingPeerId = event.peerNodeId {
-                peerId = existingPeerId
-                logger.info("QuicTransport.handleEvent() - Using provided peerNodeId: \(peerId)")
-            } else if let peerInfo = event.peerInfo {
-                // peerInfo is now a proper PeerInfo struct with publicKey and addresses
-                if let firstAddress = peerInfo.addresses.first {
-                    peerId = firstAddress
-                } else {
-                    // Use a hash of the public key as peerId
-                    let publicKeyData = peerInfo.publicKey
-                    let hash = publicKeyData.withUnsafeBytes { bytes in
-                        // Simple hash of the public key
-                        var hash = 0
-                        for byte in bytes {
-                            hash = hash &* 31 &+ Int(byte)
-                        }
-                        return abs(hash)
-                    }
-                    peerId = "peer_\(hash)"
-                }
-                logger.info("QuicTransport.handleEvent() - Derived peerId from peerInfo: \(peerId), addresses: \(peerInfo.addresses)")
-            } else {
-                logger.warning("QuicTransport.handleEvent() - PeerDiscovered event missing both peerNodeId and peerInfo")
-                return
+        // Call the request callback and get the response
+        if let responseMessage = callbacks.requestCallback(
+            event.requestId,
+            event.path,
+            event.payload,
+            "", // sourcePeerId - not available in TransportRequestEvent
+            event.correlationId
+        ) {
+            // Serialize the NetworkMessage to CBOR data
+            do {
+                let responseData = try CodableCBOREncoder().encode(responseMessage)
+
+                // Send the response back to the peer
+                let completeParams = TransportCompleteRequestParams(
+                    requestId: event.requestId,
+                    responsePayload: responseData,
+                    profilePublicKeys: responseMessage.payload.profilePublicKeys
+                )
+
+                try await completeRequest(completeParams)
+                logger.debug("QuicTransport.handleRequestEvent() - Request completed successfully")
+            } catch {
+                logger.error("QuicTransport.handleRequestEvent() - Failed to serialize NetworkMessage response: \(error)")
             }
-            
-            // For PeerDiscovered, we should initiate the handshake process
-            // This is different from PeerConnected which means handshake is complete
-            logger.info("QuicTransport.handleEvent() - Initiating handshake with peer: \(peerId)")
-            // TODO: Implement handshake initiation logic here
-            // For now, we'll create a minimal NodeInfo for the callback
-            // The actual NodeInfo will be exchanged during the handshake process
-            let minimalNodeInfo = NodeInfo(
-                nodePublicKey: Data(), // Will be filled during handshake
-                networkIds: [],
-                addresses: [],
-                nodeMetadata: NodeMetadata(services: [], subscriptions: []),
-                version: 1
-            )
-            callbacks.peerConnectedCallback?(peerId, minimalNodeInfo)
-
-        case "PeerConnected":
-            if let peerId = event.peerNodeId,
-               let nodeInfo = event.nodeInfo {
-                callbacks.peerConnectedCallback?(peerId, nodeInfo)
-            } else {
-                logger.warning("QuicTransport.handleEvent() - PeerConnected event missing peerNodeId or nodeInfo")
-            }
-
-        case "PeerDisconnected":
-            if let peerId = event.peerNodeId {
-                callbacks.peerDisconnectedCallback?(peerId)
-            } else {
-                logger.warning("QuicTransport.handleEvent() - PeerDisconnected event missing peerNodeId")
-            }
-
-        case "RequestReceived":
-            // Extract request details from event payload
-            logger.info("QuicTransport.handleEvent() - RequestReceived case - path: \(event.path ?? "nil"), payload: \(event.payload?.count ?? 0) bytes, requestId: \(event.requestId ?? "nil"), correlationId: \(event.correlationId ?? "nil")")
-            if let path = event.path,
-               let payload = event.payload
-            {
-                // For now, we'll use placeholder values - in a real implementation,
-                // these would be extracted from the event payload
-                let requestId = event.requestId ?? "unknown" // Use actual requestId from event
-                let sourcePeerId = "unknown" // Would be extracted from payload
-                let correlationId = event.correlationId
-
-                // Call the request callback and get the response
-                logger.info("QuicTransport.handleEvent() - Calling request callback for requestId: \(requestId)")
-                if let responseMessage = callbacks.requestCallback(requestId, path, Data(payload), sourcePeerId, correlationId) {
-                    // Serialize the NetworkMessage to CBOR data
-                    do {
-                        let responseData = try CodableCBOREncoder().encode(responseMessage)
-                        
-                        // Send the response back to the peer
-                        let completeParams = TransportCompleteRequestParams(
-                            requestId: requestId,
-                            responsePayload: responseData,
-                            profilePublicKeys: responseMessage.payload.profilePublicKeys
-                        )
-
-                        try await completeRequest(completeParams)
-                        logger.trace("QuicTransport.handleEvent() - Request completed successfully")
-                    } catch {
-                        logger.error("QuicTransport.handleEvent() - Failed to serialize NetworkMessage response: \(error)")
-                    }
-                } else {
-                    logger.trace("QuicTransport.handleEvent() - Request callback returned no response")
-                }
-            } else {
-                logger.warning("QuicTransport.handleEvent() - RequestReceived event missing path or payload")
-            }
-
-        case "EventReceived":
-            // Handle P2P event messages (fire and forget, no response)
-            logger.info("QuicTransport.handleEvent() - EventReceived case - path: \(event.path ?? "nil"), payload: \(event.payload?.count ?? 0) bytes, correlationId: \(event.correlationId ?? "nil")")
-            if let path = event.path,
-               let payload = event.payload
-            {
-                // Use the path and correlationId from the event
-                let requestId = "evt_\(UUID().uuidString)" // Generate a unique event ID
-                let sourcePeerId = event.correlationId ?? "unknown"
-                let correlationId = event.correlationId
-
-                logger.info("QuicTransport.handleEvent() - EventReceived - Calling eventCallback with requestId: \(requestId), path: \(path), sourcePeerId: \(sourcePeerId), correlationId: \(correlationId ?? "nil")")
-                // Call the event callback for P2P events
-                callbacks.eventCallback?(requestId, path, Data(payload), sourcePeerId, correlationId)
-                logger.info("QuicTransport.handleEvent() - P2P event received and processed")
-            } else {
-                logger.warning("QuicTransport.handleEvent() - EventReceived event missing path or payload")
-            }
-
-        case "ResponseReceived":
-            // Deliver response to waiting request via channel mechanism
-            logger.info("QuicTransport.handleEvent() - ResponseReceived event - delivering to waiting request")
-            if let correlationId = event.correlationId,
-               let payload = event.payload,
-               let continuation = pendingRequests.removeValue(forKey: correlationId) {
-                logger.info("QuicTransport.handleEvent() - Delivering response to request with correlation ID: \(correlationId)")
-                continuation.resume(returning: Data(payload))
-            } else {
-                logger.warning("QuicTransport.handleEvent() - ResponseReceived event with no matching pending request or missing correlation ID")
-            }
-
-        default:
-            // Log error for unknown FFI events
-            logger.error("QuicTransport.handleEvent() - Unknown FFI event received: \(event.type)")
+        } else {
+            logger.debug("QuicTransport.handleRequestEvent() - Request callback returned no response")
         }
     }
+
+    private func handleTransportEvent(_ event: TransportEventEvent) async {
+        logger.info("QuicTransport.handleTransportEvent() - path=\(event.path) corr=\(event.correlationId)")
+        // If there is an event callback in callbacks, invoke it
+        callbacks.eventCallback?(UUID().uuidString, event.path, event.payload, "", event.correlationId)
+    }
+
+    private func handleResponseEvent(_ event: TransportResponseEvent) async {
+        logger.info("QuicTransport.handleResponseEvent() - corr=\(event.correlationId)")
+        // Deliver response payload to awaiting continuation if present
+        if let cont = pendingRequests.removeValue(forKey: event.correlationId) {
+            cont.resume(returning: event.payload)
+        } else {
+            logger.warning("QuicTransport.handleResponseEvent() - No pending request for correlationId=\(event.correlationId)")
+        }
+    }
+
+    private func handlePeerConnected(_ event: PeerConnectedEvent) async {
+        logger.info("QuicTransport.handlePeerConnected() - nodeId=\(event.nodeId)")
+        callbacks.peerConnectedCallback?(event.nodeId, event.nodeInfo)
+    }
+
+    private func handlePeerDisconnected(_ nodeId: String) async {
+        logger.info("QuicTransport.handlePeerDisconnected() - nodeId=\(nodeId)")
+        callbacks.peerDisconnectedCallback?(nodeId)
+    }
+
+    // Legacy handleEvent method removed - replaced with typed event handlers
 
     /// Get local address
     /// - Returns: Local address string
@@ -5612,6 +5790,34 @@ public struct TransportCallbacks: Sendable {
         self.requestCallback = requestCallback
         self.eventCallback = eventCallback
         self.getLocalNodeInfoCallback = getLocalNodeInfoCallback
+    }
+}
+
+// MARK: - Discovery Callback Types
+
+/// Callback for when a peer is discovered
+public typealias DiscoveryDiscoveredCallback = @Sendable (PeerInfo) -> Void
+
+/// Callback for when a peer's information is updated
+public typealias DiscoveryUpdatedCallback = @Sendable (PeerInfo) -> Void
+
+/// Callback for when a peer is lost
+public typealias DiscoveryLostCallback = @Sendable (String) -> Void
+
+/// Discovery callbacks container
+public struct DiscoveryCallbacks: Sendable {
+    public let discoveredCallback: DiscoveryDiscoveredCallback?
+    public let updatedCallback: DiscoveryUpdatedCallback?
+    public let lostCallback: DiscoveryLostCallback?
+
+    public init(
+        discoveredCallback: DiscoveryDiscoveredCallback? = nil,
+        updatedCallback: DiscoveryUpdatedCallback? = nil,
+        lostCallback: DiscoveryLostCallback? = nil
+    ) {
+        self.discoveredCallback = discoveredCallback
+        self.updatedCallback = updatedCallback
+        self.lostCallback = lostCallback
     }
 }
 

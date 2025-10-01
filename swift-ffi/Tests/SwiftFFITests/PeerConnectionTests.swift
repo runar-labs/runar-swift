@@ -5,50 +5,49 @@ import XCTest
 
 /// Tests for peer connection functionality with the new NodeInfo API
 final class PeerConnectionTests: XCTestCase {
-    
     /// Test that peer connection callbacks receive the correct NodeInfo data
     func testPeerConnectionWithNodeInfo() async throws {
         // Create two key managers
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
-        
+
         // Create mobile key manager for CA (Certificate Authority)
         let keysCA = try await MobileKeyManager()
-        
+
         // Set node info for both nodes
         let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
-        
+
         // Note: NodeInfo is now set on the transport, not on keys
         // This will be set when creating the transport
-        
+
         // Generate CSR for node A and process through mobile CA
         let csrA = try await keysA.generateCsrSetupToken()
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
-        
+
         // Generate CSR for node B and process through mobile CA
         let csrB = try await keysB.generateCsrSetupToken()
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
-        
+
         // Create transport options
         let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
-        
+
         // Create expectations for peer connection events
         let peerConnectedExpectation = expectation(description: "Peer connected with NodeInfo")
         let peerDisconnectedExpectation = expectation(description: "Peer disconnected")
-        
+
         // Track received NodeInfo
         let receivedNodeInfo = Box<NodeInfo?>(nil)
         let receivedPeerId = Box<String?>(nil)
-        
+
         // Create transport A with peer connection callbacks
         let callbacksA = TransportCallbacks(
             peerConnectedCallback: { peerId, nodeInfo in
                 print("PeerConnectionTests - Peer connected: \(peerId)")
                 print("PeerConnectionTests - NodeInfo: \(nodeInfo)")
-                
+
                 Task {
                     await receivedPeerId.setValue(peerId)
                     await receivedNodeInfo.setValue(nodeInfo)
@@ -61,13 +60,13 @@ final class PeerConnectionTests: XCTestCase {
             },
             requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
         )
-        
+
         let loggerA = RunarLogger(component: .custom)
         let localNodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()
-        
+
         // Create transport B with minimal callbacks
         let callbacksB = TransportCallbacks(
             requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
@@ -76,60 +75,60 @@ final class PeerConnectionTests: XCTestCase {
         let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)
         try await transportB.setLocalNodeInfo(nodeInfoCbor)
         try await transportB.start()
-        
+
         // Get local address for transport A
         let localAddrA = try await transportA.getLocalAddr()
         XCTAssertFalse(localAddrA.isEmpty, "Local address should not be empty")
-        
+
         // Get public key for node A
         let publicKeyA = try await keysA.getNodePublicKey()
-        
+
         // Generate peer ID using compact ID
         let peerIdA = try await keysA.getCompactId(for: publicKeyA)
-        
+
         // Create peer info for connection
         let peerInfo = PeerInfo(publicKey: publicKeyA, addresses: [localAddrA])
-        
+
         // Connect transport B to transport A
         try await transportB.connectPeer(peerInfo: peerInfo)
-        
+
         // Wait for peer connection
         await fulfillment(of: [peerConnectedExpectation], timeout: 10.0)
-        
+
         // Verify that we received the correct peer ID and NodeInfo
         let receivedPeerIdValue = await receivedPeerId.value
         let receivedNodeInfoValue = await receivedNodeInfo.value
-        
+
         XCTAssertNotNil(receivedPeerIdValue, "Should have received peer ID")
         XCTAssertNotNil(receivedNodeInfoValue, "Should have received NodeInfo")
-        
+
         if let peerId = receivedPeerIdValue {
             // Peer ID should not be empty and should be a valid format
             XCTAssertFalse(peerId.isEmpty, "Peer ID should not be empty")
             XCTAssertTrue(peerId.count > 10, "Peer ID should be reasonably long")
         }
-        
+
         if let nodeInfo = receivedNodeInfoValue {
             // Verify NodeInfo structure
             XCTAssertFalse(nodeInfo.networkIds.isEmpty, "NodeInfo should have network IDs")
             XCTAssertFalse(nodeInfo.addresses.isEmpty, "NodeInfo should have addresses")
             XCTAssertNotNil(nodeInfo.nodeMetadata, "NodeInfo should have metadata")
             XCTAssertGreaterThan(nodeInfo.version, 0, "NodeInfo should have valid version")
-            
+
             // Note: nodePublicKey might be empty in test environment, so we don't assert on it
             // The important thing is that we received a valid NodeInfo structure
         }
-        
+
         // Stop transport B to trigger disconnection
         try await transportB.stop()
-        
+
         // Wait for peer disconnection
         await fulfillment(of: [peerDisconnectedExpectation], timeout: 5.0)
-        
+
         // Clean up
         try await transportA.stop()
     }
-    
+
     /// Test that HandshakeData can be properly serialized and deserialized
     func testHandshakeDataSerialization() throws {
         // Create a sample NodeInfo
@@ -146,33 +145,33 @@ final class PeerConnectionTests: XCTestCase {
                         version: "1.0.0",
                         description: "Basic math operations",
                         actions: [],
-                        registrationTime: 1234567890,
-                        lastStartTime: 1234567890
-                    )
+                        registrationTime: 1_234_567_890,
+                        lastStartTime: 1_234_567_890
+                    ),
                 ],
                 subscriptions: [
-                    SubscriptionMetadata(path: "math1/*")
+                    SubscriptionMetadata(path: "math1/*"),
                 ]
             ),
             version: 1
         )
-        
+
         // Create HandshakeData
         let handshakeData = HandshakeData(
             nodeInfo: nodeInfo,
             nonce: 12345,
             role: .initiator
         )
-        
+
         // Test serialization
         let encoder = CodableCBOREncoder()
         let encodedData = try encoder.encode(handshakeData)
         XCTAssertFalse(encodedData.isEmpty, "Encoded data should not be empty")
-        
+
         // Test deserialization
         let decoder = CodableCBORDecoder()
         let decodedHandshakeData = try decoder.decode(HandshakeData.self, from: encodedData)
-        
+
         // Verify all fields match
         XCTAssertEqual(decodedHandshakeData.nodeInfo.nodePublicKey, handshakeData.nodeInfo.nodePublicKey)
         XCTAssertEqual(decodedHandshakeData.nodeInfo.networkIds, handshakeData.nodeInfo.networkIds)
@@ -181,77 +180,33 @@ final class PeerConnectionTests: XCTestCase {
         XCTAssertEqual(decodedHandshakeData.nonce, handshakeData.nonce)
         XCTAssertEqual(decodedHandshakeData.role, handshakeData.role)
     }
-    
+
     /// Test that ConnectionRole enum works correctly
     func testConnectionRole() {
         // Test initiator role
         let initiator = ConnectionRole.initiator
         XCTAssertEqual(initiator.rawValue, "Initiator")
-        
+
         // Test responder role
         let responder = ConnectionRole.responder
         XCTAssertEqual(responder.rawValue, "Responder")
-        
+
         // Test serialization
         let encoder = CodableCBOREncoder()
         let initiatorData = try! encoder.encode(initiator)
         let responderData = try! encoder.encode(responder)
-        
+
         XCTAssertFalse(initiatorData.isEmpty)
         XCTAssertFalse(responderData.isEmpty)
-        
+
         // Test deserialization
         let decoder = CodableCBORDecoder()
         let decodedInitiator = try! decoder.decode(ConnectionRole.self, from: initiatorData)
         let decodedResponder = try! decoder.decode(ConnectionRole.self, from: responderData)
-        
+
         XCTAssertEqual(decodedInitiator, initiator)
         XCTAssertEqual(decodedResponder, responder)
     }
-    
-    /// Test that TransportEvent can handle the new fields
-    func testTransportEventWithNewFields() throws {
-        // Create a sample NodeInfo
-        let nodeInfo = NodeInfo(
-            nodePublicKey: Data("test-public-key".utf8),
-            networkIds: ["network1"],
-            addresses: ["127.0.0.1:8080"],
-            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
-            version: 1
-        )
-        
-        // Create TransportEvent with new fields
-        let event = TransportEvent(
-            type: "PeerConnected",
-            v: 1,
-            path: nil,
-            requestId: nil,
-            correlationId: nil,
-            payload: nil,
-            peerNodeId: "test-peer-123",
-            nodeInfo: nodeInfo
-        )
-        
-        // Test serialization
-        let encoder = CodableCBOREncoder()
-        let encodedData = try encoder.encode(event)
-        XCTAssertFalse(encodedData.isEmpty, "Encoded data should not be empty")
-        
-        // Test deserialization
-        let decoder = CodableCBORDecoder()
-        let decodedEvent = try decoder.decode(TransportEvent.self, from: encodedData)
-        
-        // Verify all fields match
-        XCTAssertEqual(decodedEvent.type, event.type)
-        XCTAssertEqual(decodedEvent.v, event.v)
-        XCTAssertEqual(decodedEvent.peerNodeId, event.peerNodeId)
-        XCTAssertNotNil(decodedEvent.nodeInfo)
-        
-        if let decodedNodeInfo = decodedEvent.nodeInfo {
-            XCTAssertEqual(decodedNodeInfo.nodePublicKey, nodeInfo.nodePublicKey)
-            XCTAssertEqual(decodedNodeInfo.networkIds, nodeInfo.networkIds)
-            XCTAssertEqual(decodedNodeInfo.addresses, nodeInfo.addresses)
-            XCTAssertEqual(decodedNodeInfo.version, nodeInfo.version)
-        }
-    }
+
+    // TransportEvent test removed - replaced with typed event structs
 }

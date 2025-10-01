@@ -43,9 +43,9 @@ final class ManualPollingTest: XCTestCase {
 
         // Step 7: Create transport A with minimal callbacks
         let callbacksA = TransportCallbacks(
-            requestCallback: { receivedRequestId, path, payload, sourcePeerId, correlationId in
+            requestCallback: { receivedRequestId, path, _, sourcePeerId, correlationId in
                 print("ManualPollingTest - Request received on A: \(receivedRequestId)")
-                
+
                 // Create a NetworkMessage response
                 let responsePayload = NetworkMessagePayloadItem(
                     path: path,
@@ -54,14 +54,14 @@ final class ManualPollingTest: XCTestCase {
                     networkPublicKey: nil,
                     profilePublicKeys: []
                 )
-                
+
                 let responseMessage = NetworkMessage(
                     sourceNodeId: "test_node_a",
                     destinationNodeId: sourcePeerId,
                     messageType: 5, // MESSAGE_TYPE_RESPONSE
                     payload: responsePayload
                 )
-                
+
                 return responseMessage
             }
         )
@@ -111,7 +111,7 @@ final class ManualPollingTest: XCTestCase {
         // This matches the Rust architecture where request() waits internally for the response
         print("ManualPollingTest - Sending request and waiting for response...")
         let responseData = try await transportB.request(requestParams)
-        
+
         // Verify we got the expected response (now a CBOR-serialized NetworkMessage)
         do {
             let responseMessage: NetworkMessage = try CodableCBORDecoder().decode(NetworkMessage.self, from: responseData)

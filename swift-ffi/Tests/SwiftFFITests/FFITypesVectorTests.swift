@@ -284,12 +284,12 @@ final class FFITypesVectorTests: XCTestCase {
                         version: "1.0.0",
                         description: "A test service",
                         actions: [],
-                        registrationTime: 1234567890,
-                        lastStartTime: 1234567891
-                    )
+                        registrationTime: 1_234_567_890,
+                        lastStartTime: 1_234_567_891
+                    ),
                 ],
                 subscriptions: [
-                    SubscriptionMetadata(path: "test-topic")
+                    SubscriptionMetadata(path: "test-topic"),
                 ]
             ),
             version: 2
@@ -350,7 +350,7 @@ final class FFITypesVectorTests: XCTestCase {
             networkPublicKey: Data([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
             profilePublicKeys: [
                 Data([11, 12, 13, 14, 15]),
-                Data([16, 17, 18, 19, 20])
+                Data([16, 17, 18, 19, 20]),
             ]
         )
 

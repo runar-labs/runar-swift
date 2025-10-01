@@ -114,9 +114,33 @@ final class FFIDiscoveryTest: XCTestCase {
         let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
-        // Bind discovery events to transports
-        try await discoveryA.bindEventsToTransport(transport: transportA)
-        try await discoveryB.bindEventsToTransport(transport: transportB)
+        // Set up discovery callbacks for both discovery handles
+        let discoveryCallbacksA = DiscoveryCallbacks(
+            discoveredCallback: { peerInfo in
+                print("Discovery A: Peer discovered - \(peerInfo.addresses)")
+            },
+            updatedCallback: { peerInfo in
+                print("Discovery A: Peer updated - \(peerInfo.addresses)")
+            },
+            lostCallback: { nodeId in
+                print("Discovery A: Peer lost - \(nodeId)")
+            }
+        )
+
+        let discoveryCallbacksB = DiscoveryCallbacks(
+            discoveredCallback: { peerInfo in
+                print("Discovery B: Peer discovered - \(peerInfo.addresses)")
+            },
+            updatedCallback: { peerInfo in
+                print("Discovery B: Peer updated - \(peerInfo.addresses)")
+            },
+            lostCallback: { nodeId in
+                print("Discovery B: Peer lost - \(nodeId)")
+            }
+        )
+
+        await discoveryA.setCallbacks(discoveryCallbacksA)
+        await discoveryB.setCallbacks(discoveryCallbacksB)
 
         // Get local addresses
         let localAddrA = try await transportA.getLocalAddr()
@@ -223,9 +247,33 @@ final class FFIDiscoveryTest: XCTestCase {
         let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
-        // Bind discovery events to transports
-        try await discoveryA.bindEventsToTransport(transport: transportA)
-        try await discoveryB.bindEventsToTransport(transport: transportB)
+        // Set up discovery callbacks for both discovery handles
+        let discoveryCallbacksA = DiscoveryCallbacks(
+            discoveredCallback: { peerInfo in
+                print("Discovery A: Peer discovered - \(peerInfo.addresses)")
+            },
+            updatedCallback: { peerInfo in
+                print("Discovery A: Peer updated - \(peerInfo.addresses)")
+            },
+            lostCallback: { nodeId in
+                print("Discovery A: Peer lost - \(nodeId)")
+            }
+        )
+
+        let discoveryCallbacksB = DiscoveryCallbacks(
+            discoveredCallback: { peerInfo in
+                print("Discovery B: Peer discovered - \(peerInfo.addresses)")
+            },
+            updatedCallback: { peerInfo in
+                print("Discovery B: Peer updated - \(peerInfo.addresses)")
+            },
+            lostCallback: { nodeId in
+                print("Discovery B: Peer lost - \(nodeId)")
+            }
+        )
+
+        await discoveryA.setCallbacks(discoveryCallbacksA)
+        await discoveryB.setCallbacks(discoveryCallbacksB)
 
         // Get local addresses and create peer info
         let localAddrA = try await transportA.getLocalAddr()
