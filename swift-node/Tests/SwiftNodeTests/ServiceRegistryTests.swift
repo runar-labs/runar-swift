@@ -75,11 +75,28 @@ enum TimeoutError: Error {
 /// These tests match the Rust service_registry_test.rs exactly
 @MainActor
 final class ServiceRegistryTests: XCTestCase {
-    
+
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+
+    override func setUp() async throws {
+        try await super.setUp()
+
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("ServiceRegistryTests"))
+    }    
     // MARK: - Test Setup
     
     private func createTestLogger() -> RunarLogger {
-        return RunarLogger(component: .node)
+        return testLogger.child(component: .node)
     }
     
     private func createTestRegistry() -> ServiceRegistry {
@@ -175,7 +192,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = RunarLogger(component: .node)
+            let logger = testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             let servicePath = "math"
@@ -187,7 +204,7 @@ final class ServiceRegistryTests: XCTestCase {
             
             // Create a handler (matching Rust)
             let handler: ActionHandler = { params, context in
-                print("Add handler called with params: \(String(describing: params))")
+                testLogger.trace("Add handler called with params: \(String(describing: params))")
                 return AnyValue.null()
             }
             
@@ -270,7 +287,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let registry = ServiceRegistry(logger: RunarLogger(component: .node))
+            let registry = ServiceRegistry(logger: testLogger.child(component: .node))
             
             // Create a TopicPath for the test topic (matching Rust)
             let topic = try TopicPath(networkId: "net1", segments: ["test", "event"])
@@ -311,7 +328,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let registry = ServiceRegistry(logger: RunarLogger(component: .node))
+            let registry = ServiceRegistry(logger: testLogger.child(component: .node))
             
             // Create a callback (matching Rust)
             let callback: EventHandler = { data in
@@ -360,11 +377,11 @@ final class ServiceRegistryTests: XCTestCase {
         
         // Create multiple callbacks
         let callback1: EventHandler = { data in
-            print("Event callback 1 called")
+            testLogger.trace("Event callback 1 called")
         }
         
         let callback2: EventHandler = { data in
-            print("Event callback 2 called")
+            testLogger.trace("Event callback 2 called")
         }
         
         // Subscribe both callbacks to the same topic
@@ -528,7 +545,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Set up test logger (matching Rust)
-            let logger = RunarLogger(component: .node)
+            let logger = testLogger.child(component: .node)
             
             // Create registry (matching Rust)
             let registry = ServiceRegistry(logger: logger)
@@ -643,7 +660,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = RunarLogger(component: .node)
+            let logger = testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             // Create a handler that expects path parameters (matching Rust)
@@ -675,7 +692,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = RunarLogger(component: .node)
+            let logger = testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             let topicPath = try TopicPath(networkId: "net1", segments: ["test", "action"])
@@ -719,7 +736,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = RunarLogger(component: .node)
+            let logger = testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             // Register handlers in different networks (matching Rust)
@@ -764,7 +781,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = RunarLogger(component: .node)
+            let logger = testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             let topicPath = try TopicPath(networkId: "net1", segments: ["test", "event"])
@@ -800,7 +817,7 @@ final class ServiceRegistryTests: XCTestCase {
         
         // Create a callback
         let callback: EventHandler = { data in
-            print("Event published: \(String(describing: data))")
+            testLogger.trace("Event published: \(String(describing: data))")
         }
         
         // Subscribe to events

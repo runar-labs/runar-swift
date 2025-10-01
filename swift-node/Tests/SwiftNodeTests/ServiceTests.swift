@@ -94,9 +94,26 @@ final class MockNodeDelegate: NodeDelegate {
 
 @MainActor
 final class ServiceTests: XCTestCase {
-    func testKeysServiceLifecycle() async throws {
+
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+
+    override func setUp() async throws {
+        try await super.setUp()
+
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("ServiceTests"))
+    }    func testKeysServiceLifecycle() async throws {
         // Test KeysService initialization and basic operations
-        let logger = RunarLogger(component: .node)
+        let logger = testLogger.child(component: .node)
         let keysService = KeysService(logger: logger, nodeDelegate: MockNodeDelegate())
 
         // Test initialization
@@ -124,7 +141,7 @@ final class ServiceTests: XCTestCase {
 
     func testRegistryServiceLifecycle() async throws {
         // Test RegistryService initialization and basic operations
-        let logger = RunarLogger(component: .registry)
+        let logger = testLogger.child(component: .registry)
         let serviceRegistry = ServiceRegistry(logger: logger)
         let mockRegistryDelegate = MockRegistryDelegate()
         let registryService = RegistryService(logger: logger, registryDelegate: mockRegistryDelegate)
@@ -152,7 +169,7 @@ final class ServiceTests: XCTestCase {
 
 
     func testServiceStateTransitions() async throws {
-        let logger = RunarLogger(component: .node)
+        let logger = testLogger.child(component: .node)
         let keysService = KeysService(logger: logger, nodeDelegate: MockNodeDelegate())
 
         let context = LifecycleContext(
@@ -174,7 +191,7 @@ final class ServiceTests: XCTestCase {
     }
 
     func testServiceErrorHandling() async throws {
-        let logger = RunarLogger(component: .node)
+        let logger = testLogger.child(component: .node)
         let keysService = KeysService(logger: logger, nodeDelegate: MockNodeDelegate())
 
         let context = LifecycleContext(

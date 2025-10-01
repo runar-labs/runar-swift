@@ -14,6 +14,24 @@ import XCTest
 @MainActor
 final class RegistryServiceTests: XCTestCase {
     
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+    
+    override func setUp() async throws {
+        try await super.setUp()
+        
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+        
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("RegistryServiceTests"))
+    }
+    
     /// Test that the Registry Service correctly lists all services
     ///
     /// INTENTION: This test validates that:
@@ -28,7 +46,7 @@ final class RegistryServiceTests: XCTestCase {
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -94,17 +112,12 @@ final class RegistryServiceTests: XCTestCase {
     func testRegistryServiceGetServiceInfo() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
-            
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math Service", path: "math")
+            let mathService = MathService(name: "Math Service", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -168,14 +181,14 @@ final class RegistryServiceTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Create a test logger for debugging
-            let testLogger = RunarLogger(component: .node)
+            // Use testLogger from setUp
             
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -240,14 +253,14 @@ final class RegistryServiceTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Create a test logger for debugging
-            let testLogger = RunarLogger(component: .node)
+            // Use testLogger from setUp
             
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -372,10 +385,10 @@ final class MathService: AbstractService {
     
     private var counter: Int = 0
     
-    init(name: String, path: String) {
+    init(name: String, path: String, logger: RunarLogger) {
         self.name = name
         self.path = path
-        self.logger = RunarLogger(component: .service)
+        self.logger = logger
     }
     
     func setNetworkId(_ networkId: String) {
@@ -556,16 +569,13 @@ extension RegistryServiceTests {
     func testRegistryServicePauseService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -638,16 +648,13 @@ extension RegistryServiceTests {
     func testRegistryServiceResumeService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -727,16 +734,13 @@ extension RegistryServiceTests {
     func testRegistryServiceRequestToPausedService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -791,12 +795,9 @@ extension RegistryServiceTests {
     func testRegistryServicePauseNonexistentService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             try await node.start()
@@ -828,12 +829,9 @@ extension RegistryServiceTests {
     func testRegistryServiceResumeNonexistentService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             try await node.start()
@@ -865,16 +863,13 @@ extension RegistryServiceTests {
     func testRegistryServiceResumeRunningService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -922,16 +917,13 @@ extension RegistryServiceTests {
     func testRegistryServicePauseAlreadyPausedService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
-            let mathService = MathService(name: "Math", path: "math")
+            let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
             
             // Add the service to the node
             try await node.addService(mathService)
@@ -986,12 +978,9 @@ extension RegistryServiceTests {
     func testRegistryServiceRequestToNonexistentService() async throws {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
-            let testLogger = RunarLogger(component: .node)
-            
-            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
+            // Use testLogger from setUp
             
             let config = try await createNodeTestConfig()
-                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             try await node.start()

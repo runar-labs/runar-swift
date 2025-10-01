@@ -12,7 +12,24 @@ import SwiftCBOR
 /// This test exactly matches the Rust remote_test.rs test_remote_action_call function.
 @MainActor
 final class RemoteNetworkTests: XCTestCase {
-    
+
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+
+    override func setUp() async throws {
+        try await super.setUp()
+
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("RemoteNetworkTests"))
+    }    
     /// Test for remote action calls between two nodes using QUIC with proper certificates
     ///
     /// INTENTION: Create two Node instances with QUIC network enabled using certificates from a shared CA.
@@ -22,7 +39,7 @@ final class RemoteNetworkTests: XCTestCase {
         let LoggerConfig = LoggerConfig(level: .trace)
         
         // Set up logger with trace level
-        let logger = RunarLogger(component: .node, config: LoggerConfig)
+        let logger = testLogger.child(component: .node, config: LoggerConfig)
         
         // Enable trace logging for Rust FFI layer
         try await FFILogger.setLogLevel(.trace)
@@ -31,14 +48,14 @@ final class RemoteNetworkTests: XCTestCase {
         // Force trace logging for this test
         logger.trace("🔍 TRACE LOGGING ENABLED - Test starting with trace level")
         
-        print("🔍 TEST: Creating networked node test configs...")
+        testLogger.trace("Creating networked node test configs...")
         let configs = try await createNetworkedNodeTestConfigs(count: 2)
-        print("🔍 TEST: Test configs created successfully")
+        testLogger.trace("Test configs created successfully")
         
         let node1Config = configs[0]
         let node2Config = configs[1]
-        print("🔍 TEST: Node1 config: \(node1Config)")
-        print("🔍 TEST: Node2 config: \(node2Config)")
+        testLogger.trace("Node1 config: \(node1Config)")
+        testLogger.trace("Node2 config: \(node2Config)")
         
         // Create math services with different paths using the fixture
         let mathService1 = MathService(name: "math1", path: "math1")
@@ -47,27 +64,27 @@ final class RemoteNetworkTests: XCTestCase {
         logger.debug("Node1 config: \(node1Config)")
         logger.debug("Node2 config: \(node2Config)")
         
-        print("🔍 TEST: Creating node1...")
+        testLogger.trace("Creating node1...")
         let node1 = try await Node.new(config: node1Config)
         try await node1.addService(mathService1)
-        print("🔍 TEST: Node1 created and service added")
+        testLogger.trace("Node1 created and service added")
         
         // Note: Event subscription would be handled by the service registry
         // For now, we'll skip the event subscription part to focus on remote calls
         
-        print("🔍 TEST: Starting node1...")
+        testLogger.trace("Starting node1...")
         try await node1.start()
-        print("🔍 TEST: Node1 started successfully")
+        testLogger.trace("Node1 started successfully")
         logger.debug("✅ Node 1 started")
         
-        print("🔍 TEST: Creating node2...")
+        testLogger.trace("Creating node2...")
         let node2 = try await Node.new(config: node2Config)
         try await node2.addService(mathService2)
-        print("🔍 TEST: Node2 created and service added")
+        testLogger.trace("Node2 created and service added")
         
-        print("🔍 TEST: Starting node2...")
+        testLogger.trace("Starting node2...")
         try await node2.start()
-        print("🔍 TEST: Node2 started successfully")
+        testLogger.trace("Node2 started successfully")
         logger.debug("✅ Node 2 started")
         
         logger.debug("⏳ Waiting for nodes to discover each other via multicast and establish QUIC connections...")
@@ -195,7 +212,7 @@ final class RemoteNetworkTests: XCTestCase {
         // Note: Logging config would be applied here in a full implementation
         
         // Set up logger
-        let logger = RunarLogger(component: .node)
+        let logger = testLogger.child(component: .node)
         
         let configs = try await createNetworkedNodeTestConfigs(count: 2)
         
@@ -356,7 +373,7 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
     
     // Set up trace logging for detailed debugging
     let LoggerConfig = LoggerConfig(level: .trace)
-    let logger = RunarLogger(component: .node, config: LoggerConfig)
+    let logger = testLogger.child(component: .node, config: LoggerConfig)
     
     logger.trace("🔍 Creating \(count) networked node test configs with trace logging")
     

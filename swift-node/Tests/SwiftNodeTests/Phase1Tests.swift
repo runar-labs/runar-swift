@@ -41,11 +41,10 @@ class Phase1Tests: XCTestCase {
         let config = NodeConfig(defaultNetworkId: "test-network")
             .withRequestTimeout(5000)
             .withAdditionalNetworks(["backup", "testing"])
-            .withLoggerConfig(LoggerConfig(defaultLevel: .debug))
 
         XCTAssertEqual(config.requestTimeoutMs, 5000)
         XCTAssertEqual(config.networkIds, ["backup", "testing"])
-        XCTAssertEqual(config.LoggerConfig?.defaultLevel, .debug)
+        // Logger config is now global, not per-instance
     }
 
     func testNodeConfigWithNetworkConfig() {
@@ -119,7 +118,7 @@ class Phase1Tests: XCTestCase {
 
     func testServiceRegistryCreation() {
         // Test ServiceRegistry creation
-        let logger = RunarLogger(component: .node)
+        let logger = testLogger.child(component: .node)
         let registry = ServiceRegistry(logger: logger)
 
         XCTAssertNotNil(registry)
@@ -129,7 +128,7 @@ class Phase1Tests: XCTestCase {
 
     func testServiceRegistryLocalServiceRegistration() async throws {
         // Test local service registration
-        let logger = RunarLogger(component: .node)
+        let logger = testLogger.child(component: .node)
         let registry = ServiceRegistry(logger: logger)
 
         // ServiceRegistry doesn't have registerLocalService method
@@ -208,7 +207,6 @@ class Phase1Tests: XCTestCase {
                 let config = NodeConfig(defaultNetworkId: "test-network")
                 _ = config.withRequestTimeout(5000)
                     .withAdditionalNetworks(["backup"])
-                    .withLoggerConfig(LoggerConfig(defaultLevel: .info))
             }
         }
     }
@@ -242,7 +240,7 @@ private class MockTestService: AbstractService {
     var networkId: String?
     
     init() {
-        self.logger = RunarLogger(component: .service)
+        self.logger = testLogger.child(component: .service)
     }
 
     func setNetworkId(_ networkId: String) {

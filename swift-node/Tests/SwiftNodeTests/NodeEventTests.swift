@@ -7,7 +7,24 @@ import XCTest
 
 /// Node event publishing and subscription tests following the rules - no mocks, no shortcuts, real implementations
 final class NodeEventTests: XCTestCase {
-    private let logger = RunarLogger(component: .node)
+
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+
+    override func setUp() async throws {
+        try await super.setUp()
+
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("NodeEventTests"))
+    }    private let logger = testLogger.child(component: .node)
     /// Test that verifies event publishing and subscription in the Node
     ///
     /// INTENTION: This test validates that the Node can properly:
@@ -176,7 +193,7 @@ final class TestEventService: AbstractService {
     var networkId: String?
     
     init() {
-        self.logger = RunarLogger(component: .service)
+        self.logger = testLogger.child(component: .service)
     }
 
     func setNetworkId(_ networkId: String) {

@@ -6,11 +6,28 @@ import XCTest
 
 @MainActor
 final class SwiftNodeTests: XCTestCase {
+    
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+    
+    override func setUp() async throws {
+        try await super.setUp()
+        
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+        
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("SwiftNodeTests"))
+    }
     func testLocalActionAndRequest() async throws {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         final class EchoService: AbstractService {
             var name: String { "echo" }
@@ -19,7 +36,11 @@ final class SwiftNodeTests: XCTestCase {
             var description: String { "echo service" }
             var networkId: String?
             var state: ServiceState = .created
-            var logger: RunarLogger = .init(component: .service)
+            var logger: RunarLogger
+            
+            init(logger: RunarLogger) {
+                self.logger = logger
+            }
             func initService(_ context: LifecycleContext) async throws {
                 try await context.registerAction("say") { payload, requestContext in
                     payload ?? AnyValue.null()
@@ -33,7 +54,7 @@ final class SwiftNodeTests: XCTestCase {
                 self.networkId = networkId
             }
         }
-        try await node.addService(EchoService())
+        try await node.addService(EchoService(logger: testLogger.child(component: .custom("EchoService"))))
         try await node.start()
         let res = try await node.serviceRegistry.request("echo/say", payload: AnyValue.primitive("hello"), networkId: "net")
         let text: String = try await res.asType()
@@ -44,7 +65,6 @@ final class SwiftNodeTests: XCTestCase {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         final class Svc: AbstractService {
             var name: String { "svc" }
@@ -78,7 +98,6 @@ final class SwiftNodeTests: XCTestCase {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         try await node.start()
         let exp = expectation(description: "recv")
@@ -96,7 +115,6 @@ final class SwiftNodeTests: XCTestCase {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         final class PubService: AbstractService {
             var name: String { "pub" }

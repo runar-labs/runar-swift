@@ -20,6 +20,7 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "509.0.0"),
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.4.0"),
         .package(path: "../swift-serializer"),
+        .package(path: "../swift-common"),
     ],
     targets: [
         .target(
@@ -40,6 +41,7 @@ let package = Package(
             dependencies: [
                 "RunarSerializerMacros",
                 .product(name: "RunarSerializer", package: "swift-serializer"),
+                .product(name: "SwiftCommon", package: "swift-common"),
             ]
         ),
     ]

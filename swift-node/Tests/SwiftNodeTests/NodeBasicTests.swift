@@ -8,6 +8,24 @@ import XCTest
 /// Basic Node tests following the rules - no mocks, no shortcuts, real implementations
 @MainActor
 final class NodeBasicTests: XCTestCase {
+    
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+    
+    override func setUp() async throws {
+        try await super.setUp()
+        
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+        
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("NodeBasicTests"))
+    }
     /// Test that verifies basic node creation functionality
     ///
     /// INTENTION: This test validates that the Node can be properly:
@@ -99,7 +117,7 @@ final class TestMathService: AbstractService {
     var networkId: String?
     
     init() {
-        self.logger = RunarLogger(component: .service)
+        self.logger = testLogger.child(component: .service)
     }
 
     func setNetworkId(_ networkId: String) {

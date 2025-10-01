@@ -9,6 +9,24 @@ import XCTest
 /// This test shows basic encryption/decryption functionality with the current macros
 final class EndToEndEncryptionTest: XCTestCase {
     
+    // Swift logger for trace-level logging
+    private var testLogger: RunarLogger!
+    
+    override func setUp() async throws {
+        try await super.setUp()
+        
+        // Set global logger config to trace level for all tests
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+        
+        // Create root logger for this test with test name as context
+        testLogger = RunarLogger.root(component: .custom("EndToEndEncryptionTest"))
+    }
+    
     // MARK: - Test Structs with Macros
     
     @Encrypted(name: "encryption_test.TestProfile")
@@ -191,6 +209,7 @@ final class EndToEndEncryptionTest: XCTestCase {
     
     func testDebugEncryptionFlow() async throws {
         // Set up logging for both Rust FFI layer and Swift layer
+        testLogger.debug("Setting up debug encryption test")
         try await FFILogger.setLogLevel(.debug)
         try await FFILogger.setLoggerContext("debug-encryption-test")
 
@@ -250,6 +269,7 @@ final class EndToEndEncryptionTest: XCTestCase {
     
     func testFullEncryptionFlowWithRegistry() async throws {
         // Set up logging for both Rust FFI layer and Swift layer
+        testLogger.debug("Setting up full encryption test")
         try await FFILogger.setLogLevel(.debug)
         try await FFILogger.setLoggerContext("full-encryption-test")
 
