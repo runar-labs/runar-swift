@@ -99,22 +99,16 @@ Implement service announcement in the Swift Node network integration so that whe
 
 ### ❌ **What's Still Broken**
 
-1. **Critical CBOR Field Name Mismatch**
-   - **Problem**: Rust FFI generates `ipeer_info` instead of `peer_info` in CBOR
-   - **Impact**: `PeerDiscovered` events fail to decode, causing handshake to show 0 services/0 subscriptions
-   - **Evidence**: CBOR hex `69 70 65 65 72 5f 69 6e 66 6f` decodes to `ipeer_info`
-   - **Status**: Root cause not found in Rust codebase
-
-2. **Request Callback Null Response Handling**
+1. **Request Callback Null Response Handling**
    - **Problem**: When `requestCallback` returns `nil`, no response is sent back
    - **Impact**: Requests hang waiting for response
    - **Location**: `QuicTransport.handleRequestEvent()` method
    - **TODO**: Send null response when callback returns nil
 
-3. **Service Announcement Not Working**
-   - **Problem**: Despite handshake working, services aren't being announced properly
-   - **Impact**: Remote service calls still fail
-   - **Root Cause**: Likely related to the `ipeer_info` CBOR issue
+2. **Service Announcement Integration**
+   - **Problem**: Swift Node needs to be updated to use the new Discovery and Transport FFI architecture
+   - **Impact**: Service announcement and remote service calls not working
+   - **Root Cause**: Swift Node still using legacy mixed discovery/transport APIs
 
 ## Lessons Learned
 
@@ -145,24 +139,13 @@ Implement service announcement in the Swift Node network integration so that whe
 
 ## Next Steps for Task 7
 
-### **Phase 7A: Fix Critical CBOR Issue (BLOCKING)**
-1. **Find and Fix `ipeer_info` Typo**
-   - Search entire Rust codebase for the exact typo "ipeer_info"
-   - Fix the typo in the Rust serialization code
-   - Verify CBOR field names match exactly between Rust and Swift
-
-2. **Validate Service Announcement**
-   - Test that `PeerDiscovered` events now contain proper `peerInfo`
-   - Verify NodeInfo exchange shows correct service counts
-   - Ensure remote service calls work end-to-end
-
-### **Phase 7B: Fix Request Callback Handling**
+### **Phase 7A: Fix Request Callback Handling**
 1. **Implement Null Response Handling**
    - Modify `QuicTransport.handleRequestEvent()` to send null response when callback returns nil
    - Ensure all requests get a response (even if null)
    - Add proper error handling for response serialization
 
-### **Phase 7C: Complete Service Announcement Integration**
+### **Phase 7B: Complete Service Announcement Integration**
 1. **Update Swift Node to Use New FFI Architecture**
    - Remove legacy discovery polling from `QuicTransport`
    - Implement `DiscoveryHandle` usage in `SwiftNode`
@@ -175,7 +158,7 @@ Implement service announcement in the Swift Node network integration so that whe
    - Remove all legacy `TransportEvent` union usage
    - Ensure comprehensive test coverage
 
-### **Phase 7D: Production Readiness**
+### **Phase 7C: Production Readiness**
 1. **Error Handling and Logging**
    - Add comprehensive error handling for all network operations
    - Implement proper logging for debugging production issues
@@ -194,9 +177,8 @@ Implement service announcement in the Swift Node network integration so that whe
 ## Implementation Checklist
 
 ### **Immediate (Blocking Issues)**
-- [ ] **CRITICAL**: Find and fix `ipeer_info` typo in Rust codebase
 - [ ] **CRITICAL**: Fix `handleRequestEvent()` null response handling
-- [ ] **CRITICAL**: Validate service announcement works end-to-end
+- [ ] **CRITICAL**: Update Swift Node to use new Discovery and Transport FFI architecture
 
 ### **Swift Node Integration**
 - [ ] Remove legacy discovery polling from `QuicTransport`
@@ -226,9 +208,9 @@ Implement service announcement in the Swift Node network integration so that whe
 
 ## Dependencies
 
-- **Rust FFI**: Must fix `ipeer_info` typo before Swift integration can work
-- **Swift FFI**: New architecture is complete and ready for use
+- **Rust FFI**: ✅ Complete with proper callbacks and typed events
+- **Swift FFI**: ✅ New architecture is complete and ready for use
 - **Swift Node**: Needs migration to new FFI architecture
 - **Tests**: Need comprehensive migration to new APIs
 
-The foundation is solid, but the critical CBOR issue must be resolved before service announcement can work properly. Once that's fixed, the remaining work is primarily integration and testing.
+The foundation is solid with the new FFI architecture working properly. The remaining work is primarily Swift Node integration and testing.

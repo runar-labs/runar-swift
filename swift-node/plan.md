@@ -11,7 +11,7 @@ Detailed Plan:
 **Required Changes for Local Phase:**
 - Replace `SwiftNodeConfig` with `NodeConfig` matching Rust structure
 - Add `label_resolver_config: LabelResolverConfig` (REQUIRED field)
-- Add `logging_config: Option<LoggingConfig>`
+- Add `logging_config: Option<LoggerConfig>`
 - Add `network_config: Option<NetworkConfig>` (can be None for local-only)
 - Add builder pattern methods: `with_logging_config()`, `with_network_config()`, etc.
 - Support local-only mode (network_config = None)

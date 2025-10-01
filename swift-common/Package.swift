@@ -13,11 +13,15 @@ let package = Package(
             targets: ["SwiftCommon"]
         ),
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-atomics.git", from: "1.2.0"),
+    ],
     targets: [
         .target(
             name: "SwiftCommon",
-            dependencies: []
+            dependencies: [
+                .product(name: "Atomics", package: "swift-atomics"),
+            ]
         ),
         .testTarget(
             name: "SwiftCommonTests",

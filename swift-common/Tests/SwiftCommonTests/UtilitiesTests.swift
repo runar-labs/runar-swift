@@ -7,7 +7,7 @@ struct UtilitiesTest {
     @Test
     func componentBasedLogging() {
         // Test component-based logging structure
-        let logger = RunarLogger(component: .node)
+        let logger = RunarLogger.root(component: .node)
 
         // This is mainly a compile-time test to ensure the logging system works
         // In a real test, we would capture log output, but for now we just verify

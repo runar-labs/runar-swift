@@ -188,7 +188,7 @@ final class FFIHandshakeTest: XCTestCase {
         )
 
         // Step 7: Create transport A (server) - exactly like Rust
-        let traceConfig = LoggingConfig(level: .trace, includeTimestamp: true, includeComponent: true, includeContext: true)
+        let traceConfig = LoggerConfig(level: .trace, includeTimestamp: true, includeComponent: true, includeContext: true)
         let loggerA = RunarLogger(component: .custom, config: traceConfig)
         let transportA = try await QuicTransport.create(
             keys: keysA,
@@ -379,7 +379,7 @@ final class FFIHandshakeTest: XCTestCase {
         )
 
         // Step 8: Create transport A (server) - exactly like Rust
-        let traceConfig = LoggingConfig(level: .trace, includeTimestamp: true, includeComponent: true, includeContext: true)
+        let traceConfig = LoggerConfig(level: .trace, includeTimestamp: true, includeComponent: true, includeContext: true)
         let loggerA = RunarLogger(component: .custom, config: traceConfig)
         let transportA = try await QuicTransport.create(
             keys: keysA,

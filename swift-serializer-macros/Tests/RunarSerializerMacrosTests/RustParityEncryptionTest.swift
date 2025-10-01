@@ -35,7 +35,7 @@ final class RustParityEncryptionTest: XCTestCase {
     // Swift logger for trace-level logging
     private let logger = RunarLogger(
         component: .serializer,
-        config: LoggingConfig(level: .trace),
+        config: LoggerConfig(level: .trace),
         context: "test-node"
     )
     

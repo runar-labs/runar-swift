@@ -19,10 +19,10 @@ final class RemoteNetworkTests: XCTestCase {
     /// Nodes should discover and securely connect to each other, then test remote service calls.
     func testRemoteActionCall() async throws {
         // Configure logging to trace level for detailed debugging
-        let loggingConfig = LoggingConfig(level: .trace)
+        let LoggerConfig = LoggerConfig(level: .trace)
         
         // Set up logger with trace level
-        let logger = RunarLogger(component: .node, config: loggingConfig)
+        let logger = RunarLogger(component: .node, config: LoggerConfig)
         
         // Enable trace logging for Rust FFI layer
         try await FFILogger.setLogLevel(.trace)
@@ -191,7 +191,7 @@ final class RemoteNetworkTests: XCTestCase {
     
     private func performStopRestartTest() async throws {
         // Configure logging to ensure test logs are displayed
-        let loggingConfig = LoggingConfig()
+        let LoggerConfig = LoggerConfig()
         // Note: Logging config would be applied here in a full implementation
         
         // Set up logger
@@ -355,8 +355,8 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
     var configs: [NodeConfig] = []
     
     // Set up trace logging for detailed debugging
-    let loggingConfig = LoggingConfig(level: .trace)
-    let logger = RunarLogger(component: .node, config: loggingConfig)
+    let LoggerConfig = LoggerConfig(level: .trace)
+    let logger = RunarLogger(component: .node, config: LoggerConfig)
     
     logger.trace("🔍 Creating \(count) networked node test configs with trace logging")
     

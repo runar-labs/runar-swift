@@ -96,11 +96,11 @@ final class RegistryServiceTests: XCTestCase {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
@@ -558,10 +558,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
@@ -640,10 +640,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
@@ -729,10 +729,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
@@ -793,10 +793,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             try await node.start()
@@ -830,10 +830,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             try await node.start()
@@ -867,10 +867,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
@@ -924,10 +924,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             // Create a test service
@@ -988,10 +988,10 @@ extension RegistryServiceTests {
         let timeoutTask = Task {
             let testLogger = RunarLogger(component: .node)
             
-            let loggingConfig = LoggingConfig(defaultLevel: .trace)
+            let LoggerConfig = LoggerConfig(defaultLevel: .trace)
             
             let config = try await createNodeTestConfig()
-                .withLoggingConfig(loggingConfig)
+                .withLoggerConfig(LoggerConfig)
             let node = try await Node.new(config: config)
             
             try await node.start()

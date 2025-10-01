@@ -10,7 +10,7 @@ final class SwiftNodeTests: XCTestCase {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggingConfig(LoggingConfig(defaultLevel: .trace))
+            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         final class EchoService: AbstractService {
             var name: String { "echo" }
@@ -44,7 +44,7 @@ final class SwiftNodeTests: XCTestCase {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggingConfig(LoggingConfig(defaultLevel: .trace))
+            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         final class Svc: AbstractService {
             var name: String { "svc" }
@@ -78,7 +78,7 @@ final class SwiftNodeTests: XCTestCase {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggingConfig(LoggingConfig(defaultLevel: .trace))
+            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         try await node.start()
         let exp = expectation(description: "recv")
@@ -96,7 +96,7 @@ final class SwiftNodeTests: XCTestCase {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
             .withKeyManager(keysManager)
-            .withLoggingConfig(LoggingConfig(defaultLevel: .trace))
+            .withLoggerConfig(LoggerConfig(defaultLevel: .trace))
         let node = try await Node.new(config: config)
         final class PubService: AbstractService {
             var name: String { "pub" }

@@ -26,38 +26,38 @@ import Foundation
 /// - Values must conform to `Sendable`
 public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendable> {
     // MARK: - Core Properties
-    
+
     /// Number of shards (must be power of 2 for efficient modulo operation)
     private let shardCount: Int
-    
+
     /// Array of shard actors, each managing a portion of the data
     private let shards: [Shard]
-    
+
     /// Mask for efficient modulo operation (shardCount - 1)
     private let shardMask: Int
-    
+
     // MARK: - Shard Actor
-    
+
     /// Individual shard actor that manages a portion of the map data
     private final actor Shard {
         private var storage: [Key: Value] = [:]
-        
+
         func get(_ key: Key) -> Value? {
-            return storage[key]
+            storage[key]
         }
-        
+
         func insert(_ value: Value, for key: Key) -> Value? {
-            return storage.updateValue(value, forKey: key)
+            storage.updateValue(value, forKey: key)
         }
-        
+
         func remove(_ key: Key) -> Value? {
-            return storage.removeValue(forKey: key)
+            storage.removeValue(forKey: key)
         }
-        
+
         func contains(_ key: Key) -> Bool {
-            return storage[key] != nil
+            storage[key] != nil
         }
-        
+
         func withValue<R: Sendable>(
             for key: Key,
             default makeDefault: @autoclosure @Sendable () -> Value,
@@ -68,47 +68,47 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
             }
             return try body(&storage[key]!)
         }
-        
+
         func count() -> Int {
-            return storage.count
+            storage.count
         }
-        
+
         func keys() -> [Key] {
-            return Array(storage.keys)
+            Array(storage.keys)
         }
-        
+
         func values() -> [Value] {
-            return Array(storage.values)
+            Array(storage.values)
         }
-        
+
         func forEach(_ body: (Key, Value) -> Void) {
             for (key, value) in storage {
                 body(key, value)
             }
         }
-        
+
         func clear() {
             storage.removeAll()
         }
     }
-    
+
     // MARK: - Initialization
-    
+
     /// Create a new ShardedConcurrentMap with the specified number of shards.
     ///
     /// - Parameter shardCount: Number of shards (must be power of 2, defaults to 32)
     /// - Precondition: `shardCount` must be a power of 2 and > 0
     public init(shardCount: Int = 32) {
-        precondition(shardCount > 0 && (shardCount & (shardCount - 1)) == 0, 
-                    "shardCount must be a power of 2 and > 0")
-        
+        precondition(shardCount > 0 && (shardCount & (shardCount - 1)) == 0,
+                     "shardCount must be a power of 2 and > 0")
+
         self.shardCount = shardCount
-        self.shardMask = shardCount - 1
-        self.shards = (0..<shardCount).map { _ in Shard() }
+        shardMask = shardCount - 1
+        shards = (0 ..< shardCount).map { _ in Shard() }
     }
-    
+
     // MARK: - Core Operations
-    
+
     /// Get the value for a key.
     ///
     /// - Parameter key: The key to look up
@@ -117,7 +117,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         let shard = getShard(for: key)
         return await shard.get(key)
     }
-    
+
     /// Insert a value for a key, returning the previous value if it existed.
     ///
     /// - Parameters:
@@ -128,7 +128,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         let shard = getShard(for: key)
         return await shard.insert(value, for: key)
     }
-    
+
     /// Remove a key and return its value if it existed.
     ///
     /// - Parameter key: The key to remove
@@ -137,7 +137,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         let shard = getShard(for: key)
         return await shard.remove(key)
     }
-    
+
     /// Check if a key exists in the map.
     ///
     /// - Parameter key: The key to check
@@ -146,7 +146,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         let shard = getShard(for: key)
         return await shard.contains(key)
     }
-    
+
     /// Atomically get or initialize a value and then mutate it.
     ///
     /// This is equivalent to DashMap's `entry(key).or_default()` pattern.
@@ -166,9 +166,9 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         let shard = getShard(for: key)
         return try await shard.withValue(for: key, default: makeDefault(), body)
     }
-    
+
     // MARK: - Introspection Operations
-    
+
     /// Get the total number of key-value pairs across all shards.
     ///
     /// - Returns: The total count
@@ -179,7 +179,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         }
         return total
     }
-    
+
     /// Get all keys across all shards.
     ///
     /// - Returns: Array of all keys
@@ -191,7 +191,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         }
         return allKeys
     }
-    
+
     /// Get all values across all shards.
     ///
     /// - Returns: Array of all values
@@ -203,7 +203,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         }
         return allValues
     }
-    
+
     /// Execute a closure for each key-value pair across all shards.
     ///
     /// - Parameter body: Closure to execute for each key-value pair
@@ -212,16 +212,16 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
             await shard.forEach(body)
         }
     }
-    
+
     /// Remove all key-value pairs from the map.
     public func clear() async {
         for shard in shards {
             await shard.clear()
         }
     }
-    
+
     // MARK: - Private Helpers
-    
+
     /// Get the appropriate shard for a given key.
     ///
     /// - Parameter key: The key to find a shard for
@@ -237,7 +237,7 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
 
 extension ShardedConcurrentMap: CustomStringConvertible {
     public nonisolated var description: String {
-        return "ShardedConcurrentMap(\(shardCount) shards)"
+        "ShardedConcurrentMap(\(shardCount) shards)"
     }
 }
 
@@ -245,6 +245,6 @@ extension ShardedConcurrentMap: CustomStringConvertible {
 
 extension ShardedConcurrentMap: CustomDebugStringConvertible {
     public nonisolated var debugDescription: String {
-        return "ShardedConcurrentMap<\(Key.self), \(Value.self)>(shards: \(shardCount))"
+        "ShardedConcurrentMap<\(Key.self), \(Value.self)>(shards: \(shardCount))"
     }
 }

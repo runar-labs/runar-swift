@@ -31,7 +31,7 @@ class Phase1Tests: XCTestCase {
         XCTAssertEqual(config.networkIds, [])
         XCTAssertEqual(config.requestTimeoutMs, 30000)
         XCTAssertNil(config.networkConfig)
-        XCTAssertNotNil(config.loggingConfig)
+        XCTAssertNotNil(config.LoggerConfig)
         XCTAssertNotNil(config.labelResolverConfig)
         XCTAssertNil(config.getKeyManager())
     }
@@ -41,11 +41,11 @@ class Phase1Tests: XCTestCase {
         let config = NodeConfig(defaultNetworkId: "test-network")
             .withRequestTimeout(5000)
             .withAdditionalNetworks(["backup", "testing"])
-            .withLoggingConfig(LoggingConfig(defaultLevel: .debug))
+            .withLoggerConfig(LoggerConfig(defaultLevel: .debug))
 
         XCTAssertEqual(config.requestTimeoutMs, 5000)
         XCTAssertEqual(config.networkIds, ["backup", "testing"])
-        XCTAssertEqual(config.loggingConfig?.defaultLevel, .debug)
+        XCTAssertEqual(config.LoggerConfig?.defaultLevel, .debug)
     }
 
     func testNodeConfigWithNetworkConfig() {
@@ -208,7 +208,7 @@ class Phase1Tests: XCTestCase {
                 let config = NodeConfig(defaultNetworkId: "test-network")
                 _ = config.withRequestTimeout(5000)
                     .withAdditionalNetworks(["backup"])
-                    .withLoggingConfig(LoggingConfig(defaultLevel: .info))
+                    .withLoggerConfig(LoggerConfig(defaultLevel: .info))
             }
         }
     }

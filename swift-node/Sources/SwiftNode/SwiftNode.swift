@@ -731,7 +731,7 @@ public enum LogLevel: String, CaseIterable, Sendable, Codable {
 }
 
 /// Logging configuration for the node and its services
-public struct LoggingConfig: Sendable, Codable {
+public struct LoggerConfig: Sendable, Codable {
     /// Default log level for all runar modules
     public let defaultLevel: LogLevel
 
@@ -740,8 +740,8 @@ public struct LoggingConfig: Sendable, Codable {
     }
 
     /// Create a default info-level logging configuration
-    public static func defaultInfo() -> LoggingConfig {
-        LoggingConfig(defaultLevel: .info)
+    public static func defaultInfo() -> LoggerConfig {
+        LoggerConfig(defaultLevel: .info)
     }
 }
 
@@ -814,7 +814,7 @@ public struct NetworkConfig: Sendable, Codable {
 /// # Default Values
 ///
 /// - `requestTimeoutMs`: 30000 (30 seconds)
-/// - `loggingConfig`: Info level logging
+/// - `LoggerConfig`: Info level logging
 /// - `networkConfig`: None (networking disabled)
 /// - `networkIds`: Empty (only default network)
 ///
@@ -845,7 +845,7 @@ public struct NodeConfig: Sendable {
     ///
     /// Controls log levels, output format, and logging destinations.
     /// If `nil`, default Info-level logging is applied.
-    public var loggingConfig: LoggingConfig?
+    public var LoggerConfig: LoggerConfig?
 
     /// Request timeout in milliseconds for all service requests.
     ///
@@ -906,7 +906,7 @@ public struct NodeConfig: Sendable {
         self.defaultNetworkId = defaultNetworkId
         networkIds = []
         networkConfig = nil
-        loggingConfig = LoggingConfig.defaultInfo() // Default to Info logging
+        LoggerConfig = LoggerConfig.defaultInfo() // Default to Info logging
         keyManager = nil // Must be set via withKeyManager()
         requestTimeoutMs = 30000 // 30 seconds
         self.labelResolverConfig = labelResolverConfig
@@ -969,11 +969,11 @@ public struct NodeConfig: Sendable {
     ///
     /// ```swift
     /// let config = NodeConfig(defaultNetworkId: "my-network")
-    ///     .withLoggingConfig(LoggingConfig.defaultInfo())
+    ///     .withLoggerConfig(LoggerConfig.defaultInfo())
     /// ```
-    public func withLoggingConfig(_ config: LoggingConfig) -> NodeConfig {
+    public func withLoggerConfig(_ config: LoggerConfig) -> NodeConfig {
         var newConfig = self
-        newConfig.loggingConfig = config
+        newConfig.LoggerConfig = config
         return newConfig
     }
 
@@ -1352,12 +1352,12 @@ public final class Node {
     /// - Internal components fail to initialize
     public static func new(config: NodeConfig) async throws -> Node {
         // Apply logging configuration (default to Info level if none provided)
-        if config.loggingConfig != nil {
+        if config.LoggerConfig != nil {
             // Apply logging configuration here
             // This would integrate with the logging system
         } else {
             // Apply default Info logging when no configuration is provided
-            _ = LoggingConfig.defaultInfo()
+            _ = LoggerConfig.defaultInfo()
             // Apply default logging configuration
         }
 
