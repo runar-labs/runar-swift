@@ -117,7 +117,7 @@ final class TestMathService: AbstractService {
     var networkId: String?
     
     init() {
-        self.logger = testLogger.child(component: .service)
+        self.logger = RunarLogger.root(component: .service)
     }
 
     func setNetworkId(_ networkId: String) {

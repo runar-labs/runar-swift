@@ -74,7 +74,7 @@ enum TimeoutError: Error {
 /// Service registry tests following the rules - no mocks, no shortcuts, real implementations
 /// These tests match the Rust service_registry_test.rs exactly
 @MainActor
-final class ServiceRegistryTests: XCTestCase {
+final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
 
     // Swift logger for trace-level logging
     private var testLogger: RunarLogger!
@@ -192,7 +192,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = testLogger.child(component: .node)
+            let logger = self.testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             let servicePath = "math"
@@ -204,7 +204,7 @@ final class ServiceRegistryTests: XCTestCase {
             
             // Create a handler (matching Rust)
             let handler: ActionHandler = { params, context in
-                testLogger.trace("Add handler called with params: \(String(describing: params))")
+                // Handler implementation - logging removed due to actor isolation
                 return AnyValue.null()
             }
             
@@ -287,7 +287,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let registry = ServiceRegistry(logger: testLogger.child(component: .node))
+            let registry = ServiceRegistry(logger: self.testLogger.child(component: .node))
             
             // Create a TopicPath for the test topic (matching Rust)
             let topic = try TopicPath(networkId: "net1", segments: ["test", "event"])
@@ -328,7 +328,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let registry = ServiceRegistry(logger: testLogger.child(component: .node))
+            let registry = ServiceRegistry(logger: self.testLogger.child(component: .node))
             
             // Create a callback (matching Rust)
             let callback: EventHandler = { data in
@@ -377,11 +377,11 @@ final class ServiceRegistryTests: XCTestCase {
         
         // Create multiple callbacks
         let callback1: EventHandler = { data in
-            testLogger.trace("Event callback 1 called")
+            // Event callback 1 - logging removed due to actor isolation
         }
         
         let callback2: EventHandler = { data in
-            testLogger.trace("Event callback 2 called")
+            // Event callback 2 - logging removed due to actor isolation
         }
         
         // Subscribe both callbacks to the same topic
@@ -545,7 +545,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Set up test logger (matching Rust)
-            let logger = testLogger.child(component: .node)
+            let logger = self.testLogger.child(component: .node)
             
             // Create registry (matching Rust)
             let registry = ServiceRegistry(logger: logger)
@@ -660,7 +660,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = testLogger.child(component: .node)
+            let logger = self.testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             // Create a handler that expects path parameters (matching Rust)
@@ -692,7 +692,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = testLogger.child(component: .node)
+            let logger = self.testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             let topicPath = try TopicPath(networkId: "net1", segments: ["test", "action"])
@@ -736,7 +736,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = testLogger.child(component: .node)
+            let logger = self.testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             // Register handlers in different networks (matching Rust)
@@ -781,7 +781,7 @@ final class ServiceRegistryTests: XCTestCase {
         // Wrap the test in a timeout to prevent it from hanging (matching Rust)
         try await withTimeout(10.0) {
             // Create a service registry (matching Rust)
-            let logger = testLogger.child(component: .node)
+            let logger = self.testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
             let topicPath = try TopicPath(networkId: "net1", segments: ["test", "event"])
@@ -817,7 +817,7 @@ final class ServiceRegistryTests: XCTestCase {
         
         // Create a callback
         let callback: EventHandler = { data in
-            testLogger.trace("Event published: \(String(describing: data))")
+            // Event callback - logging removed due to actor isolation
         }
         
         // Subscribe to events
@@ -844,7 +844,7 @@ final class ServiceRegistryTests: XCTestCase {
         let description: String = "Test math service"
         var networkId: String? = nil
         var state: ServiceState = .created
-        let logger: RunarLogger = RunarLogger(component: .service)
+        let logger: RunarLogger = RunarLogger.root(component: .service)
         
         func setNetworkId(_ networkId: String) {
             self.networkId = networkId
@@ -871,7 +871,7 @@ final class ServiceRegistryTests: XCTestCase {
         let description: String = "Test math service 1"
         var networkId: String? = nil
         var state: ServiceState = .created
-        let logger: RunarLogger = RunarLogger(component: .service)
+        let logger: RunarLogger = RunarLogger.root(component: .service)
         
         func setNetworkId(_ networkId: String) {
             self.networkId = networkId
@@ -898,7 +898,7 @@ final class ServiceRegistryTests: XCTestCase {
         let description: String = "Test math service 2"
         var networkId: String? = nil
         var state: ServiceState = .created
-        let logger: RunarLogger = RunarLogger(component: .service)
+        let logger: RunarLogger = RunarLogger.root(component: .service)
         
         func setNetworkId(_ networkId: String) {
             self.networkId = networkId

@@ -202,6 +202,13 @@ public final class Discovery: NodeDiscovery, Sendable {
         logger.trace("🔍 Setting discovery callbacks")
         await discoveryHandle.setCallbacks(callbacks)
     }
+    
+    /// Update local peer info for discovery announcements
+    public func updateLocalPeerInfo(peerInfoCbor: Data) async throws {
+        logger.trace("🔍 Discovery: Updating local peer info")
+        try await discoveryHandle.updateLocalPeerInfo(peerInfoCbor: peerInfoCbor)
+        logger.trace("🔍 Discovery: Local peer info updated successfully")
+    }
 }
 
 // MARK: - Real Transport Implementation
@@ -1984,6 +1991,8 @@ public final class Node {
 
             // Store the transport
             networkTransport = transport
+            
+            // Note: Local peer info will be updated after discovery providers are created
         } else {
             print("🔍 NETWORKING: Transport already initialized, skipping")
         }
@@ -2027,6 +2036,12 @@ public final class Node {
             // Store the discovery providers
             networkDiscoveryProviders = discoveryProviders
             print("🔍 NETWORKING: Stored \(discoveryProviders.count) discovery providers")
+
+            // CRITICAL: Update local peer info for discovery announcements
+            // This must be done after discovery providers are created and started
+            print("🔍 DISCOVERY: About to update local peer info for discovery announcements")
+            try await updateLocalPeerInfoForDiscoveryAfterTransportStart()
+            print("🔍 DISCOVERY: Completed updating local peer info for discovery announcements")
 
             // Update the transport with the current NodeInfo (including any services added before networking started)
             print("🔍 NETWORKING: Updating transport with current NodeInfo...")
@@ -2223,7 +2238,81 @@ public final class Node {
         // Set the callbacks on the discovery provider
         await discoveryProvider.setCallbacks(discoveryCallbacks)
         
+        // Note: Local peer info will be updated after transport is started
+        // This is because we need the transport's local address
+        
         return discoveryProvider
+    }
+
+    /// Update local peer info for discovery announcements after transport is started
+    private func updateLocalPeerInfoForDiscoveryAfterTransportStart() async throws {
+        logger.trace("🔍 DISCOVERY: Updating local peer info for discovery announcements after transport start")
+        print("🔍 DISCOVERY: Updating local peer info for discovery announcements after transport start")
+        
+        // Get the local transport address
+        guard let transport = networkTransport else {
+            logger.warning("🔍 DISCOVERY: No transport available, cannot get local address")
+            print("🔍 DISCOVERY: No transport available, cannot get local address")
+            return
+        }
+        
+        // Get key manager
+        guard let keyManager = config.getKeyManager() else {
+            logger.warning("🔍 DISCOVERY: No key manager available")
+            print("🔍 DISCOVERY: No key manager available")
+            return
+        }
+        
+        do {
+            // Get local address from transport
+            let localAddr = try await transport.localAddr()
+            logger.trace("🔍 DISCOVERY: Local address: \(localAddr)")
+            print("🔍 DISCOVERY: Local address: \(localAddr)")
+            
+            // Get node public key from key manager
+            let nodePublicKey = try await keyManager.getNodePublicKey()
+            logger.trace("🔍 DISCOVERY: Node public key: \(nodePublicKey.count) bytes")
+            print("🔍 DISCOVERY: Node public key: \(nodePublicKey.count) bytes")
+            
+            // Create peer info
+            let peerInfo = SwiftFFI.PeerInfo(
+                publicKey: nodePublicKey,
+                addresses: [localAddr]
+            )
+            print("🔍 DISCOVERY: Created PeerInfo with address: \(localAddr)")
+            
+            // Encode peer info to CBOR
+            let encoder = CodableCBOREncoder()
+            let peerInfoCbor = try encoder.encode(peerInfo)
+            logger.trace("🔍 DISCOVERY: Peer info encoded to CBOR: \(peerInfoCbor.count) bytes")
+            print("🔍 DISCOVERY: Peer info encoded to CBOR: \(peerInfoCbor.count) bytes")
+            
+            // Update all discovery providers with the peer info
+            if let discoveryProviders = networkDiscoveryProviders {
+                print("🔍 DISCOVERY: Found \(discoveryProviders.count) discovery providers to update")
+                for (index, discoveryProvider) in discoveryProviders.enumerated() {
+                    print("🔍 DISCOVERY: Updating discovery provider \(index + 1) of \(discoveryProviders.count)")
+                    if let discovery = discoveryProvider as? Discovery {
+                        print("🔍 DISCOVERY: Calling updateLocalPeerInfo on discovery provider \(index + 1)")
+                        try await discovery.updateLocalPeerInfo(peerInfoCbor: peerInfoCbor)
+                        logger.trace("🔍 DISCOVERY: Updated peer info for discovery provider")
+                        print("🔍 DISCOVERY: Successfully updated peer info for discovery provider \(index + 1)")
+                    } else {
+                        print("🔍 DISCOVERY: Discovery provider \(index + 1) is not a Discovery instance")
+                    }
+                }
+            } else {
+                print("🔍 DISCOVERY: No discovery providers available (networkDiscoveryProviders is nil)")
+            }
+            
+            logger.trace("🔍 DISCOVERY: Local peer info updated successfully for all discovery providers")
+            print("🔍 DISCOVERY: Local peer info updated successfully for all discovery providers")
+            
+        } catch {
+            logger.error("🔍 DISCOVERY: Failed to update local peer info: \(error)")
+            print("🔍 DISCOVERY: Failed to update local peer info: \(error)")
+            throw error
+        }
     }
 
     /// Get local node information with current service metadata (GETTER ONLY)
@@ -2689,12 +2778,28 @@ public final class Node {
         let peerNodeId = firstAddress
 
         // Store peer info for later connection
-        // Note: We don't have NodeInfo from discovery, only PeerInfo
-        // The actual NodeInfo will come during handshake when we connect
         logger.trace("🔍 DISCOVERY: Storing peer info for \(peerNodeId)")
         
-        // TODO: Store peer info for connection attempts
+        // Publish discovery event that tests can subscribe to
+        // This matches the Rust test expectation: $registry/peer/{nodeId}/discovered
+        let discoveryEventPath = "$registry/peer/\(peerNodeId)/discovered"
+        logger.trace("🔍 DISCOVERY: Publishing discovery event: \(discoveryEventPath)")
+        
+        // Publish the discovery event
+        do {
+            try await publish(
+                topic: discoveryEventPath,
+                data: AnyValue.primitive(peerNodeId),
+                options: PublishOptions()
+            )
+            logger.trace("🔍 DISCOVERY: Discovery event published successfully")
+        } catch {
+            logger.error("🔍 DISCOVERY: Failed to publish discovery event: \(error)")
+        }
+        
+        // TODO: Establish connection and perform handshake to get full NodeInfo
         // This would typically trigger a connection attempt to the discovered peer
+        // and then register remote service handlers in the service registry
         logger.trace("🔍 DISCOVERY: Peer discovery completed for \(peerNodeId)")
     }
 

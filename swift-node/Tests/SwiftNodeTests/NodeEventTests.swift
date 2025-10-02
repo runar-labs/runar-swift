@@ -24,7 +24,9 @@ final class NodeEventTests: XCTestCase {
 
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("NodeEventTests"))
-    }    private let logger = testLogger.child(component: .node)
+    }
+    
+    private let logger = RunarLogger.root(component: .node)
     /// Test that verifies event publishing and subscription in the Node
     ///
     /// INTENTION: This test validates that the Node can properly:
@@ -193,7 +195,7 @@ final class TestEventService: AbstractService {
     var networkId: String?
     
     init() {
-        self.logger = testLogger.child(component: .service)
+        self.logger = RunarLogger.root(component: .service)
     }
 
     func setNetworkId(_ networkId: String) {

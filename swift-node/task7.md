@@ -3,6 +3,11 @@
 ## Original Goal of Task 6
 Implement service announcement in the Swift Node network integration so that when nodes discover each other, they exchange service metadata during the handshake, enabling remote service calls between nodes.
 
+GOAL TEST ALL THIS WORKS. we need in seift the test that is equivalente 100% aligne to /Users/rafael/dev/runar-swift/runar-rust/runar-node-tests/src/network/remote_test.rs
+
+where two nodes connect over the P2P network , exchange node info with services, actions and event (handshake - tested here /Users/rafael/dev/runar-swift/swift-ffi/Tests/SwiftFFITests/FFIHandshakeTest.swift)
+and performa remote actions.. testin the full network (Discovery + transport + node service actions adn events end to end)
+
 ## What Was Accomplished in Task 6
 
 ### ✅ **Architectural Fixes Completed**
@@ -99,18 +104,14 @@ Implement service announcement in the Swift Node network integration so that whe
 
 ### ❌ **What's Still Broken**
 
-1. **Request Callback Null Response Handling**
-   - **Problem**: When `requestCallback` returns `nil`, no response is sent back
-   - **Impact**: Requests hang waiting for response
-   - **Location**: `QuicTransport.handleRequestEvent()` method
-   - **TODO**: Send null response when callback returns nil
-
 2. **Service Announcement Integration**
    - **Problem**: Swift Node needs to be updated to use the new Discovery and Transport FFI architecture
    - **Impact**: Service announcement and remote service calls not working
    - **Root Cause**: Swift Node still using legacy mixed discovery/transport APIs
 
 ## Lessons Learned
+
+SWIFT NOde implement must match 100% to rust node impl /Users/rafael/dev/runar-swift/runar-rust/runar-node/src/node.rs - allowing for langauge differences - all teh dataflows, rules, sequence, method names, API, object fields.. all must match 100% no exceptions. both implementatin must be 100% aligned. 
 
 ### 1. **Architectural Design Principles**
 - **Single Responsibility**: Methods should have one clear purpose (getter vs setter)
@@ -139,13 +140,8 @@ Implement service announcement in the Swift Node network integration so that whe
 
 ## Next Steps for Task 7
 
-### **Phase 7A: Fix Request Callback Handling**
-1. **Implement Null Response Handling**
-   - Modify `QuicTransport.handleRequestEvent()` to send null response when callback returns nil
-   - Ensure all requests get a response (even if null)
-   - Add proper error handling for response serialization
 
-### **Phase 7B: Complete Service Announcement Integration**
+
 1. **Update Swift Node to Use New FFI Architecture**
    - Remove legacy discovery polling from `QuicTransport`
    - Implement `DiscoveryHandle` usage in `SwiftNode`
@@ -179,25 +175,7 @@ Implement service announcement in the Swift Node network integration so that whe
 ### **Immediate (Blocking Issues)**
 - [ ] **CRITICAL**: Fix `handleRequestEvent()` null response handling
 - [ ] **CRITICAL**: Update Swift Node to use new Discovery and Transport FFI architecture
-
-### **Swift Node Integration**
-- [ ] Remove legacy discovery polling from `QuicTransport`
-- [ ] Implement `DiscoveryHandle` usage in `SwiftNode`
-- [ ] Update `ServiceRegistry` for remote service discovery
-- [ ] Implement proper peer management
-
-### **Test Migration**
-- [ ] Migrate discovery tests to `DiscoveryHandle`
-- [ ] Update transport tests to use typed events
-- [ ] Remove all legacy `TransportEvent` usage
-- [ ] Add comprehensive handshake tests
-
-### **Production Readiness**
-- [ ] Add comprehensive error handling
-- [ ] Implement proper logging and monitoring
-- [ ] Optimize performance and memory usage
-- [ ] Create documentation and examples
-
+ 
 ## Success Criteria
 
 1. **Service Announcement Working**: Nodes can discover each other and exchange service metadata

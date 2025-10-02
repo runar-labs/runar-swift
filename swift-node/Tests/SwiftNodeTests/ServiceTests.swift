@@ -111,7 +111,9 @@ final class ServiceTests: XCTestCase {
 
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("ServiceTests"))
-    }    func testKeysServiceLifecycle() async throws {
+    }
+    
+    func testKeysServiceLifecycle() async throws {
         // Test KeysService initialization and basic operations
         let logger = testLogger.child(component: .node)
         let keysService = KeysService(logger: logger, nodeDelegate: MockNodeDelegate())

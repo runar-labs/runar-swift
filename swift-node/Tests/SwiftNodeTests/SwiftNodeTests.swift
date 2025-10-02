@@ -73,7 +73,7 @@ final class SwiftNodeTests: XCTestCase {
             var description: String { "svc desc" }
             var networkId: String?
             var state: ServiceState = .created
-            var logger: RunarLogger = .init(component: .service)
+            var logger: RunarLogger = .root(component: .service)
             func initService(_: LifecycleContext) async throws {}
             func start(_: LifecycleContext) async throws {}
             func stop(_: LifecycleContext) async throws {}
@@ -123,7 +123,7 @@ final class SwiftNodeTests: XCTestCase {
             var description: String { "pub service" }
             var networkId: String?
             var state: ServiceState = .created
-            var logger: RunarLogger = .init(component: .service)
+            var logger: RunarLogger = .root(component: .service)
             func initService(_ context: LifecycleContext) async throws {
                 try await context.registerAction("trigger") { payload, requestContext in
                     // Publish an event when the action is called

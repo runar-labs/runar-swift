@@ -39,7 +39,7 @@ final class RemoteNetworkTests: XCTestCase {
         let LoggerConfig = LoggerConfig(level: .trace)
         
         // Set up logger with trace level
-        let logger = testLogger.child(component: .node, config: LoggerConfig)
+        let logger = testLogger.child(component: .node)
         
         // Enable trace logging for Rust FFI layer
         try await FFILogger.setLogLevel(.trace)
@@ -58,8 +58,8 @@ final class RemoteNetworkTests: XCTestCase {
         testLogger.trace("Node2 config: \(node2Config)")
         
         // Create math services with different paths using the fixture
-        let mathService1 = MathService(name: "math1", path: "math1")
-        let mathService2 = MathService(name: "math2", path: "math2")
+        let mathService1 = MathService(name: "math1", path: "math1", logger: logger)
+        let mathService2 = MathService(name: "math2", path: "math2", logger: logger)
         
         logger.debug("Node1 config: \(node1Config)")
         logger.debug("Node2 config: \(node2Config)")
@@ -128,7 +128,7 @@ final class RemoteNetworkTests: XCTestCase {
         
         logger.debug("🔄 Testing dynamic service addition and discovery...")
         // Add a new service to node1 and test remote call
-        let newService = MathService(name: "math3", path: "math3")
+        let newService = MathService(name: "math3", path: "math3", logger: logger)
         try await node1.addService(newService)
         logger.debug("✅ Added math3 service to node1")
         
@@ -220,8 +220,8 @@ final class RemoteNetworkTests: XCTestCase {
         let node2Config = configs[1]
         
         // Create math services with different paths using the fixture
-        let mathService1 = MathService(name: "math1", path: "math1")
-        let mathService2 = MathService(name: "math2", path: "math2")
+        let mathService1 = MathService(name: "math1", path: "math1", logger: logger)
+        let mathService2 = MathService(name: "math2", path: "math2", logger: logger)
         
         logger.debug("Node1 config: \(node1Config)")
         logger.debug("Node2 config: \(node2Config)")
@@ -373,7 +373,7 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
     
     // Set up trace logging for detailed debugging
     let LoggerConfig = LoggerConfig(level: .trace)
-    let logger = testLogger.child(component: .node, config: LoggerConfig)
+    let logger = RunarLogger.root(component: .node)
     
     logger.trace("🔍 Creating \(count) networked node test configs with trace logging")
     

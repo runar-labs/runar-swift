@@ -13,7 +13,7 @@ final class RealTransportTests: XCTestCase {
         var description: String { "test" }
         var networkId: String?
         var state: ServiceState = .created
-        var logger: RunarLogger = .init(component: .service)
+        var logger: RunarLogger = .root(component: .service)
         func initService(_ ctx: LifecycleContext) async throws {
             try await ctx.registerAction("echo") { payload, requestContext in
                 payload ?? AnyValue.null()
