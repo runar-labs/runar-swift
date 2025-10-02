@@ -306,6 +306,60 @@ final class FFITypesCrossValidationTests: XCTestCase {
 
         // Verify both can be decoded and are equal
         XCTAssertEqual(swiftPeer, rustPeer, "PeerInfo validation failed - Swift and Rust data don't match")
+        
+        // Test all PeerInfo vectors to find the one that crashes
+        print("🚨 Testing all PeerInfo vectors to reproduce crash...")
+        
+        let testVectors = ["peer_info_basic.bin", "peer_info_single_addr.bin", "peer_info_crash_data.bin"]
+        
+        for vectorName in testVectors {
+            print("\n📊 Testing \(vectorName)...")
+            let vectorData = try Data(contentsOf: rustDir.appendingPathComponent(vectorName))
+            print("   Length: \(vectorData.count) bytes")
+            print("   Hex: \(vectorData.map { String(format: "%02x", $0) }.joined())")
+            
+            do {
+                let peer: PeerInfo = try CodableCBORDecoder().decode(PeerInfo.self, from: vectorData)
+                print("   ✅ Decoded successfully - public key length: \(peer.publicKey.count)")
+                print("   Addresses: \(peer.addresses)")
+            } catch {
+                print("   ❌ FAILED to decode: \(error)")
+                print("   🚨 THIS IS THE CRASH VECTOR!")
+                throw error
+            }
+        }
+        
+        // Test with exact discovery data format from logs
+        print("\n🔬 Testing Discovery CBOR Data Format...")
+        try await testDiscoveryCBORData()
+    }
+
+    /// Test with exact discovery data format from logs
+    private func testDiscoveryCBORData() async throws {
+        // Test with the exact CBOR data format from discovery logs
+        // This is the format that's causing the crash in the actual discovery flow
+        let discoveryHex = "a26a7075626c69635f6b657998410418990218c4182b181f185c1618a318870b1852186818b2188f18ae18661894183918ce18700418c618ab183d189b187f18a318c1183018db181a1018201518a11841181b183e18330618d90818680000184718aa181e189e185a182c18fe18f418fc181e18ee18b6181e12185818d718ea18cb18ad69616464726573736573816f3132372e302e302e313a3633373235"
+        
+        guard let discoveryData = Data(hexString: discoveryHex) else {
+            XCTFail("Failed to convert hex string to data")
+            return
+        }
+        
+        print("📊 Testing Discovery CBOR Data:")
+        print("   Length: \(discoveryData.count) bytes")
+        print("   Hex: \(discoveryData.map { String(format: "%02x", $0) }.joined())")
+        
+        do {
+            let decoder = CodableCBORDecoder()
+            let decodedPeerInfo = try decoder.decode(PeerInfo.self, from: discoveryData)
+            print("✅ Discovery CBOR decoding successful")
+            print("   Decoded public key length: \(decodedPeerInfo.publicKey.count)")
+            print("   Decoded addresses: \(decodedPeerInfo.addresses)")
+        } catch {
+            print("❌ Discovery CBOR decoding failed: \(error)")
+            print("🚨 THIS IS THE EXACT FORMAT CAUSING THE CRASH!")
+            throw error
+        }
     }
 
     // TransportEvent validation removed - replaced with typed event structs
@@ -437,5 +491,26 @@ final class FFITypesCrossValidationTests: XCTestCase {
 
         // Verify both can be decoded and are equal
         XCTAssertEqual(swiftMetadataNode, rustMetadataNode, "NodeInfo with metadata validation failed - Swift and Rust data don't match")
+    }
+}
+
+// MARK: - Helper Extensions
+
+extension Data {
+    init?(hexString: String) {
+        let len = hexString.count / 2
+        var data = Data(capacity: len)
+        var i = hexString.startIndex
+        for _ in 0..<len {
+            let j = hexString.index(i, offsetBy: 2)
+            let bytes = hexString[i..<j]
+            if var num = UInt8(bytes, radix: 16) {
+                data.append(&num, count: 1)
+            } else {
+                return nil
+            }
+            i = j
+        }
+        self = data
     }
 }

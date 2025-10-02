@@ -96,8 +96,8 @@ final class FFIDiscoveryTest: XCTestCase {
         let peerInfoA = PeerInfo(publicKey: publicKeyA, addresses: ["127.0.0.1:8000"])
         let peerInfoB = PeerInfo(publicKey: publicKeyB, addresses: ["127.0.0.1:8001"])
 
-        let peerInfoACbor = try await CBORHelper.encodePeerInfo(peerInfoA)
-        let peerInfoBCbor = try await CBORHelper.encodePeerInfo(peerInfoB)
+        let peerInfoACbor = try CodableCBOREncoder().encode(peerInfoA)
+        let peerInfoBCbor = try CodableCBOREncoder().encode(peerInfoB)
 
         // Update local peer info in discovery
         try await discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)
@@ -237,8 +237,8 @@ final class FFIDiscoveryTest: XCTestCase {
         let peerInfoA = PeerInfo(publicKey: publicKeyA, addresses: ["127.0.0.1:8000"])
         let peerInfoB = PeerInfo(publicKey: publicKeyB, addresses: ["127.0.0.1:8001"])
 
-        let peerInfoACbor = try await CBORHelper.encodePeerInfo(peerInfoA)
-        let peerInfoBCbor = try await CBORHelper.encodePeerInfo(peerInfoB)
+        let peerInfoACbor = try CodableCBOREncoder().encode(peerInfoA)
+        let peerInfoBCbor = try CodableCBOREncoder().encode(peerInfoB)
 
         // Update local peer info
         try await discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)

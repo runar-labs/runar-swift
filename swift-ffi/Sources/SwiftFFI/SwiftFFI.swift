@@ -1503,6 +1503,7 @@ func ffi_poll_discovery_discovered(_ handle: UnsafeMutableRawPointer) throws -> 
     guard outLen > 0 else { return nil }
 
     let data = try copyBytesAndFree(outPtr, outLen)
+
     return data
 }
 
@@ -1745,56 +1746,15 @@ public struct SetupToken: Codable, Equatable {
     }
 
     public init(from cbor: CBOR) throws {
-        guard case let .map(map) = cbor else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Expected CBOR map"))
-        }
-
-        // Extract node_id
-        guard let nodeIdCbor = map[CBOR.utf8String("node_id")],
-              case let .utf8String(nodeId) = nodeIdCbor
-        else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_id"))
-        }
-        node_id = nodeId
-
-        // Extract node_public_key (CBOR array of bytes)
-        guard let nodePublicKeyCbor = map[CBOR.utf8String("node_public_key")],
-              case let .array(nodePublicKeyArray) = nodePublicKeyCbor
-        else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_public_key"))
-        }
-        node_public_key = try nodePublicKeyArray.map { byteCbor in
-            guard case let .unsignedInt(byte) = byteCbor else {
-                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in node_public_key array"))
-            }
-            return UInt8(byte)
-        }
-
-        // Extract node_agreement_public_key (CBOR array of bytes)
-        guard let nodeAgreementPublicKeyCbor = map[CBOR.utf8String("node_agreement_public_key")],
-              case let .array(nodeAgreementPublicKeyArray) = nodeAgreementPublicKeyCbor
-        else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid node_agreement_public_key"))
-        }
-        node_agreement_public_key = try nodeAgreementPublicKeyArray.map { byteCbor in
-            guard case let .unsignedInt(byte) = byteCbor else {
-                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in node_agreement_public_key array"))
-            }
-            return UInt8(byte)
-        }
-
-        // Extract csr_der (CBOR array of bytes)
-        guard let csrDerCbor = map[CBOR.utf8String("csr_der")],
-              case let .array(csrDerArray) = csrDerCbor
-        else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Missing or invalid csr_der"))
-        }
-        csr_der = try csrDerArray.map { byteCbor in
-            guard case let .unsignedInt(byte) = byteCbor else {
-                throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid byte in csr_der array"))
-            }
-            return UInt8(byte)
-        }
+        // Convert CBOR to Data and use proper CodableCBORDecoder
+        let cborData = Data(cbor.encode())
+        let decoder = CodableCBORDecoder()
+        let setupToken = try decoder.decode(SetupToken.self, from: cborData)
+        
+        self.node_id = setupToken.node_id
+        self.node_public_key = setupToken.node_public_key
+        self.node_agreement_public_key = setupToken.node_agreement_public_key
+        self.csr_der = setupToken.csr_der
     }
 
     public init(from decoder: Decoder) throws {
@@ -4324,7 +4284,7 @@ public struct FFIQuicTransportOptions: Codable, Equatable, Sendable {
 }
 
 /// Swift-layer transport options (normalized structure)
-public struct QuicTransportOptions: Sendable {
+public struct QuicTransportOptions: Codable, Sendable {
     // Swift layer options
     public let requestTimeoutSeconds: UInt64
 
@@ -4426,101 +4386,25 @@ public enum CBORHelper {
     /// Encode NodeInfo to CBOR data
     @MainActor
     public static func encodeNodeInfo(_ nodeInfo: NodeInfo) async throws -> Data {
-        // Create CBOR map manually to match Rust structure
-        var map: [CBOR: CBOR] = [:]
-        map[.utf8String("node_public_key")] = .array([UInt8](nodeInfo.nodePublicKey).map { .unsignedInt(UInt64($0)) })
-        map[.utf8String("network_ids")] = .array(nodeInfo.networkIds.map { .utf8String($0) })
-        map[.utf8String("addresses")] = .array(nodeInfo.addresses.map { .utf8String($0) })
-
-        // Encode node metadata
-        var metadataMap: [CBOR: CBOR] = [:]
-        metadataMap[.utf8String("services")] = .array(nodeInfo.nodeMetadata.services.map { service in
-            var serviceMap: [CBOR: CBOR] = [:]
-            serviceMap[.utf8String("network_id")] = .utf8String(service.networkId)
-            serviceMap[.utf8String("service_path")] = .utf8String(service.servicePath)
-            serviceMap[.utf8String("name")] = .utf8String(service.name)
-            serviceMap[.utf8String("version")] = .utf8String(service.version)
-            serviceMap[.utf8String("description")] = .utf8String(service.description)
-            serviceMap[.utf8String("actions")] = .array([])
-            serviceMap[.utf8String("registration_time")] = .unsignedInt(service.registrationTime)
-            return .map(serviceMap)
-        })
-        metadataMap[.utf8String("subscriptions")] = .array([])
-
-        map[.utf8String("node_metadata")] = .map(metadataMap)
-        map[.utf8String("version")] = .unsignedInt(UInt64(nodeInfo.version))
-
-        return Data(CBOR.map(map).encode())
+        return try CodableCBOREncoder().encode(nodeInfo)
     }
 
     /// Encode QuicTransportOptions to CBOR data
     @MainActor public static func encodeTransportOptions(_ options: QuicTransportOptions) async throws -> Data {
-        // Create CBOR map manually to match Rust structure
-        var map: [CBOR: CBOR] = [:]
-
-        // Always include bindAddr - it's required
-        let bindAddr = options.bindAddr ?? "127.0.0.1:0"
-        map[.utf8String("bind_addr")] = .utf8String(bindAddr)
-
-        // Always include required fields with defaults
-        let handshakeTimeoutMs = options.handshakeTimeoutMs ?? 5000
-        map[.utf8String("handshake_timeout_ms")] = .unsignedInt(handshakeTimeoutMs)
-
-        let openStreamTimeoutMs = options.openStreamTimeoutMs ?? 10000
-        map[.utf8String("open_stream_timeout_ms")] = .unsignedInt(openStreamTimeoutMs)
-
-        let maxMessageSize = options.maxMessageSize ?? 1024
-        map[.utf8String("max_message_size")] = .unsignedInt(maxMessageSize)
-
-        let responseCacheTtlMs = options.responseCacheTtlMs ?? 30000
-        map[.utf8String("response_cache_ttl_ms")] = .unsignedInt(responseCacheTtlMs)
-
-        let maxRequestRetries = options.maxRequestRetries ?? 3
-        map[.utf8String("max_request_retries")] = .unsignedInt(UInt64(maxRequestRetries))
-
-        return Data(CBOR.map(map).encode())
+        return try CodableCBOREncoder().encode(options)
     }
 
     /// Encode CaClientConfigAll to CBOR data
     @MainActor
     public static func encodeCaClientConfig(_ config: CaClientConfigAll) async throws -> Data {
-        // Create CBOR map manually to match Rust structure
-        var map: [CBOR: CBOR] = [:]
-
-        map[.utf8String("bootstrap_server")] = .utf8String(config.bootstrap_server)
-        map[.utf8String("authenticated_server")] = .utf8String(config.authenticated_server)
-        map[.utf8String("network_id")] = .utf8String(config.network_id)
-        map[.utf8String("request_timeout_seconds")] = .unsignedInt(UInt64(config.request_timeout_seconds))
-        map[.utf8String("max_retries")] = .unsignedInt(UInt64(config.max_retries))
-        map[.utf8String("root_ca_der")] = .array([UInt8](config.root_ca_der).map { .unsignedInt(UInt64($0)) })
-        map[.utf8String("issuing_ca_der")] = .array([UInt8](config.issuing_ca_der).map { .unsignedInt(UInt64($0)) })
-
-        return Data(CBOR.map(map).encode())
+        return try CodableCBOREncoder().encode(config)
     }
 
-    /// Encode PeerInfo to CBOR data
-    @MainActor
-    public static func encodePeerInfo(_ peerInfo: PeerInfo) async throws -> Data {
-        // Create CBOR map manually to match Rust structure
-        var map: [CBOR: CBOR] = [:]
-        map[.utf8String("public_key")] = .array([UInt8](peerInfo.publicKey).map { .unsignedInt(UInt64($0)) })
-        map[.utf8String("addresses")] = .array(peerInfo.addresses.map { .utf8String($0) })
 
-        return Data(CBOR.map(map).encode())
-    }
-
-    /// Encode TransportRequestParams to CBOR data using manual CBOR map creation
+    /// Encode TransportRequestParams to CBOR data
     @MainActor
     public static func encodeTransportRequestParams(_ params: TransportRequestParams) async throws -> Data {
-        // Debug logging removed per production standards
-
-        // Use automatic Codable encoding since struct now matches Rust types exactly
-        let encoder = CodableCBOREncoder()
-        let cborData = try encoder.encode(params)
-
-        // Debug logging removed per production standards
-
-        return cborData
+        return try CodableCBOREncoder().encode(params)
     }
 
     /// Encode TransportCompleteRequestParams to CBOR data using automatic Codable encoding
@@ -4679,9 +4563,21 @@ public struct PeerInfo: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Decode from array of bytes to match Rust Vec<u8> deserialization
-        let publicKeyBytes = try container.decode([UInt8].self, forKey: .publicKey)
-        publicKey = Data(publicKeyBytes)
+        
+        // Handle the actual Rust CBOR format where each byte is encoded as individual CBOR unsigned integers
+        // Rust encodes Vec<u8> as an array of individual CBOR unsigned integers (each prefixed with 18)
+        // We need to decode this manually since CodableCBORDecoder doesn't handle this format
+        
+        // Try to decode as simple array first (for compatibility)
+        if let publicKeyArray = try? container.decode([UInt8].self, forKey: .publicKey) {
+            publicKey = Data(publicKeyArray)
+        } else {
+            // If that fails, we need to handle the Rust CBOR format manually
+            // This is a workaround for the Rust CBOR format where each byte is encoded as individual CBOR unsigned integers
+            // We need to create a custom decoder that can handle this format
+            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Unable to decode publicKey in Rust CBOR format - need custom decoder"))
+        }
+
         addresses = try container.decode([String].self, forKey: .addresses)
     }
 }
@@ -4972,7 +4868,7 @@ public actor DiscoveryHandle {
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to initialize discovery") }
-        
+
         // Bind events as part of initialization
         try await bindEvents()
     }
