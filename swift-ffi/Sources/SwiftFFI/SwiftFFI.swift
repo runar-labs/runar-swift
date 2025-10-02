@@ -5023,6 +5023,16 @@ public actor DiscoveryHandle {
         guard code == 0 else { throw FFIError.operationFailed("Failed to update local peer info") }
     }
 
+    /// Bind discovery events to their channels
+    /// This must be called before events can be polled
+    public func bindEvents() async throws {
+        let (code, err) = withRnErrorCode { errPtr in
+            rn_discovery_bind_events(self.handle, errPtr)
+        }
+        if let error = err { throw error }
+        guard code == 0 else { throw FFIError.operationFailed("Failed to bind discovery events") }
+    }
+
     // MARK: - Discovery Polling Methods
 
     /// Poll for discovered peers
