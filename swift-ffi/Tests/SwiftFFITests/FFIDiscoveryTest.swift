@@ -82,14 +82,40 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create transports
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let loggerA = RunarLogger.root(component: .custom("FFIDiscoveryTest"))
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.start()
 
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let loggerB = RunarLogger.root(component: .custom("FFIDiscoveryTest"))
         let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)
@@ -215,14 +241,40 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create transports
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let loggerA = RunarLogger.root(component: .custom("FFIDiscoveryTest"))
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.start()
 
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let loggerB = RunarLogger.root(component: .custom("FFIDiscoveryTest"))
         let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)

@@ -326,6 +326,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         XCTAssertEqual(event.path, "/echo")
         XCTAssertEqual(event.correlationId, "c1")
         XCTAssertEqual(event.payload, Data("hello".utf8))
+        XCTAssertFalse(event.sourcePeerId.isEmpty, "sourcePeerId should not be empty")
+        XCTAssertFalse(event.destinationPeerId.isEmpty, "destinationPeerId should not be empty")
     }
 
     private func validateTransportEventEventRustToSwift(swiftDir _: URL, rustDir: URL) async throws {
@@ -334,6 +336,8 @@ final class FFITypesCrossValidationTests: XCTestCase {
         XCTAssertEqual(event.path, "/event")
         XCTAssertEqual(event.correlationId, "e1")
         XCTAssertEqual(event.payload, Data("evt".utf8))
+        XCTAssertFalse(event.sourcePeerId.isEmpty, "sourcePeerId should not be empty")
+        XCTAssertFalse(event.destinationPeerId.isEmpty, "destinationPeerId should not be empty")
     }
 
     private func validateTransportResponseEventRustToSwift(swiftDir _: URL, rustDir: URL) async throws {

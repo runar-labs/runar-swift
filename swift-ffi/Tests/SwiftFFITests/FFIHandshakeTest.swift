@@ -46,7 +46,7 @@ final class SynchronizedArray<T: Sendable>: @unchecked Sendable {
 @MainActor
 final class FFIHandshakeTest: XCTestCase {
     // MARK: - Test Setup
-    
+
     private var testLogger: RunarLogger!
 
     override func setUp() async throws {
@@ -55,7 +55,7 @@ final class FFIHandshakeTest: XCTestCase {
         // Set up logging to match Rust test - both FFI and Swift loggers at trace level
         try await FFILogger.setLogLevel(.trace)
         try await FFILogger.setLoggerContext("handshake-test")
-        
+
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
             level: .trace,
@@ -63,7 +63,7 @@ final class FFIHandshakeTest: XCTestCase {
             includeComponent: true,
             includeContext: true
         )
-        
+
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("FFIHandshakeTest"))
     }
@@ -192,7 +192,7 @@ final class FFIHandshakeTest: XCTestCase {
         testLogger.trace("Setting up callbacks for transport A")
         let peerConnectedEventsA = SynchronizedArray<PeerConnectedEvent>()
         let peerDisconnectedEventsA = SynchronizedArray<String>()
-        
+
         // Create local logger reference for callbacks
         let callbackLoggerA = testLogger.child(component: .custom("callbackA"))
 
@@ -207,7 +207,20 @@ final class FFIHandshakeTest: XCTestCase {
                 peerDisconnectedEventsA.append(nodeId)
                 callbackLoggerA.debug("Transport A received peer_disconnected event for peer: \(nodeId)")
             },
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
 
         // Step 7: Create transport A (server) - exactly like Rust
@@ -238,7 +251,7 @@ final class FFIHandshakeTest: XCTestCase {
         testLogger.trace("Setting up callbacks for transport B")
         let peerConnectedEventsB = SynchronizedArray<PeerConnectedEvent>()
         let peerDisconnectedEventsB = SynchronizedArray<String>()
-        
+
         // Create local logger reference for callbacks
         let callbackLoggerB = testLogger.child(component: .custom("callbackB"))
 
@@ -253,7 +266,20 @@ final class FFIHandshakeTest: XCTestCase {
                 peerDisconnectedEventsB.append(nodeId)
                 callbackLoggerB.debug("Transport B received peer_disconnected event for peer: \(nodeId)")
             },
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
 
         // Step 11: Create transport B (client) - exactly like Rust
@@ -290,7 +316,7 @@ final class FFIHandshakeTest: XCTestCase {
         let startTime = Date()
 
         while Date().timeIntervalSince(startTime) < maxWaitTime {
-            if peerConnectedEventsA.count > 0 && peerConnectedEventsB.count > 0 {
+            if peerConnectedEventsA.count > 0, peerConnectedEventsB.count > 0 {
                 break
             }
             try await Task.sleep(nanoseconds: 50_000_000) // 50ms
@@ -415,7 +441,20 @@ final class FFIHandshakeTest: XCTestCase {
 
         // Step 7: Set up callbacks for transport A - exactly like Rust
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
 
         // Step 8: Create transport A (server) - exactly like Rust
@@ -443,7 +482,7 @@ final class FFIHandshakeTest: XCTestCase {
 
         // Create local logger reference for callbacks
         let callbackLoggerB = testLogger.child(component: .custom("callbackB"))
-        
+
         let callbacksB = TransportCallbacks(
             peerConnectedCallback: { nodeId, nodeInfo in
                 let event = PeerConnectedEvent(nodeId: nodeId, nodeInfo: nodeInfo)
@@ -451,7 +490,20 @@ final class FFIHandshakeTest: XCTestCase {
                 callbackLoggerB.debug("Transport B received peer_connected event for peer: \(nodeId)")
                 callbackLoggerB.trace("NodeInfo: \(nodeInfo)")
             },
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
 
         // Step 12: Create transport B (client) - exactly like Rust
@@ -504,8 +556,9 @@ final class FFIHandshakeTest: XCTestCase {
         while Date().timeIntervalSince(updateStartTime) < 5.0 {
             // Check if we received an updated NodeInfo - exactly like Rust
             for event in peerConnectedEventsB.array {
-                if event.nodeInfo.nodeMetadata.services == nodeInfoAUpdated.nodeMetadata.services &&
-                   event.nodeInfo.version == nodeInfoAUpdated.version {
+                if event.nodeInfo.nodeMetadata.services == nodeInfoAUpdated.nodeMetadata.services,
+                   event.nodeInfo.version == nodeInfoAUpdated.version
+                {
                     testLogger.debug("Received updated NodeInfo: \(event.nodeInfo)")
                     updateReceived = true
                     break

@@ -3341,7 +3341,6 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
         return token
     }
-
 }
 
 /// Mobile key manager implementation
@@ -4800,13 +4799,17 @@ public struct PeerConnectedEvent: Codable, Sendable, Equatable {
 
 public struct TransportRequestEvent: Codable, Sendable, Equatable {
     public let requestId: String
+    public let sourcePeerId: String
+    public let destinationPeerId: String
     public let path: String
     public let correlationId: String
     public let payload: Data
     public let profilePublicKey: Data
 
-    public init(requestId: String, path: String, correlationId: String, payload: Data, profilePublicKey: Data) {
+    public init(requestId: String, sourcePeerId: String, destinationPeerId: String, path: String, correlationId: String, payload: Data, profilePublicKey: Data) {
         self.requestId = requestId
+        self.sourcePeerId = sourcePeerId
+        self.destinationPeerId = destinationPeerId
         self.path = path
         self.correlationId = correlationId
         self.payload = payload
@@ -4815,6 +4818,8 @@ public struct TransportRequestEvent: Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case requestId = "request_id"
+        case sourcePeerId = "source_peer_id"
+        case destinationPeerId = "destination_peer_id"
         case path
         case correlationId = "correlation_id"
         case payload
@@ -4824,6 +4829,8 @@ public struct TransportRequestEvent: Codable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         requestId = try container.decode(String.self, forKey: .requestId)
+        sourcePeerId = try container.decode(String.self, forKey: .sourcePeerId)
+        destinationPeerId = try container.decode(String.self, forKey: .destinationPeerId)
         path = try container.decode(String.self, forKey: .path)
         correlationId = try container.decode(String.self, forKey: .correlationId)
         if let data = try? container.decode(Data.self, forKey: .payload) {
@@ -4843,25 +4850,33 @@ public struct TransportRequestEvent: Codable, Sendable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(requestId, forKey: .requestId)
+        try container.encode(sourcePeerId, forKey: .sourcePeerId)
+        try container.encode(destinationPeerId, forKey: .destinationPeerId)
         try container.encode(path, forKey: .path)
         try container.encode(correlationId, forKey: .correlationId)
-        try container.encode(payload, forKey: .payload)
-        try container.encode(profilePublicKey, forKey: .profilePublicKey)
+        try container.encode([UInt8](payload), forKey: .payload)
+        try container.encode([UInt8](profilePublicKey), forKey: .profilePublicKey)
     }
 }
 
 public struct TransportEventEvent: Codable, Sendable, Equatable {
+    public let sourcePeerId: String
+    public let destinationPeerId: String
     public let path: String
     public let correlationId: String
     public let payload: Data
 
-    public init(path: String, correlationId: String, payload: Data) {
+    public init(sourcePeerId: String, destinationPeerId: String, path: String, correlationId: String, payload: Data) {
+        self.sourcePeerId = sourcePeerId
+        self.destinationPeerId = destinationPeerId
         self.path = path
         self.correlationId = correlationId
         self.payload = payload
     }
 
     private enum CodingKeys: String, CodingKey {
+        case sourcePeerId = "source_peer_id"
+        case destinationPeerId = "destination_peer_id"
         case path
         case correlationId = "correlation_id"
         case payload
@@ -4869,6 +4884,8 @@ public struct TransportEventEvent: Codable, Sendable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourcePeerId = try container.decode(String.self, forKey: .sourcePeerId)
+        destinationPeerId = try container.decode(String.self, forKey: .destinationPeerId)
         path = try container.decode(String.self, forKey: .path)
         correlationId = try container.decode(String.self, forKey: .correlationId)
         if let data = try? container.decode(Data.self, forKey: .payload) {
@@ -4881,9 +4898,11 @@ public struct TransportEventEvent: Codable, Sendable, Equatable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sourcePeerId, forKey: .sourcePeerId)
+        try container.encode(destinationPeerId, forKey: .destinationPeerId)
         try container.encode(path, forKey: .path)
         try container.encode(correlationId, forKey: .correlationId)
-        try container.encode(payload, forKey: .payload)
+        try container.encode([UInt8](payload), forKey: .payload)
     }
 }
 
@@ -4915,7 +4934,7 @@ public struct TransportResponseEvent: Codable, Sendable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(correlationId, forKey: .correlationId)
-        try container.encode(payload, forKey: .payload)
+        try container.encode([UInt8](payload), forKey: .payload)
     }
 }
 
@@ -5044,10 +5063,10 @@ public actor DiscoveryHandle {
         guard !isPolling else { return }
         isPolling = true
         logger.info("DiscoveryHandle internal polling - Task started")
-        
+
         pollingTask = Task { [weak self] in
             guard let self = self else { return }
-            
+
             while await self.isPolling {
                 logger.trace("DiscoveryHandle internal polling - Polling for discovery events")
                 do {
@@ -5621,11 +5640,11 @@ public actor QuicTransport {
 
         // Call the request callback and get the response
         // The callback now always returns a NetworkMessage (never nil)
-        let responseMessage = callbacks.requestCallback(
+        let responseMessage = await callbacks.requestCallback(
             event.requestId,
             event.path,
             event.payload,
-            "", // sourcePeerId - not available in TransportRequestEvent
+            event.sourcePeerId, // Use actual source peer ID from event
             event.correlationId
         )
 
@@ -5650,7 +5669,7 @@ public actor QuicTransport {
     private func handleTransportEvent(_ event: TransportEventEvent) async {
         logger.info("QuicTransport.handleTransportEvent() - path=\(event.path) corr=\(event.correlationId)")
         // If there is an event callback in callbacks, invoke it
-        callbacks.eventCallback?(UUID().uuidString, event.path, event.payload, "", event.correlationId)
+        await callbacks.eventCallback?(UUID().uuidString, event.path, event.payload, event.sourcePeerId, event.correlationId)
     }
 
     private func handleResponseEvent(_ event: TransportResponseEvent) async {
@@ -5672,7 +5691,7 @@ public actor QuicTransport {
         logger.info("QuicTransport.handlePeerDisconnected() - nodeId=\(nodeId)")
         callbacks.peerDisconnectedCallback?(nodeId)
     }
- 
+
     /// Get local address
     /// - Returns: Local address string
     /// - Throws: FFIError if getting address fails
@@ -5734,7 +5753,7 @@ public typealias PeerDisconnectedCallback = @Sendable (String) -> Void
 ///   - sourcePeerId: The ID of the peer that sent the request
 ///   - correlationId: Optional correlation ID
 /// - Returns: NetworkMessage response (always returns a response, use AnyValue.null for null responses)
-public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> NetworkMessage
+public typealias RequestCallback = @Sendable (String, String, Data, String, String?) async -> NetworkMessage
 
 /// Callback for handling P2P event messages (fire and forget, no response)
 /// - Parameters:
@@ -5743,11 +5762,7 @@ public typealias RequestCallback = @Sendable (String, String, Data, String, Stri
 ///   - payload: The event payload
 ///   - sourcePeerId: The ID of the peer that sent the event
 ///   - correlationId: Optional correlation ID
-public typealias EventCallback = @Sendable (String, String, Data, String, String?) -> Void
-
-/// Get local node info callback type
-/// - Returns: The current local node info
-public typealias GetLocalNodeInfoCallback = @Sendable () async throws -> NodeInfo
+public typealias EventCallback = @Sendable (String, String, Data, String, String?) async -> Void
 
 /// Transport callbacks container
 public struct TransportCallbacks: Sendable {
@@ -5755,20 +5770,17 @@ public struct TransportCallbacks: Sendable {
     public let peerDisconnectedCallback: PeerDisconnectedCallback?
     public let requestCallback: RequestCallback
     public let eventCallback: EventCallback?
-    public let getLocalNodeInfoCallback: GetLocalNodeInfoCallback?
 
     public init(
         peerConnectedCallback: PeerConnectedCallback? = nil,
         peerDisconnectedCallback: PeerDisconnectedCallback? = nil,
         requestCallback: @escaping RequestCallback,
-        eventCallback: EventCallback? = nil,
-        getLocalNodeInfoCallback: GetLocalNodeInfoCallback? = nil
+        eventCallback: EventCallback? = nil
     ) {
         self.peerConnectedCallback = peerConnectedCallback
         self.peerDisconnectedCallback = peerDisconnectedCallback
         self.requestCallback = requestCallback
         self.eventCallback = eventCallback
-        self.getLocalNodeInfoCallback = getLocalNodeInfoCallback
     }
 }
 

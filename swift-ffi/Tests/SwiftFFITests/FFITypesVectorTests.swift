@@ -41,6 +41,9 @@ final class FFITypesVectorTests: XCTestCase {
         try generateNetworkMessagePayloadItem()
         try generateNetworkMessage()
 
+        // Typed Transport Events (task18.md requirement)
+        try generateTypedTransportEventVectors()
+
         print("✅ All FFI types test vectors generated successfully")
     }
 
@@ -378,5 +381,62 @@ final class FFITypesVectorTests: XCTestCase {
         let encoder = CodableCBOREncoder()
         let data = try encoder.encode(message)
         try data.write(to: outputDir.appendingPathComponent("network_message_basic.bin"))
+    }
+
+    // MARK: - Typed Transport Events Generation (task18.md requirement)
+
+    private func generateTypedTransportEventVectors() throws {
+        // Basic NodeInfo fixture
+        let basicNode = NodeInfo(
+            nodePublicKey: Data([1, 2, 3, 4, 5]),
+            networkIds: ["net-a"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(
+                services: [],
+                subscriptions: []
+            ),
+            version: 1
+        )
+
+        // PeerConnectedEvent
+        let peerConnected = PeerConnectedEvent(
+            nodeId: "node-123",
+            nodeInfo: basicNode
+        )
+        let encoder = CodableCBOREncoder()
+        let peerConnectedData = try encoder.encode(peerConnected)
+        try peerConnectedData.write(to: outputDir.appendingPathComponent("peer_connected_event_basic.bin"))
+
+        // TransportRequestEvent
+        let transportRequest = TransportRequestEvent(
+            requestId: "req-1",
+            sourcePeerId: "source-peer-123",
+            destinationPeerId: "dest-peer-456",
+            path: "/echo",
+            correlationId: "c1",
+            payload: Data("hello".utf8),
+            profilePublicKey: Data()
+        )
+        let requestData = try encoder.encode(transportRequest)
+        try requestData.write(to: outputDir.appendingPathComponent("transport_request_event_basic.bin"))
+
+        // TransportEventEvent
+        let transportEvent = TransportEventEvent(
+            sourcePeerId: "source-peer-789",
+            destinationPeerId: "dest-peer-012",
+            path: "/event",
+            correlationId: "e1",
+            payload: Data("evt".utf8)
+        )
+        let eventData = try encoder.encode(transportEvent)
+        try eventData.write(to: outputDir.appendingPathComponent("transport_event_event_basic.bin"))
+
+        // TransportResponseEvent
+        let transportResponse = TransportResponseEvent(
+            correlationId: "c1",
+            payload: Data("world".utf8)
+        )
+        let responseData = try encoder.encode(transportResponse)
+        try responseData.write(to: outputDir.appendingPathComponent("transport_response_event_basic.bin"))
     }
 }

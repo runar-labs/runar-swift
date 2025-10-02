@@ -58,7 +58,20 @@ final class PeerConnectionTests: XCTestCase {
                 print("PeerConnectionTests - Peer disconnected: \(peerId)")
                 peerDisconnectedExpectation.fulfill()
             },
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
 
         let loggerA = RunarLogger.root(component: .custom("PeerConnectionTests"))
@@ -69,7 +82,20 @@ final class PeerConnectionTests: XCTestCase {
 
         // Create transport B with minimal callbacks
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let loggerB = RunarLogger.root(component: .custom("PeerConnectionTests"))
         let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)

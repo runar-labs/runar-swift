@@ -2138,9 +2138,8 @@ public final class Node {
                 }
                 
                 // Use async request handling (matching Rust pattern)
-                // Note: This is a synchronous callback, so we need to handle async work properly
-                // For now, return a proper error response until we implement proper async/sync bridging
-                return self.handleNetworkRequestSync(networkMessage)
+                // Now that callbacks are async, we can properly handle async work
+                return await self.handleNetworkRequestAsync(networkMessage)
             },
             eventCallback: { [weak self] requestId, path, payload, sourcePeerId, correlationId in
                 Task { @MainActor in
@@ -2445,6 +2444,33 @@ public final class Node {
             messageType: 5, // MESSAGE_TYPE_RESPONSE
             payload: errorPayload
         )
+    }
+
+    /// Handle network request asynchronously (wrapper for callback)
+    private func handleNetworkRequestAsync(_ message: NetworkMessage) async -> NetworkMessage {
+        do {
+            return try await handleNetworkRequest(message)
+        } catch {
+            logger.error("Failed to handle network request: \(error)")
+            do {
+                return try await createErrorResponse(originalMessage: message, error: error)
+            } catch {
+                // Fallback to simple error response if serialization fails
+                logger.error("Failed to create error response: \(error)")
+                return NetworkMessage(
+                    sourceNodeId: nodeId,
+                    destinationNodeId: message.sourceNodeId,
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: message.payload.path,
+                        payloadBytes: Data("{\"error\": true, \"message\": \"Internal error\"}".utf8),
+                        correlationId: message.payload.correlationId,
+                        networkPublicKey: message.payload.networkPublicKey,
+                        profilePublicKeys: message.payload.profilePublicKeys
+                    )
+                )
+            }
+        }
     }
 
     /// Handle network request (async implementation matching Rust)

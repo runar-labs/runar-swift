@@ -16,7 +16,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        
+
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
             level: .trace,
@@ -24,7 +24,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
             includeComponent: true,
             includeContext: true
         )
-        
+
         // Initialize all resources to nil
         caNode = nil
         server = nil

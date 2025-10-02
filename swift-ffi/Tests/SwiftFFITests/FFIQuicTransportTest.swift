@@ -40,10 +40,9 @@ actor Box<T> {
 
 @MainActor
 final class FFIQuicTransportTest: XCTestCase {
-    
     override func setUp() async throws {
         try await super.setUp()
-        
+
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
             level: .trace,
@@ -52,7 +51,7 @@ final class FFIQuicTransportTest: XCTestCase {
             includeContext: true
         )
     }
-    
+
     /// Test two transports request/response and publish/events - exactly matching Rust two_transports_request_response
     /// This is the main test that validates the complete transport functionality including both request/response and publish/event patterns
     func testTwoTransportsRequestResponseAndPublishEvents() async throws {
@@ -139,7 +138,20 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Step 10: Set up callbacks for transport B (no special callbacks needed) - exactly like Rust
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
 
         // Step 11: Create transport B and start it - exactly like Rust
@@ -244,7 +256,20 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport
         let callbacks = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let logger = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
         let transport = try await QuicTransport.create(keys: keys, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacks, logger: logger)
@@ -300,7 +325,20 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport A
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let loggerA = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
@@ -312,7 +350,20 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport B
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let loggerB = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
         let transportB = try await QuicTransport.create(keys: keysB, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacksB, logger: loggerB)
@@ -369,7 +420,20 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport
         let callbacks = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
         let logger = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
         let transport = try await QuicTransport.create(keys: keys, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacks, logger: logger)

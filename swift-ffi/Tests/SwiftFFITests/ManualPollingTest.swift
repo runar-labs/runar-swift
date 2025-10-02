@@ -77,7 +77,20 @@ final class ManualPollingTest: XCTestCase {
 
         // Step 10: Create transport B with minimal callbacks
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in nil as NetworkMessage? }
+            requestCallback: { _, _, _, _, _ in
+                NetworkMessage(
+                    sourceNodeId: "",
+                    destinationNodeId: "",
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: "",
+                        payloadBytes: Data(),
+                        correlationId: "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
+            }
         )
 
         // Step 11: Create transport B and start it

@@ -20,7 +20,7 @@ final class CATests: XCTestCase {
         do {
             try await FFILogger.setLogLevel(.trace)
             try await FFILogger.setLoggerContext("ca-tests")
-            
+
             // Set global logger config to trace level for all tests
             LoggerConfigManager.shared.globalConfig = LoggerConfig(
                 level: .trace,
