@@ -117,7 +117,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         
         // Create a test service
         let service = TestMathService()
-        let serviceTopic = try TopicPath(networkId: "test-network", segments: ["math"])
+        let serviceTopic = try TopicPath.new("math", defaultNetwork: "test-network")
         let serviceEntry = ServiceEntry(
             serviceTopic: serviceTopic,
             service: service,
@@ -141,7 +141,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
 
         // Create a test service
         let service = TestMathService()
-        let serviceTopic = try TopicPath(networkId: "test-network", segments: ["math"])
+        let serviceTopic = try TopicPath.new("math", defaultNetwork: "test-network")
         
         // Create ServiceEntry (matching Rust pattern)
         let serviceEntry = ServiceEntry(
@@ -167,8 +167,8 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         let service1 = TestMathService()
         let service2 = TestMathService()
         
-        let topic1 = try TopicPath(networkId: "test-network", segments: ["math1"])
-        let topic2 = try TopicPath(networkId: "test-network", segments: ["math2"])
+        let topic1 = try TopicPath.new("math1", defaultNetwork: "test-network")
+        let topic2 = try TopicPath.new("math2", defaultNetwork: "test-network")
         
         let entry1 = ServiceEntry(serviceTopic: topic1, service: service1, state: .initialized, registrationTime: 1000)
         let entry2 = ServiceEntry(serviceTopic: topic2, service: service2, state: .initialized, registrationTime: 1001)
@@ -200,7 +200,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             
             // Create a TopicPath for the action (matching Rust)
             let actionPath = "\(servicePath)/\(actionName)"
-            let topicPath = try TopicPath(networkId: "net1", segments: actionPath.split(separator: "/").map(String.init))
+            let topicPath = try TopicPath.new(actionPath, defaultNetwork: "net1")
             
             // Create a handler (matching Rust)
             let handler: ActionHandler = { params, context in
@@ -222,7 +222,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             XCTAssertNotNil(retrievedHandler, "Handler should be found")
             
             // Check for a non-existent handler (matching Rust)
-            let nonExistentPath = try TopicPath(networkId: "net1", segments: ["math", "nonexistent"])
+            let nonExistentPath = try TopicPath.new( "math/nonexistent", defaultNetwork: "net1")
             let nonExistentHandler = await registry.getLocalActionHandler(topicPath: nonExistentPath)
             XCTAssertNil(nonExistentHandler, "Should not find a handler for a non-existent path")
         }
@@ -290,7 +290,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             let registry = ServiceRegistry(logger: self.testLogger.child(component: .node))
             
             // Create a TopicPath for the test topic (matching Rust)
-            let topic = try TopicPath(networkId: "net1", segments: ["test", "event"])
+            let topic = try TopicPath.new( "test/event", defaultNetwork: "net1")
             
             // Create a flag to track if the callback was called (matching Rust AtomicBool)
             let wasCalled = AtomicBoolean(initialValue: false)
@@ -336,8 +336,8 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             }
             
             // Create TopicPaths for wildcard subscriptions (matching Rust)
-            let wildcard1 = try TopicPath(networkId: "net1", segments: ["test", "#"])
-            let wildcard2 = try TopicPath(networkId: "net1", segments: ["test", "events", "#"])
+            let wildcard1 = try TopicPath.new( "test/#", defaultNetwork: "net1")
+            let wildcard2 = try TopicPath.new( "test/events/#", defaultNetwork: "net1")
             
             // Subscribe to wildcard topics using the correct method (matching Rust)
             _ = try await registry.registerLocalEventSubscription(
@@ -411,7 +411,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         
         // Create a test service
         let service = TestMathService()
-        let serviceTopic = try TopicPath(networkId: "test-network", segments: ["math"])
+        let serviceTopic = try TopicPath.new("math", defaultNetwork: "test-network")
         
         // Create ServiceEntry (matching Rust pattern)
         let serviceEntry = ServiceEntry(
@@ -438,7 +438,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         
         // Create a test service
         let service = TestMathService()
-        let serviceTopic = try TopicPath(networkId: "test-network", segments: ["math"])
+        let serviceTopic = try TopicPath.new("math", defaultNetwork: "test-network")
         
         // Create ServiceEntry (matching Rust pattern)
         let serviceEntry = ServiceEntry(
@@ -480,7 +480,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         
         // Create a test service
         let service = TestMathService()
-        let serviceTopic = try TopicPath(networkId: "test-network", segments: ["math"])
+        let serviceTopic = try TopicPath.new("math", defaultNetwork: "test-network")
         
         // Create ServiceEntry (matching Rust pattern)
         let serviceEntry = ServiceEntry(
@@ -511,8 +511,8 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         let service2 = TestMathService2()
         
         // Create ServiceEntries (matching Rust pattern)
-        let topic1 = try TopicPath(networkId: "test-network", segments: ["math1"])
-        let topic2 = try TopicPath(networkId: "test-network", segments: ["math2"])
+        let topic1 = try TopicPath.new("math1", defaultNetwork: "test-network")
+        let topic2 = try TopicPath.new("math2", defaultNetwork: "test-network")
         
         let entry1 = ServiceEntry(
             serviceTopic: topic1,
@@ -551,10 +551,10 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             let registry = ServiceRegistry(logger: logger)
             
             // Create a service path and action paths (matching Rust)
-            let servicePath = try TopicPath(networkId: "test-network", segments: ["math-service"])
-            let addActionPath = try TopicPath(networkId: "test-network", segments: ["math-service", "add"])
-            let subtractActionPath = try TopicPath(networkId: "test-network", segments: ["math-service", "subtract"])
-            let multiplyActionPath = try TopicPath(networkId: "test-network", segments: ["math-service", "multiply"])
+            let servicePath = try TopicPath.new( "math-service", defaultNetwork: "test-network")
+            let addActionPath = try TopicPath.new( "math-service/add", defaultNetwork: "test-network")
+            let subtractActionPath = try TopicPath.new( "math-service/subtract", defaultNetwork: "test-network")
+            let multiplyActionPath = try TopicPath.new( "math-service/multiply", defaultNetwork: "test-network")
             
             // Create action handlers (matching Rust)
             let addHandler: ActionHandler = { params, context in
@@ -601,7 +601,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             // Create a wildcard path to match all actions under this service (matching Rust)
             let servicePathStr = servicePath.servicePath
             let wildcardPath = "\(servicePathStr)/*"
-            let searchPath = try TopicPath(networkId: servicePath.networkId, segments: wildcardPath.split(separator: "/").map(String.init))
+            let searchPath = try TopicPath.new( wildcardPath, defaultNetwork: servicePath.networkId)
             
             // Get the action metadata for the service using the wildcard path (matching Rust)
             let actionsMetadata = await registry.getActionsMetadata(serviceTopicPath: searchPath)
@@ -673,7 +673,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             }
             
             // Register handler with template path (matching Rust)
-            let templatePath = try TopicPath(networkId: "net1", segments: ["users", "{id}", "actions", "{action}"])
+            let templatePath = try TopicPath.new( "users/{id}/actions/{action}", defaultNetwork: "net1")
             try await registry.registerLocalActionHandler(
                 topicPath: templatePath,
                 handler: handler,
@@ -695,7 +695,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             let logger = self.testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
-            let topicPath = try TopicPath(networkId: "net1", segments: ["test", "action"])
+            let topicPath = try TopicPath.new( "test/action", defaultNetwork: "net1")
             
             // Register local handler (matching Rust)
             let localHandler: ActionHandler = { params, context in
@@ -747,8 +747,8 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
                 return AnyValue.primitive("network2_result")
             }
             
-            let topicPath1 = try TopicPath(networkId: "network1", segments: ["test", "action"])
-            let topicPath2 = try TopicPath(networkId: "network2", segments: ["test", "action"])
+            let topicPath1 = try TopicPath.new( "test/action", defaultNetwork: "network1")
+            let topicPath2 = try TopicPath.new( "test/action", defaultNetwork: "network2")
             
             try await registry.registerLocalActionHandler(
                 topicPath: topicPath1,
@@ -784,7 +784,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             let logger = self.testLogger.child(component: .node)
             let registry = ServiceRegistry(logger: logger)
             
-            let topicPath = try TopicPath(networkId: "net1", segments: ["test", "event"])
+            let topicPath = try TopicPath.new( "test/event", defaultNetwork: "net1")
             
             // Register remote event subscription (matching Rust)
             let callback: EventHandler = { data in

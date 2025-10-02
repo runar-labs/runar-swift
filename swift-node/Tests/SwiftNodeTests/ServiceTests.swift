@@ -1,96 +1,8 @@
 import RunarSerializer
 import SwiftCommon
+import SwiftFFI
 @testable import SwiftNode
 import XCTest
-
-// MARK: - Mock Delegates
-
-@MainActor
-final class MockRegistryDelegate: RegistryDelegate {
-    func getLocalServiceState(servicePath: TopicPath) async -> ServiceState? {
-        return .running
-    }
-    
-    func getRemoteServiceState(servicePath: TopicPath) async -> ServiceState? {
-        return nil
-    }
-    
-    func getServiceMetadata(servicePath: TopicPath) async -> ServiceMetadata? {
-        return ServiceMetadata(
-            networkId: "test-network",
-            servicePath: servicePath.servicePath,
-            name: "TestService",
-            version: "1.0.0",
-            description: "Test service",
-            actions: [],
-            registrationTime: UInt64(Date().timeIntervalSince1970),
-            lastStartTime: nil
-        )
-    }
-    
-    func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
-        return [:]
-    }
-    
-    func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
-        return []
-    }
-    
-    func registerRemoteActionHandler(topicPath: TopicPath, handler: ActionHandler) async throws {
-        // Mock implementation
-    }
-    
-    func removeRemoteActionHandler(topicPath: TopicPath) async throws {
-        // Mock implementation
-    }
-    
-    func registerRemoteEventHandler(topicPath: TopicPath, handler: EventHandler) async throws {
-        // Mock implementation
-    }
-    
-    func removeRemoteEventHandler(topicPath: TopicPath) async throws {
-        // Mock implementation
-    }
-    
-    func updateLocalServiceStateIfValid(servicePath: TopicPath, newState: ServiceState, currentState: ServiceState) async throws {
-        // Mock implementation
-    }
-    
-    func validatePauseTransition(servicePath: TopicPath) async throws {
-        // Mock implementation
-    }
-    
-    func validateResumeTransition(servicePath: TopicPath) async throws {
-        // Mock implementation
-    }
-}
-
-@MainActor
-final class MockNodeDelegate: NodeDelegate {
-    func registerAction(networkId: String, servicePath: String, action: String, handler: @escaping ActionHandler) async throws {
-        // Mock implementation
-    }
-    
-    func unregisterAction(networkId: String, servicePath: String, action: String) async throws {
-        // Mock implementation
-    }
-    
-    func subscribeToEvents(networkId: String, servicePath: String, handler: @escaping EventHandler) async throws -> String {
-        return "mock-subscription-id"
-    }
-    
-    func unsubscribeFromEvents(subscriptionId: String) async throws {
-        // Mock implementation
-    }
-    
-    func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
-        return "mock-subscription-id"
-    }
-    
-    func publish(topic: String, data: AnyValue?) async throws {
-        // Mock implementation
-    }
-}
 
 @MainActor
 final class ServiceTests: XCTestCase {
@@ -114,99 +26,129 @@ final class ServiceTests: XCTestCase {
     }
     
     func testKeysServiceLifecycle() async throws {
-        // Test KeysService initialization and basic operations
+        // Test KeysService with real Node implementation
         let logger = testLogger.child(component: .node)
-        let keysService = KeysService(logger: logger, nodeDelegate: MockNodeDelegate())
-
-        // Test initialization
-        let context = LifecycleContext(
-            networkId: "test-network",
-            servicePath: "$keys",
-            config: nil,
-            logger: logger,
-            nodeDelegate: MockNodeDelegate()
-        )
-
-        try await keysService.initService(context)
-
-        // Test starting service
-        try await keysService.start(context)
-
-        // Test basic operations - KeysService doesn't expose getPublicKey method
-        // This would be tested through the actual key operations
-
-        // Note: Sign/verify methods removed - focus on available FFI methods
-
-        // Test stopping service
-        try await keysService.stop(context)
+        
+        // Create real Node with real key manager using proper API
+        let nodeKeysManager = try await NodeKeyManager()
+        let defaultNetworkId = "test-network"
+        
+        // Create NodeConfig and set key manager
+        var config = NodeConfig(defaultNetworkId: defaultNetworkId)
+        config = config.withKeyManager(nodeKeysManager)
+        
+        // Create Node using the proper static factory method
+        let node = try await Node.new(config: config)
+        
+        // Test Node initialization (which includes KeysService)
+        try await node.start()
+        
+        // Test that the node is running and has key management capabilities
+        XCTAssertNotNil(node.keysManager)
+        
+        // Test stopping the node (which stops all services including KeysService)
+        try await node.stop()
     }
 
     func testRegistryServiceLifecycle() async throws {
-        // Test RegistryService initialization and basic operations
+        // Test RegistryService with real Node implementation
         let logger = testLogger.child(component: .registry)
-        let serviceRegistry = ServiceRegistry(logger: logger)
-        let mockRegistryDelegate = MockRegistryDelegate()
-        let registryService = RegistryService(logger: logger, registryDelegate: mockRegistryDelegate)
-
-        let context = LifecycleContext(
-            networkId: "test-network",
-            servicePath: "$registry",
-            config: nil,
-            logger: logger,
-            nodeDelegate: MockNodeDelegate()
+        
+        // Create real Node with real key manager using proper API
+        let nodeKeysManager = try await NodeKeyManager()
+        let defaultNetworkId = "test-network"
+        
+        // Create NodeConfig and set key manager
+        var config = NodeConfig(defaultNetworkId: defaultNetworkId)
+        config = config.withKeyManager(nodeKeysManager)
+        
+        // Create Node using the proper static factory method
+        let node = try await Node.new(config: config)
+        
+        // Test Node initialization (which includes RegistryService)
+        try await node.start()
+        
+        // Test that the node has service registry capabilities
+        XCTAssertNotNil(node.serviceRegistry)
+        
+        // Test service registration through the real node
+        let testHandler: ActionHandler = { params, context in
+            return AnyValue.primitive("test-response")
+        }
+        
+        try await node.registerAction(
+            networkId: defaultNetworkId,
+            servicePath: "test-service",
+            action: "test-action",
+            handler: testHandler
         )
-
-        // Test initialization
-        try await registryService.initService(context)
-
-        // Test starting service
-        try await registryService.start(context)
-
-        // Registry service is automatically registered by the node
-        // Test that the service is working by checking its state
-
-        // Test stopping service
-        try await registryService.stop(context)
+        
+        // Test stopping the node (which stops all services including RegistryService)
+        try await node.stop()
     }
 
 
     func testServiceStateTransitions() async throws {
+        // Test service state transitions with real Node implementation
         let logger = testLogger.child(component: .node)
-        let keysService = KeysService(logger: logger, nodeDelegate: MockNodeDelegate())
+        
+        // Create real Node with real key manager using proper API
+        let nodeKeysManager = try await NodeKeyManager()
+        let defaultNetworkId = "test-network"
+        
+        // Create NodeConfig and set key manager
+        var config = NodeConfig(defaultNetworkId: defaultNetworkId)
+        config = config.withKeyManager(nodeKeysManager)
+        
+        // Create Node using the proper static factory method
+        let node = try await Node.new(config: config)
 
-        let context = LifecycleContext(
-            networkId: "test-network",
-            servicePath: "$keys",
-            config: nil,
-            logger: logger,
-            nodeDelegate: MockNodeDelegate()
-        )
-
-        // Test state transitions
-        try await keysService.initService(context)
-
-        try await keysService.start(context)
-
-        // Skip pause/resume tests as these methods don't exist in Rust implementation
-
-        try await keysService.stop(context)
+        // Test state transitions through real node lifecycle
+        try await node.start()
+        
+        // Verify node is running
+        XCTAssertNotNil(node.keysManager)
+        XCTAssertNotNil(node.serviceRegistry)
+        
+        // Test stopping the node
+        try await node.stop()
     }
 
     func testServiceErrorHandling() async throws {
+        // Test service error handling with real Node implementation
         let logger = testLogger.child(component: .node)
-        let keysService = KeysService(logger: logger, nodeDelegate: MockNodeDelegate())
-
-        let context = LifecycleContext(
-            networkId: "test-network",
-            servicePath: "$keys",
-            config: nil,
-            logger: logger,
-            nodeDelegate: MockNodeDelegate()
-        )
-
-        // Test error handling during initialization
-        // (This would normally test error scenarios, but for demo we just test normal flow)
-        try await keysService.initService(context)
+        
+        // Test error handling during Node creation with invalid parameters
+        do {
+            // Test with missing key manager (should fail)
+            let defaultNetworkId = "test-network"
+            var config = NodeConfig(defaultNetworkId: defaultNetworkId)
+            // Don't set key manager - this should cause an error
+            
+            let _ = try await Node.new(config: config)
+            
+            // If we get here, the test should fail
+            XCTFail("Expected error for missing key manager")
+        } catch {
+            // Expected error for invalid parameters
+            XCTAssertTrue(error is NodeError)
+        }
+        
+        // Test normal flow with valid parameters
+        let nodeKeysManager = try await NodeKeyManager()
+        let defaultNetworkId = "test-network"
+        
+        // Create NodeConfig and set key manager
+        var config = NodeConfig(defaultNetworkId: defaultNetworkId)
+        config = config.withKeyManager(nodeKeysManager)
+        
+        // Create Node using the proper static factory method
+        let node = try await Node.new(config: config)
+        
+        // Test normal initialization
+        try await node.start()
+        try await node.stop()
     }
 }
+
 

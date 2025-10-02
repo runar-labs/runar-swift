@@ -149,6 +149,9 @@ public final class ServiceRegistry: NodeDelegate {
     /// Logger instance
     public let logger: RunarLogger
 
+    /// Node delegate for handling remote requests
+    internal weak var nodeDelegate: NodeDelegate?
+
     // MARK: - Initialization
 
     /// Create a new registry with a provided logger
@@ -156,8 +159,9 @@ public final class ServiceRegistry: NodeDelegate {
     /// INTENTION: Initialize a new registry with a logger provided by the parent
     /// component (typically the Node). This ensures proper logger hierarchy.
     /// Matches Rust ServiceRegistry::new() initialization.
-    public init(logger: RunarLogger) {
+    public init(logger: RunarLogger, nodeDelegate: NodeDelegate? = nil) {
         self.logger = logger
+        self.nodeDelegate = nodeDelegate
         self.localActionHandlers = PathTrie<LocalActionEntryValue>()
         self.remoteActionHandlers = PathTrie<[ActionHandler]>()
         self.eventSubscriptions = PathTrie<SubscriptionVec>()
@@ -325,7 +329,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func stopAllServices() async {
         logger.trace("Stopping all local services")
 
-        let services = (try? localServices.find(topic: TopicPath(networkId: "default", segments: []))) ?? []
+        let services = (try? localServices.find(topic: TopicPath.new("", defaultNetwork: "default"))) ?? []
 
         for serviceEntry in services {
             let context = LifecycleContext(
@@ -410,7 +414,7 @@ public final class ServiceRegistry: NodeDelegate {
         action: String,
         handler: @escaping ActionHandler
     ) async throws {
-        let topicPath = try TopicPath(networkId: networkId, segments: "\(servicePath)/\(action)".split(separator: "/").map(String.init))
+        let topicPath = try TopicPath.new("\(servicePath)/\(action)", defaultNetwork: networkId)
         let metadata = ActionMetadata(
             name: action,
             description: "Action \(action) for service \(servicePath)"
@@ -430,7 +434,7 @@ public final class ServiceRegistry: NodeDelegate {
         servicePath: String,
         action: String
     ) async throws {
-        let topicPath = try TopicPath(networkId: networkId, segments: "\(servicePath)/\(action)".split(separator: "/").map(String.init))
+        let topicPath = try TopicPath.new("\(servicePath)/\(action)", defaultNetwork: networkId)
 
         // Remove all handlers for this topic path by setting empty array
         localActionHandlers.setValues(topic: topicPath, contents: [])
@@ -554,7 +558,7 @@ public final class ServiceRegistry: NodeDelegate {
         let subscriptionId = UUID().uuidString
         let topicPath: TopicPath
         do {
-            topicPath = try TopicPath(networkId: networkId, segments: servicePath.split(separator: "/").map(String.init))
+            topicPath = try TopicPath.new(servicePath, defaultNetwork: networkId)
         } catch {
             logger.error("Failed to create TopicPath for servicePath '\(servicePath)': \(error)")
             throw ServiceRegistryError.invalidTopicPath(servicePath)
@@ -629,7 +633,7 @@ public final class ServiceRegistry: NodeDelegate {
         // Map subscription ID to topic path
         _ = await subscriptionIdToTopicPath.insert(topicPath, for: subscriptionId)
 
-        let serviceTopic = try TopicPath(networkId: topicPath.networkId, segments: [topicPath.servicePath])
+        let serviceTopic = try TopicPath.new(topicPath.servicePath, defaultNetwork: topicPath.networkId)
         _ = await subscriptionIdToServiceTopicPath.insert(serviceTopic, for: subscriptionId)
 
         return subscriptionId
@@ -838,7 +842,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func request(_ path: String, payload: AnyValue?, networkId: String = "default") async throws -> AnyValue {
         // Strip $ prefix if present (indicates internal service)
         let cleanPath = path.hasPrefix("$") ? String(path.dropFirst()) : path
-        let topicPath = try TopicPath(networkId: networkId, segments: cleanPath.split(separator: "/").map(String.init))
+        let topicPath = try TopicPath.new(cleanPath, defaultNetwork: networkId)
         
         print("🔍 DEBUG: ServiceRegistry.request: Looking for handler for path: \(path), topicPath: \(topicPath)")
         logger.trace("ServiceRegistry.request: Looking for handler for path: \(path), topicPath: \(topicPath)")
@@ -848,86 +852,67 @@ public final class ServiceRegistry: NodeDelegate {
         print("🔍 DEBUG: ServiceRegistry.request: Found \(localHandlers.count) local handlers for path: \(path)")
         logger.trace("ServiceRegistry.request: Found \(localHandlers.count) local handlers for path: \(path)")
         
-        // If no local handlers found, look up remote action handlers
-        let handlers: [LocalActionEntryValue]
-        if localHandlers.isEmpty {
-            let remoteHandlers = remoteActionHandlers.find(topic: topicPath)
-            print("🔍 DEBUG: ServiceRegistry.request: Found \(remoteHandlers.count) remote handler arrays for path: \(path)")
-            logger.trace("ServiceRegistry.request: Found \(remoteHandlers.count) remote handler arrays for path: \(path)")
-            
-            // Debug: Print the structure of remote handlers
-            for (index, handlerArray) in remoteHandlers.enumerated() {
-                print("🔍 DEBUG: ServiceRegistry.request: Remote handler array \(index): \(handlerArray.count) handlers")
-                logger.trace("ServiceRegistry.request: Remote handler array \(index): \(handlerArray.count) handlers")
-            }
-            
-            // Convert remote handlers to local format for processing
-            let flattenedHandlers = remoteHandlers.flatMap { $0 }
-            print("🔍 DEBUG: ServiceRegistry.request: Flattened to \(flattenedHandlers.count) remote handlers for path: \(path)")
-            logger.trace("ServiceRegistry.request: Flattened to \(flattenedHandlers.count) remote handlers for path: \(path)")
-            
-            handlers = flattenedHandlers.map { handler in
-                // Create a dummy LocalActionEntryValue for remote handlers
-                let dummyTopicPath = topicPath
-                let dummyMetadata = ActionMetadata(name: "remote", description: "Remote handler")
-                return (handler, dummyTopicPath, dummyMetadata)
-            }
-        } else {
-            handlers = localHandlers
-        }
-        
-        print("🔍 DEBUG: ServiceRegistry.request: Total handlers found: \(handlers.count) for path: \(path)")
-        logger.trace("ServiceRegistry.request: Total handlers found: \(handlers.count) for path: \(path)")
-        for (index, handler) in handlers.enumerated() {
-            print("🔍 DEBUG: ServiceRegistry.request: Handler \(index): \(handler)")
-            logger.trace("ServiceRegistry.request: Handler \(index): \(handler)")
-        }
-        
-        // Select the first handler (PathTrie already does template matching)
-        guard let entryValue = handlers.first else {
-            logger.warning("ServiceRegistry.request: No handler found for path: \(path), topicPath: \(topicPath)")
-            throw ServiceRegistryError.actionNotFound("No handler found for path: \(path)")
-        }
+        // If local handlers found, execute them directly
+        if !localHandlers.isEmpty {
+            let entryValue = localHandlers.first!
+            logger.trace("ServiceRegistry.request: Found local handler for path: \(path)")
 
-        logger.trace("ServiceRegistry.request: Found handler for path: \(path)")
-
-        // Extract path parameters from the matched handler
-        let pathParams = extractPathParams(requestedPath: path, handlerPath: entryValue.1.actionPath)
-        
-        // Check if the service is paused before processing the request
-        // Only check for non-internal services (skip $registry, $keys, etc.)
-        if !cleanPath.hasPrefix("registry") && !cleanPath.hasPrefix("keys") {
-            // Try to determine the service path from the topic path
-            // For requests like "math/add", the service path would be "math"
-            let serviceSegments = topicPath.segments
-            if !serviceSegments.isEmpty {
-                // Create a service path with just the first segment (service name)
-                let servicePath = try TopicPath(networkId: networkId, segments: [serviceSegments[0].asString()])
-                if let serviceState = await getLocalServiceState(servicePath: servicePath) {
-                    if serviceState == .paused {
-                        logger.warning("ServiceRegistry.request: Service '\(serviceSegments[0].asString())' is paused, blocking request to '\(path)'")
-                        throw ServiceRegistryError.servicePaused("Service '\(serviceSegments[0].asString())' is paused and cannot process requests")
+            // Extract path parameters from the matched handler
+            let pathParams = extractPathParams(requestedPath: path, handlerPath: entryValue.1.actionPath)
+            
+            // Check if the service is paused before processing the request
+            // Only check for non-internal services (skip $registry, $keys, etc.)
+            if !cleanPath.hasPrefix("registry") && !cleanPath.hasPrefix("keys") {
+                // Try to determine the service path from the topic path
+                // For requests like "math/add", the service path would be "math"
+                let serviceSegments = topicPath.segments
+                if !serviceSegments.isEmpty {
+                    // Create a service path with just the first segment (service name)
+                    let servicePath = try TopicPath.new(serviceSegments[0].asString(), defaultNetwork: networkId)
+                    if let serviceState = await getLocalServiceState(servicePath: servicePath) {
+                        if serviceState == .paused {
+                            logger.warning("ServiceRegistry.request: Service '\(serviceSegments[0].asString())' is paused, blocking request to '\(path)'")
+                            throw ServiceRegistryError.servicePaused("Service '\(serviceSegments[0].asString())' is paused and cannot process requests")
+                        }
                     }
                 }
             }
+            
+            // Create request context with path parameters
+            let requestContext = RequestContext(
+                topicPath: topicPath,
+                networkId: networkId,
+                metadata: ["payload": payload ?? AnyValue.null()],
+                logger: logger,
+                pathParams: pathParams,
+                nodeDelegate: self
+            )
+
+            // Call the local handler
+            logger.trace("ServiceRegistry.request: Calling local handler for path: \(path)")
+            let result = try await entryValue.0(payload, requestContext)
+            logger.trace("ServiceRegistry.request: Local handler returned result for path: \(path): \(result)")
+            return result
+        }
+
+        // No local handlers found - delegate to Node's remote_request method
+        // This matches the Rust implementation where ServiceRegistry doesn't execute remote handlers directly
+        logger.trace("ServiceRegistry.request: No local handlers found, delegating to Node remote_request for path: \(path)")
+        
+        // Get the Node delegate to handle remote requests
+        guard let nodeDelegate = nodeDelegate else {
+            logger.warning("ServiceRegistry.request: No Node delegate available for remote request")
+            throw ServiceRegistryError.actionNotFound("No handler found for path: \(path)")
         }
         
-        // Create request context with path parameters
-        let requestContext = RequestContext(
-            topicPath: topicPath,
-            networkId: networkId,
-            metadata: ["payload": payload ?? AnyValue.null()],
-            logger: logger,
-            pathParams: pathParams,
-            nodeDelegate: self
-        )
+        // Delegate to Node's remote_request method (matching Rust pattern)
+        return try await nodeDelegate.remoteRequest(path: path, payload: payload, networkId: networkId)
+    }
 
-        // Call the handler
-        logger.trace("ServiceRegistry.request: Calling handler for path: \(path)")
-        logger.trace("ServiceRegistry.request: Handler function: \(String(describing: entryValue.0))")
-        let result = try await entryValue.0(payload, requestContext)
-        logger.trace("ServiceRegistry.request: Handler returned result for path: \(path): \(result)")
-        return result
+    public func remoteRequest(path: String, payload: AnyValue?, networkId: String) async throws -> AnyValue {
+        // This should not be called directly on ServiceRegistry
+        // It should be called on the Node which implements the actual remote request logic
+        throw ServiceRegistryError.actionNotFound("ServiceRegistry.remoteRequest should not be called directly")
     }
 
     // MARK: - Path Parameter Extraction
@@ -961,7 +946,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func publish(topic: String, data: AnyValue?, networkId: String) async {
         let topicPath: TopicPath
         do {
-            topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
+            topicPath = try TopicPath.new(topic, defaultNetwork: networkId)
         } catch {
             logger.error("Failed to create TopicPath for topic '\(topic)': \(error)")
             return // Silently fail for event publishing
@@ -1087,7 +1072,7 @@ public final class ServiceRegistry: NodeDelegate {
             }
 
             let searchPath = "\(pathStr)/*"
-            let searchTopic = try TopicPath(networkId: topicPath.networkId, segments: searchPath.split(separator: "/").map(String.init))
+            let searchTopic = try TopicPath.new(searchPath, defaultNetwork: topicPath.networkId)
             let serviceMetadata = await getServiceMetadata(servicePath: searchTopic)
 
             guard let metadata = serviceMetadata else {
@@ -1119,7 +1104,7 @@ public final class ServiceRegistry: NodeDelegate {
             
             // Get actions metadata for this service
             do {
-                let serviceTopicPath = try TopicPath(networkId: topicPath.networkId, segments: [topicPath.servicePath])
+                let serviceTopicPath = try TopicPath.new(topicPath.servicePath, defaultNetwork: topicPath.networkId)
                 let actions = await getActionsMetadata(serviceTopicPath: serviceTopicPath)
                 
                 let serviceMetadata = ServiceMetadata(
@@ -1170,8 +1155,7 @@ public final class ServiceRegistry: NodeDelegate {
             
             // Get actions metadata for this service - create a wildcard path (matching Rust)
             let searchPath = "\(service.path)/*"
-            let serviceTopicPath = try! TopicPath(networkId: servicePath.networkId, 
-                                                segments: searchPath.split(separator: "/").map(String.init))
+            let serviceTopicPath = try! TopicPath.new(searchPath, defaultNetwork: servicePath.networkId)
             let actions = await getActionsMetadata(serviceTopicPath: serviceTopicPath)
             
             return ServiceMetadata(
@@ -1195,7 +1179,7 @@ public final class ServiceRegistry: NodeDelegate {
         // Search for all actions that start with the service path
         // We need to search for patterns like "math1/*" to find all actions under math1
         let servicePathPattern = "\(serviceTopicPath.servicePath)/*"
-        let patternTopicPath = try! TopicPath(networkId: serviceTopicPath.networkId, segments: [serviceTopicPath.servicePath, "*"])
+        let patternTopicPath = try! TopicPath.new("\(serviceTopicPath.servicePath)/*", defaultNetwork: serviceTopicPath.networkId)
         
         // Search in the actions trie local_action_handlers (matching Rust)
         let matches = localActionHandlers.find(topic: patternTopicPath)

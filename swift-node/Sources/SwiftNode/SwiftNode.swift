@@ -97,6 +97,44 @@ public enum SchemaDataType: Sendable, Codable {
     }
 }
 
+// MARK: - SwiftFFI to SwiftNode Schema Conversion
+
+extension SwiftFFI.FieldSchema {
+    public func toSwiftSchema() -> FieldSchema? {
+        return FieldSchema.primitive(
+            name: "field", // Default name since FFI doesn't have name
+            dataType: dataType.toSwiftDataType(),
+            description: description,
+            defaultValue: nil
+        )
+    }
+}
+
+extension SwiftFFI.SchemaDataType {
+    public func toSwiftDataType() -> SchemaDataType {
+        switch self {
+        case .string:
+            return .string
+        case .int32:
+            return .int32
+        case .int64:
+            return .int64
+        case .float32:
+            return .float
+        case .float64:
+            return .double
+        case .boolean:
+            return .boolean
+        case .bytes:
+            return .binary
+        case .array:
+            return .array
+        case .map:
+            return .object
+        }
+    }
+}
+
 /// Field schema structure matching Rust FieldSchema
 public indirect enum FieldSchema: Sendable, Codable {
     case primitive(
@@ -181,6 +219,7 @@ public protocol NodeTransport: AnyObject, Sendable {
     func unsubscribe(subscriptionId: String) async throws
     func localAddr() async throws -> String
     func updateLocalNodeInfo(_ nodeInfo: Data) async throws
+    func request(path: String, correlationId: String, payload: Data, peerNodeId: String, networkPublicKey: Data?, profilePublicKeys: [Data]) async throws -> Data
 }
 
 /// Protocol for load balancing strategies
@@ -709,6 +748,7 @@ public protocol NodeDelegate: AnyObject, Sendable {
     func unsubscribeFromEvents(subscriptionId: String) async throws
     func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String
     func publish(topic: String, data: AnyValue?) async throws
+    func remoteRequest(path: String, payload: AnyValue?, networkId: String) async throws -> AnyValue
 }
 
 /// Keys Delegate trait for keys service operations
@@ -733,6 +773,7 @@ public protocol RegistryDelegate: AnyObject, Sendable {
     func removeRemoteActionHandler(topicPath: TopicPath) async throws
     func registerRemoteEventHandler(topicPath: TopicPath, handler: EventHandler) async throws
     func removeRemoteEventHandler(topicPath: TopicPath) async throws
+    func remoteRequest(path: String, payload: AnyValue?, networkId: String) async throws -> AnyValue
 
     /// Update service state only if the transition is valid
     func updateLocalServiceStateIfValid(servicePath: TopicPath, newState: ServiceState, currentState: ServiceState) async throws
@@ -1162,11 +1203,11 @@ public struct NodeInfo: Sendable, Codable {
 /// Node metadata containing services and subscriptions
 public struct NodeMetadata: Sendable, Codable {
     /// List of services provided by this node
-    public let services: [String]
+    public let services: [ServiceMetadata]
     /// List of event subscriptions for this node
     public let subscriptions: [String]
 
-    public init(services: [String] = [], subscriptions: [String] = []) {
+    public init(services: [ServiceMetadata] = [], subscriptions: [String] = []) {
         self.services = services
         self.subscriptions = subscriptions
     }
@@ -1441,7 +1482,7 @@ public final class Node {
             )
         }
         let logger = RunarLogger.root(component: .node, config: commonLoggerConfig)
-        let serviceRegistry = ServiceRegistry(logger: logger)
+        let serviceRegistry = ServiceRegistry(logger: logger, nodeDelegate: nil) // Will be set after initialization
 
         // Extract the key manager from config
         guard let keysManager = config.getKeyManager() else {
@@ -1555,6 +1596,9 @@ public final class Node {
         self.localNodeInfo = localNodeInfo
         self.retainedEvents = retainedEvents
         self.retainedIndex = retainedIndex
+        
+        // Set the nodeDelegate after initialization to avoid circular reference
+        serviceRegistry.nodeDelegate = self
     }
 
     // MARK: - Core Methods
@@ -1597,7 +1641,7 @@ public final class Node {
     /// ```
     public func publish(topic: String, data: AnyValue?, options: PublishOptions? = nil) async throws {
         // Parse topic path
-        let topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
+        let topicPath = try TopicPath.new(topic, defaultNetwork: networkId)
 
         // Notify local subscribers first
         logger.debug("Publishing event to topic: \(topic) with data: \(String(describing: data))")
@@ -1666,7 +1710,7 @@ public final class Node {
     /// ```
     public func subscribe(topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
         // Parse topic path
-        let topicPath = try TopicPath(networkId: networkId, segments: topic.split(separator: "/").map(String.init))
+        let topicPath = try TopicPath.new(topic, defaultNetwork: networkId)
 
         // Register the subscription with the correct networkId
         let subscriptionId = try await serviceRegistry.subscribeToEvents(
@@ -1763,7 +1807,7 @@ public final class Node {
         logger.trace("Adding service '\(serviceName)' to node using path \(servicePath)")
 
         // Create a proper topic path for the service (matching Rust pattern)
-        let serviceTopic = try TopicPath(networkId: networkId, segments: servicePath.split(separator: "/").map(String.init))
+        let serviceTopic = try TopicPath.new(servicePath, defaultNetwork: networkId)
 
         // Create a lifecycle context for initialization (matching Rust pattern)
         let initContext = LifecycleContext(
@@ -2144,12 +2188,30 @@ public final class Node {
                         nodeMetadata: {
                             let ffiMetadata = nodeInfo.nodeMetadata
                             print("🔍 HANDSHAKE: Converting FFI metadata: \(ffiMetadata.services.count) services, \(ffiMetadata.subscriptions.count) subscriptions")
+                            
+                            // Convert SwiftFFI.ServiceMetadata to SwiftNode.ServiceMetadata
+                            let services = ffiMetadata.services.map { ffiService in
+                                ServiceMetadata(
+                                    networkId: ffiService.networkId,
+                                    servicePath: ffiService.servicePath,
+                                    name: ffiService.name,
+                                    version: ffiService.version,
+                                    description: ffiService.description,
+                                    actions: ffiService.actions.map { ffiAction in
+                                        ActionMetadata(
+                                            name: ffiAction.name,
+                                            description: ffiAction.description,
+                                            inputSchema: ffiAction.inputSchema?.toSwiftSchema(),
+                                            outputSchema: ffiAction.outputSchema?.toSwiftSchema()
+                                        )
+                                    },
+                                    registrationTime: ffiService.registrationTime,
+                                    lastStartTime: ffiService.lastStartTime
+                                )
+                            }
+                            
                             return NodeMetadata(
-                                services: ffiMetadata.services.flatMap { ffiService in
-                                    ffiService.actions.map { action in
-                                        "\(ffiService.servicePath)/\(action.name)"
-                                    }
-                                },
+                                services: services,
                                 subscriptions: ffiMetadata.subscriptions.map { ffiSubscription in
                                     ffiSubscription.path
                                 }
@@ -2380,20 +2442,23 @@ public final class Node {
         let currentSubscriptions = try? await serviceRegistry.getAllSubscriptions(includeInternalServices: false)
         let subscriptionPaths = currentSubscriptions?.map(\.path) ?? []
 
+        // Get proper service metadata from the service registry
+        let serviceMetadata = await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: false)
+        
         // Create updated NodeInfo with current service metadata
         let updatedNodeInfo = NodeInfo(
             nodePublicKey: localNodeInfo.nodePublicKey,
             networkIds: localNodeInfo.networkIds,
             addresses: localNodeInfo.addresses,
             nodeMetadata: NodeMetadata(
-                services: servicePaths,
+                services: Array(serviceMetadata.values),
                 subscriptions: subscriptionPaths
             ),
             version: localNodeInfo.version
         )
 
-        print("🔍 DEBUG: Updated NodeInfo with \(servicePaths.count) services and \(subscriptionPaths.count) subscriptions")
-        logger.trace("🔍 Updated NodeInfo with \(servicePaths.count) services and \(subscriptionPaths.count) subscriptions")
+        print("🔍 DEBUG: Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionPaths.count) subscriptions")
+        logger.trace("🔍 Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionPaths.count) subscriptions")
 
         return updatedNodeInfo
     }
@@ -2436,7 +2501,7 @@ public final class Node {
             networkIds: nodeInfo.networkIds,
             addresses: nodeInfo.addresses,
             nodeMetadata: SwiftFFI.NodeMetadata(
-                services: serviceMetadata.values.map { service in
+                services: Array(serviceMetadata.values).map { service in
                     SwiftFFI.ServiceMetadata(
                         networkId: service.networkId,
                         servicePath: service.servicePath,
@@ -2741,47 +2806,52 @@ public final class Node {
         logger.trace("Processing peer service metadata: \(nodeMetadata.services.count) services")
 
         // Register remote services from the peer's metadata
-        for servicePath in nodeMetadata.services {
-            print("🔍 HANDSHAKE: Registering remote service: \(servicePath) from peer: \(peerNodeId)")
-            logger.trace("Registering remote service: \(servicePath) from peer: \(peerNodeId)")
+        for service in nodeMetadata.services {
+            print("🔍 HANDSHAKE: Registering remote service: \(service.name) from peer: \(peerNodeId)")
+            logger.trace("Registering remote service: \(service.name) from peer: \(peerNodeId)")
 
-            // For now, we'll create a simple remote handler that routes to the peer
-            // In a full implementation, we would need to get the actual service metadata
-            // from the peer's NodeInfo to know what actions are available
-            let remoteHandler: ActionHandler = { [weak self] params, context in
-                return try await self?.handleRemoteServiceCall(
-                    actionPath: servicePath,
-                    peerNodeId: peerNodeId,
-                    params: params,
-                    context: context
-                ) ?? AnyValue.null()
-            }
+            // Register each action from the service
+            for action in service.actions {
+                let actionPath = "\(service.servicePath)/\(action.name)"
+                print("🔍 HANDSHAKE: Registering remote action: \(actionPath) from peer: \(peerNodeId)")
+                logger.trace("Registering remote action: \(actionPath) from peer: \(peerNodeId)")
 
-            // Register the remote service handler
-            do {
-                // Create TopicPath using the service's network ID and path (matching Rust pattern)
-                let topicPath = try TopicPath(networkId: service.networkId, segments: servicePath.split(separator: "/").map(String.init))
-                try await serviceRegistry.registerRemoteActionHandler(
-                    topicPath: topicPath,
-                    handler: remoteHandler
-                )
-                print("🔍 HANDSHAKE: Successfully registered remote service handler for: \(fullPath)")
-            } catch {
-                print("🔍 HANDSHAKE: Failed to register remote service handler for \(servicePath): \(error)")
-                logger.error("Failed to register remote service handler for \(servicePath): \(error)")
+                // Create a real network call handler (matching Rust implementation)
+                let remoteHandler: ActionHandler = { [weak self] params, context in
+                    return try await self?.makeRemoteNetworkCall(
+                        actionPath: actionPath,
+                        peerNodeId: peerNodeId,
+                        params: params,
+                        context: context
+                    ) ?? AnyValue.null()
+                }
+
+                // Register the remote action handler
+                do {
+                    // Use proper TopicPath API like Rust: TopicPath::new(&action_path, &network_id)
+                    let topicPath = try TopicPath.new(actionPath, defaultNetwork: nodeInfo.networkIds.first ?? "default")
+                    try await serviceRegistry.registerRemoteActionHandler(
+                        topicPath: topicPath,
+                        handler: remoteHandler
+                    )
+                    print("🔍 HANDSHAKE: Successfully registered remote action handler for: \(actionPath)")
+                } catch {
+                    print("🔍 HANDSHAKE: Failed to register remote action handler for \(actionPath): \(error)")
+                    logger.error("Failed to register remote action handler for \(actionPath): \(error)")
+                }
             }
         }
         print("🔍 HANDSHAKE: handlePeerConnected completed for peer: \(peerNodeId)")
     }
 
-    /// Handle remote service call
-    private func handleRemoteServiceCall(
+    /// Make a real remote network call (matching Rust implementation)
+    private func makeRemoteNetworkCall(
         actionPath: String,
         peerNodeId: String,
         params: AnyValue?,
         context: RequestContext
     ) async throws -> AnyValue {
-        logger.trace("Handling remote service call: \(actionPath) to peer: \(peerNodeId)")
+        logger.trace("🚀 [RemoteService] Starting remote request - Action: \(actionPath) Target: \(peerNodeId)")
 
         // Verify the peer exists
         guard await remoteNodeInfo.contains(peerNodeId) else {
@@ -2789,19 +2859,49 @@ public final class Node {
             throw NodeError.peerNotFound("Peer not found: \(peerNodeId)")
         }
 
-        // Use the action path directly since it's already in the correct format
-        let fullServicePath = actionPath
+        // Generate a unique request ID
+        let correlationId = UUID().uuidString
 
-        logger.trace("Making remote call to: \(fullServicePath)")
+        // Get network transport
+        guard let transport = networkTransport else {
+            throw NodeError.serviceNotFound("Network transport not available")
+        }
 
-        // Make the remote call using the network transport
-        let result = try await request(
-            fullServicePath,
-            payload: params,
-            networkId: context.networkId
+        // Serialize request parameters (matching Rust pattern)
+        let paramsToSerialize = params ?? AnyValue.null()
+        
+        // Get profile public keys from context metadata (matching Rust pattern)
+        // TODO: Implement proper profilePublicKeys extraction from context.metadata
+        // For now, use empty array to match Rust pattern
+        let profilePublicKeys: [Data] = []
+        
+        // Create proper serialization context with encryption (matching Rust pattern)
+        let resolver = try getOrCreateResolver(profilePublicKeys)
+        let serializationContext = SerializationContext(
+            keystore: keysManager,
+            resolver: resolver,
+            networkId: context.networkId,
+            profilePublicKey: profilePublicKeys.first ?? Data()
+        )
+        
+        let paramsBytes = try await paramsToSerialize.serialize(context: serializationContext)
+
+        // Make the network request (matching Rust network_transport.request call)
+        let responseBytes = try await transport.request(
+            path: actionPath,
+            correlationId: correlationId,
+            payload: paramsBytes,
+            peerNodeId: peerNodeId,
+            networkPublicKey: nil, // TODO: Get from keystore
+            profilePublicKeys: profilePublicKeys
         )
 
-        return result
+        logger.trace("✅ [RemoteService] Response received successfully")
+
+        // Deserialize the response bytes back to AnyValue (matching Rust pattern)
+        let responseValue = try AnyValue.deserialize(responseBytes, keystore: keysManager)
+
+        return responseValue
     }
 
     /// Handle peer disconnected event
@@ -3102,6 +3202,20 @@ extension QuicTransport: NodeTransport {
         let ffiNodeInfo = try CodableCBORDecoder().decode(SwiftFFI.NodeInfo.self, from: nodeInfo)
         try await updateLocalNodeInfo(nodeInfo: ffiNodeInfo)
     }
+
+    public func request(path: String, correlationId: String, payload: Data, peerNodeId: String, networkPublicKey: Data?, profilePublicKeys: [Data]) async throws -> Data {
+        // Create TransportRequestParams for the request
+        let requestParams = TransportRequestParams(
+            path: path,
+            correlationId: correlationId,
+            payload: payload,
+            destPeerId: peerNodeId
+        )
+
+        // Send the request and wait for response
+        let responseBytes = try await request(requestParams)
+        return responseBytes
+    }
 }
 
 // MARK: - NodeDelegate Implementation
@@ -3126,6 +3240,7 @@ extension Node: NodeDelegate {
     public func publish(topic: String, data: AnyValue?) async throws {
         try await publish(topic: topic, data: data, options: nil)
     }
+
 }
 
 // MARK: - RegistryDelegate Implementation
@@ -3179,6 +3294,49 @@ extension Node: RegistryDelegate {
 
     public func validateResumeTransition(servicePath: TopicPath) async throws {
         try await serviceRegistry.validateResumeTransition(servicePath: servicePath)
+    }
+
+    public func remoteRequest(path: String, payload: AnyValue?, networkId: String) async throws -> AnyValue {
+        // This matches the Rust Node::remote_request implementation
+        // Get remote handlers from service registry
+        let topicPath = try TopicPath.new(path, defaultNetwork: networkId)
+        let remoteHandlers = await serviceRegistry.getRemoteActionHandlers(topicPath: topicPath)
+        
+        if !remoteHandlers.isEmpty {
+            logger.trace("Found \(remoteHandlers.count) remote handlers for: \(topicPath)")
+            
+            // Apply load balancing strategy to select a handler
+            let loadBalancer = loadBalancer
+            let handlerIndex = await loadBalancer.selectHandler(handlers: remoteHandlers.map { _ in "handler" })
+            let selectedIndex = handlerIndex?.hashValue ?? 0 % remoteHandlers.count
+            
+            // Get the selected handler
+            let handler = remoteHandlers[selectedIndex]
+            
+            logger.trace("Selected remote handler \(selectedIndex + 1) of \(remoteHandlers.count) for: \(topicPath)")
+            
+            // Create request context
+            let requestContext = RequestContext(
+                topicPath: topicPath,
+                networkId: networkId,
+                metadata: ["payload": payload ?? AnyValue.null()],
+                logger: logger,
+                pathParams: [:],
+                nodeDelegate: self
+            )
+            
+            // Execute the selected handler (this will make the actual network call)
+            do {
+                let response = try await handler(payload, requestContext)
+                return response
+            } catch {
+                logger.error("Remote handler execution failed: \(error)")
+                throw error
+            }
+        }
+        
+        // No remote handlers found
+        throw NodeError.serviceNotFound("No handler found for action: \(topicPath)")
     }
 }
 
