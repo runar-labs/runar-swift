@@ -8,9 +8,8 @@ public enum EnvelopeEncryption {
         _ data: Data,
         context: SerializationContext
     ) async throws -> Data {
-        // Convert networkId string to Data (simplified conversion)
-        let networkKey = Data(context.networkId.utf8)
-        return try await context.keystore.encryptWithEnvelope(data: data, networkPublicKey: networkKey, profilePublicKeys: [])
+        // Use network public key directly from context
+        return try await context.keystore.encryptWithEnvelope(data: data, networkPublicKey: context.networkPublicKey, profilePublicKeys: context.profilePublicKeys)
     }
 
     public static func decrypt(

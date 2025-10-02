@@ -839,75 +839,8 @@ public final class ServiceRegistry: NodeDelegate {
     // MARK: - Request Handling
 
     /// Handle a request
-    public func request(_ path: String, payload: AnyValue?, networkId: String = "default") async throws -> AnyValue {
-        // Strip $ prefix if present (indicates internal service)
-        let cleanPath = path.hasPrefix("$") ? String(path.dropFirst()) : path
-        let topicPath = try TopicPath.new(cleanPath, defaultNetwork: networkId)
-        
-        print("🔍 DEBUG: ServiceRegistry.request: Looking for handler for path: \(path), topicPath: \(topicPath)")
-        logger.trace("ServiceRegistry.request: Looking for handler for path: \(path), topicPath: \(topicPath)")
-
-        // Look up local action handler first
-        let localHandlers = localActionHandlers.find(topic: topicPath)
-        print("🔍 DEBUG: ServiceRegistry.request: Found \(localHandlers.count) local handlers for path: \(path)")
-        logger.trace("ServiceRegistry.request: Found \(localHandlers.count) local handlers for path: \(path)")
-        
-        // If local handlers found, execute them directly
-        if !localHandlers.isEmpty {
-            let entryValue = localHandlers.first!
-            logger.trace("ServiceRegistry.request: Found local handler for path: \(path)")
-
-            // Extract path parameters from the matched handler
-            let pathParams = extractPathParams(requestedPath: path, handlerPath: entryValue.1.actionPath)
-            
-            // Check if the service is paused before processing the request
-            // Only check for non-internal services (skip $registry, $keys, etc.)
-            if !cleanPath.hasPrefix("registry") && !cleanPath.hasPrefix("keys") {
-                // Try to determine the service path from the topic path
-                // For requests like "math/add", the service path would be "math"
-                let serviceSegments = topicPath.segments
-                if !serviceSegments.isEmpty {
-                    // Create a service path with just the first segment (service name)
-                    let servicePath = try TopicPath.new(serviceSegments[0].asString(), defaultNetwork: networkId)
-                    if let serviceState = await getLocalServiceState(servicePath: servicePath) {
-                        if serviceState == .paused {
-                            logger.warning("ServiceRegistry.request: Service '\(serviceSegments[0].asString())' is paused, blocking request to '\(path)'")
-                            throw ServiceRegistryError.servicePaused("Service '\(serviceSegments[0].asString())' is paused and cannot process requests")
-                        }
-                    }
-                }
-            }
-            
-            // Create request context with path parameters
-            let requestContext = RequestContext(
-                topicPath: topicPath,
-                networkId: networkId,
-                metadata: ["payload": payload ?? AnyValue.null()],
-                logger: logger,
-                pathParams: pathParams,
-                nodeDelegate: self
-            )
-
-            // Call the local handler
-            logger.trace("ServiceRegistry.request: Calling local handler for path: \(path)")
-            let result = try await entryValue.0(payload, requestContext)
-            logger.trace("ServiceRegistry.request: Local handler returned result for path: \(path): \(result)")
-            return result
-        }
-
-        // No local handlers found - delegate to Node's remote_request method
-        // This matches the Rust implementation where ServiceRegistry doesn't execute remote handlers directly
-        logger.trace("ServiceRegistry.request: No local handlers found, delegating to Node remote_request for path: \(path)")
-        
-        // Get the Node delegate to handle remote requests
-        guard let nodeDelegate = nodeDelegate else {
-            logger.warning("ServiceRegistry.request: No Node delegate available for remote request")
-            throw ServiceRegistryError.actionNotFound("No handler found for path: \(path)")
-        }
-        
-        // Delegate to Node's remote_request method (matching Rust pattern)
-        return try await nodeDelegate.remoteRequest(path: path, payload: payload, networkId: networkId)
-    }
+    // NOTE: ServiceRegistry does NOT have a request method in Rust
+    // All request routing is handled by the Node directly
 
     public func remoteRequest(path: String, payload: AnyValue?, networkId: String) async throws -> AnyValue {
         // This should not be called directly on ServiceRegistry

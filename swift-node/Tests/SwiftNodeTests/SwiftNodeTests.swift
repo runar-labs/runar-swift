@@ -56,7 +56,7 @@ final class SwiftNodeTests: XCTestCase {
         }
         try await node.addService(EchoService(logger: testLogger.child(component: .custom("EchoService"))))
         try await node.start()
-        let res = try await node.serviceRegistry.request("echo/say", payload: AnyValue.primitive("hello"), networkId: "net")
+        let res = try await node.request("echo/say", payload: AnyValue.primitive("hello"), networkId: "net")
         let text: String = try await res.asType()
         XCTAssertEqual(text, "hello")
     }
@@ -84,7 +84,7 @@ final class SwiftNodeTests: XCTestCase {
         }
         try await node.addService(Svc())
         try await node.start()
-        let res = try await node.serviceRegistry.request("$registry/services/list", payload: nil as AnyValue?, networkId: "net")
+        let res = try await node.request("$registry/services/list", payload: nil as AnyValue?, networkId: "net")
         let listArray = try await res.asType() as [AnyValue]
         var list: [SwiftNode.ServiceMetadata] = []
         for av in listArray {
@@ -148,7 +148,7 @@ final class SwiftNodeTests: XCTestCase {
                 if val == "event" { exp.fulfill() }
             }
         }
-        _ = try await node.serviceRegistry.request("pub/trigger", payload: nil as AnyValue?, networkId: "net")
+        _ = try await node.request("pub/trigger", payload: nil as AnyValue?, networkId: "net")
         await fulfillment(of: [exp], timeout: 2.0)
     }
 }

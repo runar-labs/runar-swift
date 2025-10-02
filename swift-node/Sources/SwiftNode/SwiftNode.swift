@@ -2046,10 +2046,95 @@ public final class Node {
     /// This method forwards the request to the ServiceRegistry for processing.
     public func request(_ path: String, payload: AnyValue?, networkId: String?) async throws -> AnyValue {
         let actualNetworkId = networkId ?? self.networkId
-        return try await serviceRegistry.request(path, payload: payload, networkId: actualNetworkId)
+        let requestPayload = payload ?? AnyValue.null()
+        
+        // Parse topic path (matching Rust pattern exactly)
+        let topicPath = try TopicPath.new(path, defaultNetwork: actualNetworkId)
+        
+        logger.debug("Processing request: \(topicPath)")
+        
+        // 1. Check local service state first (matching Rust pattern exactly)
+        let serviceTopic = TopicPath.newService(actualNetworkId, serviceName: topicPath.servicePath)
+        let serviceState = await serviceRegistry.getLocalServiceState(servicePath: serviceTopic)
+        
+        // 2. If service exists but not running, try remote handlers (matching Rust pattern exactly)
+        if let state = serviceState {
+            if state != ServiceState.running {
+                logger.debug("Service \(topicPath.servicePath) is in \(state) state, trying remote handlers")
+                // Try remote handlers instead
+                do {
+                    let response = try await remoteRequest(path: path, payload: requestPayload, networkId: actualNetworkId)
+                    return response
+                } catch {
+                    // Remote request failed - return state-specific error since we know local service exists but is not running
+                    throw NodeError.serviceNotFound("Service is not Running - it is in \(state) state")
+                }
+            }
+        }
+        
+        // 3. Check for local handler (matching Rust pattern exactly)
+        if let (handler, registrationPath) = await serviceRegistry.getLocalActionHandler(topicPath: topicPath) {
+            logger.debug("Executing local handler for: \(topicPath)")
+            
+            // Create request context with profile public keys (matching Rust pattern exactly)
+            var metadata: [String: AnyValue] = [:]
+            metadata["node_id"] = AnyValue.primitive(nodeId)
+            metadata["profile_public_keys"] = AnyValue.list([]) // TODO: Extract from options when available
+            
+            // Extract parameters using the original registration path (matching Rust pattern exactly)
+            let pathParams = topicPath.extractParams(registrationPath.actionPath) ?? [:]
+            logger.debug("Extracted path parameters: \(pathParams)")
+            
+            // Create request context with extracted path parameters
+            let requestContext = RequestContext(
+                topicPath: topicPath,
+                networkId: actualNetworkId,
+                metadata: metadata,
+                logger: logger,
+                pathParams: pathParams,
+                nodeDelegate: self
+            )
+            
+            // Execute the handler and return result
+            let response = try await handler(requestPayload, requestContext)
+            return response
+        }
+        
+        // 4. No local handler found - try remote handlers (matching Rust pattern exactly)
+        return try await remoteRequest(path: path, payload: requestPayload, networkId: actualNetworkId)
     }
 
     // MARK: - Private Helper Methods
+
+    /// Extract profile public keys from AnyValue (helper for pattern matching)
+    private func extractProfilePublicKeys(from value: AnyValue) async throws -> [Data] {
+        // Check if it's a list
+        if value.category == .list {
+            // Get the raw value and cast to array
+            do {
+                let profileKeysList: [AnyValue] = try await value.asType()
+                var result: [Data] = []
+                
+                for keyValue in profileKeysList {
+                    if keyValue.category == .bytes {
+                        do {
+                            let keyData: Data = try await keyValue.asType()
+                            result.append(keyData)
+                        } catch {
+                            throw NodeError.invalidConfiguration("Profile public key not in expected bytes format")
+                        }
+                    } else {
+                        throw NodeError.invalidConfiguration("Profile public key not in expected bytes format")
+                    }
+                }
+                
+                return result
+            } catch {
+                throw NodeError.invalidConfiguration("Profile public keys not in expected list format")
+            }
+        }
+        throw NodeError.invalidConfiguration("Profile public keys not in expected list format")
+    }
 
     /// Initialize network transport for remote communication
     private func initializeNetworkTransport() async throws {
@@ -2704,8 +2789,8 @@ public final class Node {
         // TODO: Implement getNetworkPublicKeyById in FFI - this is missing
         let networkPublicKey = Data() // Placeholder until FFI method is implemented
 
-        // Make the local request
-        let response = try await serviceRegistry.request(
+        // Make the local request using Node.request (matching Rust pattern)
+        let response = try await request(
             topicPath.asString(),
             payload: paramsOption,
             networkId: networkId
@@ -2720,8 +2805,8 @@ public final class Node {
         let serializationContext = SerializationContext(
             keystore: keysManager,
             resolver: resolver,
-            networkId: networkId,
-            profilePublicKey: profilePublicKeys.first ?? Data()
+            networkPublicKey: networkPublicKey,
+            profilePublicKeys: profilePublicKeys
         )
 
         // Serialize the response data
@@ -2761,8 +2846,8 @@ public final class Node {
         let serializationContext = SerializationContext(
             keystore: keysManager,
             resolver: resolver,
-            networkId: networkId,
-            profilePublicKey: profilePublicKeys.first ?? Data()
+            networkPublicKey: networkPublicKey,
+            profilePublicKeys: profilePublicKeys
         )
 
         // Create error map
@@ -2870,18 +2955,28 @@ public final class Node {
         // Serialize request parameters (matching Rust pattern)
         let paramsToSerialize = params ?? AnyValue.null()
         
-        // Get profile public keys from context metadata (matching Rust pattern)
-        // TODO: Implement proper profilePublicKeys extraction from context.metadata
-        // For now, use empty array to match Rust pattern
-        let profilePublicKeys: [Data] = []
+        // Extract profile public keys from context metadata (matching Rust pattern exactly)
+        let metadata = context.metadata
+        let profilePublicKeys: [Data]
+        if let profilePublicKeysValue = metadata["profile_public_keys"] {
+            // Extract array of Data from AnyValue list
+            profilePublicKeys = try await extractProfilePublicKeys(from: profilePublicKeysValue)
+        } else {
+            throw NodeError.invalidConfiguration("Profile public keys not found in metadata")
+        }
         
-        // Create proper serialization context with encryption (matching Rust pattern)
+        // Get network public key from keystore (matching Rust pattern exactly)
+        // TODO: Implement proper network public key retrieval by network ID
+        // For now, use empty data as placeholder - this needs to be implemented
+        let networkPublicKey = Data() // TODO: Get from keystore using network ID
+        
+        // Create proper serialization context with encryption (matching Rust pattern exactly)
         let resolver = try getOrCreateResolver(profilePublicKeys)
         let serializationContext = SerializationContext(
             keystore: keysManager,
             resolver: resolver,
-            networkId: context.networkId,
-            profilePublicKey: profilePublicKeys.first ?? Data()
+            networkPublicKey: networkPublicKey,
+            profilePublicKeys: profilePublicKeys
         )
         
         let paramsBytes = try await paramsToSerialize.serialize(context: serializationContext)
@@ -2892,7 +2987,7 @@ public final class Node {
             correlationId: correlationId,
             payload: paramsBytes,
             peerNodeId: peerNodeId,
-            networkPublicKey: nil, // TODO: Get from keystore
+            networkPublicKey: networkPublicKey,
             profilePublicKeys: profilePublicKeys
         )
 
@@ -3054,7 +3149,7 @@ public final class Node {
             )
 
             // Process the local request (currently unused due to sync callback limitation)
-            let _ = try await serviceRegistry.request(
+            let _ = try await request(
                 path,
                 payload: paramsOption,
                 networkId: networkId

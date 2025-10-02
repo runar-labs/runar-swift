@@ -273,8 +273,8 @@ public enum EncryptedFieldUtils {
         let encryptionContext = SerializationContext(
             keystore: context.keystore,
             resolver: context.resolver,
-            networkId: context.networkId,
-            profilePublicKey: context.profilePublicKey
+            networkPublicKey: context.networkPublicKey,
+            profilePublicKeys: context.profilePublicKeys
         )
 
         // Encrypt using envelope encryption

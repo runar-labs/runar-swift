@@ -233,6 +233,11 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         let registry = createTestRegistry()
         let networkId = "net1"
         
+        // Create a Node instance for testing
+        let config = try await createNodeTestConfig()
+        let node = try await Node.new(config: config)
+        try await node.start()
+        
         // Create handlers for different actions
         let addHandler: ActionHandler = { params, context in
             return AnyValue.primitive("add_result")
@@ -246,17 +251,24 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         try await registry.registerAction(networkId: networkId, servicePath: "math", action: "add", handler: addHandler)
         try await registry.registerAction(networkId: networkId, servicePath: "math", action: "subtract", handler: subtractHandler)
         
-        // Test both handlers
-        let addResult = try await registry.request("math/add", payload: nil, networkId: networkId)
-        let subtractResult = try await registry.request("math/subtract", payload: nil, networkId: networkId)
+        // Test both handlers through Node (matching Rust architecture)
+        let addResult = try await node.request("math/add", payload: nil as AnyValue?, networkId: networkId)
+        let subtractResult = try await node.request("math/subtract", payload: nil as AnyValue?, networkId: networkId)
         
         XCTAssertNotNil(addResult)
         XCTAssertNotNil(subtractResult)
+        
+        try await node.stop()
     }
     
     /// Test that verifies action handler network isolation
     func testActionHandlerNetworkIsolation() async throws {
         let registry = createTestRegistry()
+        
+        // Create a Node instance for testing
+        let config = try await createNodeTestConfig()
+        let node = try await Node.new(config: config)
+        try await node.start()
         
         // Create handlers for different networks
         let handler1: ActionHandler = { params, context in
@@ -272,11 +284,13 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         try await registry.registerAction(networkId: "network2", servicePath: "math", action: "add", handler: handler2)
         
         // Test that handlers are isolated by network
-        let result1 = try await registry.request("math/add", payload: nil, networkId: "network1")
-        let result2 = try await registry.request("math/add", payload: nil, networkId: "network2")
+        let result1 = try await node.request("math/add", payload: nil as AnyValue?, networkId: "network1")
+        let result2 = try await node.request("math/add", payload: nil as AnyValue?, networkId: "network2")
         
         XCTAssertNotNil(result1)
         XCTAssertNotNil(result2)
+        
+        try await node.stop()
     }
     
     // MARK: - Event Subscription Tests
@@ -624,6 +638,11 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         let registry = createTestRegistry()
         let networkId = "net1"
 
+        // Create a Node instance for testing
+        let config = try await createNodeTestConfig()
+        let node = try await Node.new(config: config)
+        try await node.start()
+
         // Register an action handler
         let handler: ActionHandler = { params, context in
             return AnyValue.primitive("test_result")
@@ -632,24 +651,33 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         try await registry.registerAction(networkId: networkId, servicePath: "math", action: "add", handler: handler)
 
         // Make a request
-        let result = try await registry.request("math/add", payload: nil, networkId: networkId)
+        let result = try await node.request("math/add", payload: nil as AnyValue?, networkId: networkId)
         
         // Verify request was handled
         XCTAssertNotNil(result)
+        
+        try await node.stop()
     }
     
     /// Test that verifies request to non-existent service
     func testRequestToNonExistentService() async throws {
         let registry = createTestRegistry()
         
+        // Create a Node instance for testing
+        let config = try await createNodeTestConfig()
+        let node = try await Node.new(config: config)
+        try await node.start()
+        
         // Make a request to a non-existent service
         do {
-            _ = try await registry.request("nonexistent/action", payload: nil, networkId: "net1")
+            _ = try await node.request("nonexistent/action", payload: nil as AnyValue?, networkId: "net1")
             XCTFail("Should have thrown an error for non-existent service")
         } catch {
             // Expected error
             XCTAssertTrue(error is ServiceRegistryError)
         }
+        
+        try await node.stop()
     }
     
     // MARK: - Missing Tests from Rust Implementation
@@ -680,9 +708,16 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
                 metadata: nil
             )
             
+            // Create a Node instance for testing
+            let config = try await createNodeTestConfig()
+            let node = try await Node.new(config: config)
+            try await node.start()
+            
             // Test the handler with a request that should match the template (matching Rust)
-            let result = try await registry.request("users/123/actions/test", payload: nil, networkId: "net1")
+            let result = try await node.request("users/123/actions/test", payload: nil as AnyValue?, networkId: "net1")
             XCTAssertNotNil(result, "Handler should be called and return result")
+            
+            try await node.stop()
         }
     }
     
