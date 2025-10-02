@@ -157,18 +157,48 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         )
     }
 
-    public init(networkId: String = "default", segments: [String]) throws {
-        // Validate inputs
-        guard !networkId.isEmpty else {
+    /// Primary constructor matching Rust API: TopicPath::new(path, default_network)
+    public static func new(_ path: String, defaultNetwork: String) throws -> TopicPath {
+        // Validate defaultNetwork parameter
+        guard !defaultNetwork.isEmpty else {
             throw TopicPathError.invalidNetworkId("Network ID cannot be empty")
         }
 
-        guard !segments.isEmpty else {
-            throw TopicPathError.invalidPath("Path must have at least one segment")
+        // Parse the network ID and path parts (matching Rust logic exactly)
+        let (actualNetworkId, pathWithoutNetwork): (String, String)
+        if path.contains(":") {
+            // Split at the first colon to separate network_id and path
+            let parts = path.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            if parts.count != 2 {
+                throw TopicPathError.invalidPath("Invalid path format - should be 'network_id:service_path' or 'service_path': \(path)")
+            }
+
+            // Reject empty network IDs
+            if parts[0].isEmpty {
+                throw TopicPathError.invalidNetworkId("Network ID cannot be empty: \(path)")
+            }
+
+            actualNetworkId = parts[0]
+            pathWithoutNetwork = parts[1]
+        } else {
+            // No network_id prefix, use the default
+            actualNetworkId = defaultNetwork
+            pathWithoutNetwork = path
+        }
+
+        // Split the path into segments (matching Rust logic)
+        let pathSegments = pathWithoutNetwork
+            .split(separator: "/")
+            .filter { !$0.isEmpty }
+            .map(String.init)
+
+        // Paths must have at least one segment (the service name)
+        guard !pathSegments.isEmpty else {
+            throw TopicPathError.invalidPath("Invalid path - must have at least one segment: \(path)")
         }
 
         // Parse and validate segments
-        let result = try Self.parseAndValidateSegments(segments)
+        let result = try Self.parseAndValidateSegments(pathSegments)
         let parsedSegments = result.segments
         let hasPattern = result.hasPattern
         let hasTemplateParams = result.hasTemplates
@@ -179,49 +209,133 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         let actionPathStr = parsedSegments.count <= 1 ? "" : parsedSegments.map { $0.asString() }.joined(separator: "/")
 
         // Build raw path
-        let rawPathStr = "\(networkId):\(segments.joined(separator: "/"))"
+        let rawPathStr = "\(actualNetworkId):\(pathSegments.joined(separator: "/"))"
 
         // Pre-compute hash components
         var hashComps: [UInt64] = []
-        hashComps.append(UInt64(bitPattern: Int64(networkId.hashValue)))
+        hashComps.append(UInt64(bitPattern: Int64(actualNetworkId.hashValue)))
         for segment in parsedSegments {
             hashComps.append(UInt64(bitPattern: Int64(segment.asString().hashValue)))
         }
 
-        rawPath = rawPathStr
+        return TopicPath(
+            rawPath: rawPathStr,
+            networkId: actualNetworkId,
+            segments: parsedSegments,
+            isPattern: hasPattern,
+            hasTemplates: hasTemplateParams,
+            servicePath: serviceSegment,
+            actionPath: actionPathStr,
+            segmentCount: parsedSegments.count,
+            hashComponents: hashComps,
+            segmentTypeBitmap: bitmap
+        )
+    }
+
+    /// Internal constructor for creating TopicPath instances
+    private init(
+        rawPath: String,
+        networkId: String,
+        segments: [PathSegment],
+        isPattern: Bool,
+        hasTemplates: Bool,
+        servicePath: String,
+        actionPath: String,
+        segmentCount: Int,
+        hashComponents: [UInt64],
+        segmentTypeBitmap: UInt64
+    ) {
+        self.rawPath = rawPath
         self.networkId = networkId
-        self.segments = parsedSegments
-        isPattern = hasPattern
-        hasTemplates = hasTemplateParams
-        servicePath = serviceSegment
-        actionPath = actionPathStr
-        segmentCount = parsedSegments.count
-        hashComponents = hashComps
-        segmentTypeBitmap = bitmap
+        self.segments = segments
+        self.isPattern = isPattern
+        self.hasTemplates = hasTemplates
+        self.servicePath = servicePath
+        self.actionPath = actionPath
+        self.segmentCount = segmentCount
+        self.hashComponents = hashComponents
+        self.segmentTypeBitmap = segmentTypeBitmap
     }
 
-    /// Create a TopicPath from a full path string
+    /// Legacy constructor - DEPRECATED: Use TopicPath.new() instead
+    @available(*, deprecated, message: "Use TopicPath.new(path:networkId:) instead")
+    public init(networkId: String = "default", segments: [String]) throws {
+        // Convert to new API format
+        let path = segments.joined(separator: "/")
+        let newPath = try TopicPath.new(path, defaultNetwork: networkId)
+
+        // Copy all properties
+        rawPath = newPath.rawPath
+        self.networkId = newPath.networkId
+        self.segments = newPath.segments
+        isPattern = newPath.isPattern
+        hasTemplates = newPath.hasTemplates
+        servicePath = newPath.servicePath
+        actionPath = newPath.actionPath
+        segmentCount = newPath.segmentCount
+        hashComponents = newPath.hashComponents
+        segmentTypeBitmap = newPath.segmentTypeBitmap
+    }
+
+    /// Create a TopicPath from a full path string (matches Rust from_full_path)
+    public static func fromFullPath(_ path: String) throws -> TopicPath {
+        if path.contains(":") {
+            // Split on ALL colons to separate network_id and path (matching Rust exactly)
+            let parts = path.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+            if parts.count != 2 {
+                throw TopicPathError.invalidPath("Invalid path format - should be 'network_id:service_path' received: \(path)")
+            }
+
+            // Reject empty network IDs
+            if parts[0].isEmpty {
+                throw TopicPathError.invalidNetworkId("Invalid path format - network ID cannot be empty received: \(path)")
+            }
+
+            let networkId = parts[0]
+            let pathPart = parts[1]
+
+            guard !pathPart.isEmpty else {
+                throw TopicPathError.invalidPath("Path part cannot be empty")
+            }
+
+            return try TopicPath.new(pathPart, defaultNetwork: networkId)
+        } else {
+            // No network_id prefix - this is an error in Rust
+            throw TopicPathError.invalidPath("Invalid path format - missing network_id received: \(path)")
+        }
+    }
+
+    /// Legacy parse method - DEPRECATED: Use fromFullPath instead
+    @available(*, deprecated, message: "Use TopicPath.fromFullPath() instead")
     public static func parse(_ fullPath: String) throws -> TopicPath {
-        let parts = fullPath.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-        let networkId = parts.count > 1 ? parts[0] : "default"
-        let pathPart = parts.count > 1 ? parts[1] : parts[0]
-
-        // Validate network ID doesn't contain multiple colons
-        if fullPath.split(separator: ":").count > 2 {
-            throw TopicPathError.invalidNetworkId("Network ID cannot contain ':' character")
-        }
-
-        guard !pathPart.isEmpty else {
-            throw TopicPathError.invalidPath("Path part cannot be empty")
-        }
-
-        let segments = pathPart.split(separator: "/").map(String.init)
-        return try TopicPath(networkId: networkId, segments: segments)
+        try fromFullPath(fullPath)
     }
 
-    /// Create a service-only TopicPath
-    public static func newService(_ networkId: String = "default", serviceName: String) throws -> TopicPath {
-        try TopicPath(networkId: networkId, segments: [serviceName])
+    /// Create a service-only TopicPath (matches Rust new_service exactly)
+    public static func newService(_ networkId: String, serviceName: String) -> TopicPath {
+        // This matches Rust implementation exactly - no throws, direct construction
+        let path = "\(networkId):\(serviceName)"
+
+        // Parse segments (single service name)
+        let segments = [PathSegment.literal(serviceName)]
+
+        // Pre-compute hash components
+        var hashComps: [UInt64] = []
+        hashComps.append(UInt64(bitPattern: Int64(networkId.hashValue)))
+        hashComps.append(UInt64(bitPattern: Int64(serviceName.hashValue)))
+
+        return TopicPath(
+            rawPath: path,
+            networkId: networkId,
+            segments: segments,
+            isPattern: false,
+            hasTemplates: false,
+            servicePath: serviceName,
+            actionPath: "",
+            segmentCount: 1,
+            hashComponents: hashComps,
+            segmentTypeBitmap: 0b00 // Single literal segment
+        )
     }
 
     /// Create an action TopicPath from a service path
@@ -241,7 +355,8 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         }
 
         let newSegments = segments.map { $0.asString() } + [action]
-        return try TopicPath(networkId: networkId, segments: newSegments)
+        let path = newSegments.joined(separator: "/")
+        return try TopicPath.new(path, defaultNetwork: networkId)
     }
 
     /// Create an event TopicPath from a service path
@@ -250,7 +365,8 @@ public struct TopicPath: Equatable, Hashable, Sendable {
             throw TopicPathError.invalidEventName("Event name cannot contain '/'")
         }
         let newSegments = segments.map { $0.asString() } + [event]
-        return try TopicPath(networkId: networkId, segments: newSegments)
+        let path = newSegments.joined(separator: "/")
+        return try TopicPath.new(path, defaultNetwork: networkId)
     }
 
     /// Get the parent path (one level up)
@@ -258,7 +374,8 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         guard segmentCount > 1 else { return nil }
 
         let parentSegments = segments.dropLast().map { $0.asString() }
-        return try TopicPath(networkId: networkId, segments: parentSegments)
+        let path = parentSegments.joined(separator: "/")
+        return try TopicPath.new(path, defaultNetwork: networkId)
     }
 
     /// Create a child path by adding a segment
@@ -273,7 +390,8 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         }
 
         let newSegments = segments.map { $0.asString() } + [segment]
-        return try TopicPath(networkId: networkId, segments: newSegments)
+        let path = newSegments.joined(separator: "/")
+        return try TopicPath.new(path, defaultNetwork: networkId)
     }
 
     /// Check if this path starts with another path
@@ -303,7 +421,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
     /// Check if this path matches a template pattern
     public func matchesTemplate(_ template: String) -> Bool {
         do {
-            let templatePath = try TopicPath.parse("\(networkId):\(template)")
+            let templatePath = try TopicPath.fromFullPath("\(networkId):\(template)")
 
             // Must have same number of segments
             guard segmentCount == templatePath.segmentCount else { return false }
@@ -335,7 +453,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
     /// Extract parameters from a path that matches a template
     public func extractParams(_ template: String) -> [String: String]? {
         do {
-            let templatePath = try TopicPath.parse("\(networkId):\(template)")
+            let templatePath = try TopicPath.fromFullPath("\(networkId):\(template)")
 
             guard segmentCount == templatePath.segmentCount else { return nil }
 
@@ -364,7 +482,7 @@ public struct TopicPath: Equatable, Hashable, Sendable {
     /// Create a path from a template with parameters
     public static func fromTemplate(_ template: String,
                                     params: [String: String],
-                                    networkId: String = "default") throws -> TopicPath
+                                    networkId: String) throws -> TopicPath
     {
         let segments = template.split(separator: "/").map(String.init)
         var resolvedSegments: [String] = []
@@ -381,7 +499,8 @@ public struct TopicPath: Equatable, Hashable, Sendable {
             }
         }
 
-        return try TopicPath(networkId: networkId, segments: resolvedSegments)
+        let path = resolvedSegments.joined(separator: "/")
+        return try TopicPath.new(path, defaultNetwork: networkId)
     }
 
     /// Check if this path matches another path (handles wildcards and templates)

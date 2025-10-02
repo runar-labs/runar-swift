@@ -10,10 +10,14 @@ struct TopicPathTest {
     /// Helper for test compatibility - creates a default network path
     private static func testDefault(_ path: String) -> TopicPath {
         do {
-            return try TopicPath.parse("default:\(path)")
+            return try TopicPath.fromFullPath("default:\(path)")
         } catch {
             // For test compatibility, return a minimal valid path if parsing fails
-            return try! TopicPath(networkId: "default", segments: [path])
+            do {
+                return try TopicPath.new("path", defaultNetwork: "default")
+            } catch {
+                fatalError("Failed to create default TopicPath: \(error)")
+            }
         }
     }
 
@@ -21,7 +25,7 @@ struct TopicPathTest {
     @Test
     func newValidPaths() throws {
         // Test with network_id prefix
-        let path = try TopicPath(networkId: "main", segments: ["auth", "login"])
+        let path = try TopicPath.new("auth/login", defaultNetwork: "main")
         #expect(path.networkId == "main")
         #expect(path.servicePath == "auth")
         #expect(path.actionPath == "auth/login")
@@ -29,14 +33,14 @@ struct TopicPathTest {
         #expect(path.segmentCount == 2)
 
         // Test without network_id (uses default)
-        let path2 = try TopicPath(networkId: "default", segments: ["auth", "login"])
+        let path2 = try TopicPath.new("auth/login", defaultNetwork: "default")
         #expect(path2.networkId == "default")
         #expect(path2.servicePath == "auth")
         #expect(path2.actionPath == "auth/login")
         #expect(path2.asString() == "default:auth/login")
 
         // Test with just service name
-        let path3 = try TopicPath(networkId: "main", segments: ["auth"])
+        let path3 = try TopicPath.new("auth", defaultNetwork: "main")
         #expect(path3.networkId == "main")
         #expect(path3.servicePath == "auth")
         #expect(path3.actionPath == "")
@@ -44,7 +48,7 @@ struct TopicPathTest {
         #expect(path3.segmentCount == 1)
 
         // Test with multiple path segments
-        let path4 = try TopicPath(networkId: "main", segments: ["auth", "users", "details"])
+        let path4 = try TopicPath.new("auth/users/details", defaultNetwork: "main")
         #expect(path4.networkId == "main")
         #expect(path4.servicePath == "auth")
         #expect(path4.actionPath == "auth/users/details")
@@ -56,24 +60,24 @@ struct TopicPathTest {
     func newInvalidPaths() throws {
         // Empty path
         #expect(throws: TopicPathError.self) {
-            try TopicPath(networkId: "", segments: [])
+            try TopicPath.new("", defaultNetwork: "")
         }
 
         // Empty network ID
         #expect(throws: TopicPathError.self) {
-            try TopicPath(networkId: "", segments: ["auth", "login"])
+            try TopicPath.new("auth/login", defaultNetwork: "")
         }
 
         // Multiple colons in network ID should be invalid
         #expect(throws: TopicPathError.self) {
-            try TopicPath.parse("main:sub:auth/login")
+            try TopicPath.fromFullPath("main:sub:auth/login")
         }
     }
 
     /// Test TopicPath::newService() constructor
     @Test
     func testNewService() throws {
-        let path = try TopicPath.newService("main", serviceName: "auth")
+        let path = TopicPath.newService("main", serviceName: "auth")
         #expect(path.networkId == "main")
         #expect(path.servicePath == "auth")
         #expect(path.actionPath == "")
@@ -85,7 +89,7 @@ struct TopicPathTest {
     @Test
     func testChild() throws {
         // Create a base path and add a child
-        let base = try TopicPath(networkId: "main", segments: ["auth"])
+        let base = try TopicPath.new("auth", defaultNetwork: "main")
         let child = try base.child("login")
 
         #expect(child.asString() == "main:auth/login")
@@ -109,7 +113,7 @@ struct TopicPathTest {
     @Test
     func testParent() throws {
         // Create a nested path
-        let path = try TopicPath(networkId: "main", segments: ["auth", "users", "details"])
+        let path = try TopicPath.new("auth/users/details", defaultNetwork: "main")
 
         // Get parent (one level up)
         let parent = try path.parent()
@@ -123,7 +127,7 @@ struct TopicPathTest {
         #expect(grandparent?.segmentCount == 1)
 
         // Cannot get parent of root path
-        let rootPath = try TopicPath(networkId: "main", segments: ["auth"])
+        let rootPath = try TopicPath.new("auth", defaultNetwork: "main")
         #expect(try rootPath.parent() == nil)
 
         // Cannot get parent of service-only path
@@ -133,24 +137,24 @@ struct TopicPathTest {
     /// Test TopicPath::startsWith() for path prefix matching
     @Test
     func testStartsWith() throws {
-        let path = try TopicPath(networkId: "main", segments: ["auth", "users", "list"])
+        let path = try TopicPath.new("auth/users/list", defaultNetwork: "main")
 
         // Test with matching prefixes
-        let prefix1 = try TopicPath(networkId: "main", segments: ["auth"])
-        let prefix2 = try TopicPath(networkId: "main", segments: ["auth", "users"])
+        let prefix1 = try TopicPath.new("auth", defaultNetwork: "main")
+        let prefix2 = try TopicPath.new("auth/users", defaultNetwork: "main")
 
         #expect(path.startsWith(prefix1))
         #expect(path.startsWith(prefix2))
 
         // Test with non-matching prefixes
-        let differentNetwork = try TopicPath(networkId: "other", segments: ["auth", "users"])
-        let differentService = try TopicPath(networkId: "main", segments: ["payments"])
+        let differentNetwork = try TopicPath.new("auth/users", defaultNetwork: "other")
+        let differentService = try TopicPath.new("payments", defaultNetwork: "main")
 
         #expect(!path.startsWith(differentNetwork))
         #expect(!path.startsWith(differentService))
 
         // Test with longer prefix than path
-        let longerPrefix = try TopicPath(networkId: "main", segments: ["auth", "users", "list", "extra"])
+        let longerPrefix = try TopicPath.new("auth/users/list/extra", defaultNetwork: "main")
         #expect(!path.startsWith(longerPrefix))
     }
 
@@ -158,13 +162,13 @@ struct TopicPathTest {
     @Test
     func getSegments() throws {
         // Simple path
-        let path1 = try TopicPath(networkId: "main", segments: ["auth", "login"])
+        let path1 = try TopicPath.new("auth/login", defaultNetwork: "main")
         #expect(path1.segments.count == 2)
         #expect(path1.segments[0] == .literal("auth"))
         #expect(path1.segments[1] == .literal("login"))
 
         // Complex path with multiple segments
-        let path2 = try TopicPath(networkId: "main", segments: ["auth", "users", "profile", "edit"])
+        let path2 = try TopicPath.new("auth/users/profile/edit", defaultNetwork: "main")
         #expect(path2.segments.count == 4)
         #expect(path2.segments[0] == .literal("auth"))
         #expect(path2.segments[1] == .literal("users"))
@@ -172,7 +176,7 @@ struct TopicPathTest {
         #expect(path2.segments[3] == .literal("edit"))
 
         // Path with service name only
-        let path3 = try TopicPath(networkId: "main", segments: ["auth"])
+        let path3 = try TopicPath.new("auth", defaultNetwork: "main")
         #expect(path3.segments.count == 1)
         #expect(path3.segments[0] == .literal("auth"))
     }
@@ -190,7 +194,7 @@ struct TopicPathTest {
     /// Test consistency between methods
     @Test
     func methodConsistency() throws {
-        let path = try TopicPath(networkId: "main", segments: ["service", "action"])
+        let path = try TopicPath.new("service/action", defaultNetwork: "main")
 
         // The service_path should return just the service name (first segment)
         #expect(path.servicePath == "service")
@@ -208,16 +212,16 @@ struct TopicPathTest {
     @Test
     func unusualPaths() throws {
         // Network ID with special characters
-        let path1 = try TopicPath(networkId: "test-network_01", segments: ["service"])
+        let path1 = try TopicPath.new("service", defaultNetwork: "test-network_01")
         #expect(path1.networkId == "test-network_01")
         #expect(path1.servicePath == "service")
 
         // Service path with special characters
-        let path2 = try TopicPath(networkId: "main", segments: ["my-service_01"])
+        let path2 = try TopicPath.new("my-service_01", defaultNetwork: "main")
         #expect(path2.servicePath == "my-service_01")
 
         // Long paths with many segments
-        let path3 = try TopicPath(networkId: "main", segments: ["service", "a", "b", "c", "d", "e", "f"])
+        let path3 = try TopicPath.new("service/a/b/c/d/e/f", defaultNetwork: "main")
         #expect(path3.segmentCount == 7)
         #expect(path3.actionPath == "service/a/b/c/d/e/f")
     }
@@ -226,7 +230,7 @@ struct TopicPathTest {
     @Test
     func servicePathsWithSlashes() throws {
         // Test with internal service path using $ prefix
-        let path = try TopicPath.parse("test_network:$registry/services/list")
+        let path = try TopicPath.fromFullPath("test_network:$registry/services/list")
 
         // The service_path should be "$registry" - first segment only
         #expect(path.servicePath == "$registry")
@@ -248,7 +252,7 @@ struct TopicPathTest {
         let expectedFullPath = "test_network:$registry/services/list"
 
         // Simulate how paths should be handled
-        let path = try TopicPath.parse("test_network:\(servicePath)/\(actionPath)")
+        let path = try TopicPath.fromFullPath("test_network:\(servicePath)/\(actionPath)")
 
         #expect(path.asString() == expectedFullPath)
     }
@@ -256,7 +260,7 @@ struct TopicPathTest {
     @Test
     func testNewActionTopic() throws {
         // Create a service path
-        let servicePath = try TopicPath(networkId: "main", segments: ["auth"])
+        let servicePath = try TopicPath.new("auth", defaultNetwork: "main")
 
         // Create an action path
         let actionPath = try servicePath.newActionTopic("login")
@@ -270,7 +274,7 @@ struct TopicPathTest {
     @Test
     func testNewEventTopic() throws {
         // Create a service path
-        let servicePath = try TopicPath(networkId: "main", segments: ["auth"])
+        let servicePath = try TopicPath.new("auth", defaultNetwork: "main")
 
         // Create an event path
         let eventPath = try servicePath.newEventTopic("user_logged_in")
@@ -284,7 +288,7 @@ struct TopicPathTest {
     @Test
     func nestedActionPath() throws {
         // Create a nested service path
-        let servicePath = try TopicPath(networkId: "main", segments: ["serviceX"])
+        let servicePath = try TopicPath.new("serviceX", defaultNetwork: "main")
 
         let actionResult = try servicePath.newActionTopic("verify_token")
         #expect(actionResult.networkId == "main")
@@ -295,7 +299,7 @@ struct TopicPathTest {
     @Test
     func nestedInvalidActionPath() throws {
         // Create a nested service with action already
-        let servicePath = try TopicPath(networkId: "main", segments: ["services", "auth"])
+        let servicePath = try TopicPath.new("services/auth", defaultNetwork: "main")
 
         // Creating an action path from a topic path with action already is not allowed
         #expect(throws: TopicPathError.self) {
@@ -306,7 +310,7 @@ struct TopicPathTest {
     @Test
     func defaultNetworkId() throws {
         // Create a service path with default network ID
-        let servicePath = try TopicPath(networkId: "test-network", segments: ["auth"])
+        let servicePath = try TopicPath.new("auth", defaultNetwork: "test-network")
 
         // Create an action path
         let actionPath = try servicePath.newActionTopic("login")
@@ -320,7 +324,7 @@ struct TopicPathTest {
     @Test
     func invalidActionName() throws {
         // Create a service path
-        let servicePath = try TopicPath(networkId: "main", segments: ["auth"])
+        let servicePath = try TopicPath.new("auth", defaultNetwork: "main")
 
         // Try to create an action path with an invalid name (containing a colon)
         #expect(throws: TopicPathError.self) {
@@ -332,7 +336,7 @@ struct TopicPathTest {
     @Test
     func basicParse() throws {
         // Parse a path with network ID and action
-        let path = try TopicPath.parse("default:auth/login")
+        let path = try TopicPath.fromFullPath("default:auth/login")
         #expect(path.networkId == "default")
         #expect(path.servicePath == "auth")
         #expect(path.actionPath == "auth/login")
@@ -343,19 +347,19 @@ struct TopicPathTest {
     @Test
     func variousFormats() throws {
         // Format 1: Full path with network ID and action
-        let path1 = try TopicPath.parse("network:auth/login")
+        let path1 = try TopicPath.fromFullPath("network:auth/login")
         #expect(path1.networkId == "network")
         #expect(path1.servicePath == "auth")
         #expect(path1.actionPath == "auth/login")
 
         // Format 2: Network and service only
-        let path2 = try TopicPath.parse("network:auth")
+        let path2 = try TopicPath.fromFullPath("network:auth")
         #expect(path2.networkId == "network")
         #expect(path2.servicePath == "auth")
         #expect(path2.actionPath == "")
 
-        // Format 3: Service and action without network (uses default)
-        let path3 = try TopicPath.parse("auth/login")
+        // Format 3: Service and action without network (use TopicPath.new)
+        let path3 = try TopicPath.new("auth/login", defaultNetwork: "default")
         #expect(path3.networkId == "default")
         #expect(path3.servicePath == "auth")
         #expect(path3.actionPath == "auth/login")

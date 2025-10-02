@@ -27,7 +27,7 @@ final class LoggerHierarchyTest: XCTestCase {
     func testHierarchicalLogging() {
         let rootLogger = RunarLogger.root(component: .ffi, context: "main")
         let networkLogger = rootLogger.child(component: .network, context: "tls")
-        let handshakeLogger = networkLogger.child(component: .custom, context: "handshake")
+        let handshakeLogger = networkLogger.child(component: .custom("handshake"), context: "handshake")
 
         // This should output: [timestamp INFO] [ffi Network Custom main tls handshake] Test message
         handshakeLogger.info("Test message")
@@ -108,7 +108,7 @@ final class LoggerHierarchyTest: XCTestCase {
         XCTAssertEqual(Component.transporter.displayName, "Transporter")
         XCTAssertEqual(Component.serializer.displayName, "Serializer")
         XCTAssertEqual(Component.node.displayName, "Node")
-        XCTAssertEqual(Component.custom.displayName, "Custom")
+        XCTAssertEqual(Component.custom("test").displayName, "test")
     }
 
     func testLogLevelPriorityValues() {

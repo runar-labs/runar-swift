@@ -7,15 +7,15 @@ struct TopicPathWildcardTest {
     @Test
     func testIsPattern() throws {
         // Test without wildcards
-        let path1 = try TopicPath(networkId: "main", segments: ["services", "auth", "login"])
+        let path1 = try TopicPath.new("services/auth/login", defaultNetwork: "main")
         #expect(!path1.isPattern)
 
         // Test with single-segment wildcard
-        let pattern1 = try TopicPath(networkId: "main", segments: ["services", "*", "login"])
+        let pattern1 = try TopicPath.new("services/*/login", defaultNetwork: "main")
         #expect(pattern1.isPattern)
 
         // Test with multi-segment wildcard
-        let pattern2 = try TopicPath(networkId: "main", segments: ["services", ">"])
+        let pattern2 = try TopicPath.new("services/>", defaultNetwork: "main")
         #expect(pattern2.isPattern)
         #expect(pattern2.segments.last == .multiWildcard)
     }
@@ -23,19 +23,19 @@ struct TopicPathWildcardTest {
     @Test
     func singleWildcardMatching() throws {
         // Create pattern with single-segment wildcard
-        let pattern = try TopicPath(networkId: "main", segments: ["services", "*", "state"])
+        let pattern = try TopicPath.new("services/*/state", defaultNetwork: "main")
 
         // Test successful matches
-        let path1 = try TopicPath(networkId: "main", segments: ["services", "auth", "state"])
-        let path2 = try TopicPath(networkId: "main", segments: ["services", "math", "state"])
+        let path1 = try TopicPath.new("services/auth/state", defaultNetwork: "main")
+        let path2 = try TopicPath.new("services/math/state", defaultNetwork: "main")
 
         #expect(pattern.matches(path1))
         #expect(pattern.matches(path2))
 
         // Test non-matches
-        let nonMatch1 = try TopicPath(networkId: "main", segments: ["services", "auth", "login"])
-        let nonMatch2 = try TopicPath(networkId: "main", segments: ["services", "auth", "state", "active"])
-        let nonMatch3 = try TopicPath(networkId: "main", segments: ["events", "user", "created"])
+        let nonMatch1 = try TopicPath.new("services/auth/login", defaultNetwork: "main")
+        let nonMatch2 = try TopicPath.new("services/auth/state/active", defaultNetwork: "main")
+        let nonMatch3 = try TopicPath.new("events/user/created", defaultNetwork: "main")
 
         #expect(!pattern.matches(nonMatch1)) // Different last segment
         #expect(!pattern.matches(nonMatch2)) // Too many segments
@@ -45,19 +45,19 @@ struct TopicPathWildcardTest {
     @Test
     func multiWildcardMatching() throws {
         // Create pattern with multi-segment wildcard
-        let pattern = try TopicPath(networkId: "main", segments: ["services", ">"])
+        let pattern = try TopicPath.new("services/>", defaultNetwork: "main")
 
         // Test successful matches (should match any path that starts with "services")
-        let path1 = try TopicPath(networkId: "main", segments: ["services", "auth"])
-        let path2 = try TopicPath(networkId: "main", segments: ["services", "auth", "login"])
-        let path3 = try TopicPath(networkId: "main", segments: ["services", "math", "add", "numbers"])
+        let path1 = try TopicPath.new("services/auth", defaultNetwork: "main")
+        let path2 = try TopicPath.new("services/auth/login", defaultNetwork: "main")
+        let path3 = try TopicPath.new("services/math/add/numbers", defaultNetwork: "main")
 
         #expect(pattern.matches(path1))
         #expect(pattern.matches(path2))
         #expect(pattern.matches(path3))
 
         // Test non-matches
-        let nonMatch1 = try TopicPath(networkId: "main", segments: ["events", "user", "created"])
+        let nonMatch1 = try TopicPath.new("events/user/created", defaultNetwork: "main")
 
         #expect(!pattern.matches(nonMatch1)) // Different service path
     }
@@ -66,11 +66,11 @@ struct TopicPathWildcardTest {
     func multiWildcardPosition() throws {
         // Multi-wildcard must be the last segment
         #expect(throws: TopicPathError.self) {
-            try TopicPath(networkId: "main", segments: ["services", ">", "state"])
+            try TopicPath.new("services/>/state", defaultNetwork: "main")
         }
 
         // But can be in the middle of a pattern as long as it's the last segment
-        let validPattern = try TopicPath(networkId: "main", segments: ["services", ">"])
+        let validPattern = try TopicPath.new("services/>", defaultNetwork: "main")
         #expect(validPattern.isPattern)
         #expect(validPattern.segments.last == .multiWildcard)
     }
@@ -78,18 +78,18 @@ struct TopicPathWildcardTest {
     @Test
     func complexPatterns() throws {
         // Pattern with both types of wildcards
-        let pattern = try TopicPath(networkId: "main", segments: ["services", "*", "events", ">"])
+        let pattern = try TopicPath.new("services/*/events/>", defaultNetwork: "main")
 
         // Test successful matches
-        let path1 = try TopicPath(networkId: "main", segments: ["services", "auth", "events", "user", "login"])
-        let path2 = try TopicPath(networkId: "main", segments: ["services", "math", "events", "calculation", "completed"])
+        let path1 = try TopicPath.new("services/auth/events/user/login", defaultNetwork: "main")
+        let path2 = try TopicPath.new("services/math/events/calculation/completed", defaultNetwork: "main")
 
         #expect(pattern.matches(path1))
         #expect(pattern.matches(path2))
 
         // Test non-matches
-        let nonMatch1 = try TopicPath(networkId: "main", segments: ["services", "auth", "state"])
-        let nonMatch2 = try TopicPath(networkId: "main", segments: ["services", "auth", "logs", "error"])
+        let nonMatch1 = try TopicPath.new("services/auth/state", defaultNetwork: "main")
+        let nonMatch2 = try TopicPath.new("services/auth/logs/error", defaultNetwork: "main")
 
         #expect(!pattern.matches(nonMatch1)) // Different segment after service
         #expect(!pattern.matches(nonMatch2)) // "logs" instead of "events"
@@ -98,17 +98,17 @@ struct TopicPathWildcardTest {
     @Test
     func wildcardAtBeginning() throws {
         // Pattern with wildcard at beginning
-        let pattern = try TopicPath(networkId: "main", segments: ["*", "state"])
+        let pattern = try TopicPath.new("*/state", defaultNetwork: "main")
 
         // Test successful matches (should match any service with "state" action)
-        let path1 = try TopicPath(networkId: "main", segments: ["auth", "state"])
-        let path2 = try TopicPath(networkId: "main", segments: ["math", "state"])
+        let path1 = try TopicPath.new("auth/state", defaultNetwork: "main")
+        let path2 = try TopicPath.new("math/state", defaultNetwork: "main")
 
         #expect(pattern.matches(path1))
         #expect(pattern.matches(path2))
 
         // Test non-matches
-        let nonMatch1 = try TopicPath(networkId: "main", segments: ["auth", "login"])
+        let nonMatch1 = try TopicPath.new("auth/login", defaultNetwork: "main")
 
         #expect(!pattern.matches(nonMatch1)) // Different action
     }
@@ -116,9 +116,9 @@ struct TopicPathWildcardTest {
     @Test
     func networkIsolation() throws {
         // Patterns should only match within the same network
-        let pattern = try TopicPath(networkId: "main", segments: ["services", "*", "state"])
-        let path1 = try TopicPath(networkId: "main", segments: ["services", "auth", "state"])
-        let path2 = try TopicPath(networkId: "other", segments: ["services", "auth", "state"])
+        let pattern = try TopicPath.new("services/*/state", defaultNetwork: "main")
+        let path1 = try TopicPath.new("services/auth/state", defaultNetwork: "main")
+        let path2 = try TopicPath.new("services/auth/state", defaultNetwork: "other")
 
         #expect(pattern.matches(path1)) // Same network
         #expect(!pattern.matches(path2)) // Different network
@@ -131,14 +131,14 @@ struct TopicPathWildcardTest {
         let networkId = "main"
 
         // Store handlers with template patterns
-        let template1 = try TopicPath(networkId: networkId, segments: ["services", "{service_path}", "state"])
-        let template2 = try TopicPath(networkId: networkId, segments: ["services", "*", "state"])
+        let template1 = try TopicPath.new("services/{service_path}/state", defaultNetwork: networkId)
+        let template2 = try TopicPath.new("services/*/state", defaultNetwork: networkId)
 
         handlers[template1.asString()] = "TEMPLATE_HANDLER_1"
         handlers[template2.asString()] = "WILDCARD_HANDLER"
 
         // Create a concrete path to look up
-        let concretePath = try TopicPath(networkId: networkId, segments: ["services", "math", "state"])
+        let concretePath = try TopicPath.new("services/math/state", defaultNetwork: networkId)
 
         // Generate possible template patterns from the concrete path
         // This is the key insight - we can pre-compute all possible template patterns
@@ -165,14 +165,14 @@ struct TopicPathWildcardTest {
         let networkId = "main"
 
         // Store handlers with wildcard patterns
-        let wildcard1 = try TopicPath(networkId: networkId, segments: ["services", "*", "events"])
-        let wildcard2 = try TopicPath(networkId: networkId, segments: ["services", ">"])
+        let wildcard1 = try TopicPath.new("services/*/events", defaultNetwork: networkId)
+        let wildcard2 = try TopicPath.new("services/>", defaultNetwork: networkId)
 
         handlers[wildcard1.asString()] = "SINGLE_WILDCARD_HANDLER"
         handlers[wildcard2.asString()] = "MULTI_WILDCARD_HANDLER"
 
         // Create a concrete path to look up
-        let concretePath = try TopicPath(networkId: networkId, segments: ["services", "math", "events"])
+        let concretePath = try TopicPath.new("services/math/events", defaultNetwork: networkId)
 
         // Generate possible wildcard patterns from the concrete path
         let possiblePatterns = generateWildcardPatterns(concretePath)

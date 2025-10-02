@@ -4,7 +4,7 @@ import os
 
 // MARK: - Logging Types
 
-public enum Component: Sendable {
+public enum Component: Sendable, Equatable {
     case ffi
     case network
     case service
@@ -23,13 +23,13 @@ public enum Component: Sendable {
         case .transporter: "Transporter"
         case .serializer: "Serializer"
         case .node: "Node"
-        case .custom(let customName): customName
+        case let .custom(customName): customName
         }
     }
-    
+
     public var shouldShowInHierarchy: Bool {
         switch self {
-        case .custom: true  // Custom components should show their custom string values
+        case .custom: true // Custom components should show their custom string values
         default: true
         }
     }

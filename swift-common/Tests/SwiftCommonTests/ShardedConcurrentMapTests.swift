@@ -224,9 +224,9 @@ final class ShardedConcurrentMapTests: XCTestCase {
 
         // Create multiple concurrent tasks inserting different keys
         await withTaskGroup(of: Void.self) { group in
-            for i in 0 ..< keyCount {
+            for index in 0 ..< keyCount {
                 group.addTask {
-                    _ = await map.insert("value\(i)", for: i)
+                    _ = await map.insert("value\(index)", for: index)
                 }
             }
         }
@@ -236,9 +236,9 @@ final class ShardedConcurrentMapTests: XCTestCase {
         XCTAssertEqual(count, keyCount, "Should have inserted all keys")
 
         // Verify some specific values
-        for i in 0 ..< min(10, keyCount) {
-            let value = await map.get(i)
-            XCTAssertEqual(value, "value\(i)", "Value should match for key \(i)")
+        for index in 0 ..< min(10, keyCount) {
+            let value = await map.get(index)
+            XCTAssertEqual(value, "value\(index)", "Value should match for key \(index)")
         }
     }
 
@@ -247,8 +247,8 @@ final class ShardedConcurrentMapTests: XCTestCase {
         let keyCount = 100
 
         // Start with some initial data
-        for i in 0 ..< keyCount {
-            _ = await map.insert(i, for: "key\(i)")
+        for index in 0 ..< keyCount {
+            _ = await map.insert(index, for: "key\(index)")
         }
 
         // Concurrent reads and writes
@@ -256,9 +256,9 @@ final class ShardedConcurrentMapTests: XCTestCase {
             // Reader tasks - just verify values exist and are reasonable
             for _ in 0 ..< 10 {
                 group.addTask {
-                    for i in 0 ..< keyCount {
-                        let value = await map.get("key\(i)")
-                        XCTAssertNotNil(value, "Value should exist for key\(i)")
+                    for index in 0 ..< keyCount {
+                        let value = await map.get("key\(index)")
+                        XCTAssertNotNil(value, "Value should exist for key\(index)")
                         XCTAssertTrue(value! >= 0, "Value should be non-negative")
                     }
                 }
@@ -267,8 +267,8 @@ final class ShardedConcurrentMapTests: XCTestCase {
             // Writer tasks - update values
             for _ in 0 ..< 5 {
                 group.addTask {
-                    for i in 0 ..< keyCount {
-                        _ = await map.insert(i * 2, for: "key\(i)")
+                    for index in 0 ..< keyCount {
+                        _ = await map.insert(index * 2, for: "key\(index)")
                     }
                 }
             }
@@ -285,11 +285,11 @@ final class ShardedConcurrentMapTests: XCTestCase {
 
         // Concurrent withValue operations
         await withTaskGroup(of: Void.self) { group in
-            for i in 0 ..< keyCount {
+            for index in 0 ..< keyCount {
                 group.addTask {
-                    _ = await map.withValue(for: "key\(i)", default: []) { values in
-                        values.append(i)
-                        values.append(i * 2)
+                    _ = await map.withValue(for: "key\(index)", default: []) { values in
+                        values.append(index)
+                        values.append(index * 2)
                         return values.count
                     }
                 }
@@ -301,9 +301,9 @@ final class ShardedConcurrentMapTests: XCTestCase {
         XCTAssertEqual(count, keyCount, "Should have all keys")
 
         // Check some specific values
-        for i in 0 ..< min(10, keyCount) {
-            let values = await map.get("key\(i)")
-            XCTAssertEqual(values, [i, i * 2], "Values should match for key \(i)")
+        for index in 0 ..< min(10, keyCount) {
+            let values = await map.get("key\(index)")
+            XCTAssertEqual(values, [index, index * 2], "Values should match for key \(index)")
         }
     }
 
@@ -314,8 +314,8 @@ final class ShardedConcurrentMapTests: XCTestCase {
         let keyCount = 1000
 
         // Insert many keys
-        for i in 0 ..< keyCount {
-            _ = await map.insert("value\(i)", for: i)
+        for index in 0 ..< keyCount {
+            _ = await map.insert("value\(index)", for: index)
         }
 
         // Verify all keys are accessible
@@ -323,9 +323,9 @@ final class ShardedConcurrentMapTests: XCTestCase {
         XCTAssertEqual(count, keyCount, "Should have all keys")
 
         // Verify some specific keys
-        for i in stride(from: 0, to: keyCount, by: 100) {
-            let value = await map.get(i)
-            XCTAssertEqual(value, "value\(i)", "Value should match for key \(i)")
+        for index in stride(from: 0, to: keyCount, by: 100) {
+            let value = await map.get(index)
+            XCTAssertEqual(value, "value\(index)", "Value should match for key \(index)")
         }
     }
 
@@ -378,8 +378,8 @@ final class ShardedConcurrentMapTests: XCTestCase {
         // Measure insertion time
         let startTime = CFAbsoluteTimeGetCurrent()
 
-        for i in 0 ..< keyCount {
-            _ = await map.insert("value\(i)", for: i)
+        for index in 0 ..< keyCount {
+            _ = await map.insert("value\(index)", for: index)
         }
 
         let insertionTime = CFAbsoluteTimeGetCurrent() - startTime

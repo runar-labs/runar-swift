@@ -13,23 +13,23 @@ struct TopicPathTemplateTest {
         let template = "services/{service_path}/state"
 
         // An actual path that matches the template
-        let path = try TopicPath.parse("services/math/state")
+        let path = try TopicPath.new("services/math/state", networkId: "main")
 
         // Extract parameters from the path
         let params = path.extractParams(template)
         #expect(params?["service_path"] == "math")
 
         // Try another path
-        let path2 = try TopicPath.parse("main:services/auth/state")
+        let path2 = try TopicPath.fromFullPath("main:services/auth/state")
         let params2 = path2.extractParams(template)
         #expect(params2?["service_path"] == "auth")
 
         // A path that doesn't match the segment count
-        let nonMatching1 = try TopicPath.parse("main:services/math")
+        let nonMatching1 = try TopicPath.fromFullPath("main:services/math")
         #expect(nonMatching1.extractParams(template) == nil)
 
         // A path that doesn't match the literal segments
-        let nonMatching2 = try TopicPath.parse("main:users/math/profile")
+        let nonMatching2 = try TopicPath.fromFullPath("main:users/math/profile")
         #expect(nonMatching2.extractParams(template) == nil)
     }
 
@@ -38,15 +38,15 @@ struct TopicPathTemplateTest {
         let template = "services/{service_path}/state"
 
         // Paths that should match
-        let path1 = try TopicPath.parse("main:services/math/state")
-        let path2 = try TopicPath.parse("main:services/auth/state")
+        let path1 = try TopicPath.fromFullPath("main:services/math/state")
+        let path2 = try TopicPath.fromFullPath("main:services/auth/state")
 
         #expect(path1.matchesTemplate(template))
         #expect(path2.matchesTemplate(template))
 
         // Paths that shouldn't match
-        let path3 = try TopicPath.parse("main:services/math")
-        let path4 = try TopicPath.parse("main:users/auth/profile")
+        let path3 = try TopicPath.fromFullPath("main:services/math")
+        let path4 = try TopicPath.fromFullPath("main:users/auth/profile")
 
         #expect(!path3.matchesTemplate(template))
         #expect(!path4.matchesTemplate(template))
@@ -89,17 +89,17 @@ struct TopicPathTemplateTest {
         let actionsTemplate = "services/{service_path}/actions"
 
         // Test matching for various paths
-        let listPath = try TopicPath.parse("main:services/list")
+        let listPath = try TopicPath.fromFullPath("main:services/list")
         #expect(listPath.matchesTemplate(listTemplate))
 
-        let servicePath = try TopicPath.parse("main:services/math")
+        let servicePath = try TopicPath.fromFullPath("main:services/math")
         #expect(servicePath.matchesTemplate(serviceTemplate))
 
-        let statePath = try TopicPath.parse("main:services/math/state")
+        let statePath = try TopicPath.fromFullPath("main:services/math/state")
         #expect(statePath.matchesTemplate(stateTemplate))
 
         // Create template path objects for testing matches() in both directions
-        let templateTopicPath = try TopicPath.parse("main:\(serviceTemplate)")
+        let templateTopicPath = try TopicPath.fromFullPath("main:\(serviceTemplate)")
 
         // A template path shouldn't match a concrete path in this direction
         #expect(!templateTopicPath.matches(servicePath))
@@ -121,7 +121,7 @@ struct TopicPathTemplateTest {
     @Test
     func pathWithTemplates() throws {
         let pathStr = "main:services/{service_path}/state"
-        let path = try TopicPath.parse(pathStr)
+        let path = try TopicPath.fromFullPath(pathStr)
 
         #expect(path.hasTemplates)
         #expect(path.asString() == pathStr)
@@ -132,7 +132,7 @@ struct TopicPathTemplateTest {
 
     @Test
     func templatePathActionPath() throws {
-        let path = try TopicPath.parse("main:services/{service_path}/actions/{action_name}")
+        let path = try TopicPath.fromFullPath("main:services/{service_path}/actions/{action_name}")
 
         #expect(path.servicePath == "services")
         #expect(path.actionPath == "services/{service_path}/actions/{action_name}")
@@ -176,19 +176,19 @@ struct TopicPathTemplateTest {
     @Test
     func templateEdgeCases() throws {
         // Test empty parameter name (should still work)
-        let path = try TopicPath.parse("main:services/{}/state")
+        let path = try TopicPath.fromFullPath("main:services/{}/state")
         #expect(path.hasTemplates)
 
         // Test template at beginning of path
-        let path2 = try TopicPath.parse("main:{service}/actions/list")
+        let path2 = try TopicPath.fromFullPath("main:{service}/actions/list")
         #expect(path2.hasTemplates)
 
         // Test template at end of path
-        let path3 = try TopicPath.parse("main:services/actions/{name}")
+        let path3 = try TopicPath.fromFullPath("main:services/actions/{name}")
         #expect(path3.hasTemplates)
 
         // Test multiple templates in a single path
-        let path4 = try TopicPath.parse("main:{service}/{action}/{id}")
+        let path4 = try TopicPath.fromFullPath("main:{service}/{action}/{id}")
         #expect(path4.hasTemplates)
 
         let params = [
@@ -204,24 +204,24 @@ struct TopicPathTemplateTest {
 
     @Test
     func serviceVersusActionTemplates() throws {
-        let servicePath = try TopicPath.parse("main:services/{service_type}")
+        let servicePath = try TopicPath.fromFullPath("main:services/{service_type}")
         #expect(servicePath.hasTemplates)
         #expect(servicePath.servicePath == "services")
 
         // Instead of using new_action_topic, create the action path manually
         let actionPathStr = "main:services/{service_type}/list"
-        let actionPath = try TopicPath.parse(actionPathStr)
+        let actionPath = try TopicPath.fromFullPath(actionPathStr)
         #expect(actionPath.asString() == actionPathStr)
         #expect(actionPath.hasTemplates)
     }
 
     @Test
     func eventPathWithTemplates() throws {
-        _ = try TopicPath.parse("main:services/{service_type}")
+        _ = try TopicPath.fromFullPath("main:services/{service_type}")
 
         // Instead of using new_event_topic, create the event path manually
         let eventPathStr = "main:services/{service_type}/updated"
-        let eventPath = try TopicPath.parse(eventPathStr)
+        let eventPath = try TopicPath.fromFullPath(eventPathStr)
 
         #expect(eventPath.asString() == eventPathStr)
         #expect(eventPath.hasTemplates)
@@ -229,8 +229,8 @@ struct TopicPathTemplateTest {
 
     @Test
     func normalizedTemplateMatching() throws {
-        let templatePath = try TopicPath.parse("main:services/{service_path}")
-        let concretePath = try TopicPath.parse("main:services/math")
+        let templatePath = try TopicPath.fromFullPath("main:services/{service_path}")
+        let concretePath = try TopicPath.fromFullPath("main:services/math")
 
         let templateMatches = templatePath.matches(concretePath)
         let concreteMatchesTemplate = concretePath.matchesTemplate("services/{service_path}")
@@ -252,17 +252,17 @@ struct TopicPathTemplateTest {
         let serviceStateTemplate = "services/{service_path}/state"
 
         // Create actual request paths
-        let listPath = try TopicPath.parse("main:services/list")
+        let listPath = try TopicPath.fromFullPath("main:services/list")
         #expect(listPath.matchesTemplate(listServicesTemplate))
 
-        let infoPath = try TopicPath.parse("main:services/math")
+        let infoPath = try TopicPath.fromFullPath("main:services/math")
         #expect(infoPath.matchesTemplate(serviceInfoTemplate))
 
-        let statePath = try TopicPath.parse("main:services/math/state")
+        let statePath = try TopicPath.fromFullPath("main:services/math/state")
         #expect(statePath.matchesTemplate(serviceStateTemplate))
 
         // Create template path objects for testing matches() in both directions
-        let templateTopicPath = try TopicPath.parse("main:\(serviceInfoTemplate)")
+        let templateTopicPath = try TopicPath.fromFullPath("main:\(serviceInfoTemplate)")
 
         // These should match their respective templates using matchesTemplate
         #expect(listPath.matchesTemplate(listServicesTemplate))
@@ -282,14 +282,14 @@ struct TopicPathTemplateTest {
 
     @Test
     func testExtractParams() throws {
-        let path = try TopicPath.parse("main:services/math/state")
+        let path = try TopicPath.fromFullPath("main:services/math/state")
 
         // Test with a valid template
         let params = path.extractParams("services/{service_path}/state")
         #expect(params?["service_path"] == "math")
 
         // Test with multiple parameters
-        let nestedPath = try TopicPath.parse("main:services/math/users/admin")
+        let nestedPath = try TopicPath.fromFullPath("main:services/math/users/admin")
         let nestedParams = nestedPath.extractParams("services/{service}/users/{user_id}")
         #expect(nestedParams?["service"] == "math")
         #expect(nestedParams?["user_id"] == "admin")
@@ -305,7 +305,7 @@ struct TopicPathTemplateTest {
 
     @Test
     func matchesTemplateComplex() throws {
-        let path = try TopicPath.parse("main:services/math/state")
+        let path = try TopicPath.fromFullPath("main:services/math/state")
 
         // Test with matching templates
         #expect(path.matchesTemplate("services/{service_path}/state"))
@@ -340,7 +340,7 @@ struct TopicPathTemplateTest {
 
     @Test
     func templatePathWithActionPathExtraction() throws {
-        let path = try TopicPath.parse("main:services/{service_path}/actions/{action_name}")
+        let path = try TopicPath.fromFullPath("main:services/{service_path}/actions/{action_name}")
 
         #expect(path.servicePath == "services")
         #expect(path.actionPath == "services/{service_path}/actions/{action_name}")
@@ -363,24 +363,24 @@ struct TopicPathTemplateTest {
 
     @Test
     func servicePathsVersusActionPathsWithTemplates() throws {
-        let servicePath = try TopicPath.parse("main:services/{service_type}")
+        let servicePath = try TopicPath.fromFullPath("main:services/{service_type}")
         #expect(servicePath.hasTemplates)
         #expect(servicePath.servicePath == "services")
 
         // Instead of using new_action_topic, create the action path manually
         let actionPathStr = "main:services/{service_type}/list"
-        let actionPath = try TopicPath.parse(actionPathStr)
+        let actionPath = try TopicPath.fromFullPath(actionPathStr)
         #expect(actionPath.asString() == actionPathStr)
         #expect(actionPath.hasTemplates)
     }
 
     @Test
     func eventPathCreationWithTemplates() throws {
-        _ = try TopicPath.parse("main:services/{service_type}")
+        _ = try TopicPath.fromFullPath("main:services/{service_type}")
 
         // Instead of using new_event_topic, create the event path manually
         let eventPathStr = "main:services/{service_type}/updated"
-        let eventPath = try TopicPath.parse(eventPathStr)
+        let eventPath = try TopicPath.fromFullPath(eventPathStr)
 
         #expect(eventPath.asString() == eventPathStr)
         #expect(eventPath.hasTemplates)
