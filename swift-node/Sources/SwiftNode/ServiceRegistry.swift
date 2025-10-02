@@ -852,11 +852,21 @@ public final class ServiceRegistry: NodeDelegate {
         let handlers: [LocalActionEntryValue]
         if localHandlers.isEmpty {
             let remoteHandlers = remoteActionHandlers.find(topic: topicPath)
-            print("🔍 DEBUG: ServiceRegistry.request: Found \(remoteHandlers.count) remote handlers for path: \(path)")
-            logger.trace("ServiceRegistry.request: Found \(remoteHandlers.count) remote handlers for path: \(path)")
+            print("🔍 DEBUG: ServiceRegistry.request: Found \(remoteHandlers.count) remote handler arrays for path: \(path)")
+            logger.trace("ServiceRegistry.request: Found \(remoteHandlers.count) remote handler arrays for path: \(path)")
+            
+            // Debug: Print the structure of remote handlers
+            for (index, handlerArray) in remoteHandlers.enumerated() {
+                print("🔍 DEBUG: ServiceRegistry.request: Remote handler array \(index): \(handlerArray.count) handlers")
+                logger.trace("ServiceRegistry.request: Remote handler array \(index): \(handlerArray.count) handlers")
+            }
             
             // Convert remote handlers to local format for processing
-            handlers = remoteHandlers.flatMap { $0 }.map { handler in
+            let flattenedHandlers = remoteHandlers.flatMap { $0 }
+            print("🔍 DEBUG: ServiceRegistry.request: Flattened to \(flattenedHandlers.count) remote handlers for path: \(path)")
+            logger.trace("ServiceRegistry.request: Flattened to \(flattenedHandlers.count) remote handlers for path: \(path)")
+            
+            handlers = flattenedHandlers.map { handler in
                 // Create a dummy LocalActionEntryValue for remote handlers
                 let dummyTopicPath = topicPath
                 let dummyMetadata = ActionMetadata(name: "remote", description: "Remote handler")
@@ -1182,18 +1192,29 @@ public final class ServiceRegistry: NodeDelegate {
     
     /// Get actions metadata for a service path (matching Rust implementation)
     public func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
-        // Search in the actions trie local_action_handlers (matching Rust)
-        let matches = localActionHandlers.find(topic: serviceTopicPath)
+        // Search for all actions that start with the service path
+        // We need to search for patterns like "math1/*" to find all actions under math1
+        let servicePathPattern = "\(serviceTopicPath.servicePath)/*"
+        let patternTopicPath = try! TopicPath(networkId: serviceTopicPath.networkId, segments: [serviceTopicPath.servicePath, "*"])
         
-        // Collect all actions that match the service path
+        // Search in the actions trie local_action_handlers (matching Rust)
+        let matches = localActionHandlers.find(topic: patternTopicPath)
+        
+        // Collect all actions that match the service path, avoiding duplicates
         var result: [ActionMetadata] = []
+        var seenPaths = Set<String>()
         result.reserveCapacity(matches.count)
         
         for matchItem in matches {
-            // Extract the topic path from the match
-            let (_, _, metadata) = matchItem
+            // Extract the content from the match (LocalActionEntryValue = (ActionHandler, TopicPath, ActionMetadata?))
+            let (_, topicPath, metadata) = matchItem
             if let metadata = metadata {
-                result.append(metadata)
+                let pathString = topicPath.asString()
+                // Only add if we haven't seen this path before
+                if !seenPaths.contains(pathString) {
+                    seenPaths.insert(pathString)
+                    result.append(metadata)
+                }
             }
         }
         

@@ -68,6 +68,33 @@ public enum SchemaDataType: Sendable, Codable {
     case reference(String)
     case union([SchemaDataType])
     case any
+    
+    /// Convert to FFI SchemaDataType
+    public func toFFIDataType() -> SwiftFFI.SchemaDataType {
+        switch self {
+        case .string:
+            return .string
+        case .int32:
+            return .int32
+        case .int64:
+            return .int64
+        case .float:
+            return .float32
+        case .double:
+            return .float64
+        case .boolean:
+            return .boolean
+        case .binary, .timestamp:
+            return .bytes
+        case .array:
+            return .array
+        case .object:
+            return .map
+        case .reference, .union, .any:
+            // For complex types, default to map
+            return .map
+        }
+    }
 }
 
 /// Field schema structure matching Rust FieldSchema
@@ -102,6 +129,26 @@ public indirect enum FieldSchema: Sendable, Codable {
             name
         }
     }
+    
+    /// Convert to FFI FieldSchema
+    public func toFFISchema() -> SwiftFFI.FieldSchema? {
+        switch self {
+        case let .primitive(_, dataType, description, _, _):
+            return SwiftFFI.FieldSchema(
+                dataType: dataType.toFFIDataType(),
+                required: true, // Primitive fields are required by default
+                description: description
+            )
+        case .object, .array:
+            // For complex types, we'll use a generic Map type for now
+            // This could be enhanced to handle nested schemas properly
+            return SwiftFFI.FieldSchema(
+                dataType: .map,
+                required: true,
+                description: "Complex schema type"
+            )
+        }
+    }
 
     public var dataType: SchemaDataType {
         switch self {
@@ -126,6 +173,7 @@ public typealias FFIKeys = NodeKeyManager
 public protocol NodeTransport: AnyObject, Sendable {
     func start() async throws
     func stop() async throws
+    func connectToPeer(peerInfo: SwiftFFI.PeerInfo) async throws
     func sendRequest(path: String, payload: Data, correlationId: String) async throws
     func completeRequest(requestId: String, responsePayload: Data, profilePublicKey: Data?) async throws
     func publish(topic: String, payload: Data, options: PublishOptions) async throws
@@ -2097,8 +2145,10 @@ public final class Node {
                             let ffiMetadata = nodeInfo.nodeMetadata
                             print("🔍 HANDSHAKE: Converting FFI metadata: \(ffiMetadata.services.count) services, \(ffiMetadata.subscriptions.count) subscriptions")
                             return NodeMetadata(
-                                services: ffiMetadata.services.map { ffiService in
-                                    "\(ffiService.servicePath)/\(ffiService.name)"
+                                services: ffiMetadata.services.flatMap { ffiService in
+                                    ffiService.actions.map { action in
+                                        "\(ffiService.servicePath)/\(action.name)"
+                                    }
                                 },
                                 subscriptions: ffiMetadata.subscriptions.map { ffiSubscription in
                                     ffiSubscription.path
@@ -2170,7 +2220,7 @@ public final class Node {
         )
 
         // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
-        let ffiNodeInfo = convertToFFINodeInfo(currentNodeInfo)
+        let ffiNodeInfo = await convertToFFINodeInfo(currentNodeInfo)
 
         // Create the QuicTransport using the key manager
         let keyManager: FFIKeys = try config.getKeyManager()
@@ -2317,7 +2367,7 @@ public final class Node {
 
     /// Get local node information with current service metadata (GETTER ONLY)
     private func getLocalNodeInfo() async -> NodeInfo {
-        // Get current services from the service registry
+        // Get current services from the service registry with proper metadata including actions
         let currentServices = serviceRegistry.getLocalServices()
         let servicePaths = Array(currentServices.keys).map { $0.asString() }
 
@@ -2361,7 +2411,7 @@ public final class Node {
             let currentNodeInfo = await getLocalNodeInfo()
 
             // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
-            let ffiNodeInfo = convertToFFINodeInfo(currentNodeInfo)
+            let ffiNodeInfo = await convertToFFINodeInfo(currentNodeInfo)
 
             print("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
             print("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to transport")
@@ -2377,26 +2427,32 @@ public final class Node {
     }
 
     /// Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
-    private func convertToFFINodeInfo(_ nodeInfo: NodeInfo) -> SwiftFFI.NodeInfo {
-        SwiftFFI.NodeInfo(
+    private func convertToFFINodeInfo(_ nodeInfo: NodeInfo) async -> SwiftFFI.NodeInfo {
+        // Get proper service metadata from the service registry
+        let serviceMetadata = await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: false)
+        
+        return SwiftFFI.NodeInfo(
             nodePublicKey: nodeInfo.nodePublicKey,
             networkIds: nodeInfo.networkIds,
             addresses: nodeInfo.addresses,
             nodeMetadata: SwiftFFI.NodeMetadata(
-                services: nodeInfo.nodeMetadata.services.map { servicePath in
-                    // Parse the service path to extract service name and path
-                    let components = servicePath.split(separator: "/")
-                    let serviceName = components.last?.description ?? servicePath
-                    let servicePath = components.dropLast().joined(separator: "/")
-                    return SwiftFFI.ServiceMetadata(
-                        networkId: networkId,
-                        servicePath: servicePath,
-                        name: serviceName,
-                        version: "1.0.0",
-                        description: "Service",
-                        actions: [],
-                        registrationTime: 0,
-                        lastStartTime: nil
+                services: serviceMetadata.values.map { service in
+                    SwiftFFI.ServiceMetadata(
+                        networkId: service.networkId,
+                        servicePath: service.servicePath,
+                        name: service.name,
+                        version: service.version,
+                        description: service.description,
+                        actions: service.actions.map { action in
+                            SwiftFFI.ActionMetadata(
+                                name: action.name,
+                                description: action.description,
+                                inputSchema: action.inputSchema?.toFFISchema(),
+                                outputSchema: action.outputSchema?.toFFISchema()
+                            )
+                        },
+                        registrationTime: service.registrationTime,
+                        lastStartTime: service.lastStartTime
                     )
                 },
                 subscriptions: nodeInfo.nodeMetadata.subscriptions.map { subscriptionPath in
@@ -2703,12 +2759,13 @@ public final class Node {
 
             // Register the remote service handler
             do {
-                let topicPath = try TopicPath.parse(servicePath)
+                // Create TopicPath using the service's network ID and path (matching Rust pattern)
+                let topicPath = try TopicPath(networkId: service.networkId, segments: servicePath.split(separator: "/").map(String.init))
                 try await serviceRegistry.registerRemoteActionHandler(
                     topicPath: topicPath,
                     handler: remoteHandler
                 )
-                print("🔍 HANDSHAKE: Successfully registered remote service handler for: \(servicePath)")
+                print("🔍 HANDSHAKE: Successfully registered remote service handler for: \(fullPath)")
             } catch {
                 print("🔍 HANDSHAKE: Failed to register remote service handler for \(servicePath): \(error)")
                 logger.error("Failed to register remote service handler for \(servicePath): \(error)")
@@ -2797,10 +2854,39 @@ public final class Node {
             logger.error("🔍 DISCOVERY: Failed to publish discovery event: \(error)")
         }
         
-        // TODO: Establish connection and perform handshake to get full NodeInfo
-        // This would typically trigger a connection attempt to the discovered peer
-        // and then register remote service handlers in the service registry
-        logger.trace("🔍 DISCOVERY: Peer discovery completed for \(peerNodeId)")
+        // Connect to the discovered peer and perform handshake
+        await connectToDiscoveredPeer(peerInfo: peerInfo, peerNodeId: peerNodeId)
+    }
+    
+    /// Connect to a discovered peer and perform handshake
+    private func connectToDiscoveredPeer(peerInfo: SwiftFFI.PeerInfo, peerNodeId: String) async {
+        logger.trace("🔍 CONNECTION: Connecting to discovered peer: \(peerNodeId)")
+        print("🔍 CONNECTION: Connecting to discovered peer: \(peerNodeId)")
+        
+        guard let transport = networkTransport else {
+            logger.error("🔍 CONNECTION: No transport available for connection")
+            print("🔍 CONNECTION: No transport available for connection")
+            return
+        }
+        
+        do {
+            // Connect to the peer using the transport
+            logger.trace("🔍 CONNECTION: Calling transport.connectToPeer()")
+            print("🔍 CONNECTION: Calling transport.connectToPeer()")
+            try await transport.connectToPeer(peerInfo: peerInfo)
+            logger.trace("🔍 CONNECTION: Transport connection successful")
+            print("🔍 CONNECTION: Transport connection successful")
+            
+            // The handshake will happen automatically via the transport callbacks
+            // The peerConnectedCallback will be called with the peer's NodeInfo
+            // which will trigger handlePeerConnected() to register remote services
+            logger.trace("🔍 CONNECTION: Handshake will be handled by transport callbacks")
+            print("🔍 CONNECTION: Handshake will be handled by transport callbacks")
+            
+        } catch {
+            logger.error("🔍 CONNECTION: Failed to connect to peer \(peerNodeId): \(error)")
+            print("🔍 CONNECTION: Failed to connect to peer \(peerNodeId): \(error)")
+        }
     }
 
     /// Handle peer updated event from discovery system
@@ -2950,6 +3036,11 @@ public final class Node {
 
 @MainActor
 extension QuicTransport: NodeTransport {
+    public func connectToPeer(peerInfo: SwiftFFI.PeerInfo) async throws {
+        // Call the underlying SwiftFFI.QuicTransport connectPeer method
+        try await connectPeer(peerInfo: peerInfo)
+    }
+
     public func sendRequest(path: String, payload: Data, correlationId: String) async throws {
         // Create TransportRequestParams for the request
         let requestParams = TransportRequestParams(
