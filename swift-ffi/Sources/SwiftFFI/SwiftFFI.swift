@@ -5620,33 +5620,30 @@ public actor QuicTransport {
         logger.info("QuicTransport.handleRequestEvent() - path=\(event.path) corr=\(event.correlationId)")
 
         // Call the request callback and get the response
-        if let responseMessage = callbacks.requestCallback(
+        // The callback now always returns a NetworkMessage (never nil)
+        let responseMessage = callbacks.requestCallback(
             event.requestId,
             event.path,
             event.payload,
             "", // sourcePeerId - not available in TransportRequestEvent
             event.correlationId
-        ) {
-            // Serialize the NetworkMessage to CBOR data
-            do {
-                let responseData = try CodableCBOREncoder().encode(responseMessage)
+        )
 
-                // Send the response back to the peer
-                let completeParams = TransportCompleteRequestParams(
-                    requestId: event.requestId,
-                    responsePayload: responseData,
-                    profilePublicKeys: responseMessage.payload.profilePublicKeys
-                )
+        // Serialize the NetworkMessage to CBOR data
+        do {
+            let responseData = try CodableCBOREncoder().encode(responseMessage)
 
-                try await completeRequest(completeParams)
-                logger.trace("QuicTransport.handleRequestEvent() - Request completed successfully")
-            } catch {
-                logger.error("QuicTransport.handleRequestEvent() - Failed to serialize NetworkMessage response: \(error)")
-            }
-        } else {
-            logger.debug("QuicTransport.handleRequestEvent() - Request callback returned no response")
-            //TODO this is wrong.. when the callback dor not return anything (meaning null)
-            //we still need to send a reponse back with a null value. a reqeust always needs a reponse.
+            // Send the response back to the peer
+            let completeParams = TransportCompleteRequestParams(
+                requestId: event.requestId,
+                responsePayload: responseData,
+                profilePublicKeys: responseMessage.payload.profilePublicKeys
+            )
+
+            try await completeRequest(completeParams)
+            logger.trace("QuicTransport.handleRequestEvent() - Request completed successfully")
+        } catch {
+            logger.error("QuicTransport.handleRequestEvent() - Failed to serialize NetworkMessage response: \(error)")
         }
     }
 
@@ -5736,8 +5733,8 @@ public typealias PeerDisconnectedCallback = @Sendable (String) -> Void
 ///   - payload: The request payload
 ///   - sourcePeerId: The ID of the peer that sent the request
 ///   - correlationId: Optional correlation ID
-/// - Returns: NetworkMessage response or nil if no response
-public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> NetworkMessage?
+/// - Returns: NetworkMessage response (always returns a response, use AnyValue.null for null responses)
+public typealias RequestCallback = @Sendable (String, String, Data, String, String?) -> NetworkMessage
 
 /// Callback for handling P2P event messages (fire and forget, no response)
 /// - Parameters:
