@@ -40,11 +40,8 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery instance
         let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: optionsCbor)
 
-        // Initialize discovery
+        // Initialize discovery (bindEvents is called automatically)
         try await discovery.initialize(optionsCbor: optionsCbor)
-
-        // Bind events (critical for event polling)
-        try await discovery.bindEvents()
 
         // Shutdown discovery
         try await discovery.shutdown()
@@ -87,11 +84,9 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery instances
         let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
-        try await discoveryA.bindEvents()
 
         let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
-        try await discoveryB.bindEvents()
 
         // Get public keys for peer info
         let publicKeyA = try await keysA.getNodePublicKey()
@@ -202,11 +197,9 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery instances
         let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
-        try await discoveryA.bindEvents()
 
         let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
-        try await discoveryB.bindEvents()
 
         // Set up simple discovery callbacks that just log
         let discoveryCallbacksA = DiscoveryCallbacks(
@@ -304,7 +297,6 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery instance
         let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: optionsCbor)
         try await discovery.initialize(optionsCbor: optionsCbor)
-        try await discovery.bindEvents()
 
         // Test multiple start calls (should be idempotent)
         try await discovery.startAnnouncing()

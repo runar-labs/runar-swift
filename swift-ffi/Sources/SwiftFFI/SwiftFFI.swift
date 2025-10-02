@@ -4972,6 +4972,9 @@ public actor DiscoveryHandle {
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to initialize discovery") }
+        
+        // Bind events as part of initialization
+        try await bindEvents()
     }
 
     /// Start announcing this node
@@ -5024,8 +5027,8 @@ public actor DiscoveryHandle {
     }
 
     /// Bind discovery events to their channels
-    /// This must be called before events can be polled
-    public func bindEvents() async throws {
+    /// This is called automatically during initialization
+    private func bindEvents() async throws {
         let (code, err) = withRnErrorCode { errPtr in
             rn_discovery_bind_events(self.handle, errPtr)
         }
