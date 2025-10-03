@@ -129,7 +129,7 @@ public enum ServiceState: String, Codable, Sendable {
 /// All services must be `@MainActor` to ensure they can be safely shared
 /// across multiple threads and async tasks.
 @MainActor
-public protocol AbstractService: AnyObject {
+public protocol AbstractService: AnyObject, Sendable {
     /// Get service name
     var name: String { get }
 

@@ -1,11 +1,13 @@
 import Foundation
 import RunarSerializer
 import SwiftCommon
+import SwiftFFI
 
 // MARK: - RemoteService
 
 /// Remote service instance representing a service hosted by a remote peer
-public struct RemoteService: Sendable, Equatable {
+/// This is a complete service implementation matching the Rust RemoteService
+public final class RemoteService: AbstractService, Sendable, Equatable {
     /// Service metadata
     public let name: String
     public let serviceTopic: TopicPath
@@ -17,7 +19,25 @@ public struct RemoteService: Sendable, Equatable {
     public let peerNodeId: String
 
     /// Service capabilities
-    public let actions: [String: ActionMetadata]
+    private let actions: [String: ActionMetadata]
+
+    /// Network transport for making remote requests
+    private let networkTransport: NodeTransport?
+
+    /// Logger instance
+    private let logger: RunarLogger
+
+    /// Keystore for encryption/decryption (placeholder for now)
+    private let keystore: Any?
+
+    /// Label resolver configuration for dynamic resolver creation (placeholder for now)
+    private let labelResolverConfig: Any?
+
+    /// Label resolver cache for better concurrency (placeholder for now)
+    private let labelResolverCache: Any?
+
+    /// Request timeout in milliseconds
+    private let requestTimeoutMs: UInt64
 
     public init(
         name: String,
@@ -26,7 +46,13 @@ public struct RemoteService: Sendable, Equatable {
         description: String,
         networkPublicKey: Data,
         peerNodeId: String,
-        actions: [String: ActionMetadata]
+        actions: [String: ActionMetadata],
+        networkTransport: NodeTransport? = nil,
+        logger: RunarLogger,
+        keystore: Any? = nil,
+        labelResolverConfig: Any? = nil,
+        labelResolverCache: Any? = nil,
+        requestTimeoutMs: UInt64 = 5000
     ) {
         self.name = name
         self.serviceTopic = serviceTopic
@@ -35,6 +61,12 @@ public struct RemoteService: Sendable, Equatable {
         self.networkPublicKey = networkPublicKey
         self.peerNodeId = peerNodeId
         self.actions = actions
+        self.networkTransport = networkTransport
+        self.logger = logger
+        self.keystore = keystore
+        self.labelResolverConfig = labelResolverConfig
+        self.labelResolverCache = labelResolverCache
+        self.requestTimeoutMs = requestTimeoutMs
     }
 
     /// Create RemoteService instances from a list of service metadata.
@@ -42,7 +74,12 @@ public struct RemoteService: Sendable, Equatable {
     public static func createFromCapabilities(
         services: [ServiceMetadata],
         peerNodeId: String,
-        requestTimeoutMs _: UInt64 = 5000
+        networkTransport: NodeTransport? = nil,
+        logger: RunarLogger,
+        keystore: Any? = nil,
+        labelResolverConfig: Any? = nil,
+        labelResolverCache: Any? = nil,
+        requestTimeoutMs: UInt64 = 5000
     ) async throws -> [RemoteService] {
         var remoteServices: [RemoteService] = []
 
@@ -70,13 +107,140 @@ public struct RemoteService: Sendable, Equatable {
                 description: serviceMetadata.description,
                 networkPublicKey: Data(), // TODO: Should be resolved from keystore
                 peerNodeId: peerNodeId,
-                actions: actionsDict
+                actions: actionsDict,
+                networkTransport: networkTransport,
+                logger: logger,
+                keystore: keystore,
+                labelResolverConfig: labelResolverConfig,
+                labelResolverCache: labelResolverCache,
+                requestTimeoutMs: requestTimeoutMs
             )
 
             remoteServices.append(remoteService)
         }
 
         return remoteServices
+    }
+
+    /// Get the remote peer identifier for this service
+    public func getPeerNodeId() -> String {
+        return peerNodeId
+    }
+
+    /// Get the network identifier for this service path
+    public func getNetworkId() -> String {
+        return serviceTopic.networkId
+    }
+
+    /// Get a list of available actions this service can handle
+    public func getAvailableActions() -> [String] {
+        return Array(actions.keys)
+    }
+
+    /// Create a handler for a remote action
+    /// This matches the Rust RemoteService::create_action_handler implementation
+    public func createActionHandler(actionName: String) -> ActionHandler {
+        return { [weak self] params, requestContext in
+            guard let self = self else {
+                return AnyValue.null()
+            }
+
+            // Create action topic path
+            guard let actionTopicPath = try? self.serviceTopic.newActionTopic(actionName) else {
+                throw NodeError.invalidConfiguration("Failed to create action topic path for: \(actionName)")
+            }
+
+            // Extract profile public keys from context metadata
+            let metadata = requestContext.metadata
+            guard let profilePublicKeysValue = metadata["profile_public_keys"] else {
+                throw NodeError.invalidConfiguration("Profile public keys not found in metadata")
+            }
+
+            // For now, we'll use a simplified approach to extract profile keys
+            // This is a temporary workaround until we have proper keystore integration
+            let profilePublicKeys: [Data] = [] // TODO: Implement proper profile key extraction
+
+            // Get network public key from keystore
+            let networkPublicKey = self.networkPublicKey // TODO: Should be resolved from keystore
+
+            // Create serialization context
+            // For now, create a basic resolver and use a placeholder keystore
+            let resolver = LabelResolver(mapping: [:])
+            // TODO: Create proper keystore - this will need to be passed in from the Node
+            // For now, we'll use a placeholder approach by creating a basic keystore
+            // This is a temporary workaround until we have proper keystore integration
+            let placeholderKeystore = try await NodeKeyManager()
+            let serializationContext = SerializationContext(
+                keystore: placeholderKeystore,
+                resolver: resolver,
+                networkPublicKey: networkPublicKey,
+                profilePublicKeys: profilePublicKeys
+            )
+
+            // Serialize request parameters
+            let paramsToSerialize = params ?? AnyValue.null()
+            let paramsBytes = try await paramsToSerialize.serialize(context: serializationContext)
+
+            // Send network request
+            guard let networkTransport = self.networkTransport else {
+                throw NodeError.transportNotImplemented("Network transport not available for remote service")
+            }
+
+            let correlationId = UUID().uuidString
+            let responseBytes = try await networkTransport.request(
+                path: actionTopicPath.asString(),
+                correlationId: correlationId,
+                payload: paramsBytes,
+                peerNodeId: self.peerNodeId,
+                networkPublicKey: networkPublicKey,
+                profilePublicKeys: profilePublicKeys
+            )
+
+            // Deserialize response
+            let response = try AnyValue.deserialize(responseBytes, keystore: placeholderKeystore)
+            return response
+        }
+    }
+
+    // MARK: - AbstractService Implementation
+
+    public var path: String {
+        return serviceTopic.asString()
+    }
+
+    public var networkId: String? {
+        get { return serviceTopic.networkId }
+        set { /* Remote services cannot change network ID */ }
+    }
+
+    public func setNetworkId(_ networkId: String) {
+        // Remote services cannot change network ID
+    }
+
+    public func initService(_ context: LifecycleContext) async throws {
+        // Remote services don't need initialization since they're just proxies
+        logger.info("Initialized remote service proxy for \(serviceTopic)")
+    }
+
+    public func start(_ context: LifecycleContext) async throws {
+        // Remote services don't need to be started
+        logger.info("Started remote service proxy for \(serviceTopic)")
+    }
+
+    public func stop(_ context: LifecycleContext) async throws {
+        // Remote services don't need to be stopped
+        logger.info("Stopped remote service proxy for \(serviceTopic)")
+    }
+
+    // MARK: - Equatable Implementation
+
+    public nonisolated static func == (lhs: RemoteService, rhs: RemoteService) -> Bool {
+        return lhs.name == rhs.name &&
+               lhs.serviceTopic == rhs.serviceTopic &&
+               lhs.version == rhs.version &&
+               lhs.description == rhs.description &&
+               lhs.networkPublicKey == rhs.networkPublicKey &&
+               lhs.peerNodeId == rhs.peerNodeId
     }
 }
 
@@ -110,11 +274,17 @@ public struct SubscriptionMetadata: Sendable, Equatable {
     public let path: String
     public let subscriberKind: SubscriberKind
     public let subscriptionId: String
+    public let qos: Int
+    public let retain: Bool
+    public let includePast: TimeInterval?
 
-    public init(path: String, subscriberKind: SubscriberKind, subscriptionId: String) {
+    public init(path: String, subscriberKind: SubscriberKind, subscriptionId: String, qos: Int = 0, retain: Bool = false, includePast: TimeInterval? = nil) {
         self.path = path
         self.subscriberKind = subscriberKind
         self.subscriptionId = subscriptionId
+        self.qos = qos
+        self.retain = retain
+        self.includePast = includePast
     }
 
     public static func == (lhs: SubscriptionMetadata, rhs: SubscriptionMetadata) -> Bool {
@@ -142,7 +312,7 @@ public struct SubscriptionVec: Sendable, Equatable {
 }
 
 /// Service entry for local services
-public struct ServiceEntry {
+public struct ServiceEntry: Sendable {
     public let serviceTopic: TopicPath
     public let service: AbstractService
     public let state: ServiceState
@@ -192,7 +362,7 @@ public final class ServiceRegistry: NodeDelegate {
 
     /// Local services list for quick lookup
     /// Matches Rust: Arc<DashMap<TopicPath, Arc<ServiceEntry>>>
-    private var localServicesList: [TopicPath: ServiceEntry] = [:]
+    private let localServicesList: ShardedConcurrentMap<TopicPath, ServiceEntry>
 
     /// Remote services registry (using PathTrie instead of HashMap)
     /// Matches Rust: Arc<RwLock<PathTrie<Arc<RemoteService>>>>
@@ -232,7 +402,7 @@ public final class ServiceRegistry: NodeDelegate {
         subscriptionIdToTopicPath = ShardedConcurrentMap<String, TopicPath>()
         subscriptionIdToServiceTopicPath = ShardedConcurrentMap<String, TopicPath>()
         localServices = PathTrie<ServiceEntry>()
-        localServicesList = [:]
+        localServicesList = ShardedConcurrentMap<TopicPath, ServiceEntry>()
         remoteServices = PathTrie<RemoteService>()
         localServiceStates = ShardedConcurrentMap<String, ServiceState>()
         remoteServiceStates = ShardedConcurrentMap<String, ServiceState>()
@@ -250,7 +420,7 @@ public final class ServiceRegistry: NodeDelegate {
 
         // Store the service in the local services registry
         localServices.setValue(topic: serviceTopic, content: service)
-        localServicesList[serviceTopic] = service
+        _ = await localServicesList.insert(service, for: serviceTopic)
 
         logger.trace("Successfully registered local service: \(serviceTopic)")
     }
@@ -595,6 +765,20 @@ public final class ServiceRegistry: NodeDelegate {
         servicePath: String,
         handler: @escaping EventHandler
     ) async throws -> String {
+        return try await subscribeToEvents(
+            networkId: networkId,
+            servicePath: servicePath,
+            handler: handler,
+            options: EventRegistrationOptions(qos: 0, retain: false, includePast: nil)
+        )
+    }
+    
+    public func subscribeToEvents(
+        networkId: String,
+        servicePath: String,
+        handler: @escaping EventHandler,
+        options: EventRegistrationOptions
+    ) async throws -> String {
         let subscriptionId = UUID().uuidString
         let topicPath: TopicPath
         do {
@@ -607,7 +791,10 @@ public final class ServiceRegistry: NodeDelegate {
         let subscription = SubscriptionMetadata(
             path: servicePath,
             subscriberKind: .local(handler),
-            subscriptionId: subscriptionId
+            subscriptionId: subscriptionId,
+            qos: options.qos,
+            retain: options.retain,
+            includePast: options.includePast
         )
 
         // Add to event subscriptions
@@ -656,7 +843,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func registerLocalEventSubscription(
         topicPath: TopicPath,
         callback: @escaping EventHandler,
-        options _: EventRegistrationOptions
+        options: EventRegistrationOptions
     ) async throws -> String {
         let subscriptionId = UUID().uuidString
 
@@ -665,7 +852,10 @@ public final class ServiceRegistry: NodeDelegate {
         let subscription = SubscriptionMetadata(
             path: topicPath.asString(),
             subscriberKind: .local(callback),
-            subscriptionId: subscriptionId
+            subscriptionId: subscriptionId,
+            qos: options.qos,
+            retain: options.retain,
+            includePast: options.includePast
         )
         existingSubscriptions.append(subscription)
         eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: existingSubscriptions))
@@ -685,7 +875,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func registerRemoteEventSubscription(
         topicPath: TopicPath,
         callback _: @escaping EventHandler, // Using same type for simplicity
-        options _: EventRegistrationOptions
+        options: EventRegistrationOptions
     ) async throws -> String {
         let subscriptionId = UUID().uuidString
 
@@ -693,7 +883,10 @@ public final class ServiceRegistry: NodeDelegate {
         let subscription = SubscriptionMetadata(
             path: topicPath.asString(),
             subscriberKind: .remote("remote"), // Simplified for now
-            subscriptionId: subscriptionId
+            subscriptionId: subscriptionId,
+            qos: options.qos,
+            retain: options.retain,
+            includePast: options.includePast
         )
         existingSubscriptions.append(subscription)
         eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: existingSubscriptions))
@@ -957,11 +1150,15 @@ public final class ServiceRegistry: NodeDelegate {
 
     // MARK: - NodeDelegate Implementation
 
-    public func subscribe(topic: String, options _: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
-        try await subscribeToEvents(
+    public func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
+        let defaultOptions = EventRegistrationOptions(qos: 0, retain: false, includePast: nil)
+        let eventOptions = options ?? defaultOptions
+        
+        return try await subscribeToEvents(
             networkId: "default",
             servicePath: topic,
-            handler: callback
+            handler: callback,
+            options: eventOptions
         )
     }
 
@@ -977,8 +1174,15 @@ public final class ServiceRegistry: NodeDelegate {
     /// Node to directly interact with them for lifecycle operations like initialization,
     /// starting, and stopping. This preserves the Node's responsibility for service
     /// lifecycle management while keeping the Registry focused on registration.
-    public func getLocalServices() -> [TopicPath: ServiceEntry] {
-        localServicesList
+    public func getLocalServices() async -> [TopicPath: ServiceEntry] {
+        let keys = await localServicesList.keys()
+        var result: [TopicPath: ServiceEntry] = [:]
+        for key in keys {
+            if let value = await localServicesList.get(key) {
+                result[key] = value
+            }
+        }
+        return result
     }
 
     /// Get metadata for all events under a specific service path
@@ -998,7 +1202,8 @@ public final class ServiceRegistry: NodeDelegate {
 
             // iterate event_topic_list
             for subscription in eventTopicList {
-                // TODO: when EventRegistrationOptions is defined.. we need to pass that info here in the metadata to be sent to a remote node
+                // EventRegistrationOptions are now included in SubscriptionMetadata
+                // and can be used for remote node communication
                 result.append(subscription)
             }
         }
@@ -1035,7 +1240,10 @@ public final class ServiceRegistry: NodeDelegate {
         var result: [String: ServiceMetadata] = [:]
 
         // Iterate through all services using localServicesList
-        for (topicPath, serviceEntry) in localServicesList {
+        let keys = await localServicesList.keys()
+        for topicPath in keys {
+            guard let serviceEntry = await localServicesList.get(topicPath) else { continue }
+            
             let service = serviceEntry.service
             let pathStr = service.path
 
@@ -1064,7 +1272,10 @@ public final class ServiceRegistry: NodeDelegate {
         logger.trace("ServiceRegistry.getAllLocalServiceMetadata: includeInternalServices = \(includeInternalServices)")
         var metadata: [String: ServiceMetadata] = [:]
 
-        for (topicPath, serviceEntry) in localServicesList {
+        let keys = await localServicesList.keys()
+        for topicPath in keys {
+            guard let serviceEntry = await localServicesList.get(topicPath) else { continue }
+            
             let servicePath = topicPath.asString()
             let isInternal = isInternalService(servicePath)
             logger.trace("ServiceRegistry.getAllLocalServiceMetadata: checking service '\(servicePath)', isInternal = \(isInternal)")

@@ -130,7 +130,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         try await registry.registerLocalService(serviceEntry)
 
         // Verify the service was registered
-        let services = registry.getLocalServices()
+        let services = await registry.getLocalServices()
         XCTAssertEqual(services.count, 1)
         XCTAssertNotNil(services[serviceTopic])
     }
@@ -155,7 +155,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         try await registry.registerLocalService(serviceEntry)
 
         // Verify the service was registered
-        let services = registry.getLocalServices()
+        let services = await registry.getLocalServices()
         XCTAssertEqual(services.count, 1)
     }
 
@@ -178,7 +178,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         try await registry.registerLocalService(entry2)
 
         // Verify both services were registered
-        let services = registry.getLocalServices()
+        let services = await registry.getLocalServices()
         XCTAssertEqual(services.count, 2)
         XCTAssertNotNil(services[topic1])
         XCTAssertNotNil(services[topic2])

@@ -2528,7 +2528,7 @@ public final class Node {
     /// Get local node information with current service metadata (GETTER ONLY)
     private func getLocalNodeInfo() async -> NodeInfo {
         // Get current services from the service registry with proper metadata including actions
-        let currentServices = serviceRegistry.getLocalServices()
+        let currentServices = await serviceRegistry.getLocalServices()
         let servicePaths = Array(currentServices.keys).map { $0.asString() }
 
         print("🔍 DEBUG: Found \(currentServices.count) local services")
@@ -2918,7 +2918,8 @@ public final class Node {
                     description: service.description,
                     networkPublicKey: Data(), // TODO: Get from peer info
                     peerNodeId: peerNodeId,
-                    actions: Dictionary(uniqueKeysWithValues: service.actions.map { ($0.name, $0) })
+                    actions: Dictionary(uniqueKeysWithValues: service.actions.map { ($0.name, $0) }),
+                    logger: logger
                 )
                 await serviceRegistry.registerRemoteService(remoteService)
             } catch {
