@@ -1578,13 +1578,6 @@ func ffi_create_transport(
 
 // MARK: - Additional Helper Functions for CBOR Encoding
 
-@inline(__always)
-func ffi_encode_ca_client_config(
-    _ config: CaClientConfigAll
-) async throws -> Data {
-    // This is a nonisolated helper that can be called from any context
-    return try CodableCBOREncoder().encode(config)
-}
 
 // MARK: - Copy-and-free helpers for FFI outputs
 
@@ -2830,7 +2823,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         if let provided = configCbor {
             cbor = provided
         } else {
-            cbor = try await ffi_encode_ca_client_config(config)
+            cbor = try CodableCBOREncoder().encode(config)
         }
         let nodeHandle = handle
         let clientHandle = try ffi_create_ca_client(nodeHandle, configCbor: cbor)
@@ -4461,9 +4454,9 @@ public enum FFITypesVectors {
         // Add response/error vectors to fully validate parity
         let enrollResp = CsrEnrollResponse(
             network_id: "test_network",
-            certificate_der: Array(repeating: 9, count: 1024),
-            issuing_ca_der: Array(repeating: 10, count: 512),
-            root_ca_der: Array(repeating: 11, count: 256),
+            certificate_der: Data(Array(repeating: 9, count: 1024)),
+            issuing_ca_der: Data(Array(repeating: 10, count: 512)),
+            root_ca_der: Data(Array(repeating: 11, count: 256)),
             expires_at: 1_757_894_422
         )
         try CodableCBOREncoder().encode(enrollResp)

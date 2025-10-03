@@ -368,7 +368,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Create revocation request
         let revokeRequest = RevokeRequest(
             network_id: "test_network",
-            certificate_serial: String(data: Data(certSerial), encoding: .utf8) ?? "unknown"
+            certificate_serial: Data(certSerial),
+            reason: "testing"
         )
         logger.debug("   ✅ Revocation request created")
 
