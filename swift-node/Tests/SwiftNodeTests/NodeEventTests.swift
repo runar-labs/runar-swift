@@ -7,7 +7,6 @@ import XCTest
 
 /// Node event publishing and subscription tests following the rules - no mocks, no shortcuts, real implementations
 final class NodeEventTests: XCTestCase {
-
     // Swift logger for trace-level logging
     private var testLogger: RunarLogger!
 
@@ -25,7 +24,7 @@ final class NodeEventTests: XCTestCase {
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("NodeEventTests"))
     }
-    
+
     private let logger = RunarLogger.root(component: .node)
     /// Test that verifies event publishing and subscription in the Node
     ///
@@ -193,9 +192,9 @@ final class TestEventService: AbstractService {
     let description: String = "Test event service for unit tests"
     let logger: RunarLogger
     var networkId: String?
-    
+
     init() {
-        self.logger = RunarLogger.root(component: .service)
+        logger = RunarLogger.root(component: .service)
     }
 
     func setNetworkId(_ networkId: String) {
@@ -204,7 +203,7 @@ final class TestEventService: AbstractService {
 
     func initService(_ context: LifecycleContext) async throws {
         // Register a trigger action that just returns success
-        try await context.registerAction("trigger") { payload, requestContext in
+        try await context.registerAction("trigger") { _, _ in
             AnyValue.primitive("triggered")
         }
     }

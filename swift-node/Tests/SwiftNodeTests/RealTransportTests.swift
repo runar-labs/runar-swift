@@ -15,14 +15,14 @@ final class RealTransportTests: XCTestCase {
         var state: ServiceState = .created
         var logger: RunarLogger = .root(component: .service)
         func initService(_ ctx: LifecycleContext) async throws {
-            try await ctx.registerAction("echo") { payload, requestContext in
+            try await ctx.registerAction("echo") { payload, _ in
                 payload ?? AnyValue.null()
             }
         }
 
         func start(_: LifecycleContext) async throws {}
         func stop(_: LifecycleContext) async throws {}
-        
+
         func setNetworkId(_ networkId: String) {
             self.networkId = networkId
         }

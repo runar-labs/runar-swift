@@ -8,13 +8,12 @@ import XCTest
 /// Basic Node tests following the rules - no mocks, no shortcuts, real implementations
 @MainActor
 final class NodeBasicTests: XCTestCase {
-    
     // Swift logger for trace-level logging
     private var testLogger: RunarLogger!
-    
+
     override func setUp() async throws {
         try await super.setUp()
-        
+
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
             level: .trace,
@@ -22,10 +21,11 @@ final class NodeBasicTests: XCTestCase {
             includeComponent: true,
             includeContext: true
         )
-        
+
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("NodeBasicTests"))
     }
+
     /// Test that verifies basic node creation functionality
     ///
     /// INTENTION: This test validates that the Node can be properly:
@@ -115,9 +115,9 @@ final class TestMathService: AbstractService {
     let description: String = "Test math service for unit tests"
     let logger: RunarLogger
     var networkId: String?
-    
+
     init() {
-        self.logger = RunarLogger.root(component: .service)
+        logger = RunarLogger.root(component: .service)
     }
 
     func setNetworkId(_ networkId: String) {
@@ -126,12 +126,12 @@ final class TestMathService: AbstractService {
 
     func initService(_ context: LifecycleContext) async throws {
         // Register math actions
-        try await context.registerAction("add") { payload, requestContext in
+        try await context.registerAction("add") { _, _ in
             // Simple addition: return a fixed result for testing
             AnyValue.primitive(8.0)
         }
 
-        try await context.registerAction("multiply") { payload, requestContext in
+        try await context.registerAction("multiply") { _, _ in
             // Simple multiplication: return a fixed result for testing
             AnyValue.primitive(28.0)
         }

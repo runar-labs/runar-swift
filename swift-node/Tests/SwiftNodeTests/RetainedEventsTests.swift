@@ -129,7 +129,7 @@ final class RetainedEventsTests: XCTestCase {
         expectation.isInverted = true // This expectation should NOT be fulfilled
         let subscriptionOptions = EventRegistrationOptions(includePast: 1) // Look back 1 second
 
-        let subscriptionId = try await node.subscribe(topic: "test/short", options: subscriptionOptions) { data in
+        let subscriptionId = try await node.subscribe(topic: "test/short", options: subscriptionOptions) { _ in
             // This should not be called since the event should be expired
             expectation.fulfill()
         }
@@ -155,7 +155,7 @@ final class RetainedEventsTests: XCTestCase {
 
         // Publish many events with retention to test capacity limits
         let publishOptions = PublishOptions(retainFor: 60) // Retain for 60 seconds
-        for i in 0..<20 { // Publish 20 events (more than the default capacity of 16)
+        for i in 0 ..< 20 { // Publish 20 events (more than the default capacity of 16)
             let eventData = AnyValue.primitive("event \(i)")
             try await node.publish(topic: "test/capacity", data: eventData, options: publishOptions)
         }
@@ -183,4 +183,3 @@ final class RetainedEventsTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 1.0)
     }
 }
-

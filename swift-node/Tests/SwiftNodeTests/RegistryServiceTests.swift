@@ -13,13 +13,12 @@ import XCTest
 /// Registry Service tests following the rules - no mocks, no shortcuts, real implementations
 @MainActor
 final class RegistryServiceTests: XCTestCase {
-    
     // Swift logger for trace-level logging
     private var testLogger: RunarLogger!
-    
+
     override func setUp() async throws {
         try await super.setUp()
-        
+
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
             level: .trace,
@@ -27,11 +26,11 @@ final class RegistryServiceTests: XCTestCase {
             includeComponent: true,
             includeContext: true
         )
-        
+
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("RegistryServiceTests"))
     }
-    
+
     /// Test that the Registry Service correctly lists all services
     ///
     /// INTENTION: This test validates that:
@@ -44,20 +43,20 @@ final class RegistryServiceTests: XCTestCase {
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             // Start the service
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Use the request method to query the registry service
             let servicesAv: AnyValue = try await node.request("$registry/services/list", payload: nil, networkId: nil)
-            
+
             // Convert AnyValue list into [ServiceMetadata]
             let listArray = try await servicesAv.asType() as [AnyValue]
             var services: [SwiftNode.ServiceMetadata] = []
@@ -65,18 +64,18 @@ final class RegistryServiceTests: XCTestCase {
                 let service = try await av.asType() as SwiftNode.ServiceMetadata
                 services.append(service)
             }
-            
+
             // Parse the response to verify it contains our registered services
             // services is now [ServiceMetadata]
             // The services list should contain at least the math service (internal services are filtered out by default)
             XCTAssertGreaterThanOrEqual(services.count, 1, "Expected at least 1 service, got \(services.count)")
-            
+
             // Verify the math service is in the list by checking the service_path field
             let hasMathService = services.contains { service in
                 service.servicePath == "math"
             }
             XCTAssertTrue(hasMathService, "Math service not found in registry service response")
-            
+
             // Optionally, validate structure of ServiceMetadata for at least one service
             let foundMathService = services.first { service in
                 service.servicePath == "math"
@@ -85,7 +84,7 @@ final class RegistryServiceTests: XCTestCase {
             XCTAssertEqual(foundMathService?.name, "Math", "Math service name mismatch")
             XCTAssertEqual(foundMathService?.version, "1.0.0", "Math service version mismatch")
         }
-        
+
         // Wait for the task to complete with timeout
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
@@ -103,7 +102,7 @@ final class RegistryServiceTests: XCTestCase {
             XCTFail("Test timed out or failed: \(error)")
         }
     }
-    
+
     /// Test that the Registry Service can return detailed service information
     ///
     /// INTENTION: This test validates that:
@@ -115,17 +114,17 @@ final class RegistryServiceTests: XCTestCase {
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math Service", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             // Start the services to check that we get the correct state
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Debug log available handlers using logger
             let listAv: AnyValue = try await node.request("$registry/services/list", payload: nil, networkId: nil)
             let listArray = try await listAv.asType() as [AnyValue]
@@ -135,17 +134,17 @@ final class RegistryServiceTests: XCTestCase {
                 listResponse.append(service)
             }
             testLogger.debug("Available services: \(listResponse)")
-            
+
             // Use the request method to query the registry service for the math service
             // Note: We should use the correct parameter path format
             let responseAv: AnyValue = try await node.request("$registry/services/math", payload: nil, networkId: nil)
             let response: SwiftNode.ServiceMetadata = try await responseAv.asType() as SwiftNode.ServiceMetadata
             testLogger.debug("Service info response: \(response)")
-            
+
             // Dump the complete response data for debugging
             // 'response' is already ServiceMetadata, so no need for 'if let Some'
             testLogger.debug("Response data type: \(response)")
-            
+
             testLogger.debug("ServiceMetadata: \(response)")
             // Example assertions:
             XCTAssertEqual(response.servicePath, "math")
@@ -153,7 +152,7 @@ final class RegistryServiceTests: XCTestCase {
             XCTAssertEqual(response.version, "1.0.0")
             XCTAssertEqual(response.actions.count, 4)
         }
-        
+
         // Wait for the task to complete with timeout
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
@@ -171,7 +170,7 @@ final class RegistryServiceTests: XCTestCase {
             XCTFail("Test timed out or failed: \(error)")
         }
     }
-    
+
     /// Test that the Registry Service provides just the state of a service
     ///
     /// INTENTION: This test validates that:
@@ -182,21 +181,21 @@ final class RegistryServiceTests: XCTestCase {
         let timeoutTask = Task {
             // Create a test logger for debugging
             // Use testLogger from setUp
-            
+
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             // Start the service
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Use the request method to query the registry service for the math service state (local)
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -206,14 +205,14 @@ final class RegistryServiceTests: XCTestCase {
             let response: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: response) ?? .created
             testLogger.debug("Initial service state response: \(response)")
-            
+
             // Parse the response to verify it contains service state
             XCTAssertEqual(
                 serviceState,
                 ServiceState.running,
                 "Expected service state to be 'RUNNING'"
             )
-            
+
             // Test non-existent service (should return null, not throw error)
             let nonExistentResult = try await node.request(
                 "$registry/services/not_existent/state",
@@ -221,11 +220,11 @@ final class RegistryServiceTests: XCTestCase {
                 networkId: nil
             )
             testLogger.debug("Service state after start: \(nonExistentResult)")
-            
+
             // Should return null for non-existent service
             XCTAssertTrue(nonExistentResult.isNull, "Expected null for non-existent service")
         }
-        
+
         // Wait for the task to complete with timeout
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
@@ -243,7 +242,7 @@ final class RegistryServiceTests: XCTestCase {
             XCTFail("Test timed out or failed: \(error)")
         }
     }
-    
+
     /// Test that the Registry Service properly handles missing path parameters
     ///
     /// INTENTION: This test validates that:
@@ -254,21 +253,21 @@ final class RegistryServiceTests: XCTestCase {
         let timeoutTask = Task {
             // Create a test logger for debugging
             // Use testLogger from setUp
-            
+
             // Create a node with a test network ID
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             // Start the node to ensure services are initialized
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Make an invalid request with missing service_path parameter
             // The registry service expects a path parameter in the URL, but we're using an invalid path
             // that the router won't be able to match to a template with a parameter
@@ -281,7 +280,7 @@ final class RegistryServiceTests: XCTestCase {
                 testLogger.debug("Error for missing parameter: \(error)")
                 // Request properly failed, error logged above
             }
-            
+
             // Test with an invalid path format for service_path/state endpoint
             do {
                 let stateResponse: AnyValue = try await node.request(
@@ -297,7 +296,7 @@ final class RegistryServiceTests: XCTestCase {
                 // Request properly failed, error logged above
             }
         }
-        
+
         // Wait for the task to complete with timeout
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
@@ -326,20 +325,20 @@ final class RegistryServiceTests: XCTestCase {
 func createNodeTestConfig() async throws -> NodeConfig {
     // Create test credentials
     let (mobileKeysManager, defaultNetworkId) = try await createTestMobileKeys()
-    
+
     let (nodeKeysManager, _nodeId) = try await createTestNodeKeys(
         mobileKeysManager: mobileKeysManager,
         networkId: defaultNetworkId
     )
-    
+
     // Create test label resolver config
     let networkPublicKey = Data() // Placeholder for now
     let labelConfig = createTestLabelResolverConfig(networkPublicKey: networkPublicKey)
-    
+
     let config = NodeConfig(defaultNetworkId: defaultNetworkId)
         .withKeyManager(nodeKeysManager)
         .withLabelResolverConfig(labelConfig)
-    
+
     return config
 }
 
@@ -351,16 +350,16 @@ func createTestMobileKeys() async throws -> (MobileKeyManager, String) {
 }
 
 /// Create test node keys
-func createTestNodeKeys(mobileKeysManager: MobileKeyManager, networkId: String) async throws -> (NodeKeyManager, String) {
+func createTestNodeKeys(mobileKeysManager _: MobileKeyManager, networkId _: String) async throws -> (NodeKeyManager, String) {
     let nodeKeysManager = try await NodeKeyManager()
     let nodeId = "test-node-id"
     return (nodeKeysManager, nodeId)
 }
 
 /// Create test label resolver config
-func createTestLabelResolverConfig(networkPublicKey: Data) -> LabelResolverConfig {
+func createTestLabelResolverConfig(networkPublicKey _: Data) -> LabelResolverConfig {
     // Create a simple test config
-    return LabelResolverConfig(labelMappings: [:])
+    LabelResolverConfig(labelMappings: [:])
 }
 
 // MARK: - Test Service Implementation
@@ -382,111 +381,111 @@ final class MathService: AbstractService {
     let description: String = "Math service for testing"
     let logger: RunarLogger
     var networkId: String?
-    
+
     private var counter: Int = 0
-    
+
     init(name: String, path: String, logger: RunarLogger) {
         self.name = name
         self.path = path
         self.logger = logger
     }
-    
+
     func setNetworkId(_ networkId: String) {
         self.networkId = networkId
     }
-    
+
     func initService(_ context: LifecycleContext) async throws {
         // Log the service information being initialized
         context.logger.trace("Initializing MathService with name: \(name), path: \(path)")
-        
+
         // Register add action
         context.logger.trace("Registering 'add' action for path: \(path)")
         try await context.registerAction("add") { payload, requestContext in
             try await self.handleAdd(payload: payload, context: requestContext)
         }
-        
+
         // Register subtract action
         context.logger.trace("Registering 'subtract' action for path: \(path)")
         try await context.registerAction("subtract") { payload, requestContext in
             try await self.handleSubtract(payload: payload, context: requestContext)
         }
-        
+
         // Register multiply action
         context.logger.trace("Registering 'multiply' action for path: \(path)")
         try await context.registerAction("multiply") { payload, requestContext in
             try await self.handleMultiply(payload: payload, context: requestContext)
         }
-        
+
         // Register divide action
         context.logger.trace("Registering 'divide' action for path: \(path)")
         try await context.registerAction("divide") { payload, requestContext in
             try await self.handleDivide(payload: payload, context: requestContext)
         }
-        
+
         // Note: Event subscription would be handled by the service registry
-        
+
         // Log successful initialization
         context.logger.trace("MathService initialized")
     }
-    
+
     func start(_ context: LifecycleContext) async throws {
         // Reset counter on start
         counter = 0
         context.logger.trace("MathService started")
     }
-    
+
     func stop(_ context: LifecycleContext) async throws {
         context.logger.trace("MathService stopped")
     }
-    
+
     // MARK: - Action Handlers
-    
+
     private func handleAdd(payload: AnyValue?, context: RequestContext) async throws -> AnyValue {
         context.logger.trace("Handling add operation request")
         guard let data = payload else {
             throw ServiceRegistryError.serviceNotFound("params are required")
         }
-        
+
         let map = try await data.asType() as [String: AnyValue]
         let a = try await map["a"]?.asType() as Double? ?? 0.0
         let b = try await map["b"]?.asType() as Double? ?? 0.0
-        
+
         let result = try await add(a: a, b: b, context: context)
         context.logger.trace("Addition successful: \(a) + \(b) = \(result)")
         return AnyValue.primitive(result)
     }
-    
+
     private func handleSubtract(payload: AnyValue?, context: RequestContext) async throws -> AnyValue {
         context.logger.trace("Handling subtract operation request")
         let data = payload ?? AnyValue.null()
         let map = try await data.asType() as [String: AnyValue]
         let a = try await map["a"]?.asType() as Double? ?? 0.0
         let b = try await map["b"]?.asType() as Double? ?? 0.0
-        
+
         let result = subtract(a: a, b: b, context: context)
         context.logger.trace("Subtraction successful: \(a) - \(b) = \(result)")
         return AnyValue.primitive(result)
     }
-    
+
     private func handleMultiply(payload: AnyValue?, context: RequestContext) async throws -> AnyValue {
         context.logger.trace("Handling multiply operation request")
         let data = payload ?? AnyValue.null()
         let map = try await data.asType() as [String: AnyValue]
         let a = try await map["a"]?.asType() as Double? ?? 0.0
         let b = try await map["b"]?.asType() as Double? ?? 0.0
-        
+
         let result = multiply(a: a, b: b, context: context)
         context.logger.trace("Multiplication successful: \(a) * \(b) = \(result)")
         return AnyValue.primitive(result)
     }
-    
+
     private func handleDivide(payload: AnyValue?, context: RequestContext) async throws -> AnyValue {
         context.logger.trace("Handling divide operation request")
         let data = payload ?? AnyValue.null()
         let map = try await data.asType() as [String: AnyValue]
         let a = try await map["a"]?.asType() as Double? ?? 0.0
         let b = try await map["b"]?.asType() as Double? ?? 0.0
-        
+
         do {
             let result = try divide(a: a, b: b, context: context)
             context.logger.trace("Division successful: \(a) / \(b) = \(result)")
@@ -496,70 +495,70 @@ final class MathService: AbstractService {
             throw error
         }
     }
-    
+
     // MARK: - Math Operations
-    
+
     private func add(a: Double, b: Double, context: RequestContext) async throws -> Double {
         // Increment the counter
         counter += 1
-        
+
         // Use the passed context for logging
         context.logger.debug("Adding \(a) + \(b)")
-        
+
         // Perform the addition
         let result = a + b
-        
+
         // Publish event
         try await context.nodeDelegate.publish(
             topic: "math/added",
             data: AnyValue.primitive(result)
         )
-        
+
         return result
     }
-    
+
     private func subtract(a: Double, b: Double, context: RequestContext) -> Double {
         // Increment the counter
         counter += 1
-        
+
         // Use the passed context for logging
         context.logger.debug("Subtracting \(a) - \(b)")
-        
+
         // Perform the subtraction
         return a - b
     }
-    
+
     private func multiply(a: Double, b: Double, context: RequestContext) -> Double {
         // Increment the counter
         counter += 1
-        
+
         // Use the passed context for logging
         context.logger.debug("Multiplying \(a) * \(b)")
-        
+
         // Perform the multiplication
         return a * b
     }
-    
+
     private func divide(a: Double, b: Double, context: RequestContext) throws -> Double {
         // Check for division by zero
         if b == 0.0 {
             context.logger.error("Division by zero attempted: \(a) / \(b)")
             throw ServiceRegistryError.serviceNotFound("Division by zero")
         }
-        
+
         // Increment the counter
         counter += 1
-        
+
         // Use the passed context for logging
         context.logger.debug("Dividing \(a) / \(b)")
-        
+
         // Perform the division
         return a / b
     }
-    
+
     /// Get the operation counter
     func getCounter() -> Int {
-        return counter
+        counter
     }
 }
 
@@ -570,19 +569,19 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Verify service is in Running state
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -592,9 +591,9 @@ extension RegistryServiceTests {
             let initialState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: initialState) ?? .unknown
             testLogger.debug("Initial service state: \(serviceState)")
-            
+
             XCTAssertEqual(serviceState, ServiceState.running, "Service should be in Running state")
-            
+
             // Pause the service
             let pauseResponseAv: AnyValue = try await node.request(
                 "$registry/services/math/pause",
@@ -606,7 +605,7 @@ extension RegistryServiceTests {
             let pausedState = ServiceState(rawValue: pausedStateString) ?? .unknown
             testLogger.debug("Pause response: \(pausedState)")
             XCTAssertEqual(pausedState, ServiceState.paused, "Service should be paused")
-            
+
             // Verify service is now in Paused state
             let stateAfterPauseAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -616,9 +615,9 @@ extension RegistryServiceTests {
             let currentState: String = try await stateAfterPauseAv.asType() as String
             let serviceStateAfterPause = ServiceState(rawValue: currentState) ?? .unknown
             testLogger.debug("Service state after pause: \(serviceStateAfterPause)")
-            
+
             XCTAssertEqual(serviceStateAfterPause, ServiceState.paused, "Service should be in Paused state")
-            
+
             // Try to pause again (should fail)
             do {
                 _ = try await node.request(
@@ -632,7 +631,7 @@ extension RegistryServiceTests {
                 // This is expected - pausing a paused service should fail
             }
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -649,26 +648,26 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // First pause the service
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
                 networkId: nil
             )
-            
+
             // Verify service is in Paused state
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -678,9 +677,9 @@ extension RegistryServiceTests {
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
             testLogger.debug("Service state before resume: \(serviceState)")
-            
+
             XCTAssertEqual(serviceState, ServiceState.paused, "Service should be in Paused state")
-            
+
             // Resume the service
             let resumeResponseAv: AnyValue = try await node.request(
                 "$registry/services/math/resume",
@@ -692,7 +691,7 @@ extension RegistryServiceTests {
             let resumedState = ServiceState(rawValue: resumedStateString) ?? .unknown
             testLogger.debug("Resume response: \(resumedState)")
             XCTAssertEqual(resumedState, ServiceState.running, "Service should be resumed")
-            
+
             // Verify service is now in Running state
             let stateAfterResumeAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -702,9 +701,9 @@ extension RegistryServiceTests {
             let currentState: String = try await stateAfterResumeAv.asType() as String
             let serviceStateAfterResume = ServiceState(rawValue: currentState) ?? .unknown
             testLogger.debug("Service state after resume: \(serviceStateAfterResume)")
-            
+
             XCTAssertEqual(serviceStateAfterResume, ServiceState.running, "Service should be in Running state")
-            
+
             // Try to resume again (should fail)
             do {
                 _ = try await node.request(
@@ -718,7 +717,7 @@ extension RegistryServiceTests {
                 // This is expected - resuming a running service should fail
             }
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -735,26 +734,26 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Pause the service first
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
                 networkId: nil
             )
-            
+
             // Verify service is paused
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -764,7 +763,7 @@ extension RegistryServiceTests {
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
             XCTAssertEqual(serviceState, ServiceState.paused, "Service should be paused")
-            
+
             // Try to make a request to the paused service - should fail
             do {
                 _ = try await node.request(
@@ -779,7 +778,7 @@ extension RegistryServiceTests {
                 XCTAssertTrue(error.localizedDescription.contains("paused") || error.localizedDescription.contains("Paused"), "Error should mention service is paused")
             }
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -796,24 +795,24 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Try to pause a non-existent service - should return null
             let pauseResponseAv: AnyValue = try await node.request(
                 "$registry/services/nonexistent/pause",
                 payload: nil,
                 networkId: nil
             )
-            
+
             testLogger.debug("Pause response for non-existent service: \(pauseResponseAv)")
             XCTAssertTrue(pauseResponseAv.isNull, "Pausing non-existent service should return null")
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -830,24 +829,24 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Try to resume a non-existent service - should return null
             let resumeResponseAv: AnyValue = try await node.request(
                 "$registry/services/nonexistent/resume",
                 payload: nil,
                 networkId: nil
             )
-            
+
             testLogger.debug("Resume response for non-existent service: \(resumeResponseAv)")
             XCTAssertTrue(resumeResponseAv.isNull, "Resuming non-existent service should return null")
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -864,19 +863,19 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Verify service is running
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -886,7 +885,7 @@ extension RegistryServiceTests {
             let runningState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: runningState) ?? .unknown
             XCTAssertEqual(serviceState, ServiceState.running, "Service should be running")
-            
+
             // Try to resume an already running service - should fail
             do {
                 _ = try await node.request(
@@ -901,7 +900,7 @@ extension RegistryServiceTests {
                 XCTAssertTrue(error.localizedDescription.contains("running") || error.localizedDescription.contains("Running"), "Error should mention service is running")
             }
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -918,26 +917,26 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             // Create a test service
             let mathService = MathService(name: "Math", path: "math", logger: testLogger.child(component: .custom("MathService")))
-            
+
             // Add the service to the node
             try await node.addService(mathService)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Pause the service first
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
                 networkId: nil
             )
-            
+
             // Verify service is paused
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
@@ -947,7 +946,7 @@ extension RegistryServiceTests {
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
             XCTAssertEqual(serviceState, ServiceState.paused, "Service should be paused")
-            
+
             // Try to pause an already paused service - should fail
             do {
                 _ = try await node.request(
@@ -962,7 +961,7 @@ extension RegistryServiceTests {
                 XCTAssertTrue(error.localizedDescription.contains("paused") || error.localizedDescription.contains("Paused"), "Error should mention service is paused")
             }
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -979,13 +978,13 @@ extension RegistryServiceTests {
         // Wrap the test in a timeout to prevent it from hanging
         let timeoutTask = Task {
             // Use testLogger from setUp
-            
+
             let config = try await createNodeTestConfig()
             let node = try await Node.new(config: config)
-            
+
             try await node.start()
             try await node.waitForServicesToStart()
-            
+
             // Try to make a request to a non-existent service - should fail
             do {
                 _ = try await node.request(
@@ -1000,7 +999,7 @@ extension RegistryServiceTests {
                 XCTAssertTrue(error.localizedDescription.contains("not found") || error.localizedDescription.contains("actionNotFound"), "Error should mention service not found")
             }
         }
-        
+
         do {
             _ = try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -1026,4 +1025,3 @@ extension Array {
         return result
     }
 }
-

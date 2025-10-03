@@ -2,6 +2,84 @@ import Foundation
 import RunarSerializer
 import SwiftCommon
 
+// MARK: - RemoteService
+
+/// Remote service instance representing a service hosted by a remote peer
+public struct RemoteService: Sendable, Equatable {
+    /// Service metadata
+    public let name: String
+    public let serviceTopic: TopicPath
+    public let version: String
+    public let description: String
+    public let networkPublicKey: Data
+
+    /// Remote peer information
+    public let peerNodeId: String
+
+    /// Service capabilities
+    public let actions: [String: ActionMetadata]
+
+    public init(
+        name: String,
+        serviceTopic: TopicPath,
+        version: String,
+        description: String,
+        networkPublicKey: Data,
+        peerNodeId: String,
+        actions: [String: ActionMetadata]
+    ) {
+        self.name = name
+        self.serviceTopic = serviceTopic
+        self.version = version
+        self.description = description
+        self.networkPublicKey = networkPublicKey
+        self.peerNodeId = peerNodeId
+        self.actions = actions
+    }
+
+    /// Create RemoteService instances from a list of service metadata.
+    /// This matches the Rust RemoteService::create_from_capabilities implementation.
+    public static func createFromCapabilities(
+        services: [ServiceMetadata],
+        peerNodeId: String,
+        requestTimeoutMs _: UInt64 = 5000
+    ) async throws -> [RemoteService] {
+        var remoteServices: [RemoteService] = []
+
+        for serviceMetadata in services {
+            // Create a topic path using the service path (matching Rust pattern)
+            let serviceTopic: TopicPath
+            do {
+                serviceTopic = try TopicPath.new(serviceMetadata.servicePath, defaultNetwork: serviceMetadata.networkId)
+            } catch {
+                // Skip invalid service paths (matching Rust pattern)
+                continue
+            }
+
+            // Convert actions array to dictionary (matching Rust pattern)
+            var actionsDict: [String: ActionMetadata] = [:]
+            for action in serviceMetadata.actions {
+                actionsDict[action.name] = action
+            }
+
+            // Create the remote service (matching Rust pattern)
+            let remoteService = RemoteService(
+                name: serviceMetadata.name,
+                serviceTopic: serviceTopic,
+                version: serviceMetadata.version,
+                description: serviceMetadata.description,
+                networkPublicKey: Data(), // TODO: Should be resolved from keystore
+                peerNodeId: peerNodeId,
+                actions: actionsDict
+            )
+
+            remoteServices.append(remoteService)
+        }
+
+        return remoteServices
+    }
+}
+
 // MARK: - Service Registry Types
 
 // ServiceState is defined in AbstractService.swift
@@ -83,26 +161,12 @@ public struct ServiceEntry {
     }
 }
 
-/// Remote service entry
-public struct RemoteService: Sendable, Equatable {
-    public let serviceTopic: TopicPath
-    public let nodeId: String
-    public let state: ServiceState
-
-    public init(serviceTopic: TopicPath, nodeId: String, state: ServiceState = .initialized) {
-        self.serviceTopic = serviceTopic
-        self.nodeId = nodeId
-        self.state = state
-    }
-}
-
 /// Service registry implementation matching Rust structure
 @MainActor
 public final class ServiceRegistry: NodeDelegate {
     // MARK: - Core Properties
 
     /// Main-actor isolation provides thread-safety for registry state
-    
 
     /// Local action handlers organized by path (using PathTrie instead of HashMap)
     /// Store both the handler and the original registration topic path for parameter extraction
@@ -150,7 +214,7 @@ public final class ServiceRegistry: NodeDelegate {
     public let logger: RunarLogger
 
     /// Node delegate for handling remote requests
-    internal weak var nodeDelegate: NodeDelegate?
+    weak var nodeDelegate: NodeDelegate?
 
     // MARK: - Initialization
 
@@ -162,17 +226,17 @@ public final class ServiceRegistry: NodeDelegate {
     public init(logger: RunarLogger, nodeDelegate: NodeDelegate? = nil) {
         self.logger = logger
         self.nodeDelegate = nodeDelegate
-        self.localActionHandlers = PathTrie<LocalActionEntryValue>()
-        self.remoteActionHandlers = PathTrie<[ActionHandler]>()
-        self.eventSubscriptions = PathTrie<SubscriptionVec>()
-        self.subscriptionIdToTopicPath = ShardedConcurrentMap<String, TopicPath>()
-        self.subscriptionIdToServiceTopicPath = ShardedConcurrentMap<String, TopicPath>()
-        self.localServices = PathTrie<ServiceEntry>()
-        self.localServicesList = [:]
-        self.remoteServices = PathTrie<RemoteService>()
-        self.localServiceStates = ShardedConcurrentMap<String, ServiceState>()
-        self.remoteServiceStates = ShardedConcurrentMap<String, ServiceState>()
-        self.remotePeerSubscriptions = ShardedConcurrentMap<String, ShardedConcurrentMap<String, String>>()
+        localActionHandlers = PathTrie<LocalActionEntryValue>()
+        remoteActionHandlers = PathTrie<[ActionHandler]>()
+        eventSubscriptions = PathTrie<SubscriptionVec>()
+        subscriptionIdToTopicPath = ShardedConcurrentMap<String, TopicPath>()
+        subscriptionIdToServiceTopicPath = ShardedConcurrentMap<String, TopicPath>()
+        localServices = PathTrie<ServiceEntry>()
+        localServicesList = [:]
+        remoteServices = PathTrie<RemoteService>()
+        localServiceStates = ShardedConcurrentMap<String, ServiceState>()
+        remoteServiceStates = ShardedConcurrentMap<String, ServiceState>()
+        remotePeerSubscriptions = ShardedConcurrentMap<String, ShardedConcurrentMap<String, String>>()
     }
 
     // MARK: - Local Service Management
@@ -190,7 +254,6 @@ public final class ServiceRegistry: NodeDelegate {
 
         logger.trace("Successfully registered local service: \(serviceTopic)")
     }
-
 
     /// Update local service state
     public func updateLocalServiceState(servicePath: String, newState: ServiceState) async throws {
@@ -240,7 +303,7 @@ public final class ServiceRegistry: NodeDelegate {
                 servicePath: serviceEntry.serviceTopic.asString(),
                 newState: ServiceState.initialized
             )
-            
+
             // Then start the service (begins active operations)
             print("🔍 DEBUG: Starting service: \(serviceEntry.serviceTopic.asString())")
             try await serviceEntry.service.start(context)
@@ -253,12 +316,12 @@ public final class ServiceRegistry: NodeDelegate {
 
         logger.trace("All local services started")
     }
-    
+
     /// Get all entries for a specific network
     public func getAllEntries(networkId: String) -> [ServiceEntry] {
-        return localServices.getAllEntries(networkId: networkId)
+        localServices.getAllEntries(networkId: networkId)
     }
-    
+
     /// Update service state only if the transition is valid
     public func updateLocalServiceStateIfValid(servicePath: TopicPath, newState: ServiceState, currentState: ServiceState) async throws {
         // Validate the state transition
@@ -288,7 +351,7 @@ public final class ServiceRegistry: NodeDelegate {
             )
         }
     }
-    
+
     /// Validate that a service can be paused
     public func validatePauseTransition(servicePath: TopicPath) async throws {
         let currentState = await getLocalServiceState(servicePath: servicePath)
@@ -296,7 +359,7 @@ public final class ServiceRegistry: NodeDelegate {
         case .some(.running):
             // Valid state for pausing
             return
-        case .some(let state):
+        case let .some(state):
             // Invalid state for pausing
             throw ServiceRegistryError.invalidStateTransition(
                 "Cannot pause service in \(state.rawValue) state. Service must be in Running state."
@@ -306,7 +369,7 @@ public final class ServiceRegistry: NodeDelegate {
             throw ServiceRegistryError.serviceNotFound("Service not found: \(servicePath.asString())")
         }
     }
-    
+
     /// Validate that a service can be resumed
     public func validateResumeTransition(servicePath: TopicPath) async throws {
         let currentState = await getLocalServiceState(servicePath: servicePath)
@@ -314,7 +377,7 @@ public final class ServiceRegistry: NodeDelegate {
         case .some(.paused):
             // Valid state for resuming
             return
-        case .some(let state):
+        case let .some(state):
             // Invalid state for resuming
             throw ServiceRegistryError.invalidStateTransition(
                 "Cannot resume service in \(state.rawValue) state. Service must be in Paused state."
@@ -355,29 +418,6 @@ public final class ServiceRegistry: NodeDelegate {
     }
 
     // MARK: - Remote Service Management
-
-    /// Register a remote service
-    ///
-    /// INTENTION: Register a service that exists on a remote node, making it available for local requests.
-    public func registerRemoteService(_ service: RemoteService) async -> Bool {
-        let serviceTopic = service.serviceTopic
-        let servicePath = service.serviceTopic.asString()
-        let peerNodeId = service.nodeId
-
-        logger.trace("Registering remote service: \(servicePath) from peer: \(peerNodeId)")
-
-        // Add to remote services using PathTrie
-        let matches = remoteServices.find(topic: serviceTopic)
-        
-        if matches.isEmpty {
-            // No existing services for this topic
-            remoteServices.setValue(topic: serviceTopic, content: service)
-            return true
-        } else {
-            logger.warning("Service already exists for topic: \(serviceTopic)")
-            return false
-        }
-    }
 
     /// Remove a remote service
     ///
@@ -616,7 +656,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func registerLocalEventSubscription(
         topicPath: TopicPath,
         callback: @escaping EventHandler,
-        options: EventRegistrationOptions
+        options _: EventRegistrationOptions
     ) async throws -> String {
         let subscriptionId = UUID().uuidString
 
@@ -644,8 +684,8 @@ public final class ServiceRegistry: NodeDelegate {
     /// INTENTION: Register a callback to be invoked when events are published from remote nodes.
     public func registerRemoteEventSubscription(
         topicPath: TopicPath,
-        callback: @escaping EventHandler, // Using same type for simplicity
-        options: EventRegistrationOptions
+        callback _: @escaping EventHandler, // Using same type for simplicity
+        options _: EventRegistrationOptions
     ) async throws -> String {
         let subscriptionId = UUID().uuidString
 
@@ -715,7 +755,7 @@ public final class ServiceRegistry: NodeDelegate {
                 if seenIds.contains(subscription.subscriptionId) {
                     continue
                 }
-                if case .local(let handler) = subscription.subscriberKind {
+                if case let .local(handler) = subscription.subscriberKind {
                     seenIds.insert(subscription.subscriptionId)
                     result.append((subscription.subscriptionId, handler, subscription))
                 }
@@ -842,34 +882,34 @@ public final class ServiceRegistry: NodeDelegate {
     // NOTE: ServiceRegistry does NOT have a request method in Rust
     // All request routing is handled by the Node directly
 
-    public func remoteRequest(path: String, payload: AnyValue?, networkId: String) async throws -> AnyValue {
+    public func remoteRequest(path _: String, payload _: AnyValue?, networkId _: String, options _: RequestOptions?) async throws -> AnyValue {
         // This should not be called directly on ServiceRegistry
         // It should be called on the Node which implements the actual remote request logic
         throw ServiceRegistryError.actionNotFound("ServiceRegistry.remoteRequest should not be called directly")
     }
 
     // MARK: - Path Parameter Extraction
-    
+
     /// Extract path parameters from a requested path using a handler path template
     private func extractPathParams(requestedPath: String, handlerPath: String) -> [String: String] {
         let requestedSegments = requestedPath.split(separator: "/")
         let handlerSegments = handlerPath.split(separator: "/")
-        
+
         var pathParams: [String: String] = [:]
-        
+
         // Match segments and extract parameters
         for (index, handlerSegment) in handlerSegments.enumerated() {
             if index < requestedSegments.count {
                 let requestedSegment = String(requestedSegments[index])
-                
+
                 // Check if this is a parameter (starts with { and ends with })
-                if handlerSegment.hasPrefix("{") && handlerSegment.hasSuffix("}") {
+                if handlerSegment.hasPrefix("{"), handlerSegment.hasSuffix("}") {
                     let paramName = String(handlerSegment.dropFirst().dropLast())
                     pathParams[paramName] = requestedSegment
                 }
             }
         }
-        
+
         return pathParams
     }
 
@@ -887,13 +927,13 @@ public final class ServiceRegistry: NodeDelegate {
 
         // Get subscribers for this topic
         let allMatches = eventSubscriptions.find(topic: topicPath)
-        
+
         // Collect all subscriptions from all matches
         var allSubscriptions: [SubscriptionMetadata] = []
         for match in allMatches {
             allSubscriptions.append(contentsOf: match.subscriptions)
         }
-        
+
         logger.trace("Looking for subscribers for topic: \(topicPath) - found \(allMatches.count) matches with \(allSubscriptions.count) total subscribers")
         for (index, match) in allMatches.enumerated() {
             logger.trace("Match \(index): \(match.subscriptions.count) subscriptions")
@@ -917,7 +957,7 @@ public final class ServiceRegistry: NodeDelegate {
 
     // MARK: - NodeDelegate Implementation
 
-    public func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
+    public func subscribe(topic: String, options _: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
         try await subscribeToEvents(
             networkId: "default",
             servicePath: topic,
@@ -928,9 +968,9 @@ public final class ServiceRegistry: NodeDelegate {
     public func publish(topic: String, data: AnyValue?) async throws {
         await publish(topic: topic, data: data, networkId: "default")
     }
-    
+
     // MARK: - Registry Service Support
-    
+
     /// Get all local services
     ///
     /// INTENTION: Provide access to all registered local services, allowing the
@@ -938,7 +978,7 @@ public final class ServiceRegistry: NodeDelegate {
     /// starting, and stopping. This preserves the Node's responsibility for service
     /// lifecycle management while keeping the Registry focused on registration.
     public func getLocalServices() -> [TopicPath: ServiceEntry] {
-        return localServicesList
+        localServicesList
     }
 
     /// Get metadata for all events under a specific service path
@@ -956,9 +996,9 @@ public final class ServiceRegistry: NodeDelegate {
             // Extract the topic path from the match
             let eventTopicList = matchItem.subscriptions
 
-            //iterate event_topic_list
+            // iterate event_topic_list
             for subscription in eventTopicList {
-                //TODO when EventRegistrationOptions is defined.. we need to pass that info here in the metadata to be sent to a remote node
+                // TODO: when EventRegistrationOptions is defined.. we need to pass that info here in the metadata to be sent to a remote node
                 result.append(subscription)
             }
         }
@@ -967,26 +1007,26 @@ public final class ServiceRegistry: NodeDelegate {
     }
 
     /// Get all subscriptions
-    public func getAllSubscriptions(includeInternalServices: Bool) async throws -> [SubscriptionMetadata] {
+    public func getAllSubscriptions(includeInternalServices _: Bool) async throws -> [SubscriptionMetadata] {
         // For now, return empty array since we don't have access to all networks
         // This would need to be implemented with a proper method in PathTrie
         let result: [SubscriptionMetadata] = []
-        
+
         // TODO: Implement proper getAllSubscriptions when PathTrie provides access to all networks
         logger.trace("getAllSubscriptions: Returning empty array (not fully implemented)")
-        
+
         return result
     }
 
     /// Optimized version that pre-allocates the result vector
-    public func getAllSubscriptionsOptimized(includeInternalServices: Bool) async throws -> [SubscriptionMetadata] {
+    public func getAllSubscriptionsOptimized(includeInternalServices _: Bool) async throws -> [SubscriptionMetadata] {
         // For now, return empty array since we don't have access to all networks
         // This would need to be implemented with a proper method in PathTrie
         let result: [SubscriptionMetadata] = []
-        
+
         // TODO: Implement proper getAllSubscriptionsOptimized when PathTrie provides access to all networks
         logger.trace("getAllSubscriptionsOptimized: Returning empty array (not fully implemented)")
-        
+
         return result
     }
 
@@ -1000,7 +1040,7 @@ public final class ServiceRegistry: NodeDelegate {
             let pathStr = service.path
 
             // Skip internal services if not included
-            if !includeInternalServices && isInternalService(pathStr) {
+            if !includeInternalServices, isInternalService(pathStr) {
                 continue
             }
 
@@ -1018,28 +1058,28 @@ public final class ServiceRegistry: NodeDelegate {
 
         return result
     }
-    
+
     /// Get all local service metadata
     public func getAllLocalServiceMetadata(includeInternalServices: Bool) async -> [String: ServiceMetadata] {
         logger.trace("ServiceRegistry.getAllLocalServiceMetadata: includeInternalServices = \(includeInternalServices)")
         var metadata: [String: ServiceMetadata] = [:]
-        
+
         for (topicPath, serviceEntry) in localServicesList {
             let servicePath = topicPath.asString()
             let isInternal = isInternalService(servicePath)
             logger.trace("ServiceRegistry.getAllLocalServiceMetadata: checking service '\(servicePath)', isInternal = \(isInternal)")
-            
+
             // Skip internal services if not requested
-            if !includeInternalServices && isInternal {
+            if !includeInternalServices, isInternal {
                 logger.trace("ServiceRegistry.getAllLocalServiceMetadata: skipping internal service '\(servicePath)'")
                 continue
             }
-            
+
             // Get actions metadata for this service
             do {
                 let serviceTopicPath = try TopicPath.new(topicPath.servicePath, defaultNetwork: topicPath.networkId)
                 let actions = await getActionsMetadata(serviceTopicPath: serviceTopicPath)
-                
+
                 let serviceMetadata = ServiceMetadata(
                     networkId: topicPath.networkId,
                     servicePath: topicPath.servicePath,
@@ -1050,7 +1090,7 @@ public final class ServiceRegistry: NodeDelegate {
                     registrationTime: serviceEntry.registrationTime,
                     lastStartTime: serviceEntry.lastStartTime
                 )
-                
+
                 metadata[topicPath.asString()] = serviceMetadata
             } catch {
                 logger.error("Failed to create TopicPath for service metadata: \(error)")
@@ -1065,32 +1105,32 @@ public final class ServiceRegistry: NodeDelegate {
                     registrationTime: serviceEntry.registrationTime,
                     lastStartTime: serviceEntry.lastStartTime
                 )
-                
+
                 metadata[topicPath.asString()] = serviceMetadata
             }
         }
-        
+
         return metadata
     }
-    
+
     /// Get service metadata for a specific service
     public func getServiceMetadata(servicePath: TopicPath) async -> ServiceMetadata? {
         logger.trace("ServiceRegistry.getServiceMetadata: Looking for service with path: \(servicePath.asString())")
-        
+
         // Find service in the local services trie (matching Rust implementation)
         let matches = localServices.find(topic: servicePath)
         logger.trace("ServiceRegistry.getServiceMetadata: Found \(matches.count) matches")
-        
+
         if !matches.isEmpty {
             let serviceEntry = matches[0]
             let service = serviceEntry.service
             logger.trace("ServiceRegistry.getServiceMetadata: Found service: \(service.name)")
-            
+
             // Get actions metadata for this service - create a wildcard path (matching Rust)
             let searchPath = "\(service.path)/*"
             let serviceTopicPath = try! TopicPath.new(searchPath, defaultNetwork: servicePath.networkId)
             let actions = await getActionsMetadata(serviceTopicPath: serviceTopicPath)
-            
+
             return ServiceMetadata(
                 networkId: servicePath.networkId,
                 servicePath: service.path,
@@ -1102,30 +1142,30 @@ public final class ServiceRegistry: NodeDelegate {
                 lastStartTime: serviceEntry.lastStartTime
             )
         }
-        
+
         logger.trace("ServiceRegistry.getServiceMetadata: No service found for path: \(servicePath.asString())")
         return nil
     }
-    
+
     /// Get actions metadata for a service path (matching Rust implementation)
     public func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
         // Search for all actions that start with the service path
         // We need to search for patterns like "math1/*" to find all actions under math1
         let servicePathPattern = "\(serviceTopicPath.servicePath)/*"
         let patternTopicPath = try! TopicPath.new("\(serviceTopicPath.servicePath)/*", defaultNetwork: serviceTopicPath.networkId)
-        
+
         // Search in the actions trie local_action_handlers (matching Rust)
         let matches = localActionHandlers.find(topic: patternTopicPath)
-        
+
         // Collect all actions that match the service path, avoiding duplicates
         var result: [ActionMetadata] = []
         var seenPaths = Set<String>()
         result.reserveCapacity(matches.count)
-        
+
         for matchItem in matches {
             // Extract the content from the match (LocalActionEntryValue = (ActionHandler, TopicPath, ActionMetadata?))
             let (_, topicPath, metadata) = matchItem
-            if let metadata = metadata {
+            if let metadata {
                 let pathString = topicPath.asString()
                 // Only add if we haven't seen this path before
                 if !seenPaths.contains(pathString) {
@@ -1134,15 +1174,15 @@ public final class ServiceRegistry: NodeDelegate {
                 }
             }
         }
-        
+
         return result
     }
-    
+
     /// Get local service state
     public func getLocalServiceState(servicePath: TopicPath) async -> ServiceState? {
         await localServiceStates.get(servicePath.asString())
     }
-    
+
     /// Check if a service is internal
     private func isInternalService(_ servicePath: String) -> Bool {
         // Extract just the service path from the full topic path (e.g., "test-network:keys" -> "keys")
@@ -1191,7 +1231,7 @@ public final class ServiceRegistry: NodeDelegate {
         guard let peerSubscriptions = await remotePeerSubscriptions.remove(peerId) else {
             return []
         }
-        
+
         // Get all subscription IDs from the peer subscriptions
         var result: [String] = []
         // Note: This would need to be implemented with a proper method in ShardedConcurrentMap
@@ -1205,11 +1245,40 @@ public final class ServiceRegistry: NodeDelegate {
         guard let peerSubscriptions = await remotePeerSubscriptions.get(peerId) else {
             return []
         }
-        
+
         // Note: This would need to be implemented with a proper method in ShardedConcurrentMap
         // For now, return empty set
         logger.trace("remoteSubscriptionPaths: Not fully implemented - ShardedConcurrentMap iteration needed")
         return []
+    }
+
+    // MARK: - Remote Service Management
+
+    /// Register a remote service
+    public func registerRemoteService(_ service: RemoteService) async {
+        logger.trace("Registering remote service: \(service.name) from peer: \(service.peerNodeId)")
+        remoteServices.setValue(topic: service.serviceTopic, content: service)
+    }
+
+    /// Get a remote service by topic path
+    public func getRemoteService(serviceTopic: TopicPath) async -> RemoteService? {
+        let matches: [RemoteService] = remoteServices.find(topic: serviceTopic)
+        return matches.first
+    }
+
+    /// Get all remote services for a peer
+    public func getRemoteServicesForPeer(peerId _: String) async -> [RemoteService] {
+        // Note: This would need to be implemented with a proper iteration method in PathTrie
+        // For now, return empty array
+        logger.trace("getRemoteServicesForPeer: Not fully implemented - PathTrie iteration needed")
+        return []
+    }
+
+    /// Remove all remote services for a peer
+    public func removeRemoteServicesForPeer(peerId _: String) async {
+        // Note: This would need to be implemented with a proper iteration method in PathTrie
+        // For now, just log
+        logger.trace("removeRemoteServicesForPeer: Not fully implemented - PathTrie iteration needed")
     }
 }
 
@@ -1217,25 +1286,25 @@ public final class ServiceRegistry: NodeDelegate {
 
 // MARK: - Service Registry Errors
 
-    public enum ServiceRegistryError: Error, LocalizedError {
-        case actionNotFound(String)
-        case serviceNotFound(String)
-        case invalidTopicPath(String)
-        case invalidStateTransition(String)
-        case servicePaused(String)
-    
-        public var errorDescription: String? {
-            switch self {
-            case let .actionNotFound(message):
-                "Action not found: \(message)"
-            case let .serviceNotFound(message):
-                "Service not found: \(message)"
-            case let .invalidTopicPath(message):
-                "Invalid topic path: \(message)"
-            case let .invalidStateTransition(message):
-                "Invalid state transition: \(message)"
-            case let .servicePaused(message):
-                "Service paused: \(message)"
-            }
+public enum ServiceRegistryError: Error, LocalizedError {
+    case actionNotFound(String)
+    case serviceNotFound(String)
+    case invalidTopicPath(String)
+    case invalidStateTransition(String)
+    case servicePaused(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .actionNotFound(message):
+            "Action not found: \(message)"
+        case let .serviceNotFound(message):
+            "Service not found: \(message)"
+        case let .invalidTopicPath(message):
+            "Invalid topic path: \(message)"
+        case let .invalidStateTransition(message):
+            "Invalid state transition: \(message)"
+        case let .servicePaused(message):
+            "Service paused: \(message)"
         }
     }
+}

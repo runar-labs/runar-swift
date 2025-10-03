@@ -6,13 +6,12 @@ import XCTest
 
 @MainActor
 final class SwiftNodeTests: XCTestCase {
-    
     // Swift logger for trace-level logging
     private var testLogger: RunarLogger!
-    
+
     override func setUp() async throws {
         try await super.setUp()
-        
+
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
             level: .trace,
@@ -20,10 +19,11 @@ final class SwiftNodeTests: XCTestCase {
             includeComponent: true,
             includeContext: true
         )
-        
+
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("SwiftNodeTests"))
     }
+
     func testLocalActionAndRequest() async throws {
         let keysManager = try await NodeKeyManager()
         let config = NodeConfig(defaultNetworkId: "net")
@@ -37,19 +37,20 @@ final class SwiftNodeTests: XCTestCase {
             var networkId: String?
             var state: ServiceState = .created
             var logger: RunarLogger
-            
+
             init(logger: RunarLogger) {
                 self.logger = logger
             }
+
             func initService(_ context: LifecycleContext) async throws {
-                try await context.registerAction("say") { payload, requestContext in
+                try await context.registerAction("say") { payload, _ in
                     payload ?? AnyValue.null()
                 }
             }
 
             func start(_: LifecycleContext) async throws {}
             func stop(_: LifecycleContext) async throws {}
-            
+
             func setNetworkId(_ networkId: String) {
                 self.networkId = networkId
             }
@@ -77,7 +78,7 @@ final class SwiftNodeTests: XCTestCase {
             func initService(_: LifecycleContext) async throws {}
             func start(_: LifecycleContext) async throws {}
             func stop(_: LifecycleContext) async throws {}
-            
+
             func setNetworkId(_ networkId: String) {
                 self.networkId = networkId
             }
@@ -125,7 +126,7 @@ final class SwiftNodeTests: XCTestCase {
             var state: ServiceState = .created
             var logger: RunarLogger = .root(component: .service)
             func initService(_ context: LifecycleContext) async throws {
-                try await context.registerAction("trigger") { payload, requestContext in
+                try await context.registerAction("trigger") { _, _ in
                     // Publish an event when the action is called
                     try await context.nodeDelegate.publish(topic: "pub/evt", data: AnyValue.primitive("event"))
                     return AnyValue.primitive("triggered")
@@ -134,7 +135,7 @@ final class SwiftNodeTests: XCTestCase {
 
             func start(_: LifecycleContext) async throws {}
             func stop(_: LifecycleContext) async throws {}
-            
+
             func setNetworkId(_ networkId: String) {
                 self.networkId = networkId
             }

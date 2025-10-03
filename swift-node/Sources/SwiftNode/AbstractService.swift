@@ -105,7 +105,7 @@ public enum ServiceState: String, Codable, Sendable {
 ///     let description: String = "My example service"
 ///     var networkId: String?
 ///     let logger: RunarLogger
-///     
+///
 ///     init(logger: RunarLogger) {
 ///         self.logger = logger
 ///     }
