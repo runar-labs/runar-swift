@@ -239,8 +239,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         logger.debug("DEBUG: About to create CA Client with config")
@@ -368,8 +368,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Create revocation request
         let revokeRequest = RevokeRequest(
             network_id: "test_network",
-            certificate_serial: certSerial,
-            reason: "testing"
+            certificate_serial: String(data: Data(certSerial), encoding: .utf8) ?? "unknown"
         )
         logger.debug("   ✅ Revocation request created")
 
@@ -750,8 +749,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: freshRootCert, // Use FRESH certificates (from reconstructed CA Node)
-            issuing_ca_der: freshIssuingCert // Use FRESH certificates (from reconstructed CA Node)
+            root_ca_der: Array(freshRootCert), // Use FRESH certificates (from reconstructed CA Node)
+            issuing_ca_der: Array(freshIssuingCert) // Use FRESH certificates (from reconstructed CA Node)
         )
         let testCaClient = try await testNodeKeys.createCAClient(config: testConfig)
         logger.debug("   ✅ Test CA client created with fresh certificates")

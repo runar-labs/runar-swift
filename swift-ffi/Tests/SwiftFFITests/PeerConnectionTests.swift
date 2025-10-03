@@ -15,8 +15,14 @@ final class PeerConnectionTests: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Set node info for both nodes
-        let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        let nodeInfoCbor = try await CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
 
         // Note: NodeInfo is now set on the transport, not on keys
         // This will be set when creating the transport
@@ -32,7 +38,10 @@ final class PeerConnectionTests: XCTestCase {
         try await keysB.installCertificate(certB)
 
         // Create transport options
-        let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
+        let transportOptions = QuicTransportOptions(
+            requestTimeoutSeconds: 30,
+            bindAddr: "127.0.0.1:0"
+        )
 
         // Create expectations for peer connection events
         let peerConnectedExpectation = expectation(description: "Peer connected with NodeInfo")
@@ -75,7 +84,13 @@ final class PeerConnectionTests: XCTestCase {
         )
 
         let loggerA = RunarLogger.root(component: .custom("PeerConnectionTests"))
-        let localNodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
+        let localNodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.setLocalNodeInfo(nodeInfoCbor)
         try await transportA.start()

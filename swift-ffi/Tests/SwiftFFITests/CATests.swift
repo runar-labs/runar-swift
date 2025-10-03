@@ -234,8 +234,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
@@ -271,8 +271,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
@@ -315,8 +315,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
@@ -359,8 +359,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
@@ -403,8 +403,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
@@ -447,8 +447,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
@@ -558,8 +558,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
@@ -665,8 +665,8 @@ final class CATests: XCTestCase {
             network_id: "test-network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: rootCa,
-            issuing_ca_der: issuingCa
+            root_ca_der: Array(rootCa),
+            issuing_ca_der: Array(issuingCa)
         )
 
         let caClient = try await nodeKeys.createCAClient(config: caClientConfig)

@@ -22,8 +22,14 @@ final class ManualPollingTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Step 3: Set node info for both nodes - exactly like Rust
-        let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        _ = try await CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
 
         // Note: NodeInfo is now set on the transport, not on keys
         // This will be set when creating the transport
@@ -39,7 +45,10 @@ final class ManualPollingTest: XCTestCase {
         try await keysB.installCertificate(certB)
 
         // Step 6: Create transport options - exactly like Rust
-        let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
+        let transportOptions = QuicTransportOptions(
+            requestTimeoutSeconds: 30,
+            bindAddr: "127.0.0.1:0"
+        )
 
         // Step 7: Create transport A with minimal callbacks
         let callbacksA = TransportCallbacks(

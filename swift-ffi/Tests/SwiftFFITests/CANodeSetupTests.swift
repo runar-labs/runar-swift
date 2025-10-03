@@ -96,8 +96,8 @@ final class CANodeSetupTests: XCTestCase {
                 network_id: "test_network",
                 request_timeout_seconds: 30,
                 max_retries: 3,
-                root_ca_der: Data(), // Empty certificate
-                issuing_ca_der: Data() // Empty certificate
+                root_ca_der: [], // Empty certificate
+                issuing_ca_der: [] // Empty certificate
             )
             XCTFail("CaClientConfigAll creation should have failed with empty certificates")
         } catch {

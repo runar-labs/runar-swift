@@ -67,8 +67,14 @@ final class FFIQuicTransportTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Step 3: Set node info for both nodes - exactly like Rust
-        let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        _ = try await CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
 
         // Note: NodeInfo is now set on the transport, not on keys
         // This will be set when creating the transport
@@ -84,7 +90,10 @@ final class FFIQuicTransportTest: XCTestCase {
         try await keysB.installCertificate(certB)
 
         // Step 6: Create transport options - exactly like Rust
-        let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
+        let transportOptions = QuicTransportOptions(
+            requestTimeoutSeconds: 30,
+            bindAddr: "127.0.0.1:0"
+        )
 
         // Step 7: Set up callbacks for transport A (request and event handler) - exactly like Rust
         let requestReceived = expectation(description: "Request received on transport A")
@@ -128,7 +137,13 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Step 8: Create transport A and start it - exactly like Rust
         let loggerA = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
-        let localNodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
+        let localNodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)
         try await transportA.start()
 
@@ -242,8 +257,14 @@ final class FFIQuicTransportTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Set node info
-        let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        _ = try await CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
         // Note: NodeInfo is now set on the transport, not on keys
 
         // Generate CSR and install certificate
@@ -252,7 +273,10 @@ final class FFIQuicTransportTest: XCTestCase {
         try await keys.installCertificate(cert)
 
         // Create transport options
-        let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
+        let transportOptions = QuicTransportOptions(
+            requestTimeoutSeconds: 30,
+            bindAddr: "127.0.0.1:0"
+        )
 
         // Create transport
         let callbacks = TransportCallbacks(
@@ -304,8 +328,14 @@ final class FFIQuicTransportTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Set node info for both nodes
-        let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        _ = try await CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
 
         // Note: NodeInfo is now set on the transport, not on keys
         // This will be set when creating the transport
@@ -321,7 +351,10 @@ final class FFIQuicTransportTest: XCTestCase {
         try await keysB.installCertificate(certB)
 
         // Create transport options
-        let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
+        let transportOptions = QuicTransportOptions(
+            requestTimeoutSeconds: 30,
+            bindAddr: "127.0.0.1:0"
+        )
 
         // Create transport A
         let callbacksA = TransportCallbacks(
@@ -406,8 +439,14 @@ final class FFIQuicTransportTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Set node info
-        let nodeInfo = CBORHelper.createMinimalNodeInfo(nodePublicKey: Data())
-        _ = try await CBORHelper.encodeNodeInfo(nodeInfo)
+        let nodeInfo = NodeInfo(
+            nodePublicKey: Data(),
+            networkIds: ["test_network"],
+            addresses: ["127.0.0.1:0"],
+            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            version: 1
+        )
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
         // Note: NodeInfo is now set on the transport, not on keys
 
         // Generate CSR and install certificate
@@ -416,7 +455,10 @@ final class FFIQuicTransportTest: XCTestCase {
         try await keys.installCertificate(cert)
 
         // Create transport options
-        let transportOptions = CBORHelper.createMinimalSwiftTransportOptions(bindAddr: "127.0.0.1:0")
+        let transportOptions = QuicTransportOptions(
+            requestTimeoutSeconds: 30,
+            bindAddr: "127.0.0.1:0"
+        )
 
         // Create transport
         let callbacks = TransportCallbacks(

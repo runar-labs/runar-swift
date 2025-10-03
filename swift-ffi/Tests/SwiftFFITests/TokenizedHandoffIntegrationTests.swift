@@ -20,8 +20,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data("test_cert".utf8),
-            issuing_ca_der: Data("test_cert".utf8)
+            root_ca_der: Array(Data("test_cert".utf8)),
+            issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
         let caClient = try await nodeKeyManager.createCAClient(config: caConfig)
@@ -54,8 +54,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data("test_cert".utf8),
-            issuing_ca_der: Data("test_cert".utf8)
+            root_ca_der: Array(Data("test_cert".utf8)),
+            issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
         let discoveryOptions = DiscoveryOptions()
@@ -83,8 +83,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data("test_cert".utf8),
-            issuing_ca_der: Data("test_cert".utf8)
+            root_ca_der: Array(Data("test_cert".utf8)),
+            issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
         // Create multiple CA clients
@@ -105,8 +105,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data("test_cert".utf8),
-            issuing_ca_der: Data("test_cert".utf8)
+            root_ca_der: Array(Data("test_cert".utf8)),
+            issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
         // Create and immediately release a handle
@@ -128,8 +128,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
                 network_id: "",
                 request_timeout_seconds: 0,
                 max_retries: 0,
-                root_ca_der: Data(),
-                issuing_ca_der: Data()
+                root_ca_der: [],
+                issuing_ca_der: []
             )
             XCTFail("Should have thrown an error for invalid config")
         } catch {
@@ -154,8 +154,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data("test_cert".utf8),
-            issuing_ca_der: Data("test_cert".utf8)
+            root_ca_der: Array(Data("test_cert".utf8)),
+            issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
         _ = try await nodeKeyManager.createCAClient(config: caConfig)
@@ -189,8 +189,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data("test_cert".utf8),
-            issuing_ca_der: Data("test_cert".utf8)
+            root_ca_der: Array(Data("test_cert".utf8)),
+            issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
         // Create and destroy 100 handles rapidly
@@ -213,8 +213,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
-            root_ca_der: Data("test_cert".utf8),
-            issuing_ca_der: Data("test_cert".utf8)
+            root_ca_der: Array(Data("test_cert".utf8)),
+            issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
         // Create 50 handles concurrently
