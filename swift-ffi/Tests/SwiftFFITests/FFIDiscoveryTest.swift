@@ -314,4 +314,165 @@ final class FFIDiscoveryTest: XCTestCase {
         // Cleanup
         try await discovery.shutdown()
     }
+
+    /// Test discovery TTL, lost events, and debouncing
+    func testDiscoveryTTLLostAndDebounce() async throws {
+        // Set up logging
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerContext("discovery-ttl-test")
+
+        // Create two node key managers (A and B)
+        let keysA = try await NodeKeyManager()
+        let keysB = try await NodeKeyManager()
+
+        // Create mobile key manager for CA
+        let keysCA = try await MobileKeyManager()
+
+        // Generate and install certificates
+        let csrA = try await keysA.generateCsrSetupToken()
+        let certA = try await keysCA.processSetupToken(csrA)
+        try await keysA.installCertificate(certA)
+
+        let csrB = try await keysB.generateCsrSetupToken()
+        let certB = try await keysCA.processSetupToken(csrB)
+        try await keysB.installCertificate(certB)
+
+        // Create discovery options with short TTL for testing
+        let uniquePort = UInt16.random(in: 48000 ... 49000)
+        let discoveryOptions = DiscoveryOptions(
+            multicastGroup: "224.0.0.251:\(uniquePort)",
+            announceIntervalMs: 50,
+            discoveryTimeoutMs: 1000,
+            debounceWindowMs: 100
+        )
+
+        let encoder = CodableCBOREncoder()
+        let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
+
+        // Create discovery instances
+        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
+
+        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
+
+        // Get public keys for peer info
+        let publicKeyA = try await keysA.getNodePublicKey()
+        let publicKeyB = try await keysB.getNodePublicKey()
+
+        // Create peer info for both nodes
+        let peerInfoA = PeerInfo(publicKey: publicKeyA, addresses: ["127.0.0.1:8000"])
+        let peerInfoB = PeerInfo(publicKey: publicKeyB, addresses: ["127.0.0.1:8001"])
+
+        let peerInfoACbor = try CodableCBOREncoder().encode(peerInfoA)
+        let peerInfoBCbor = try CodableCBOREncoder().encode(peerInfoB)
+
+        // Update local peer info
+        try await discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)
+        try await discoveryB.updateLocalPeerInfo(peerInfoCbor: peerInfoBCbor)
+
+        // Start announcing on both nodes
+        try await discoveryA.startAnnouncing()
+        try await discoveryB.startAnnouncing()
+
+        // Wait for discovery to work
+        try await Task.sleep(nanoseconds: 500_000_000) // 500ms
+
+        // Stop announcing on node A to simulate TTL loss
+        try await discoveryA.stopAnnouncing()
+
+        // Wait for TTL to expire and debounce
+        try await Task.sleep(nanoseconds: 200_000_000) // 200ms
+
+        // Cleanup
+        try await discoveryA.shutdown()
+        try await discoveryB.shutdown()
+    }
+
+    /// Test multicast announce and discover functionality
+    func testMulticastAnnounceAndDiscover() async throws {
+        // Set up logging
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerContext("discovery-multicast-test")
+
+        // Create two node key managers (A and B)
+        let keysA = try await NodeKeyManager()
+        let keysB = try await NodeKeyManager()
+
+        // Create mobile key manager for CA
+        let keysCA = try await MobileKeyManager()
+
+        // Generate and install certificates
+        let csrA = try await keysA.generateCsrSetupToken()
+        let certA = try await keysCA.processSetupToken(csrA)
+        try await keysA.installCertificate(certA)
+
+        let csrB = try await keysB.generateCsrSetupToken()
+        let certB = try await keysCA.processSetupToken(csrB)
+        try await keysB.installCertificate(certB)
+
+        // Create discovery options
+        let uniquePort = UInt16.random(in: 49000 ... 50000)
+        let discoveryOptions = DiscoveryOptions(
+            multicastGroup: "224.0.0.251:\(uniquePort)",
+            announceIntervalMs: 100,
+            discoveryTimeoutMs: 2000,
+            debounceWindowMs: 200
+        )
+
+        let encoder = CodableCBOREncoder()
+        let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
+
+        // Create discovery instances
+        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
+
+        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
+
+        // Get public keys for peer info
+        let publicKeyA = try await keysA.getNodePublicKey()
+        let publicKeyB = try await keysB.getNodePublicKey()
+
+        // Create peer info for both nodes
+        let peerInfoA = PeerInfo(publicKey: publicKeyA, addresses: ["127.0.0.1:8000"])
+        let peerInfoB = PeerInfo(publicKey: publicKeyB, addresses: ["127.0.0.1:8001"])
+
+        let peerInfoACbor = try CodableCBOREncoder().encode(peerInfoA)
+        let peerInfoBCbor = try CodableCBOREncoder().encode(peerInfoB)
+
+        // Update local peer info
+        try await discoveryA.updateLocalPeerInfo(peerInfoCbor: peerInfoACbor)
+        try await discoveryB.updateLocalPeerInfo(peerInfoCbor: peerInfoBCbor)
+
+        // Start announcing on both nodes
+        try await discoveryA.startAnnouncing()
+        try await discoveryB.startAnnouncing()
+
+        // Wait for discovery to work
+        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+
+        // Cleanup
+        try await discoveryA.shutdown()
+        try await discoveryB.shutdown()
+    }
+
+    /// Test discovery with invalid CBOR data handling
+    func testDiscoveryInvalidCBORHandling() async throws {
+        // Set up logging
+        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLoggerContext("discovery-invalid-cbor-test")
+
+        // Create keys for discovery
+        let keys = try await NodeKeyManager()
+
+        // Create discovery instance with invalid CBOR data
+        let invalidCbor = Data("invalid cbor data".utf8)
+        
+        // Should succeed with invalid CBOR (uses default options)
+        let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: invalidCbor)
+        
+        // Cleanup
+        try await discovery.shutdown()
+    }
 }

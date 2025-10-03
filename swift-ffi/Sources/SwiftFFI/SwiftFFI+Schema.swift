@@ -220,8 +220,8 @@ public struct CsrEnrollResponse: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
         network_id = try container.decode(String.self, forKey: .network_id)
-        certificate_der = try Self.decodeVecU8(from: container, forKey: .certificate_der)
-        issuing_ca_der = try Self.decodeVecU8(from: container, forKey: .issuing_ca_der)
+        certificate_der = try container.decode(Data.self, forKey: .certificate_der)
+        issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
         root_ca_der = try container.decodeIfPresent(Data.self, forKey: .root_ca_der)
         expires_at = try container.decode(UInt64.self, forKey: .expires_at)
     }
@@ -233,12 +233,6 @@ public struct CsrEnrollResponse: Codable, Equatable, Sendable {
         try container.encode(issuing_ca_der, forKey: .issuing_ca_der)
         try container.encodeIfPresent(root_ca_der, forKey: .root_ca_der)
         try container.encode(expires_at, forKey: .expires_at)
-    }
-    
-    /// Decode Vec<u8> field from Rust CBOR format (byte string with serde_bytes)
-    private static func decodeVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data {
-        // Rust serde_bytes encodes Vec<u8> as CBOR byte string
-        return try container.decode(Data.self, forKey: key)
     }
 }
 
@@ -266,8 +260,8 @@ public struct RenewResponse: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
         network_id = try container.decode(String.self, forKey: .network_id)
-        certificate_der = try Self.decodeVecU8(from: container, forKey: .certificate_der)
-        issuing_ca_der = try Self.decodeVecU8(from: container, forKey: .issuing_ca_der)
+        certificate_der = try container.decode(Data.self, forKey: .certificate_der)
+        issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
         expires_at = try container.decode(UInt64.self, forKey: .expires_at)
     }
     
@@ -277,12 +271,6 @@ public struct RenewResponse: Codable, Equatable, Sendable {
         try container.encode(certificate_der, forKey: .certificate_der)
         try container.encode(issuing_ca_der, forKey: .issuing_ca_der)
         try container.encode(expires_at, forKey: .expires_at)
-    }
-    
-    /// Decode Vec<u8> field from Rust CBOR format (byte string with serde_bytes)
-    private static func decodeVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data {
-        // Rust serde_bytes encodes Vec<u8> as CBOR byte string
-        return try container.decode(Data.self, forKey: key)
     }
 }
 
@@ -307,8 +295,8 @@ public struct ChainResponse: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
         network_id = try container.decode(String.self, forKey: .network_id)
-        issuing_ca_der = try Self.decodeVecU8(from: container, forKey: .issuing_ca_der)
-        root_ca_der = try Self.decodeVecU8Optional(from: container, forKey: .root_ca_der)
+        issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
+        root_ca_der = try container.decodeIfPresent(Data.self, forKey: .root_ca_der)
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -316,23 +304,6 @@ public struct ChainResponse: Codable, Equatable, Sendable {
         try container.encode(network_id, forKey: .network_id)
         try container.encode(issuing_ca_der, forKey: .issuing_ca_der)
         try container.encodeIfPresent(root_ca_der, forKey: .root_ca_der)
-    }
-    
-    /// Decode Vec<u8> field from Rust CBOR format (byte string with serde_bytes)
-    private static func decodeVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data {
-        // Rust serde_bytes encodes Vec<u8> as CBOR byte string
-        return try container.decode(Data.self, forKey: key)
-    }
-    
-    /// Decode optional Vec<u8> field from Rust CBOR format (byte string with serde_bytes)
-    private static func decodeVecU8Optional(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data? {
-        // Rust serde_bytes encodes Vec<u8> as CBOR byte string
-        // We need to handle the case where the field might be present but encoded as byte string
-        if container.contains(key) {
-            return try container.decode(Data.self, forKey: key)
-        } else {
-            return nil
-        }
     }
 }
 
@@ -396,6 +367,23 @@ public struct CaServerConfig: Codable, Equatable, Sendable {
         self.rateLimitPerMinute = rateLimitPerMinute
         self.rateLimitPerHour = rateLimitPerHour
     }
+    
+    private enum CodingKeys: String, CodingKey {
+        case bootstrapBind = "bootstrap_bind"
+        case authenticatedBind = "authenticated_bind"
+        case networkId = "network_id"
+        case rateLimitPerMinute = "rate_limit_per_minute"
+        case rateLimitPerHour = "rate_limit_per_hour"
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bootstrapBind, forKey: .bootstrapBind)
+        try container.encode(authenticatedBind, forKey: .authenticatedBind)
+        try container.encode(networkId, forKey: .networkId)
+        try container.encode(rateLimitPerMinute, forKey: .rateLimitPerMinute)
+        try container.encode(rateLimitPerHour, forKey: .rateLimitPerHour)
+    }
 }
 
 public struct CaClientConfigAll: Codable, Equatable, Sendable {
@@ -407,7 +395,15 @@ public struct CaClientConfigAll: Codable, Equatable, Sendable {
     public let root_ca_der: [UInt8]
     public let issuing_ca_der: [UInt8]
     
-    public init(bootstrap_server: String, authenticated_server: String, network_id: String, request_timeout_seconds: Int, max_retries: Int, root_ca_der: [UInt8], issuing_ca_der: [UInt8]) {
+    public init(bootstrap_server: String, authenticated_server: String, network_id: String, request_timeout_seconds: Int, max_retries: Int, root_ca_der: [UInt8], issuing_ca_der: [UInt8]) throws {
+        // Validate that certificates are not empty
+        guard !root_ca_der.isEmpty else {
+            throw FFIError.operationFailed("root_ca_der cannot be empty")
+        }
+        guard !issuing_ca_der.isEmpty else {
+            throw FFIError.operationFailed("issuing_ca_der cannot be empty")
+        }
+        
         self.bootstrap_server = bootstrap_server
         self.authenticated_server = authenticated_server
         self.network_id = network_id
@@ -454,7 +450,7 @@ public struct RevokeRequest: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         network_id = try container.decode(String.self, forKey: .network_id)
-        certificate_serial = try Self.decodeVecU8(from: container, forKey: .certificate_serial)
+        certificate_serial = try container.decode(Data.self, forKey: .certificate_serial)
         reason = try container.decode(String.self, forKey: .reason)
     }
     
@@ -463,12 +459,6 @@ public struct RevokeRequest: Codable, Equatable, Sendable {
         try container.encode(network_id, forKey: .network_id)
         try container.encode(certificate_serial, forKey: .certificate_serial)
         try container.encode(reason, forKey: .reason)
-    }
-    
-    /// Decode Vec<u8> field from Rust CBOR format (byte string with serde_bytes)
-    private static func decodeVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data {
-        // Rust serde_bytes encodes Vec<u8> as CBOR byte string
-        return try container.decode(Data.self, forKey: key)
     }
 }
 
@@ -551,27 +541,10 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         path = try container.decode(String.self, forKey: .path)
-        payloadBytes = try Self.decodeVecU8(from: container, forKey: .payloadBytes)
+        payloadBytes = try container.decode(Data.self, forKey: .payloadBytes)
         correlationId = try container.decode(String.self, forKey: .correlationId)
-        networkPublicKey = try Self.decodeVecU8Optional(from: container, forKey: .networkPublicKey)
+        networkPublicKey = try container.decodeIfPresent(Data.self, forKey: .networkPublicKey)
         profilePublicKeys = try container.decode([Data].self, forKey: .profilePublicKeys)
-    }
-    
-    /// Decode Vec<u8> field from Rust CBOR format (byte string with serde_bytes)
-    private static func decodeVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data {
-        // Rust serde_bytes encodes Vec<u8> as CBOR byte string
-        return try container.decode(Data.self, forKey: key)
-    }
-    
-    /// Decode optional Vec<u8> field from Rust CBOR format (byte string with serde_bytes)
-    private static func decodeVecU8Optional(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data? {
-        // Rust serde_bytes encodes Vec<u8> as CBOR byte string
-        // We need to handle the case where the field might be present but encoded as byte string
-        if container.contains(key) {
-            return try container.decode(Data.self, forKey: key)
-        } else {
-            return nil
-        }
     }
     
 }
@@ -611,6 +584,29 @@ public struct NetworkMessage: Codable, Equatable, Sendable {
 public enum ConnectionRole: String, Codable, Sendable, Equatable {
     case initiator = "Initiator"
     case responder = "Responder"
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let intValue = try? container.decode(Int.self) {
+            switch intValue {
+            case 0: self = .initiator
+            case 1: self = .responder
+            default: throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Invalid ConnectionRole value: \(intValue)"))
+            }
+        } else if let stringValue = try? container.decode(String.self) {
+            self = ConnectionRole(rawValue: stringValue) ?? .initiator
+        } else {
+            throw DecodingError.typeMismatch(ConnectionRole.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected Int or String for ConnectionRole"))
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .initiator: try container.encode(0)
+        case .responder: try container.encode(1)
+        }
+    }
 }
 
 /// Handshake data exchanged during peer connection
@@ -909,23 +905,24 @@ public struct TransportRequestParams: Codable, Equatable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        // Encode fields in the exact order that Rust expects:
+        // 1. path
         try container.encode(path, forKey: .path)
+        // 2. correlation_id
         try container.encode(correlationId, forKey: .correlationId)
-
-        // Encode as array of bytes to match Rust Vec<u8> serialization
-        try container.encode([UInt8](payload), forKey: .payload)
+        // 3. payload (as Data byte string)
+        try container.encode(payload, forKey: .payload)
+        // 4. dest_peer_id
         try container.encode(destPeerId, forKey: .destPeerId)
-
-        // Encode networkPublicKey as array of bytes if present
+        // 5. network_public_key (as Data if present, or null if nil)
         if let networkKey = networkPublicKey {
-            try container.encode([UInt8](networkKey), forKey: .networkPublicKey)
+            try container.encode(networkKey, forKey: .networkPublicKey)
         } else {
             try container.encodeNil(forKey: .networkPublicKey)
         }
-
-        // Encode profilePublicKeys as array of byte arrays
-        let profileKeysArray = profilePublicKeys.map { [UInt8]($0) }
-        try container.encode(profileKeysArray, forKey: .profilePublicKeys)
+        // 6. profile_public_keys (as array of Data byte strings)
+        try container.encode(profilePublicKeys, forKey: .profilePublicKeys)
     }
 
     public init(from decoder: Decoder) throws {
@@ -933,21 +930,13 @@ public struct TransportRequestParams: Codable, Equatable {
         path = try container.decode(String.self, forKey: .path)
         correlationId = try container.decode(String.self, forKey: .correlationId)
 
-        // Support both CBOR byte string and array<u8> for payload
-        if let payloadBytes = try? container.decode([UInt8].self, forKey: .payload) {
-            payload = Data(payloadBytes)
-        } else {
-            payload = try container.decode(Data.self, forKey: .payload)
-        }
+        // Decode payload as Data (Rust serde_bytes encodes Vec<u8> as CBOR byte string)
+        payload = try container.decode(Data.self, forKey: .payload)
 
         destPeerId = try container.decode(String.self, forKey: .destPeerId)
 
-        // Support both CBOR byte string and array<u8> for networkPublicKey
-        if let networkBytes = try? container.decode([UInt8].self, forKey: .networkPublicKey) {
-            networkPublicKey = Data(networkBytes)
-        } else {
-            networkPublicKey = try container.decodeIfPresent(Data.self, forKey: .networkPublicKey)
-        }
+        // Decode networkPublicKey as optional Data
+        networkPublicKey = try container.decodeIfPresent(Data.self, forKey: .networkPublicKey)
 
         // Decode profilePublicKeys as array of Data (now using serde_bytes in Rust)
         profilePublicKeys = try container.decode([Data].self, forKey: .profilePublicKeys)
@@ -978,21 +967,19 @@ public struct TransportCompleteRequestParams: Codable, Equatable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(requestId, forKey: .requestId)
 
-        // Encode as array of bytes to match Rust Vec<u8> serialization
-        try container.encode([UInt8](responsePayload), forKey: .responsePayload)
+        // Encode as Data (byte string) to match Rust serde_bytes serialization
+        try container.encode(responsePayload, forKey: .responsePayload)
 
-        // Encode profilePublicKeys as array of byte arrays
-        let profileKeysArray = profilePublicKeys.map { [UInt8]($0) }
-        try container.encode(profileKeysArray, forKey: .profilePublicKeys)
+        // Encode profilePublicKeys as array of Data (byte strings)
+        try container.encode(profilePublicKeys, forKey: .profilePublicKeys)
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         requestId = try container.decode(String.self, forKey: .requestId)
 
-        // Deterministic: strictly decode as array<u8>
-        let payloadBytes = try container.decode([UInt8].self, forKey: .responsePayload)
-        responsePayload = Data(payloadBytes)
+        // Decode responsePayload as Data (Rust serde_bytes encodes Vec<u8> as CBOR byte string)
+        responsePayload = try container.decode(Data.self, forKey: .responsePayload)
 
         // Decode profilePublicKeys as array of Data (now using serde_bytes in Rust)
         profilePublicKeys = try container.decode([Data].self, forKey: .profilePublicKeys)
@@ -1017,48 +1004,27 @@ public struct PeerInfo: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        // Encode as array of bytes to match Rust Vec<u8> serialization
-        try container.encode([UInt8](publicKey), forKey: .publicKey)
+        // Encode as Data (byte string) to match Rust serde_bytes serialization
+        try container.encode(publicKey, forKey: .publicKey)
         try container.encode(addresses, forKey: .addresses)
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        // Handle both Swift and Rust CBOR formats for Vec<u8> fields
-        // Swift CodableCBOREncoder: encodes as simple byte array
-        // Rust serde_cbor: encodes as array of individual CBOR unsigned integers
-        publicKey = try Self.decodeVecU8(from: container, forKey: .publicKey)
+        // Decode publicKey as Data (Rust serde_bytes encodes Vec<u8> as CBOR byte string)
+        publicKey = try container.decode(Data.self, forKey: .publicKey)
         addresses = try container.decode([String].self, forKey: .addresses)
     }
     
-            /// Decode Vec<u8> field that can be in either Swift or Rust CBOR format
-            private static func decodeVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> Data {
-                // First try Data format (CBOR byte string) - this is what Rust serde_bytes produces
-                if let data = try? container.decode(Data.self, forKey: key) {
-                    return data
-                }
-                
-                // Fallback to Swift format (simple byte array) for compatibility
-                if let byteArray = try? container.decode([UInt8].self, forKey: key) {
-                    return Data(byteArray)
-                }
-                
-                // If both fail, provide a clear error message
-                throw DecodingError.dataCorrupted(DecodingError.Context(
-                    codingPath: container.codingPath + [key],
-                    debugDescription: "Unable to decode Vec<u8> field in either Data (CBOR byte string) or [UInt8] (array) format"
-                ))
-            }
-            
-            /// Decode Vec<Vec<u8>> field from Rust CBOR format (array of unsignedInt arrays)
-            private static func decodeVecVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> [Data] {
-                // Rust serde_cbor encodes Vec<Vec<u8>> as array of arrays of unsignedInt
-                let intArrays = try container.decode([[Int]].self, forKey: key)
-                return intArrays.map { intArray in
-                    Data(intArray.map { UInt8($0) })
-                }
-            }
+    /// Decode Vec<Vec<u8>> field from Rust CBOR format (array of unsignedInt arrays)
+    private static func decodeVecVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> [Data] {
+        // Rust serde_cbor encodes Vec<Vec<u8>> as array of arrays of unsignedInt
+        let intArrays = try container.decode([[Int]].self, forKey: key)
+        return intArrays.map { intArray in
+            Data(intArray.map { UInt8($0) })
+        }
+    }
 }
 
 /// Transport publish parameters matching Rust side publish payload
@@ -1146,12 +1112,20 @@ public struct DiscoveryOptions: Codable, Sendable {
         self.discoveryTimeoutMs = discoveryTimeoutMs
         self.debounceWindowMs = debounceWindowMs
     }
-
-    enum CodingKeys: String, CodingKey {
-        case multicastGroup = "multicast_group"
-        case announceIntervalMs = "announce_interval_ms"
-        case discoveryTimeoutMs = "discovery_timeout_ms"
-        case debounceWindowMs = "debounce_window_ms"
+    
+    private enum CodingKeys: String, CodingKey {
+        case multicastGroup = "multicastGroup"
+        case announceIntervalMs = "announceIntervalMs"
+        case discoveryTimeoutMs = "discoveryTimeoutMs"
+        case debounceWindowMs = "debounceWindowMs"
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(multicastGroup, forKey: .multicastGroup)
+        try container.encode(announceIntervalMs, forKey: .announceIntervalMs)
+        try container.encode(discoveryTimeoutMs, forKey: .discoveryTimeoutMs)
+        try container.encode(debounceWindowMs, forKey: .debounceWindowMs)
     }
 }
 
@@ -1312,4 +1286,5 @@ public struct TransportResponseEvent: Codable, Sendable, Equatable {
         try container.encode([UInt8](payload), forKey: .payload)
     }
 }
+
 

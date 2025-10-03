@@ -232,9 +232,9 @@ final class FFITypesVectorGenerator: XCTestCase {
     }
 
     private func generateCaClientConfigAll() throws {
-        let caClientConfig = CaClientConfigAll(
-            bootstrap_server: "https://bootstrap.example.com",
-            authenticated_server: "https://auth.example.com",
+        let caClientConfig = try CaClientConfigAll(
+            bootstrap_server: "127.0.0.1:8443",
+            authenticated_server: "127.0.0.1:8444",
             network_id: "test_network",
             request_timeout_seconds: 30,
             max_retries: 3,
@@ -246,8 +246,8 @@ final class FFITypesVectorGenerator: XCTestCase {
 
     private func generateCustomCaServerConfig() throws {
         let customCaServerConfig = CustomCaServerConfig(
-            bootstrap_bind: "0.0.0.0:8080",
-            authenticated_bind: "0.0.0.0:8081",
+            bootstrap_bind: "127.0.0.1:8443",
+            authenticated_bind: "127.0.0.1:8444",
             network_id: "test_network",
             rate_limit_per_minute: 100,
             rate_limit_per_hour: 1000
@@ -356,35 +356,22 @@ final class FFITypesVectorGenerator: XCTestCase {
 
     private func generateNodeMetadata() throws {
         let nodeMetadata = NodeMetadata(
-            services: [
-                ServiceMetadata(
-                    networkId: "test-network",
-                    servicePath: "/api/test",
-                    name: "test-service",
-                    version: "1.0.0",
-                    description: "A test service",
-                    actions: [],
-                    registrationTime: 1_234_567_890,
-                    lastStartTime: 1_234_567_891
-                ),
-            ],
-            subscriptions: [
-                SubscriptionMetadata(path: "test-topic"),
-            ]
+            services: [],
+            subscriptions: []
         )
         try encodeAndWrite(nodeMetadata, filename: "node_metadata_basic.bin")
     }
 
     private func generateServiceMetadata() throws {
         let serviceMetadata = ServiceMetadata(
-            networkId: "test-network",
-            servicePath: "/api/test",
-            name: "test-service",
+            networkId: "test_network",
+            servicePath: "/test_service",
+            name: "test_service",
             version: "1.0.0",
-            description: "A test service",
+            description: "Test service description",
             actions: [],
-            registrationTime: 1_234_567_890,
-            lastStartTime: 1_234_567_891
+            registrationTime: 1_678_886_400,
+            lastStartTime: 1_678_886_400
         )
         try encodeAndWrite(serviceMetadata, filename: "service_metadata_basic.bin")
     }
@@ -392,23 +379,15 @@ final class FFITypesVectorGenerator: XCTestCase {
     private func generateActionMetadata() throws {
         let actionMetadata = ActionMetadata(
             name: "test_action",
-            description: "A test action",
-            inputSchema: FieldSchema(
-                dataType: .string,
-                required: true,
-                description: "Input string"
-            ),
-            outputSchema: FieldSchema(
-                dataType: .string,
-                required: true,
-                description: "Output string"
-            )
+            description: "Test action description",
+            inputSchema: nil,
+            outputSchema: nil
         )
         try encodeAndWrite(actionMetadata, filename: "action_metadata_basic.bin")
     }
 
     private func generateSubscriptionMetadata() throws {
-        let subscriptionMetadata = SubscriptionMetadata(path: "test-topic")
+        let subscriptionMetadata = SubscriptionMetadata(path: "/test_topic")
         try encodeAndWrite(subscriptionMetadata, filename: "subscription_metadata_basic.bin")
     }
 

@@ -67,11 +67,25 @@ final class FFIQuicTransportTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Step 3: Set node info for both nodes - exactly like Rust
+        let serviceMetadata = ServiceMetadata(
+            networkId: "test_network",
+            servicePath: "/test",
+            name: "test-service",
+            version: "1.0.0",
+            description: "Test service",
+            actions: [],
+            registrationTime: UInt64(Date().timeIntervalSince1970),
+            lastStartTime: UInt64(Date().timeIntervalSince1970)
+        )
+        let nodeMetadata = NodeMetadata(
+            services: [serviceMetadata],
+            subscriptions: []
+        )
         let nodeInfo = NodeInfo(
             nodePublicKey: Data(),
             networkIds: ["test_network"],
             addresses: ["127.0.0.1:0"],
-            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            nodeMetadata: nodeMetadata,
             version: 1
         )
         let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
@@ -137,11 +151,25 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Step 8: Create transport A and start it - exactly like Rust
         let loggerA = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
+        let localServiceMetadata = ServiceMetadata(
+            networkId: "test_network",
+            servicePath: "/test",
+            name: "test-service",
+            version: "1.0.0",
+            description: "Test service",
+            actions: [],
+            registrationTime: UInt64(Date().timeIntervalSince1970),
+            lastStartTime: UInt64(Date().timeIntervalSince1970)
+        )
+        let localNodeMetadata = NodeMetadata(
+            services: [localServiceMetadata],
+            subscriptions: []
+        )
         let localNodeInfo = NodeInfo(
             nodePublicKey: Data(),
             networkIds: ["test_network"],
             addresses: ["127.0.0.1:0"],
-            nodeMetadata: NodeMetadata(services: [], subscriptions: []),
+            nodeMetadata: localNodeMetadata,
             version: 1
         )
         let transportA = try await QuicTransport.create(keys: keysA, nodeInfo: localNodeInfo, options: transportOptions, callbacks: callbacksA, logger: loggerA)

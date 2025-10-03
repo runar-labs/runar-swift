@@ -4002,6 +4002,11 @@ public actor QuicTransport {
     public func request(_ request: TransportRequestParams) async throws -> Data {
         logger.trace("QuicTransport.request() - Sending request")
         let requestCbor = try CodableCBOREncoder().encode(request)
+        // Extra diagnostics for invalid request CBOR
+        if LoggerConfigManager.shared.globalConfig.level == .trace {
+            let hex = requestCbor.map { String(format: "%02x", $0) }.joined()
+            logger.trace("QuicTransport.request() - Request CBOR hex: \(hex)")
+        }
         logger.trace("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
         
         // Use the correlation ID from the request parameters

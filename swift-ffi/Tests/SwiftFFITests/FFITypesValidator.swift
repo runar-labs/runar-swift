@@ -284,7 +284,13 @@ final class FFITypesValidator: XCTestCase {
         let swiftValue: T = try CodableCBORDecoder().decode(type, from: swiftData)
         let rustValue: T = try CodableCBORDecoder().decode(type, from: rustData)
 
-        XCTAssertEqual(swiftValue, rustValue, "\(type) validation failed - Swift and Rust data don't match")
+        if swiftValue != rustValue {
+            throw ValidationError.mismatch("\(type) validation failed - Swift and Rust data don't match")
+        }
+    }
+    
+    private enum ValidationError: Error {
+        case mismatch(String)
     }
 
     private func validateTypeNonEquatable<T: Codable>(_ type: T.Type, filename: String) async throws {
