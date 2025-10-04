@@ -49,7 +49,9 @@ final class CATests: XCTestCase {
 
     func testCaNodeNewHappyPath() async throws {
         // Test successful CA node creation - matching Rust test_ca_node_new_happy_path
-        let caNode = try CANode.create()
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testCaNodeNewHappyPath"))
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         XCTAssertNotNil(caNode, "CA node should be created successfully")
         XCTAssertNotNil(caNode.ffiHandle, "CA node should have a valid FFI handle")
     }
@@ -57,9 +59,11 @@ final class CATests: XCTestCase {
     func testCaNodeNewNullError() async throws {
         // Test CA node creation error handling - matching Rust test_ca_node_new_null_output
         // This test verifies that the FFI properly handles null arguments
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testCaNodeNewNullError"))
         do {
             // This should fail with proper error handling
-            _ = try CANode.create()
+            _ = try CANode.create(logger: logger.child(component: .network))
             // If we get here, the test should still pass as the FFI handles null internally
         } catch {
             XCTAssertTrue(error is FFIError, "Should throw FFIError for invalid arguments")
@@ -67,11 +71,13 @@ final class CATests: XCTestCase {
     }
 
     func testCaNodeSetupCompleteHappyPath() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaNodeSetupCompleteHappyPath"))
         // Test CA node setup with proper configuration
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
 
         // Create EA key pair for testing
-        let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("testCaNodeSetupCompleteHappyPath")))
+        let eaKeyManager = EAKeyManager(logger: logger.child(component: .network))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
 
@@ -93,8 +99,10 @@ final class CATests: XCTestCase {
     }
 
     func testCaNodeCreateShared() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaNodeCreateShared"))
         // Test creating shared CA node
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         // Since CANode.create() now creates shared handles directly,
         // we can use the handle directly for server creation
         XCTAssertNotNil(caNode.ffiHandle, "CA node should have a valid shared handle")
@@ -103,8 +111,10 @@ final class CATests: XCTestCase {
     // MARK: - CA Server Tests
 
     func testCaServerNewHappyPath() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaServerNewHappyPath"))
         // Test CA server creation with proper setup - matching Rust test_ca_server_new_stub
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
 
         // Create EA key pair for proper CA setup
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("testCaNodeCreateShared")))
@@ -139,8 +149,10 @@ final class CATests: XCTestCase {
     }
 
     func testCaServerStartStop() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaServerStartStop"))
         // Test CA server start and stop
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
@@ -155,8 +167,10 @@ final class CATests: XCTestCase {
     }
 
     func testCaServerBootstrapAddress() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaServerBootstrapAddress"))
         // Test getting bootstrap address
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
@@ -176,8 +190,10 @@ final class CATests: XCTestCase {
     }
 
     func testCaServerAuthenticatedAddress() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaServerAuthenticatedAddress"))
         // Test getting authenticated address
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let config = CaServerConfig(
             bootstrapBind: "127.0.0.1:0",
             authenticatedBind: "127.0.0.1:0",
@@ -199,8 +215,10 @@ final class CATests: XCTestCase {
     // MARK: - CA Client Tests
 
     func testCaClientNewHappyPath() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientNewHappyPath"))
         // Test CA client creation with proper setup - matching Rust test_ca_client_new_stub
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
@@ -238,7 +256,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
         XCTAssertNotNil(caClient, "CA client should be created successfully")
 
         // Clean up
@@ -246,9 +264,11 @@ final class CATests: XCTestCase {
     }
 
     func testCaClientEnroll() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientEnroll"))
         // Test CA client enrollment
         // Prepare CA certs
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
@@ -275,13 +295,14 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
 
         // Test enrollment (may fail if server not running, which is expected)
         do {
             _ = try await caClient.enroll(
                 bootstrapAddress: "127.0.0.1:8080",
-                request: Data() // Empty request for testing
+                request: Data(), // Empty request for testing
+                logger: logger.child(component: .network)
             )
         } catch {
             // Expected to fail if server not running
@@ -290,9 +311,11 @@ final class CATests: XCTestCase {
     }
 
     func testCaClientRenew() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientRenew"))
         // Test CA client renewal
         // Prepare CA certs
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
@@ -319,7 +342,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
 
         // Test renewal (may fail if server not running, which is expected)
         do {
@@ -334,9 +357,11 @@ final class CATests: XCTestCase {
     }
 
     func testCaClientRevoke() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientRevoke"))
         // Test CA client revocation
         // Prepare CA certs
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
@@ -363,7 +388,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
 
         // Test revocation (may fail if server not running, which is expected)
         do {
@@ -378,9 +403,11 @@ final class CATests: XCTestCase {
     }
 
     func testCaClientGetChain() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientGetChain"))
         // Test CA client chain retrieval
         // Prepare CA certs
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
@@ -407,7 +434,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
 
         // Test chain retrieval (may fail if server not running, which is expected)
         do {
@@ -422,9 +449,11 @@ final class CATests: XCTestCase {
     }
 
     func testCaClientGetStatus() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientGetStatus"))
         // Test CA client status retrieval
         // Prepare CA certs
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
@@ -451,7 +480,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
 
         // Test status retrieval (may fail if server not running, which is expected)
         do {
@@ -468,6 +497,8 @@ final class CATests: XCTestCase {
     // MARK: - EA Key Manager Tests
 
     func testEaKeyManagerCreateKeyPair() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("EaKeyManagerCreateKeyPair"))
         // Test EA key pair creation
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
@@ -478,6 +509,8 @@ final class CATests: XCTestCase {
     }
 
     func testEaKeyManagerGetPublicKey() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("EaKeyManagerGetPublicKey"))
         // Test getting EA public key
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
@@ -489,6 +522,8 @@ final class CATests: XCTestCase {
     }
 
     func testEaKeyManagerGenerateEnrollmentToken() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("EaKeyManagerGenerateEnrollmentToken"))
         // Test enrollment token generation
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
@@ -514,8 +549,10 @@ final class CATests: XCTestCase {
     // MARK: - Error Handling Tests
 
     func testCaNodeErrorHandling() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaNodeErrorHandling"))
         // Test CA node error handling with invalid parameters
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
 
         // Test with empty EA public keys
         let setupParams = CANodeManager.CANodeSetupParams(
@@ -533,9 +570,11 @@ final class CATests: XCTestCase {
     }
 
     func testCaClientErrorHandling() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientErrorHandling"))
         // Test CA client error handling with invalid parameters
         // Prepare CA certs
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
         let eaKeyPair = try await eaKeyManager.createKeyPair()
         let eaPublicKey = try await eaKeyManager.getPublicKey(eaKeyPair)
@@ -562,26 +601,30 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
 
         // Test with empty address
         await XCTAssertThrowsErrorAsync(try await caClient.enroll(
             bootstrapAddress: "",
-            request: Data()
+            request: Data(),
+            logger: logger.child(component: .network)
         ), "Should fail with empty address")
 
         // Test with empty network ID
         await XCTAssertThrowsErrorAsync(try await caClient.enroll(
             bootstrapAddress: "127.0.0.1:8080",
-            request: Data()
+            request: Data(),
+            logger: logger.child(component: .network)
         ), "Should fail with empty network ID")
     }
 
     // MARK: - Integration Tests
 
     func testCaNodeServerIntegration() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaNodeServerIntegration"))
         // Test CA node and server integration
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
@@ -616,8 +659,10 @@ final class CATests: XCTestCase {
     }
 
     func testCaClientServerIntegration() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientServerIntegration"))
         // Test CA client and server integration - matching Rust comprehensive tests
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
 
         // Create EA key pair
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
@@ -669,7 +714,7 @@ final class CATests: XCTestCase {
             issuing_ca_der: Array(issuingCa)
         )
 
-        let caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+        let caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
         XCTAssertNotNil(caClient, "CA client should be created successfully")
 
         // Test that both client and server were created successfully
@@ -683,8 +728,10 @@ final class CATests: XCTestCase {
     // MARK: - Comprehensive CA Workflow Tests
 
     func testCaNodeInstallIssuingCaHappyPath() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaNodeInstallIssuingCaHappyPath"))
         // Test CA node setup with issuing CA installation - matching Rust test_ca_node_install_issuing_ca_happy_path
-        let caNode = try CANode.create()
+        let caNode = try CANode.create(logger: logger.child(component: .network))
 
         // Create EA key pair for testing
         let eaKeyManager = EAKeyManager(logger: RunarLogger.root(component: .custom("test")))
@@ -718,6 +765,8 @@ final class CATests: XCTestCase {
     }
 
     func testCaNodeSetupCompleteErrorHandling() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaNodeSetupCompleteErrorHandling"))
         // Test CA node setup error handling - matching Rust test_ca_node_setup_complete_null_ca_node
         // This test verifies proper error handling for invalid arguments
 
@@ -728,7 +777,7 @@ final class CATests: XCTestCase {
 
         // Test with empty EA public keys - this should fail
         do {
-            let caNode = try CANode.create()
+            let caNode = try CANode.create(logger: logger.child(component: .network))
             let setupParams = CANodeManager.CANodeSetupParams(
                 caNode: caNode.ffiHandle,
                 rootCaSubject: "CN=Test Root CA,O=Test,C=US",
@@ -752,13 +801,15 @@ final class CATests: XCTestCase {
     // MARK: - Performance Tests
 
     func testCaNodeCreationPerformance() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaNodeCreationPerformance"))
         // Test performance of CA node creation
         let iterations = 100
 
         let startTime = CFAbsoluteTimeGetCurrent()
 
         for _ in 0 ..< iterations {
-            _ = try CANode.create()
+            _ = try CANode.create(logger: logger.child(component: .network))
             // CA node is automatically cleaned up when out of scope
         }
 
@@ -769,6 +820,8 @@ final class CATests: XCTestCase {
     }
 
     func testEaKeyPairCreationPerformance() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("EaKeyPairCreationPerformance"))
         // Test performance of EA key pair creation
         let iterations = 50
 

@@ -16,13 +16,16 @@ final class CertificateStatusTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CertificateStatusTests"))
+
         // Create node keys handle
         do {
             nodeKeys = try await NodeKeyManager()
             try await nodeKeys.generateKeys()
 
             // Create CA node for testing
-            caNode = try CANode.create()
+            caNode = try CANode.create(logger: logger.child(component: .network))
         } catch {
             XCTFail("Failed to set up test: \(error)")
         }
@@ -72,7 +75,7 @@ final class CertificateStatusTests: XCTestCase {
                 issuing_ca_der: Array(issuingCa)
             )
 
-            caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+            caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
 
             // Perform real enrollment to install a certificate
             let now = UInt64(Date().timeIntervalSince1970)
@@ -88,7 +91,7 @@ final class CertificateStatusTests: XCTestCase {
             )
             let tokenData = try await eaManager.generateEnrollmentToken(params: tokenParams)
             let enrollmentToken = try CodableCBORDecoder().decode(EnrollmentToken.self, from: tokenData)
-            let setupTokenCbor = try await nodeKeys.generateCSR()
+            let setupTokenCbor = try await nodeKeys.generateCSR(logger: logger.child(component: .network))
             let setupToken = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
             let csr = Data(setupToken.csr_der)
             let enrollReq = CsrEnrollRequest(
@@ -97,7 +100,7 @@ final class CertificateStatusTests: XCTestCase {
                 enrollment_token: enrollmentToken
             )
             let enrollReqData = try CodableCBOREncoder().encode(enrollReq)
-            let enrollResp = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: enrollReqData)
+            let enrollResp = try await caClient.enroll(bootstrapAddress: bootstrapAddr, request: enrollReqData, logger: logger.child(component: .network))
             let certMsg = try await MobileKeyManager().fromEnrollResponse(enrollResp)
             try await nodeKeys.installCertificate(certMsg)
             try await Task.sleep(nanoseconds: 50_000_000)
@@ -117,6 +120,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Status Tests
 
     func testGetCertificateStatus() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCertificateStatus"))
         // Test getting certificate status
         let status = try await nodeKeys.getCertificateStatus()
 
@@ -125,8 +130,10 @@ final class CertificateStatusTests: XCTestCase {
     }
 
     func testGetCertificateStatusAfterInstallation() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCertificateStatusAfterInstallation"))
         // Generate CSR and install certificate
-        _ = try await nodeKeys.generateCsrSetupToken()
+        _ = try await nodeKeys.generateCsrSetupToken(logger: logger.child(component: .network))
 
         // For this test, we'll just verify the status can be retrieved
         // In a real scenario, we would process the CSR through the CA
@@ -137,6 +144,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Serial Tests
 
     func testGetCertificateSerial() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCertificateSerial"))
         // Test getting certificate serial
         do {
             let serial = try await nodeKeys.getCertificateSerial()
@@ -148,8 +157,10 @@ final class CertificateStatusTests: XCTestCase {
     }
 
     func testGetCertificateSerialAfterInstallation() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCertificateSerialAfterInstallation"))
         // Generate CSR
-        _ = try await nodeKeys.generateCsrSetupToken()
+        _ = try await nodeKeys.generateCsrSetupToken(logger: logger.child(component: .network))
 
         // Try to get serial (might fail if certificate not installed)
         do {
@@ -164,6 +175,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Peer Certificate Validation Tests
 
     func testValidatePeerCertificate() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ValidatePeerCertificate"))
         // Get node's own certificate for testing
         let nodeCertificate = try await nodeKeys.getNodeCertificate()
 
@@ -178,6 +191,8 @@ final class CertificateStatusTests: XCTestCase {
     }
 
     func testValidatePeerCertificateWithInvalidData() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ValidatePeerCertificateWithInvalidData"))
         // Test with invalid certificate data
         let invalidCertificate = Data([0x01, 0x02, 0x03, 0x04]) // Invalid certificate data
 
@@ -190,6 +205,8 @@ final class CertificateStatusTests: XCTestCase {
     }
 
     func testValidatePeerCertificateWithEmptyData() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ValidatePeerCertificateWithEmptyData"))
         // Test with empty certificate data
         let emptyCertificate = Data()
 
@@ -204,6 +221,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Utilities Tests
 
     func testExtractSkiFromCertificate() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ExtractSkiFromCertificate"))
         // Get node certificate
         let nodeCertificate = try await nodeKeys.getNodeCertificate()
 
@@ -216,6 +235,8 @@ final class CertificateStatusTests: XCTestCase {
     }
 
     func testGetSerialHexFromCertificate() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetSerialHexFromCertificate"))
         // Get node certificate
         let nodeCertificate = try await nodeKeys.getNodeCertificate()
 
@@ -228,6 +249,8 @@ final class CertificateStatusTests: XCTestCase {
     }
 
     func testCertificateUtilitiesWithInvalidData() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CertificateUtilitiesWithInvalidData"))
         // Test certificate utilities with invalid data
         let invalidCertificate = Data([0x01, 0x02, 0x03, 0x04]) // Invalid certificate data
 
@@ -249,10 +272,12 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Lifecycle Tests
 
     func testCertificateLifecycle() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CertificateLifecycle"))
         // Test complete certificate lifecycle
 
         // 1. Generate CSR
-        let csrData = try await nodeKeys.generateCsrSetupToken()
+        let csrData = try await nodeKeys.generateCsrSetupToken(logger: logger.child(component: .network))
         XCTAssertFalse(csrData.isEmpty, "CSR should be generated")
 
         // 2. Get initial certificate status
@@ -289,6 +314,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Multiple Certificate Tests
 
     func testMultipleCertificates() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("MultipleCertificates"))
         // Test handling multiple certificates
 
         // Create multiple node keys handles
@@ -303,11 +330,11 @@ final class CertificateStatusTests: XCTestCase {
         try await mobileKeys.initializeUserRootKey()
 
         // Generate CSRs and install certificates for both nodes
-        let csr1 = try await nodeKeys1.generateCsrSetupToken()
+        let csr1 = try await nodeKeys1.generateCsrSetupToken(logger: logger.child(component: .network))
         let cert1 = try await mobileKeys.processSetupToken(csr1)
         try await nodeKeys1.installCertificate(cert1)
 
-        let csr2 = try await nodeKeys2.generateCsrSetupToken()
+        let csr2 = try await nodeKeys2.generateCsrSetupToken(logger: logger.child(component: .network))
         let cert2 = try await mobileKeys.processSetupToken(csr2)
         try await nodeKeys2.installCertificate(cert2)
 
@@ -333,6 +360,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Status Edge Cases
 
     func testCertificateStatusEdgeCases() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CertificateStatusEdgeCases"))
         // Test various edge cases for certificate status
 
         // Test with newly created keys (no certificate installed yet)
@@ -354,6 +383,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Concurrent Certificate Operations
 
     func testConcurrentCertificateOperations() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ConcurrentCertificateOperations"))
         // Test concurrent certificate operations
         guard let nodeKeys = nodeKeys else {
             XCTFail("Node keys not initialized")
@@ -396,6 +427,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Validation Performance
 
     func testCertificateValidationPerformance() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CertificateValidationPerformance"))
         // Test performance of certificate validation operations
 
         let nodeCertificate = try await nodeKeys.getNodeCertificate()
@@ -437,6 +470,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Error Handling
 
     func testCertificateErrorHandling() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CertificateErrorHandling"))
         // Test various error conditions for certificate operations
 
         // Test with corrupted certificate data
@@ -467,6 +502,8 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Status Consistency
 
     func testCertificateStatusConsistency() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CertificateStatusConsistency"))
         // Test that certificate status is consistent across multiple calls
 
         let status1 = try await nodeKeys.getCertificateStatus()
@@ -476,7 +513,7 @@ final class CertificateStatusTests: XCTestCase {
         XCTAssertEqual(status1, status2, "Certificate status should be consistent across multiple calls")
 
         // Test after some operations
-        _ = try await nodeKeys.generateCsrSetupToken()
+        _ = try await nodeKeys.generateCsrSetupToken(logger: logger.child(component: .network))
 
         let status3 = try await nodeKeys.getCertificateStatus()
         // Status might change after CSR generation, but should still be valid

@@ -13,6 +13,12 @@ import XCTest
 
 @MainActor
 final class FFIDiscoveryFFITest: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Reset global config for each test
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(level: .info)
+    }
+
     // MARK: - Helper Functions
 
     /// Create discovery options CBOR data
@@ -48,8 +54,9 @@ final class FFIDiscoveryFFITest: XCTestCase {
         )
 
         // Create discovery instances for both nodes
-        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: DiscoveryOptions(announceInterval: 0.05, discoveryTimeout: 1.0, debounceWindow: 0.1, multicastGroup: "239.255.0.1:45678"))
-        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: DiscoveryOptions(announceInterval: 0.05, discoveryTimeout: 1.0, debounceWindow: 0.1, multicastGroup: "239.255.0.1:45678"))
+        let logger = RunarLogger.root(component: .custom("testFFIDiscoveryTTLLostAndDebounce"))
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: DiscoveryOptions(announceInterval: 0.05, discoveryTimeout: 1.0, debounceWindow: 0.1, multicastGroup: "239.255.0.1:45678"), logger: logger.child(component: .network))
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: DiscoveryOptions(announceInterval: 0.05, discoveryTimeout: 1.0, debounceWindow: 0.1, multicastGroup: "239.255.0.1:45678"), logger: logger.child(component: .network))
 
         // Initialize both discovery instances
         try await discoveryA.initialize(optionsCbor: discoveryOptions)
@@ -88,8 +95,9 @@ final class FFIDiscoveryFFITest: XCTestCase {
         )
 
         // Create discovery instances for both nodes
-        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45679"))
-        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45679"))
+        let logger = RunarLogger.root(component: .custom("testFFIMulticastAnnounceAndDiscover"))
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45679"), logger: logger.child(component: .network))
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45679"), logger: logger.child(component: .network))
 
         // Initialize both discovery instances
         try await discoveryA.initialize(optionsCbor: discoveryOptions)
@@ -122,7 +130,8 @@ final class FFIDiscoveryFFITest: XCTestCase {
         )
 
         // Create discovery instance
-        let discovery = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45680"))
+        let logger = RunarLogger.root(component: .custom("testFFIDiscoveryStartStopIdempotence"))
+        let discovery = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45680"), logger: logger.child(component: .network))
 
         // Initialize discovery
         try await discovery.initialize(optionsCbor: discoveryOptions)
@@ -150,7 +159,8 @@ final class FFIDiscoveryFFITest: XCTestCase {
         let peerInfo = PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"])
 
         // This should succeed with default options
-        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
+        let logger = RunarLogger.root(component: .custom("testFFIDiscoveryInvalidCborHandling"))
+        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network))
 
         // Cleanup
         try await discovery.shutdown()

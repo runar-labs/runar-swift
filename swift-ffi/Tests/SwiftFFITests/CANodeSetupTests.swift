@@ -13,8 +13,10 @@ final class CANodeSetupTests: XCTestCase {
 
     func testCANodeSetupWithValidEAKeys() async throws {
         // Test that setupComplete with valid EA keys generates certificates
-        let caNode = try await CANode.create()
-        let eaManager = EAKeyManager(logger: createLogger())
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testCANodeSetupWithValidEAKeys"))
+        let caNode = try await CANode.create(logger: logger.child(component: .network))
+        let eaManager = EAKeyManager(logger: logger.child(component: .network))
         let eaHandle = try await eaManager.createKeyPair()
         defer { EAKeyManager.free(eaHandle) }
 
@@ -57,7 +59,9 @@ final class CANodeSetupTests: XCTestCase {
 
     func testCANodeSetupWithInvalidEAKeys() async throws {
         // Test that setupComplete with invalid EA key format fails fast
-        let caNode = try await CANode.create()
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testCANodeSetupWithInvalidEAKeys"))
+        let caNode = try await CANode.create(logger: logger.child(component: .network))
 
         // Create invalid EA keys (single key CBOR not wrapped in array)
         let invalidEaKeysCbor = Data([0x01, 0x02, 0x03]) // Invalid CBOR

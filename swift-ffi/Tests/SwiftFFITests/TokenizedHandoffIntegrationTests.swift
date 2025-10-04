@@ -4,9 +4,17 @@ import SwiftCommon
 import XCTest
 
 final class TokenizedHandoffIntegrationTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Reset global config for each test
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(level: .info)
+    }
+
     // MARK: - Integration Tests
 
     func testNodeKeyManagerFactoryMethods() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("NodeKeyManagerFactoryMethods"))
         // Test that NodeKeyManager factory methods work with the new tokenized handoff
         let nodeKeyManager = try await NodeKeyManager()
 
@@ -24,7 +32,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
-        let caClient = try await nodeKeyManager.createCAClient(config: caConfig)
+        let caClient = try await nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
         XCTAssertNotNil(caClient)
 
         // Test DiscoveryHandle creation with default options
@@ -36,7 +44,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             addresses: ["127.0.0.1:8080"]
         )
 
-        let discoveryHandle = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
+        let discoveryHandle = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network))
         XCTAssertNotNil(discoveryHandle)
 
         // Note: QuicTransport creation requires certificate setup, which is beyond the scope
@@ -45,6 +53,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
     }
 
     func testActorIsolationAndConcurrency() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ActorIsolationAndConcurrency"))
         // Test that actors maintain proper isolation
         let nodeKeyManager = try await NodeKeyManager()
 
@@ -71,8 +81,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
         )
 
         // Create handles concurrently (excluding transport handle which requires certificate setup)
-        async let caClient = nodeKeyManager.createCAClient(config: caConfig)
-        async let discoveryHandle = MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
+        async let caClient = nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
+        async let discoveryHandle = MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network))
 
         // Wait for all to complete
         let (caClientResult, discoveryHandleResult) = try await (caClient, discoveryHandle)
@@ -82,6 +92,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
     }
 
     func testHandleRegistryTokenUniqueness() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("HandleRegistryTokenUniqueness"))
         // Test that each handle gets a unique token
         let nodeKeyManager = try await NodeKeyManager()
 
@@ -96,14 +108,16 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
         )
 
         // Create multiple CA clients
-        let caClient1 = try await nodeKeyManager.createCAClient(config: caConfig)
-        let caClient2 = try await nodeKeyManager.createCAClient(config: caConfig)
+        let caClient1 = try await nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
+        let caClient2 = try await nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
 
         // They should be different instances
         XCTAssertNotEqual(ObjectIdentifier(caClient1), ObjectIdentifier(caClient2))
     }
 
     func testHandleLifecycleAndDeallocation() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("HandleLifecycleAndDeallocation"))
         // Test that handles are properly deallocated
         let nodeKeyManager = try await NodeKeyManager()
 
@@ -118,7 +132,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
         )
 
         // Create and immediately release a handle
-        let caClient = try await nodeKeyManager.createCAClient(config: caConfig)
+        let caClient = try await nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
         XCTAssertNotNil(caClient)
 
         // The handle should be deallocated when it goes out of scope
@@ -126,6 +140,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
     }
 
     func testErrorHandlingInTokenizedHandoff() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ErrorHandlingInTokenizedHandoff"))
         // Test error handling in the tokenized handoff process
 
         // Test with invalid config that should fail during config validation
@@ -153,6 +169,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
     }
 
     func testCrossActorHandleUsage() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrossActorHandleUsage"))
         // Test that handles can be used across different actors
         let nodeKeyManager = try await NodeKeyManager()
 
@@ -166,7 +184,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             issuing_ca_der: Array(Data("test_cert".utf8))
         )
 
-        _ = try await nodeKeyManager.createCAClient(config: caConfig)
+        _ = try await nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
 
         // Test that we can call methods on the CA client from different contexts
         // This tests that the actor isolation is working correctly
@@ -188,6 +206,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
     // MARK: - Stress Tests
 
     func testRapidHandleCreationAndDestruction() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("RapidHandleCreationAndDestruction"))
         // Stress test: rapidly create and destroy handles
         let nodeKeyManager = try await NodeKeyManager()
 
@@ -203,7 +223,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
 
         // Create and destroy 100 handles rapidly
         for _ in 0 ..< 100 {
-            let caClient = try await nodeKeyManager.createCAClient(config: caConfig)
+            let caClient = try await nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
             XCTAssertNotNil(caClient)
             // Handle goes out of scope and should be deallocated
         }
@@ -212,6 +232,8 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
     }
 
     func testConcurrentHandleCreation() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ConcurrentHandleCreation"))
         // Stress test: create many handles concurrently
         let nodeKeyManager = try await NodeKeyManager()
 
@@ -230,7 +252,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
             for _ in 0 ..< 50 {
                 group.addTask {
                     do {
-                        return try await nodeKeyManager.createCAClient(config: caConfig)
+                        return try await nodeKeyManager.createCAClient(config: caConfig, logger: logger.child(component: .network))
                     } catch {
                         return nil
                     }

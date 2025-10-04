@@ -176,12 +176,12 @@ public protocol NodeOnly: CommonKeyManager {
     /// Generate CSR setup token for certificate enrollment
     /// - Returns: CSR setup token data
     /// - Throws: FFIError if generation fails
-    func generateCsrSetupToken() async throws -> Data
+    func generateCsrSetupToken(logger: RunarLogger) async throws -> Data
 
     /// Generate CSR for certificate enrollment
     /// - Returns: CSR data
     /// - Throws: FFIError if generation fails
-    func generateCSR() async throws -> Data
+    func generateCSR(logger: RunarLogger) async throws -> Data
 
     /// Install certificate from CA response
     /// - Parameter certMessage: Certificate message data
@@ -314,7 +314,7 @@ public protocol MobileOnly: CommonKeyManager {
     /// Generate CSR for certificate enrollment
     /// - Returns: CSR data
     /// - Throws: FFIError if generation fails
-    func generateCSR() async throws -> Data
+    func generateCSR(logger: RunarLogger) async throws -> Data
 
     /// Install certificate from CA response
     /// - Parameter certMessage: Certificate message data
@@ -766,13 +766,13 @@ func ffi_node_decrypt_envelope(
 /// Nonisolated helper for generating CSR setup token (node)
 @inline(__always)
 func ffi_node_generate_csr(
-    _ handle: UnsafeMutableRawPointer
+    _ handle: UnsafeMutableRawPointer,
+    _ logger: RunarLogger
 ) throws -> Data {
     // Copy handle to local to avoid capturing actor state in closures
     let nodeHandle = handle
     var outPtr: UnsafeMutablePointer<UInt8>?
     var outLen = 0
-    let logger = RunarLogger.root(component: .custom("ffi"))
     let threadId = pthread_mach_thread_np(pthread_self())
     logger.trace("ffi_node_generate_csr: ENTER thread=\(threadId) nodeHandle=\(nodeHandle)")
 
@@ -1429,9 +1429,9 @@ func ffi_mobile_decrypt_message_from_node(
 @inline(__always)
 func ffi_create_ca_client(
     _ handle: UnsafeMutableRawPointer,
-    configCbor: Data
+    configCbor: Data,
+    _ logger: RunarLogger
 ) throws -> UnsafeMutableRawPointer {
-    let logger = RunarLogger.root(component: .custom("ffi"))
     logger.debug("ffi_create_ca_client() - Creating CA client Config - CBOR length: \(configCbor.count)")
 
     // Copy handle to local to avoid capturing actor state in closures
@@ -1726,14 +1726,15 @@ public class EAKeyManager {
 public class CANode {
     public nonisolated(unsafe) let ffiHandle: UnsafeMutableRawPointer
     private nonisolated(unsafe) let _ffiHandle: UnsafeMutableRawPointer
+    private let logger: RunarLogger
 
-    public init(ffiHandle: UnsafeMutableRawPointer) {
+    public init(ffiHandle: UnsafeMutableRawPointer, logger: RunarLogger) {
         self.ffiHandle = ffiHandle
         _ffiHandle = ffiHandle
+        self.logger = logger
     }
 
-    public nonisolated static func create() throws -> CANode {
-        let logger = RunarLogger.root(component: .custom("ffi"))
+    public nonisolated static func create(logger: RunarLogger) throws -> CANode {
         logger.info("CANode.create() - Starting CA Node creation")
         var handle: UnsafeMutableRawPointer?
         logger.trace("CANode.create() - About to call rn_keys_ca_node_new_shared")
@@ -1753,11 +1754,10 @@ public class CANode {
             throw FFIError.operationFailed("Failed to create CA Node")
         }
         logger.info("CANode.create() - CA Node created successfully")
-        return CANode(ffiHandle: out)
+        return CANode(ffiHandle: out, logger: logger)
     }
 
     public nonisolated func setupComplete(params: CANodeManager.CANodeSetupParams) async throws {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.info("CANode.setupComplete() - Starting setup with params")
         logger.debug("CANode.setupComplete() - Root CA Subject: \(params.rootCaSubject)")
         logger.debug("CANode.setupComplete() - Issuing CA Subject: \(params.issuingCaSubject)")
@@ -1981,7 +1981,6 @@ public final class SharedCANode {
 
 public extension CANode {
     func getRootCACertificate() async throws -> Data {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.debug("CANode.getRootCACertificate() - Getting Root CA certificate")
         // Copy handle to local to avoid capturing actor state in closures
         let caHandle = ffiHandle
@@ -2011,7 +2010,6 @@ public extension CANode {
     }
 
     func getIssuingCACertificate() async throws -> Data {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.debug("CANode.getIssuingCACertificate() - Getting Issuing CA certificate")
         // Copy handle to local to avoid capturing actor state in closures
         let caHandle = ffiHandle
@@ -2077,7 +2075,6 @@ public extension CANode {
     /// - Parameter eaPublicKeys: Enrollment authority public keys data
     /// - Throws: FFIError if the operation fails
     func configureEnrollmentAuthority(eaPublicKeys: Data) async throws {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.debug("CANode.configureEnrollmentAuthority() - Configuring EA with keys length: \(eaPublicKeys.count)")
 
         // Copy handle to local to avoid capturing actor state in closures
@@ -2230,10 +2227,12 @@ public extension CANode {
 public class CA {
     public nonisolated(unsafe) let ffiHandle: UnsafeMutableRawPointer
     private nonisolated(unsafe) let _ffiHandle: UnsafeMutableRawPointer
+    private let logger: RunarLogger
 
-    public init(ffiHandle: UnsafeMutableRawPointer) {
+    public init(ffiHandle: UnsafeMutableRawPointer, logger: RunarLogger) {
         self.ffiHandle = ffiHandle
         _ffiHandle = ffiHandle
+        self.logger = logger
     }
 
     deinit {
@@ -2244,8 +2243,7 @@ public class CA {
     /// - Parameter subject: The subject for the root CA certificate
     /// - Returns: A new CA instance representing the root CA
     /// - Throws: FFIError if creation fails
-    public nonisolated static func createRootCA(subject: String) throws -> CA {
-        let logger = RunarLogger.root(component: .custom("ffi"))
+    public nonisolated static func createRootCA(subject: String, logger: RunarLogger) throws -> CA {
         logger.info("CA.createRootCA() - Starting root CA creation with subject: \(subject)")
 
         var handle: UnsafeMutableRawPointer?
@@ -2266,7 +2264,7 @@ public class CA {
         }
 
         logger.info("CA.createRootCA() - Root CA created successfully")
-        return CA(ffiHandle: out)
+        return CA(ffiHandle: out, logger: logger)
     }
 
     /// Create an issuing CA signed by a root CA
@@ -2281,9 +2279,9 @@ public class CA {
         rootCA: CA,
         subject: String,
         validityDays: UInt32,
-        serial: UInt64
+        serial: UInt64,
+        logger: RunarLogger
     ) throws -> CA {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.info("CA.createIssuingCA() - Starting issuing CA creation with subject: \(subject)")
 
         var handle: UnsafeMutableRawPointer?
@@ -2304,14 +2302,13 @@ public class CA {
         }
 
         logger.info("CA.createIssuingCA() - Issuing CA created successfully")
-        return CA(ffiHandle: out)
+        return CA(ffiHandle: out, logger: logger)
     }
 
     /// Get the CA certificate in DER format
     /// - Returns: The certificate data in DER format
     /// - Throws: FFIError if retrieval fails
     public nonisolated func getCertificateDER() async throws -> Data {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.trace("CA.getCertificateDER() - About to call rn_keys_ca_get_certificate_der")
 
         var outPtr: UnsafeMutablePointer<UInt8>?
@@ -2340,7 +2337,6 @@ public class CA {
     /// - Returns: The certificate subject string
     /// - Throws: FFIError if retrieval fails
     public nonisolated func getCertificateSubject() async throws -> String {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         logger.trace("CA.getCertificateSubject() - About to call rn_keys_ca_get_certificate_subject")
 
         var outPtr: UnsafeMutablePointer<CChar>?
@@ -2467,20 +2463,20 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to generate node keys") }
     }
 
-    public func generateCsrSetupToken() async throws -> Data {
+    public func generateCsrSetupToken(logger: RunarLogger) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
-        return try ffi_node_generate_csr(handle)
+        return try ffi_node_generate_csr(handle, logger)
     }
 
-    public func generateCSR() async throws -> Data {
+    public func generateCSR(logger: RunarLogger) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
-        return try ffi_node_generate_csr(handle)
+        return try ffi_node_generate_csr(handle, logger)
     }
 
     public func installCertificate(_ certMessage: Data) async throws {
@@ -2819,7 +2815,7 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     // MARK: - Helper Methods for External Objects
 
     /// Actor-safe factory: create a CAClient instance
-    public func createCAClient(config: CaClientConfigAll, configCbor: Data? = nil) async throws -> CAClient {
+    public func createCAClient(config: CaClientConfigAll, configCbor: Data? = nil, logger: RunarLogger) async throws -> CAClient {
         let cbor: Data
         if let provided = configCbor {
             cbor = provided
@@ -2827,9 +2823,9 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
             cbor = try CodableCBOREncoder().encode(config)
         }
         let nodeHandle = handle
-        let clientHandle = try ffi_create_ca_client(nodeHandle, configCbor: cbor)
+        let clientHandle = try ffi_create_ca_client(nodeHandle, configCbor: cbor, logger)
         let token = HandleRegistry.shared.insert(kind: .caClient, pointer: clientHandle)
-        return try CAClient(token: token)
+        return try CAClient(token: token, logger: logger)
     }
 }
 
@@ -3163,12 +3159,12 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
     /// Generate CSR for certificate enrollment
     /// - Returns: CSR data
     /// - Throws: FFIError if generation fails
-    public func generateCSR() async throws -> Data {
+    public func generateCSR(logger: RunarLogger) async throws -> Data {
         // Copy handle to local to avoid capturing actor state in closures
         let handle = self.handle
 
         // Call nonisolated helper - no suspension during FFI
-        return try ffi_node_generate_csr(handle)
+        return try ffi_node_generate_csr(handle, logger)
     }
 
     /// Install certificate from CA response
@@ -3208,21 +3204,21 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
 
 public actor CAClient {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
+    private let logger: RunarLogger
     @MainActor private static var _liveCount: Int = 0
     @MainActor private static func _inc() { _liveCount += 1 }
     @MainActor private static func _dec() { _liveCount -= 1 }
 
     // Use NodeKeyManager factory to create instances; keep this internal
-    public init(token: HandleToken) throws {
+    public init(token: HandleToken, logger: RunarLogger) throws {
         handle = try HandleRegistry.shared.claim(kind: .caClient, token: token)
-        let logger = RunarLogger.root(component: .custom("ffi"))
+        self.logger = logger
         let threadId = pthread_mach_thread_np(pthread_self())
         Task { @MainActor in CAClient._inc() }
         logger.trace("CAClient.init: thread=\(threadId) clientHandle=\(handle)")
     }
 
-    public func enroll(bootstrapAddress: String, request: Data) async throws -> Data {
-        let logger = RunarLogger.root(component: .custom("ffi"))
+    public nonisolated func enroll(bootstrapAddress: String, request: Data, logger: RunarLogger) async throws -> Data {
         logger.info("CAClient.enroll() - Starting enrollment")
         logger.debug("CAClient.enroll() - Bootstrap address: \(bootstrapAddress)")
         logger.debug("CAClient.enroll() - Request data length: \(request.count)")
@@ -3231,9 +3227,10 @@ public actor CAClient {
         let handle = self.handle
         logger.debug("CAClient.enroll() - Handle copied to local")
 
+        logger.trace("CAClient.enroll() - About to call FFI function")
+        
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
-        logger.trace("CAClient.enroll() - About to call FFI function")
         let (code, err) = withRnErrorCode { errPtr in
             bootstrapAddress.withCString { cAddr in
                 request.withUnsafeBytes { raw in
@@ -3353,7 +3350,6 @@ public actor CAClient {
     }
 
     deinit {
-        let logger = RunarLogger.root(component: .custom("ffi"))
         let threadId = pthread_mach_thread_np(pthread_self())
         logger.trace("CAClient.deinit: thread=\(threadId) clientHandle=\(handle)")
         rn_transport_ca_client_free(handle)
@@ -3483,10 +3479,11 @@ public enum EnrollmentTokenUtils {
 /// Handle for Multicast Discovery operations
 public actor MulticastDiscovery {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
-    private let logger = RunarLogger.root(component: .custom("discovery"))
+    private let logger: RunarLogger
 
-    public init(token: HandleToken) throws {
-        handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
+    public init(token: HandleToken, logger: RunarLogger) throws {
+        self.handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
+        self.logger = logger
     }
 
     deinit {
@@ -3494,7 +3491,13 @@ public actor MulticastDiscovery {
     }
 
     /// Create a new discovery instance with multicast
-    public static func create(peerInfo: PeerInfo, options: DiscoveryOptions) async throws -> MulticastDiscovery {
+    /// - Parameters:
+    ///   - peerInfo: Peer information containing public key and addresses
+    ///   - options: Discovery options (encoded to CBOR internally)
+    ///   - logger: Logger instance for discovery operations
+    /// - Returns: New discovery handle
+    /// - Throws: FFIError if creation fails
+    public static func create(peerInfo: PeerInfo, options: DiscoveryOptions, logger: RunarLogger) async throws -> MulticastDiscovery {
         // Encode inputs to CBOR internally (pure encoding, no MainActor)
         let peerInfoCbor = try CodableCBOREncoder().encode(peerInfo)
         let optionsCbor = try CodableCBOREncoder().encode(options)
@@ -3502,7 +3505,7 @@ public actor MulticastDiscovery {
         // Call nonisolated helper - no suspension during FFI
         let discoveryHandle = try ffi_create_discovery(peerInfoCbor: peerInfoCbor, optionsCbor: optionsCbor)
         let token = HandleRegistry.shared.insert(kind: .discovery, pointer: discoveryHandle)
-        return try MulticastDiscovery(token: token)
+        return try MulticastDiscovery(token: token, logger: logger)
     }
 
     /// Initialize discovery with options

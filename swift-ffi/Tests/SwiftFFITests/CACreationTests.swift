@@ -11,7 +11,7 @@ final class CACreationTests: XCTestCase {
         logger.debug("Testing CA.createRootCA()")
 
         // Create a self-signed root CA
-        let rootCA = try CA.createRootCA(subject: "CN=Test Root CA,O=Test,C=US")
+        let rootCA = try CA.createRootCA(subject: "CN=Test Root CA,O=Test,C=US", logger: logger.child(component: .network))
         logger.debug("✅ Root CA created successfully")
 
         // Get the certificate DER
@@ -32,7 +32,7 @@ final class CACreationTests: XCTestCase {
         logger.debug("Testing CA.createIssuingCA()")
 
         // Create a root CA first
-        let rootCA = try CA.createRootCA(subject: "CN=Test Root CA,O=Test,C=US")
+        let rootCA = try CA.createRootCA(subject: "CN=Test Root CA,O=Test,C=US", logger: logger.child(component: .network))
         logger.debug("✅ Root CA created")
 
         // Create an issuing CA signed by the root CA
@@ -40,7 +40,8 @@ final class CACreationTests: XCTestCase {
             rootCA: rootCA,
             subject: "CN=Test Issuing CA,O=Test,C=US",
             validityDays: 365,
-            serial: 12345
+            serial: 12345,
+            logger: logger.child(component: .network)
         )
         logger.debug("✅ Issuing CA created successfully")
 
@@ -67,7 +68,7 @@ final class CACreationTests: XCTestCase {
 
         // Test with empty subject (should fail)
         do {
-            _ = try CA.createRootCA(subject: "")
+            _ = try CA.createRootCA(subject: "", logger: logger.child(component: .network))
             XCTFail("Should have failed with empty subject")
         } catch {
             logger.debug("✅ Correctly failed with empty subject: \(error)")
@@ -75,14 +76,14 @@ final class CACreationTests: XCTestCase {
 
         // Test with invalid subject format (should fail)
         do {
-            _ = try CA.createRootCA(subject: "Invalid Subject Format")
+            _ = try CA.createRootCA(subject: "Invalid Subject Format", logger: logger.child(component: .network))
             XCTFail("Should have failed with invalid subject format")
         } catch {
             logger.debug("✅ Correctly failed with invalid subject format: \(error)")
         }
 
         // Test with valid subject format
-        let rootCA = try CA.createRootCA(subject: "CN=Valid Test CA,O=Test,C=US")
+        let rootCA = try CA.createRootCA(subject: "CN=Valid Test CA,O=Test,C=US", logger: logger.child(component: .network))
         logger.debug("✅ CA created with valid subject format")
 
         let subject = try await rootCA.getCertificateSubject()
@@ -99,14 +100,15 @@ final class CACreationTests: XCTestCase {
         var issuingCAs: [CA] = []
 
         for i in 0 ..< 5 {
-            let rootCA = try CA.createRootCA(subject: "CN=Test Root CA \(i),O=Test,C=US")
+            let rootCA = try CA.createRootCA(subject: "CN=Test Root CA \(i),O=Test,C=US", logger: logger.child(component: .network))
             rootCAs.append(rootCA)
 
             let issuingCA = try CA.createIssuingCA(
                 rootCA: rootCA,
                 subject: "CN=Test Issuing CA \(i),O=Test,C=US",
                 validityDays: 365,
-                serial: UInt64(i + 1)
+                serial: UInt64(i + 1),
+                logger: logger.child(component: .network)
             )
             issuingCAs.append(issuingCA)
         }

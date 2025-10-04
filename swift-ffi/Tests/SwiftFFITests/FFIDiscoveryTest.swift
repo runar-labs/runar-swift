@@ -16,14 +16,17 @@ import XCTest
 
 @MainActor
 final class FFIDiscoveryTest: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Reset global config for each test
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(level: .info)
+    }
+
     /// Test basic discovery setup and configuration
     func testBasicDiscoverySetup() async throws {
         // Set up logging
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-setup-test")
-
-        // Create keys for discovery
-        let keys = try await NodeKeyManager()
 
         // Create discovery options
         let discoveryOptions = DiscoveryOptions(
@@ -39,8 +42,9 @@ final class FFIDiscoveryTest: XCTestCase {
             addresses: ["127.0.0.1:8080"]
         )
 
+        let logger = RunarLogger.root(component: .custom("testBasicDiscoverySetup"))
         // Create discovery instance
-        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
+        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network) )
 
         // Initialize discovery (bindEvents is called automatically)
         try await discovery.initialize(optionsCbor: try CodableCBOREncoder().encode(discoveryOptions))
@@ -55,6 +59,9 @@ final class FFIDiscoveryTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-event-polling-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testDiscoveryEventPolling"))
+
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
@@ -63,11 +70,11 @@ final class FFIDiscoveryTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Generate and install certificates for both nodes
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 
@@ -84,10 +91,10 @@ final class FFIDiscoveryTest: XCTestCase {
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Get public keys for peer info
@@ -168,6 +175,9 @@ final class FFIDiscoveryTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-callbacks-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testDiscoveryWithCallbacks"))
+
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
@@ -176,11 +186,11 @@ final class FFIDiscoveryTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Generate and install certificates
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 
@@ -197,10 +207,10 @@ final class FFIDiscoveryTest: XCTestCase {
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Set up simple discovery callbacks that just log
@@ -297,7 +307,8 @@ final class FFIDiscoveryTest: XCTestCase {
         let optionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instance
-        let discovery = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"]), options: discoveryOptions)
+        let logger = RunarLogger.root(component: .custom("testDiscoveryStartStopIdempotence"))
+        let discovery = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discovery.initialize(optionsCbor: optionsCbor)
 
         // Test multiple start calls (should be idempotent)
@@ -323,6 +334,9 @@ final class FFIDiscoveryTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-ttl-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testDiscoveryTTLLostAndDebounce"))
+
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
@@ -331,11 +345,11 @@ final class FFIDiscoveryTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Generate and install certificates
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 
@@ -352,10 +366,10 @@ final class FFIDiscoveryTest: XCTestCase {
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Get public keys for peer info
@@ -397,6 +411,9 @@ final class FFIDiscoveryTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-multicast-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testMulticastAnnounceAndDiscover"))
+
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
@@ -405,11 +422,11 @@ final class FFIDiscoveryTest: XCTestCase {
         let keysCA = try await MobileKeyManager()
 
         // Generate and install certificates
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 
@@ -426,10 +443,10 @@ final class FFIDiscoveryTest: XCTestCase {
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions, logger: logger.child(component: .network))
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Get public keys for peer info
@@ -470,7 +487,8 @@ final class FFIDiscoveryTest: XCTestCase {
         let peerInfo = PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"])
         
         // Should succeed with default options
-        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
+        let logger = RunarLogger.root(component: .custom("testDiscoveryInvalidCBORHandling"))
+        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network))
         
         // Cleanup
         try await discovery.shutdown()

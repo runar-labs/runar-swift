@@ -10,6 +10,8 @@ import XCTest
 final class ManualPollingTest: XCTestCase {
     /// Test manual polling for events - exactly like Rust test
     func testManualPollingForEvents() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("ManualPollingForEvents"))
         // Set up logging to match Rust test
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("manual-polling-test")
@@ -35,12 +37,12 @@ final class ManualPollingTest: XCTestCase {
         // This will be set when creating the transport
 
         // Step 4: Generate CSR for node A and process through mobile CA - exactly like Rust
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
         // Step 5: Generate CSR for node B and process through mobile CA - exactly like Rust
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 

@@ -59,6 +59,9 @@ final class FFIQuicTransportTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("two-transports-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testTwoTransportsRequestResponseAndPublishEvents"))
+
         // Step 1: Create two node key managers (A and B) - exactly like Rust
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
@@ -94,12 +97,12 @@ final class FFIQuicTransportTest: XCTestCase {
         // This will be set when creating the transport
 
         // Step 4: Generate CSR for node A and process through mobile CA - exactly like Rust
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
         // Step 5: Generate CSR for node B and process through mobile CA - exactly like Rust
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 
@@ -278,6 +281,9 @@ final class FFIQuicTransportTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("idempotence-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testTransportStartStopIdempotence"))
+
         // Create keys for the transport
         let keys = try await NodeKeyManager()
 
@@ -296,7 +302,7 @@ final class FFIQuicTransportTest: XCTestCase {
         // Note: NodeInfo is now set on the transport, not on keys
 
         // Generate CSR and install certificate
-        let csr = try await keys.generateCsrSetupToken()
+        let csr = try await keys.generateCsrSetupToken(logger: logger.child(component: .network))
         let cert = try await keysCA.processSetupToken(csr)
         try await keys.installCertificate(cert)
 
@@ -323,7 +329,6 @@ final class FFIQuicTransportTest: XCTestCase {
                 )
             }
         )
-        let logger = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
         let transport = try await QuicTransport.create(keys: keys, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacks, logger: logger)
 
         // Test start/stop idempotence - multiple starts should not fail
@@ -348,6 +353,9 @@ final class FFIQuicTransportTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("connection-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testBasicTransportConnection"))
+
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
@@ -369,12 +377,12 @@ final class FFIQuicTransportTest: XCTestCase {
         // This will be set when creating the transport
 
         // Generate CSR for node A
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
         // Generate CSR for node B
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 
@@ -460,6 +468,9 @@ final class FFIQuicTransportTest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("setup-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testBasicTransportSetup"))
+
         // Create node key manager
         let keys = try await NodeKeyManager()
 
@@ -478,7 +489,7 @@ final class FFIQuicTransportTest: XCTestCase {
         // Note: NodeInfo is now set on the transport, not on keys
 
         // Generate CSR and install certificate
-        let csr = try await keys.generateCsrSetupToken()
+        let csr = try await keys.generateCsrSetupToken(logger: logger.child(component: .network))
         let cert = try await keysCA.processSetupToken(csr)
         try await keys.installCertificate(cert)
 
@@ -505,7 +516,6 @@ final class FFIQuicTransportTest: XCTestCase {
                 )
             }
         )
-        let logger = RunarLogger.root(component: .custom("FFIQuicTransportTest"))
         let transport = try await QuicTransport.create(keys: keys, nodeInfo: nodeInfo, options: transportOptions, callbacks: callbacks, logger: logger)
         XCTAssertNotNil(transport, "Transport should be created successfully")
 

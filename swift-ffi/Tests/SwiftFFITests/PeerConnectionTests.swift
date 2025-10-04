@@ -7,6 +7,9 @@ import XCTest
 final class PeerConnectionTests: XCTestCase {
     /// Test that peer connection callbacks receive the correct NodeInfo data
     func testPeerConnectionWithNodeInfo() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testPeerConnectionWithNodeInfo"))
+        
         // Create two key managers
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()
@@ -28,12 +31,12 @@ final class PeerConnectionTests: XCTestCase {
         // This will be set when creating the transport
 
         // Generate CSR for node A and process through mobile CA
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
         // Generate CSR for node B and process through mobile CA
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
 

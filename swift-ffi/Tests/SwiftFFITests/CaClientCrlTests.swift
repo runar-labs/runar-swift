@@ -15,13 +15,16 @@ final class CaClientCrlTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CaClientCrlTests"))
+
         // Create node keys handle
         do {
             nodeKeys = try await NodeKeyManager()
             try await nodeKeys.generateKeys()
 
             // Create CA node for testing
-            caNode = try CANode.create()
+            caNode = try CANode.create(logger: logger.child(component: .network))
         } catch {
             XCTFail("Failed to set up test: \(error)")
         }
@@ -69,7 +72,7 @@ final class CaClientCrlTests: XCTestCase {
                 issuing_ca_der: Array(issuingCa)
             )
 
-            caClient = try await nodeKeys.createCAClient(config: caClientConfig)
+            caClient = try await nodeKeys.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
         } catch {
             XCTFail("Failed to set up CA components: \(error)")
         }
@@ -86,6 +89,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Retrieval Tests
 
     func testGetCrl() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCrl"))
         // Test getting CRL from CA client
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -106,6 +111,8 @@ final class CaClientCrlTests: XCTestCase {
     }
 
     func testGetCrlWithDifferentNetworkIds() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCrlWithDifferentNetworkIds"))
         // Test getting CRL with different network IDs
         let authenticatedAddress = "127.0.0.1:8080"
         let networkIds = ["network-1", "network-2", "test-network", "production-network"]
@@ -127,6 +134,8 @@ final class CaClientCrlTests: XCTestCase {
     }
 
     func testGetCrlWithDifferentAddresses() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCrlWithDifferentAddresses"))
         // Test getting CRL with different addresses
         let addresses = ["127.0.0.1:8080", "127.0.0.1:8081", "localhost:8080", "0.0.0.0:8080"]
         let networkId = "test-network"
@@ -150,6 +159,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Error Handling Tests
 
     func testGetCrlWithInvalidAddress() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCrlWithInvalidAddress"))
         // Test getting CRL with invalid address
         let invalidAddress = "invalid-address:99999"
         let networkId = "test-network"
@@ -166,6 +177,8 @@ final class CaClientCrlTests: XCTestCase {
     }
 
     func testGetCrlWithEmptyAddress() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCrlWithEmptyAddress"))
         // Test getting CRL with empty address
         let emptyAddress = ""
         let networkId = "test-network"
@@ -182,6 +195,8 @@ final class CaClientCrlTests: XCTestCase {
     }
 
     func testGetCrlWithEmptyNetworkId() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCrlWithEmptyNetworkId"))
         // Test getting CRL with empty network ID
         let authenticatedAddress = "127.0.0.1:8080"
         let emptyNetworkId = ""
@@ -198,6 +213,8 @@ final class CaClientCrlTests: XCTestCase {
     }
 
     func testGetCrlWithSpecialCharacters() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("GetCrlWithSpecialCharacters"))
         // Test getting CRL with special characters in parameters
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network-@#$%^&*()"
@@ -216,6 +233,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Consistency Tests
 
     func testCrlConsistency() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlConsistency"))
         // Test that CRL data is consistent across multiple calls
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -240,6 +259,8 @@ final class CaClientCrlTests: XCTestCase {
     }
 
     func testCrlWithDifferentClients() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlWithDifferentClients"))
         // Test CRL retrieval with different CA clients
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -255,7 +276,7 @@ final class CaClientCrlTests: XCTestCase {
             issuing_ca_der: Array(await caNode.getIssuingCACertificate())
         )
 
-        let caClient2 = try await nodeKeys.createCAClient(config: caClientConfig2)
+        let caClient2 = try await nodeKeys.createCAClient(config: caClientConfig2, logger: logger.child(component: .network))
 
         do {
             let crl1 = try await caClient.getCrl(
@@ -279,6 +300,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Performance Tests
 
     func testCrlPerformance() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlPerformance"))
         // Test performance of CRL retrieval
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -310,6 +333,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL with Server Integration Tests
 
     func testCrlWithServerIntegration() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlWithServerIntegration"))
         // Test CRL retrieval with actual server running
         // This test requires the CA server to be running
 
@@ -341,6 +366,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Error Scenarios Tests
 
     func testCrlErrorScenarios() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlErrorScenarios"))
         // Test various error scenarios for CRL retrieval
 
         // Test with very long address
@@ -374,6 +401,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Concurrent Access Tests
 
     func testCrlConcurrentAccess() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlConcurrentAccess"))
         // Test concurrent CRL retrieval operations
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -431,6 +460,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Data Validation Tests
 
     func testCrlDataValidation() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlDataValidation"))
         // Test validation of CRL data format
         let authenticatedAddress = "127.0.0.1:8080"
         let networkId = "test-network"
@@ -457,6 +488,8 @@ final class CaClientCrlTests: XCTestCase {
     // MARK: - CRL Network Error Handling
 
     func testCrlNetworkErrorHandling() async throws {
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("CrlNetworkErrorHandling"))
         // Test handling of network errors during CRL retrieval
 
         // Test with unreachable address

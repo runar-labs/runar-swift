@@ -20,6 +20,9 @@ final class FFIKeysE2ETest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("mobile-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testKeysE2EGenerationAndExchange"))
+
         // Create mobile keys manager
         let mobileKeys = try await MobileKeyManager()
         // Generate user root agreement public key for ECIES
@@ -45,7 +48,7 @@ final class FFIKeysE2ETest: XCTestCase {
         // Node is now initialized and ready
 
         // Generate setup token (CSR)
-        let setupToken = try await nodeKeys.generateCsrSetupToken()
+        let setupToken = try await nodeKeys.generateCsrSetupToken(logger: logger.child(component: .network))
         XCTAssertFalse(setupToken.isEmpty, "Setup token should not be empty")
 
         // ==========================================
@@ -77,7 +80,7 @@ final class FFIKeysE2ETest: XCTestCase {
         // ==========================================
 
         // Generate CSR for certificate
-        let csrData = try await nodeKeys.generateCsrSetupToken()
+        let csrData = try await nodeKeys.generateCsrSetupToken(logger: logger.child(component: .network))
         XCTAssertFalse(csrData.isEmpty, "CSR data should not be empty")
     }
 
@@ -86,12 +89,15 @@ final class FFIKeysE2ETest: XCTestCase {
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("ca-node-test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testPrimitivesE2ECANodeFlow"))
+
         // ==========================================
         // Phase 1: CA Node Infrastructure Setup
         // ==========================================
 
         // Create CA Node
-        let caNode = try await CANode.create()
+        let caNode = try await CANode.create(logger: logger.child(component: .network))
 
         // ==========================================
         // Phase 2: Mobile Node Enrollment

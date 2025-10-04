@@ -69,7 +69,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
     func decode<T: Codable>(_ type: T.Type, from data: Data) throws -> T { try CodableCBORDecoder().decode(type, from: data) }
 
     func testWrapperFullTransportE2EQuicMtls() async throws {
-        let logger = createLogger()
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testWrapperFullTransportE2EQuicMtls"))
         logger.debug("CRITICAL: testWrapperFullTransportE2EQuicMtls() - entered")
         logger.debug("🔥🔥🔥 CRITICAL: testWrapperFullTransportE2EQuicMtls() - Method started 🔥🔥🔥")
         logger.debug("DEBUG: testWrapperFullTransportE2EQuicMtls() - Method started")
@@ -91,7 +92,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Create CA Node
         logger.debug("🔧 STEP 1: Creating CA Node...")
-        caNode = try await CANode.create()
+        caNode = try await CANode.create(logger: logger.child(component: .network))
         logger.debug("   ✅ CA Node created successfully")
 
         // Create EA Key Manager and generate EA key pair
@@ -218,7 +219,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("   ✅ Node key manager created for CA client")
 
         // Generate CSR using the node manager (returns SetupToken CBOR like Rust)
-        let setupTokenCbor = try await nodeKeys!.generateCSR()
+        let setupTokenCbor = try await nodeKeys!.generateCSR(logger: logger.child(component: .network))
         // Extract DER bytes from SetupToken CBOR (mirror Rust)
         let setupToken = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenCbor)
         let csrDerData = Data(setupToken.csr_der)
@@ -250,7 +251,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("DEBUG: Issuing CA cert length: \(issuingCa.count)")
         logger.debug("DEBUG: About to call CAClient constructor")
 
-        caClient = try await nodeKeys!.createCAClient(config: caClientConfig)
+        caClient = try await nodeKeys!.createCAClient(config: caClientConfig, logger: logger.child(component: .network))
         logger.debug("   ✅ CA client created with certificates")
         logger.debug("DEBUG: CA Client created successfully, moving to Phase 3")
 
@@ -264,7 +265,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Encode the enrollment request to CBOR
         let enrollRequestData = try CodableCBOREncoder().encode(csrEnrollRequest)
 
-        let enrollResponse = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: enrollRequestData)
+        let enrollResponse = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: enrollRequestData, logger: logger.child(component: .network))
         logger.debug("   ✅ Enrollment response received: \(enrollResponse.count) bytes")
 
         // Deserialize and validate the enrollment response
@@ -296,7 +297,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("\n🔄 PHASE 5: Certificate Renewal via REAL QUIC mTLS")
 
         // Generate renewal CSR (returns SetupToken CBOR) and extract DER (mirror Rust)
-        let renewalSetupTokenCbor = try await nodeKeys!.generateCSR()
+        let renewalSetupTokenCbor = try await nodeKeys!.generateCSR(logger: logger.child(component: .network))
         let renewalSetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: renewalSetupTokenCbor)
         let renewalCsrDer = Data(renewalSetupToken.csr_der)
         logger.debug("   ✅ Renewal CSR generated: \(renewalCsrDer.count) bytes")
@@ -480,7 +481,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         // Rate limiting is per token_id: reuse the SAME token_id across multiple enrolls
         let rateLimitTokenId = "test_token_001" // reuse original
         for i in 1 ... 3 {
-            let setupCbor = try await nodeKeys!.generateCSR()
+            let setupCbor = try await nodeKeys!.generateCSR(logger: logger.child(component: .network))
             let setup = try CodableCBORDecoder().decode(SetupToken.self, from: setupCbor)
             let csrDer = Data(setup.csr_der)
 
@@ -488,7 +489,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
             let reqData = try CodableCBOREncoder().encode(req)
 
             do {
-                _ = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: reqData)
+                _ = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: reqData, logger: logger.child(component: .network))
                 logger.debug("   ⚠️  Rate limit check \(i) unexpectedly passed (rate limiting may not be working)")
             } catch {
                 logger.debug("   ✅ Rate limit check \(i) correctly rejected (rate limiting working) - Error: \(error)")
@@ -509,7 +510,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("   ✅ Enrollment token revoked via REAL QUIC mTLS")
 
         // Try to use revoked token
-        let testCsr = try await nodeKeys!.generateCSR()
+        let testCsr = try await nodeKeys!.generateCSR(logger: logger.child(component: .network))
         let revokedRequest = CsrEnrollRequest(
             network_id: "test_network",
             csr_der: testCsr,
@@ -520,7 +521,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let revokedRequestData = try CodableCBOREncoder().encode(revokedRequest)
 
         do {
-            let result = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: revokedRequestData)
+            let result = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: revokedRequestData, logger: logger.child(component: .network))
             XCTFail("Revoked token should be rejected")
         } catch {
             logger.debug("   ✅ Revoked token correctly rejected via REAL QUIC mTLS")
@@ -561,7 +562,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
             signer_id: "invalid_signer"
         )
 
-        let invalidCsr = try await nodeKeys!.generateCSR()
+        let invalidCsr = try await nodeKeys!.generateCSR(logger: logger.child(component: .network))
         let invalidRequest = CsrEnrollRequest(
             network_id: "test_network",
             csr_der: invalidCsr,
@@ -572,7 +573,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         let invalidRequestData = try CodableCBOREncoder().encode(invalidRequest)
 
         do {
-            let result = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: invalidRequestData)
+            let result = try await caClient!.enroll(bootstrapAddress: bootstrapAddr, request: invalidRequestData, logger: logger.child(component: .network))
             XCTFail("Invalid token should be rejected")
         } catch {
             logger.debug("   ✅ Invalid enrollment token rejected via REAL QUIC mTLS")
@@ -580,7 +581,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Test unauthorized renewal
         let unauthorizedNodeKeys = try await NodeKeyManager()
-        let unauthorizedSetupTokenCbor = try await unauthorizedNodeKeys.generateCSR()
+        let unauthorizedSetupTokenCbor = try await unauthorizedNodeKeys.generateCSR(logger: logger.child(component: .network))
         let unauthorizedSetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: unauthorizedSetupTokenCbor)
         let unauthorizedCsrDer = Data(unauthorizedSetupToken.csr_der)
         let unauthorizedRenew = RenewRequest(
@@ -609,7 +610,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("   🔍 Validating Issuing CA reconstruction using from_existing() via FFI...")
 
         // Create Root CA via FFI
-        let reconstructedRootCA = try await CA.createRootCA(subject: "CN=Reconstructed Root CA,O=Test,C=US")
+        let reconstructedRootCA = try await CA.createRootCA(subject: "CN=Reconstructed Root CA,O=Test,C=US", logger: logger.child(component: .network))
         logger.debug("   ✅ Reconstructed root CA created via FFI")
 
         // Create Issuing CA via FFI (signed by Root CA)
@@ -617,7 +618,8 @@ final class FFIE2EIntegrationTest: XCTestCase {
             rootCA: reconstructedRootCA,
             subject: "CN=Reconstructed Issuing CA,O=Test,C=US",
             validityDays: 365,
-            serial: 12345
+            serial: 12345,
+            logger: logger.child(component: .network)
         )
         logger.debug("   ✅ Reconstructed issuing CA created via FFI")
 
@@ -652,7 +654,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
 
         // Create a fresh CA Node for reconstruction (to avoid memory issues with the stopped server)
         // We'll create new certificates with the same subjects as the original setup
-        let reconstructedCANode = try await CANode.create()
+        let reconstructedCANode = try await CANode.create(logger: logger.child(component: .network))
         logger.debug("   ✅ Reconstructed shared CA node created")
 
         // Setup the reconstructed CA Node with the SAME subjects as the original setup
@@ -715,7 +717,7 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("   ✅ Test mobile and node key managers created")
 
         // Generate CSR for test node
-        let testSetupTokenCbor = try await testNodeKeys.generateCSR()
+        let testSetupTokenCbor = try await testNodeKeys.generateCSR(logger: logger.child(component: .network))
         let testSetupToken = try CodableCBORDecoder().decode(SetupToken.self, from: testSetupTokenCbor)
         let testCsrDer = Data(testSetupToken.csr_der)
         logger.debug("   ✅ Test CSR generated")
@@ -753,11 +755,11 @@ final class FFIE2EIntegrationTest: XCTestCase {
             root_ca_der: Array(freshRootCert), // Use FRESH certificates (from reconstructed CA Node)
             issuing_ca_der: Array(freshIssuingCert) // Use FRESH certificates (from reconstructed CA Node)
         )
-        let testCaClient = try await testNodeKeys.createCAClient(config: testConfig)
+        let testCaClient = try await testNodeKeys.createCAClient(config: testConfig, logger: logger.child(component: .network))
         logger.debug("   ✅ Test CA client created with fresh certificates")
 
         // Test basic enrollment with reconstructed CA
-        let testEnrollResponse = try await testCaClient.enroll(bootstrapAddress: reconstructedBootstrapAddr, request: testEnrollRequestData)
+        let testEnrollResponse = try await testCaClient.enroll(bootstrapAddress: reconstructedBootstrapAddr, request: testEnrollRequestData, logger: logger.child(component: .network))
         logger.debug("   ✅ Test enrollment response received: \(testEnrollResponse.count) bytes")
 
         // Deserialize and validate the test enrollment response

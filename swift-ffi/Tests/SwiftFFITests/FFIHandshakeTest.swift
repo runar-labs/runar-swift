@@ -135,6 +135,9 @@ final class FFIHandshakeTest: XCTestCase {
     func testHandshakeDataflowNodeInfoExchange() async throws {
         testLogger.debug("Starting handshake dataflow test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testHandshakeDataflowNodeInfoExchange"))
+
         // Step 1: Create keys for both peers - exactly like Rust
         testLogger.trace("Creating keys for both peers")
         let keysA = try await NodeKeyManager()
@@ -146,11 +149,11 @@ final class FFIHandshakeTest: XCTestCase {
 
         // Step 3: Generate certificates for both peers - exactly like Rust
         testLogger.trace("Generating certificates for both peers")
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
         testLogger.debug("Certificates generated and installed for both peers")
@@ -374,6 +377,9 @@ final class FFIHandshakeTest: XCTestCase {
     func testHandshakeNodeInfoUpdateDuringConnection() async throws {
         testLogger.debug("Starting NodeInfo update during connection test")
 
+        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
+        let logger = RunarLogger.root(component: .custom("testHandshakeNodeInfoUpdateDuringConnection"))
+
         // Step 1: Create keys for both peers - exactly like Rust
         testLogger.trace("Creating keys for both peers")
         let keysA = try await NodeKeyManager()
@@ -385,11 +391,11 @@ final class FFIHandshakeTest: XCTestCase {
 
         // Step 3: Generate certificates for both peers - exactly like Rust
         testLogger.trace("Generating certificates for both peers")
-        let csrA = try await keysA.generateCsrSetupToken()
+        let csrA = try await keysA.generateCsrSetupToken(logger: logger.child(component: .network))
         let certA = try await keysCA.processSetupToken(csrA)
         try await keysA.installCertificate(certA)
 
-        let csrB = try await keysB.generateCsrSetupToken()
+        let csrB = try await keysB.generateCsrSetupToken(logger: logger.child(component: .network))
         let certB = try await keysCA.processSetupToken(csrB)
         try await keysB.installCertificate(certB)
         testLogger.debug("Certificates generated and installed for both peers")
