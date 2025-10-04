@@ -67,8 +67,8 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         context = SerializationContext(
             keystore: mobileKeystore,
             resolver: resolver,
-            networkId: "test_network",
-            profilePublicKey: profilePublicKey
+            networkPublicKey: networkPublicKey,
+            profilePublicKeys: [profilePublicKey]
         )
     }
 

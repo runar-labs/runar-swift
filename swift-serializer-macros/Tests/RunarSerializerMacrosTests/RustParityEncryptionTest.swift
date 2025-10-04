@@ -35,6 +35,9 @@ final class RustParityEncryptionTest: XCTestCase {
     // Swift testLogger for trace-level logging
     private var testLogger: RunarLogger!
     
+    // Network public key for tests
+    private var networkPub: Data!
+    
     override func setUp() async throws {
         try await super.setUp()
         
@@ -73,7 +76,7 @@ final class RustParityEncryptionTest: XCTestCase {
         testLogger.trace("Creating mobile network master keystore")
         let mobileNetworkMaster = try await MobileKeyManager()
         testLogger.trace("Generating network data key")
-        let networkPub = try await mobileNetworkMaster.generateNetworkDataKey()
+        networkPub = try await mobileNetworkMaster.generateNetworkDataKey()
         testLogger.trace("Getting network ID from public key")
         let networkId = try await mobileNetworkMaster.getCompactId(for: networkPub)
         testLogger.debug("Network ID: \(networkId)")
@@ -216,8 +219,8 @@ final class RustParityEncryptionTest: XCTestCase {
         let context = SerializationContext(
             keystore: mobileKs,
             resolver: resolver,
-            networkId: "test_network",
-            profilePublicKey: profilePk
+            networkPublicKey: networkPub,
+            profilePublicKeys: [profilePk]
         )
         testLogger.debug("Serialization context created with networkId: test_network")
         

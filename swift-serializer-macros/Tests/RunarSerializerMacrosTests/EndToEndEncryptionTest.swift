@@ -298,7 +298,7 @@ final class EndToEndEncryptionTest: XCTestCase {
             )
         ])
         
-        let context = SerializationContext(keystore: mobileKeystore, resolver: resolver, networkId: "test_network")
+        let context = SerializationContext(keystore: mobileKeystore, resolver: resolver, networkPublicKey: networkPublicKey, profilePublicKeys: [profilePublicKey])
         
         // Test the full encryption flow with @Encrypted macro
         let profile = TestProfile(
