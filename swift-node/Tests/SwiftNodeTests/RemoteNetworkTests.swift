@@ -20,7 +20,7 @@ final class RemoteNetworkTests: XCTestCase {
 
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
-            level: .trace,
+            level: .info,
             includeTimestamp: true,
             includeComponent: true,
             includeContext: true
@@ -398,7 +398,7 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
 
         // Generate and install certificate for QUIC transport
         print("🔍 CONFIG: Generating certificate for node \(i)")
-        let csr = try await keyManager.generateCsrSetupToken()
+        let csr = try await keyManager.generateCsrSetupToken(logger: logger.child(component: .network))
         let cert = try await caKeys.processSetupToken(csr)
         try await keyManager.installCertificate(cert)
         print("🔍 CONFIG: Certificate installed for node \(i)")
@@ -406,10 +406,12 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
         // Create network config with QUIC transport and discovery
         print("🔍 CONFIG: Creating network config for node \(i)")
         let discoveryOptions = SwiftFFI.DiscoveryOptions(
-            multicastGroup: "224.0.0.251:5353",
-            announceIntervalMs: 1000,
-            discoveryTimeoutMs: 5000,
-            debounceWindowMs: 200
+            announceInterval: 1000,
+            discoveryTimeout: 5000,
+            debounceWindow: 2000,
+            useMulticast: true,
+            localNetworkOnly: true,
+            multicastGroup: "224.0.0.251:5353"
         )
         let discoveryProvider = DiscoveryProviderConfig(
             type: "mdns",

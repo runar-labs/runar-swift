@@ -168,7 +168,7 @@ public final class RunarLogger: Sendable {
     }
 
     public func child(component: Component, context: String? = nil) -> RunarLogger {
-        RunarLogger(parent: self, component: component, context: context, config: nil)
+        RunarLogger(parent: self, component: component, context: context, config: self.explicitConfig)
     }
 
     // MARK: - Logging Methods with @autoclosure

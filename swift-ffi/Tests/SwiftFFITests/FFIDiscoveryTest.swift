@@ -44,10 +44,10 @@ final class FFIDiscoveryTest: XCTestCase {
 
         let logger = RunarLogger.root(component: .custom("testBasicDiscoverySetup"))
         // Create discovery instance
-        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network) )
+        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network))
 
         // Initialize discovery (bindEvents is called automatically)
-        try await discovery.initialize(optionsCbor: try CodableCBOREncoder().encode(discoveryOptions))
+        try await discovery.initialize(optionsCbor: CodableCBOREncoder().encode(discoveryOptions))
 
         // Shutdown discovery
         try await discovery.shutdown()
@@ -125,7 +125,7 @@ final class FFIDiscoveryTest: XCTestCase {
         var lostEvents = 0
 
         // Poll for discovered events
-        for _ in 0..<10 {
+        for _ in 0 ..< 10 {
             if let discovered = try await discoveryB.pollDiscovered() {
                 print("Discovered peer: \(discovered.addresses)")
                 discoveredEvents += 1
@@ -156,7 +156,7 @@ final class FFIDiscoveryTest: XCTestCase {
         try await Task.sleep(nanoseconds: UInt64(2.0 * 1_000_000_000))
 
         // Poll for lost events after TTL
-        for _ in 0..<5 {
+        for _ in 0 ..< 5 {
             if let lost = try await discoveryB.pollLost() {
                 print("Lost peer after TTL: \(lost)")
                 lostEvents += 1
@@ -171,12 +171,13 @@ final class FFIDiscoveryTest: XCTestCase {
 
     /// Test discovery with callback system
     func testDiscoveryWithCallbacks() async throws {
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(level: .info)
         // Set up logging
         try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-callbacks-test")
 
         // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
-        let logger = RunarLogger.root(component: .custom("testDiscoveryWithCallbacks"))
+        let logger = RunarLogger.root(component: .custom("testDiscoveryWithCallbacks"), context: nil, config: LoggerConfig(level: .info))
 
         // Create two node key managers (A and B)
         let keysA = try await NodeKeyManager()
@@ -265,7 +266,7 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Test that the discovery system is working by polling for events
         var discoveredCount = 0
-        for _ in 0..<5 {
+        for _ in 0 ..< 5 {
             if let _ = try await discoveryB.pollDiscovered() {
                 discoveredCount += 1
             }
@@ -485,11 +486,11 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery instance with default options
         let discoveryOptions = DiscoveryOptions()
         let peerInfo = PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"])
-        
+
         // Should succeed with default options
         let logger = RunarLogger.root(component: .custom("testDiscoveryInvalidCBORHandling"))
         let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions, logger: logger.child(component: .network))
-        
+
         // Cleanup
         try await discovery.shutdown()
     }

@@ -14,7 +14,7 @@ final class FFITypesValidator: XCTestCase {
     func testValidateAllFFITypesAgainstRust() async throws {
         print("🔬 Validating ALL FFI Types Against Rust")
         print("======================================")
-        print("Validating all 37 types from SwiftFFI+Schema.swift against Rust counterparts")
+        print("Validating all 36 FFI types from SwiftFFI+Schema.swift against Rust counterparts")
 
         guard FileManager.default.fileExists(atPath: swiftDir.path) else {
             XCTFail("Swift FFI types vectors directory not found: \(swiftDir.path). Run Swift FFI types vectors first.")
@@ -30,7 +30,7 @@ final class FFITypesValidator: XCTestCase {
         print("   Swift: \(swiftDir.path)")
         print("   Rust:  \(rustDir.path)")
 
-        // Define all 37 types with their validation functions
+        // Define all 36 FFI types with their validation functions (excludes Swift-only types)
         let typeValidations = [
             // CA Client Types (9 types)
             ("EnrollmentTokenBody", validateEnrollmentTokenBody),
@@ -74,15 +74,11 @@ final class FFITypesValidator: XCTestCase {
             ("TransportCompleteRequestParams", validateTransportCompleteRequestParams),
             ("TransportPublishParams", validateTransportPublishParams),
 
-            // Transport Options (2 types)
+            // Transport Options (1 type)
             ("FFIQuicTransportOptions", validateFFIQuicTransportOptions),
-            ("QuicTransportOptions", validateQuicTransportOptions),
 
             // Discovery Types (1 type)
             ("DiscoveryOptions", validateDiscoveryOptions),
-
-            // Transport Config Types (1 type)
-            ("QuicTransportOptionsConfig", validateQuicTransportOptionsConfig),
 
             // Transport Event Types (4 types)
             ("PeerConnectedEvent", validatePeerConnectedEvent),
@@ -114,7 +110,7 @@ final class FFITypesValidator: XCTestCase {
         if failed > 0 {
             XCTFail("\(failed) FFI types validations failed")
         } else {
-            print("\n🎉 All 37 FFI types validations passed! Swift and Rust CBOR are 100% compatible!")
+            print("\n🎉 All 36 FFI types validations passed! Swift and Rust CBOR are 100% compatible!")
         }
     }
 
@@ -260,10 +256,6 @@ final class FFITypesValidator: XCTestCase {
 
     private func validateDiscoveryOptions() async throws {
         try await validateTypeNonEquatable(DiscoveryOptions.self, filename: "discovery_options_basic.bin")
-    }
-
-    private func validateQuicTransportOptionsConfig() async throws {
-        try await validateType(QuicTransportOptionsConfig.self, filename: "quic_transport_options_config_basic.bin")
     }
 
     private func validatePeerConnectedEvent() async throws {

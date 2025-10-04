@@ -5,11 +5,17 @@ import XCTest
 
 /// Tests for peer connection functionality with the new NodeInfo API
 final class PeerConnectionTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Reset global config for each test
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(level: .info)
+    }
+
     /// Test that peer connection callbacks receive the correct NodeInfo data
     func testPeerConnectionWithNodeInfo() async throws {
         // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
         let logger = RunarLogger.root(component: .custom("testPeerConnectionWithNodeInfo"))
-        
+
         // Create two key managers
         let keysA = try await NodeKeyManager()
         let keysB = try await NodeKeyManager()

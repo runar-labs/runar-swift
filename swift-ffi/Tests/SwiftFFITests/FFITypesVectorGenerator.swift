@@ -19,7 +19,7 @@ final class FFITypesVectorGenerator: XCTestCase {
     func testGenerateAllFFITypesVectors() throws {
         print("🔬 Generating ALL FFI Types Test Vectors")
         print("======================================")
-        print("Generating vectors for all 37 types from SwiftFFI+Schema.swift")
+        print("Generating vectors for all 37 types from SwiftFFI+Schema.swift (includes Swift-only types)")
 
         // CA Client Types (9 types)
         try generateEnrollmentTokenBody()
@@ -69,9 +69,6 @@ final class FFITypesVectorGenerator: XCTestCase {
 
         // Discovery Types (1 type)
         try generateDiscoveryOptions()
-        
-        // Transport Config Types (1 type)
-        try generateQuicTransportOptionsConfig()
 
         // Transport Event Types (4 types)
         try generateTypedTransportEventVectors()
@@ -477,7 +474,16 @@ final class FFITypesVectorGenerator: XCTestCase {
             openStreamTimeoutMs: 1000,
             maxMessageSize: 1024 * 1024,
             responseCacheTtlMs: 30000,
-            maxRequestRetries: 3
+            maxRequestRetries: 3,
+            certChainDer: [
+                Data([0x30, 0x82, 0x01, 0x22]), // Sample DER data
+                Data([0x30, 0x82, 0x01, 0x33]),
+            ],
+            privateKeyDer: Data([0x30, 0x82, 0x01, 0x44]), // Sample DER data
+            rootCertsDer: [
+                Data([0x30, 0x82, 0x01, 0x55]), // Sample DER data
+                Data([0x30, 0x82, 0x01, 0x66]),
+            ]
         )
         try encodeAndWrite(options, filename: "ffi_quic_transport_options_basic.bin")
     }
@@ -490,7 +496,16 @@ final class FFITypesVectorGenerator: XCTestCase {
             openStreamTimeoutMs: 1000,
             maxMessageSize: 1024 * 1024,
             responseCacheTtlMs: 30000,
-            maxRequestRetries: 3
+            maxRequestRetries: 3,
+            certChainDer: [
+                Data([0x30, 0x82, 0x01, 0x22]), // Sample DER data
+                Data([0x30, 0x82, 0x01, 0x33]),
+            ],
+            privateKeyDer: Data([0x30, 0x82, 0x01, 0x44]), // Sample DER data
+            rootCertsDer: [
+                Data([0x30, 0x82, 0x01, 0x55]), // Sample DER data
+                Data([0x30, 0x82, 0x01, 0x66]),
+            ]
         )
         try encodeAndWrite(options, filename: "quic_transport_options_basic.bin")
     }
@@ -507,27 +522,6 @@ final class FFITypesVectorGenerator: XCTestCase {
             multicastGroup: "239.255.42.98"
         )
         try encodeAndWrite(options, filename: "discovery_options_basic.bin")
-    }
-
-    private func generateQuicTransportOptionsConfig() throws {
-        let config = QuicTransportOptionsConfig(
-            bindAddr: "0.0.0.0:0",
-            handshakeTimeoutMs: 5000,
-            openStreamTimeoutMs: 10000,
-            maxMessageSize: 1024 * 1024, // 1MB
-            responseCacheTtlMs: 30000,
-            maxRequestRetries: 3,
-            certChainDer: [
-                [0x30, 0x82, 0x01, 0x22], // Sample DER data
-                [0x30, 0x82, 0x01, 0x33]
-            ],
-            privateKeyDer: [0x30, 0x82, 0x01, 0x44], // Sample DER data
-            rootCertsDer: [
-                [0x30, 0x82, 0x01, 0x55], // Sample DER data
-                [0x30, 0x82, 0x01, 0x66]
-            ]
-        )
-        try encodeAndWrite(config, filename: "quic_transport_options_config_basic.bin")
     }
 
     // MARK: - Transport Event Types Generation

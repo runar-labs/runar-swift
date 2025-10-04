@@ -7,7 +7,7 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // Reset global config for each test
-        LoggerConfigManager.shared.globalConfig = LoggerConfig(level: .info)
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(level: .error)
     }
 
     // MARK: - Integration Tests

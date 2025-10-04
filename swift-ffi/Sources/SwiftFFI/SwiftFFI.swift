@@ -3228,7 +3228,7 @@ public actor CAClient {
         logger.debug("CAClient.enroll() - Handle copied to local")
 
         logger.trace("CAClient.enroll() - About to call FFI function")
-        
+
         var outPtr: UnsafeMutablePointer<UInt8>?
         var outLen = 0
         let (code, err) = withRnErrorCode { errPtr in
@@ -3482,7 +3482,7 @@ public actor MulticastDiscovery {
     private let logger: RunarLogger
 
     public init(token: HandleToken, logger: RunarLogger) throws {
-        self.handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
+        handle = try HandleRegistry.shared.claim(kind: .discovery, token: token)
         self.logger = logger
     }
 
@@ -3742,21 +3742,11 @@ public actor QuicTransport {
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
     public static func create(keys: NodeKeyManager, nodeInfo: NodeInfo, options: QuicTransportOptions, callbacks: TransportCallbacks, logger: RunarLogger) async throws -> QuicTransport {
-        // Convert QuicTransportOptions to QuicTransportOptionsConfig for FFI layer
-        let config = QuicTransportOptionsConfig(
-            bindAddr: options.bindAddr,
-            handshakeTimeoutMs: options.handshakeTimeoutMs,
-            openStreamTimeoutMs: options.openStreamTimeoutMs,
-            maxMessageSize: options.maxMessageSize.map { UInt($0) },
-            responseCacheTtlMs: options.responseCacheTtlMs,
-            maxRequestRetries: options.maxRequestRetries,
-            certChainDer: [], // Empty for now - will be populated by transport layer
-            privateKeyDer: [], // Empty for now - will be populated by transport layer
-            rootCertsDer: [] // Empty for now - will be populated by transport layer
-        )
+        // Convert QuicTransportOptions to FFIQuicTransportOptions for FFI layer
+        let ffiOptions = options.toFFIOptions()
 
         // Encode inputs to CBOR internally (pure encoding, no MainActor)
-        let optionsCbor = try CodableCBOREncoder().encode(config)
+        let optionsCbor = try CodableCBOREncoder().encode(ffiOptions)
         let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
 
         // Get the keys handle for FFI call
@@ -4005,11 +3995,6 @@ public actor QuicTransport {
     public func request(_ request: TransportRequestParams) async throws -> Data {
         logger.trace("QuicTransport.request() - Sending request")
         let requestCbor = try CodableCBOREncoder().encode(request)
-        // Extra diagnostics for invalid request CBOR
-        if LoggerConfigManager.shared.globalConfig.level == .trace {
-            let hex = requestCbor.map { String(format: "%02x", $0) }.joined()
-            logger.trace("QuicTransport.request() - Request CBOR hex: \(hex)")
-        }
         logger.trace("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
 
         // Use the correlation ID from the request parameters

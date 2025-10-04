@@ -23,7 +23,7 @@ final class CATests: XCTestCase {
 
             // Set global logger config to trace level for all tests
             LoggerConfigManager.shared.globalConfig = LoggerConfig(
-                level: .trace,
+                level: .info,
                 includeTimestamp: true,
                 includeComponent: true,
                 includeContext: true

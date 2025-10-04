@@ -59,6 +59,18 @@ alwaysApply: true
 - Integration tests required
 - No test-only code in production builds
 
+
+Logging
+
+DO NOT EVER USE print() for logs.
+use the propper RunarLogger object.
+DO NOT CREATE A root logger, the functions or object must always receive a logger as parameter NEVER create one internally.
+When passing a logger, an object shuold create a child logger with the proper component config and pass the child logger, not the current logger.
+
+User Proper Log levels, info, debug, trace.  INFO is rare, just for main milestones. Never in palces htat have repetitions. Debug is also seldom used, in important functions and to display paramter, argyuments.. result of calculation. and trace is what is used to log step by step of functions.
+
+IF youn are running a test and the logs you expect are not displaying, check the log level configuration. That will be the reason for logs not showing up.
+
 ## PROHIBITED
 
 ❌ Mock implementations

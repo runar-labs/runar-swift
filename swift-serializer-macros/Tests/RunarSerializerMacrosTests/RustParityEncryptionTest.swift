@@ -43,7 +43,7 @@ final class RustParityEncryptionTest: XCTestCase {
         
         // Set global testLogger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
-            level: .trace,
+            level: .info,
             includeTimestamp: true,
             includeComponent: true,
             includeContext: true

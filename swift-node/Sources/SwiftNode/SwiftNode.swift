@@ -247,14 +247,14 @@ public protocol NodeDiscovery: Sendable {
     func stop() async throws
 }
 
-/// Discovery implementation using Swift FFI DiscoveryHandle
+/// Discovery implementation using Swift FFI MulticastDiscovery
 @MainActor
 public final class Discovery: NodeDiscovery, Sendable {
-    private let discoveryHandle: DiscoveryHandle
+    private let discoveryHandle: MulticastDiscovery
     private let logger: RunarLogger
     private var isStarted = false
 
-    public init(discoveryHandle: DiscoveryHandle, logger: RunarLogger) {
+    public init(discoveryHandle: MulticastDiscovery, logger: RunarLogger) {
         self.discoveryHandle = discoveryHandle
         self.logger = logger
         logger.trace("🔍 Discovery initialized")
@@ -2228,26 +2228,24 @@ public final class Node {
 
     /// Create network transport based on configuration
     private func createTransport(networkConfig: NetworkConfig) async throws -> NodeTransport {
-        print("🔍 TRANSPORT: Creating QUIC transport")
         logger.trace("Creating QUIC transport")
 
         // Get the current NodeInfo (this is just a getter, no transport update)
         let currentNodeInfo = await getLocalNodeInfo()
-        print("🔍 TRANSPORT: Got current NodeInfo with \(currentNodeInfo.nodeMetadata.services.count) services")
+        logger.trace("Got current NodeInfo with \(currentNodeInfo.nodeMetadata.services.count) services")
 
         // Note: The transport will be created with transport-scoped NodeInfo storage
         // The initial NodeInfo will be set when the transport is created
-        print("🔍 TRANSPORT: Transport will use transport-scoped NodeInfo storage")
+        
 
         // Create transport options matching Rust implementation
         let transportOptions = QuicTransportOptions(
             requestTimeoutSeconds: UInt64(config.requestTimeoutMs / 1000),
             bindAddr: networkConfig.bindAddress ?? "127.0.0.1:0"
         )
-        print("🔍 TRANSPORT: Transport options: \(transportOptions)")
+        logger.trace("Transport options: \(transportOptions)")
 
         // Create callbacks for network events
-        print("🔍 TRANSPORT: Creating transport callbacks")
         let callbacks = TransportCallbacks(
             peerConnectedCallback: { [weak self] peerNodeId, nodeInfo in
                 Task { @MainActor in
@@ -2370,10 +2368,9 @@ public final class Node {
             nodeInfo: ffiNodeInfo,
             options: transportOptions,
             callbacks: callbacks,
-            logger: logger
+            logger: logger.child(component: .network)
         )
 
-        print("🔍 TRANSPORT: QUIC transport created successfully")
         logger.trace("QUIC transport created successfully")
         return transport
     }
@@ -2385,23 +2382,30 @@ public final class Node {
     ) async throws -> NodeDiscovery {
         logger.trace("🔍 Creating real discovery provider with options: \(discoveryOptions)")
 
-        // Encode discovery options to CBOR
-        let encoder = CodableCBOREncoder()
-        let optionsCbor = try encoder.encode(discoveryOptions)
-        logger.trace("🔍 Discovery options encoded to CBOR: \(optionsCbor.count) bytes")
-
-        // Create discovery handle using the key manager
+        // Get key manager for node public key
         guard let keyManager = config.getKeyManager() else {
             throw NodeError.missingKeyManager("Key manager not set in configuration")
         }
-        logger.trace("🔍 Creating discovery handle with key manager")
-        let discoveryHandle = try await keyManager.createDiscoveryHandle(optionsCbor: optionsCbor)
-        logger.trace("🔍 Discovery handle created successfully")
-
-        // Initialize discovery
-        logger.trace("🔍 Initializing discovery with options")
-        try await discoveryHandle.initialize(optionsCbor: optionsCbor)
-        logger.trace("🔍 Discovery initialized successfully")
+        
+        // Get node public key for PeerInfo
+        let nodePublicKey = try await keyManager.getNodePublicKey()
+        logger.trace("🔍 Node public key: \(nodePublicKey.count) bytes")
+        
+        // Create PeerInfo for discovery (addresses will be set later when transport is available)
+        let peerInfo = SwiftFFI.PeerInfo(
+            publicKey: nodePublicKey,
+            addresses: [] // Will be updated when transport address is available
+        )
+        logger.trace("🔍 Created PeerInfo for discovery")
+        
+        // Create MulticastDiscovery using the new API
+        logger.trace("🔍 Creating MulticastDiscovery with new API")
+        let discoveryHandle = try await MulticastDiscovery.create(
+            peerInfo: peerInfo,
+            options: discoveryOptions,
+            logger: logger.child(component: .network)
+        )
+        logger.trace("🔍 MulticastDiscovery created successfully")
 
         // Create discovery callbacks for handling discovery events
         let discoveryCallbacks = DiscoveryCallbacks(
@@ -3342,7 +3346,7 @@ extension Node: NodeDelegate {
         try await serviceRegistry.unregisterAction(networkId: networkId, servicePath: servicePath, action: action)
     }
 
-    public func subscribeToEvents(networkId: String, servicePath: String, handler: EventHandler) async throws -> String {
+    public func subscribeToEvents(networkId: String, servicePath: String, handler: @escaping EventHandler) async throws -> String {
         try await serviceRegistry.subscribeToEvents(networkId: networkId, servicePath: servicePath, handler: handler)
     }
 
