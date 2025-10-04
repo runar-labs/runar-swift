@@ -154,6 +154,9 @@ public protocol CommonKeyManager: Sendable {
     func flushState() async throws
     func registerAppleDeviceKeystore(label: String) async throws
 
+    /// Get network public key by network ID (needed for path resolution)
+    func getNetworkPublicKeyByNetworkId(networkId: String) async throws -> Data
+
     // General message crypto (role-agnostic FFI)
     func encryptForNetwork(data: Data, networkPublicKey: Data) async throws -> Data
     func decryptNetworkData(encryptedEnvelope: Data) async throws -> Data
@@ -1301,6 +1304,54 @@ func ffi_mobile_from_renew_response(
 
     if let error = err { throw error }
     guard code == 0 else { throw FFIError.operationFailed("Failed to convert renew response") }
+    return try copyBytesAndFree(outPtr, outLen)
+}
+
+/// Nonisolated helper for getting network public key by ID (node)
+@inline(__always)
+func ffi_node_get_network_public_key_by_id(
+    _ handle: UnsafeMutableRawPointer,
+    networkId: String
+) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let nodeHandle = handle
+    var outPtr: UnsafeMutablePointer<UInt8>?
+    var outLen = 0
+
+    let (code, err) = withRnErrorCode { errPtr in
+        HandleLockRegistry.shared.withLock(for: nodeHandle) {
+            networkId.withCString { networkIdPtr in
+                rn_keys_node_get_network_public_key_by_id(nodeHandle, networkIdPtr, &outPtr, &outLen, errPtr)
+            }
+        }
+    }
+
+    if let error = err { throw error }
+    guard code == 0 else { throw FFIError.operationFailed("Failed to get network public key by ID") }
+    return try copyBytesAndFree(outPtr, outLen)
+}
+
+/// Nonisolated helper for getting network public key by ID (mobile)
+@inline(__always)
+func ffi_mobile_get_network_public_key_by_id(
+    _ handle: UnsafeMutableRawPointer,
+    networkId: String
+) throws -> Data {
+    // Copy handle to local to avoid capturing actor state in closures
+    let mobileHandle = handle
+    var outPtr: UnsafeMutablePointer<UInt8>?
+    var outLen = 0
+
+    let (code, err) = withRnErrorCode { errPtr in
+        HandleLockRegistry.shared.withLock(for: mobileHandle) {
+            networkId.withCString { networkIdPtr in
+                rn_keys_mobile_get_network_public_key_by_id(mobileHandle, networkIdPtr, &outPtr, &outLen, errPtr)
+            }
+        }
+    }
+
+    if let error = err { throw error }
+    guard code == 0 else { throw FFIError.operationFailed("Failed to get network public key by ID") }
     return try copyBytesAndFree(outPtr, outLen)
 }
 
@@ -2758,6 +2809,18 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         guard code == 0 else { throw FFIError.operationFailed("Failed to register Apple device keystore") }
     }
 
+    /// Get network public key by network ID
+    /// - Parameter networkId: Network ID string
+    /// - Returns: Network public key data
+    /// - Throws: FFIError if the operation fails
+    public func getNetworkPublicKeyByNetworkId(networkId: String) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let nodeHandle = handle
+
+        // Call nonisolated helper - no suspension during FFI
+        return try ffi_node_get_network_public_key_by_id(nodeHandle, networkId: networkId)
+    }
+
     /// Encrypt data for network
     /// - Parameters:
     ///   - data: Data to encrypt
@@ -3100,6 +3163,18 @@ public actor MobileKeyManager: MobileOnly, CommonKeyManager {
         }
         if let error = err { throw error }
         guard code == 0 else { throw FFIError.operationFailed("Failed to register Apple device keystore") }
+    }
+
+    /// Get network public key by network ID
+    /// - Parameter networkId: Network ID string
+    /// - Returns: Network public key data
+    /// - Throws: FFIError if the operation fails
+    public func getNetworkPublicKeyByNetworkId(networkId: String) async throws -> Data {
+        // Copy handle to local to avoid capturing actor state in closures
+        let mobileHandle = handle
+
+        // Call nonisolated helper - no suspension during FFI
+        return try ffi_mobile_get_network_public_key_by_id(mobileHandle, networkId: networkId)
     }
 
     /// Encrypt data for network

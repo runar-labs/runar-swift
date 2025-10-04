@@ -363,4 +363,75 @@ final class NetworkKeyFlowTests: XCTestCase {
         let decryptedData = try await nodeKeys.decryptNetworkData(encryptedEnvelope: encryptedData)
         XCTAssertEqual(decryptedData, testData, "Decrypted data should match original")
     }
+
+    // MARK: - Network Public Key by ID Tests
+
+    func testNodeGetNetworkPublicKeyByNetworkId() async throws {
+        // First, we need to install a network key with a specific ID
+        let networkDataKey = try await mobileKeys.generateNetworkDataKey()
+        try await mobileKeys.installNetworkPublicKey(networkDataKey)
+
+        // Get the network ID for the installed key
+        let networkId = try await mobileKeys.getCompactId(for: networkDataKey)
+        XCTAssertFalse(networkId.isEmpty, "Network ID should not be empty")
+
+        // Test getting the network public key by ID
+        let retrievedPublicKey = try await mobileKeys.getNetworkPublicKeyByNetworkId(networkId: networkId)
+        XCTAssertEqual(retrievedPublicKey, networkDataKey, "Retrieved public key should match the original")
+    }
+
+    func testMobileGetNetworkPublicKeyByNetworkId() async throws {
+        // First, install a network public key
+        let networkDataKey = try await mobileKeys.generateNetworkDataKey()
+        try await mobileKeys.installNetworkPublicKey(networkDataKey)
+
+        // Get the network ID for the installed key
+        let networkId = try await mobileKeys.getCompactId(for: networkDataKey)
+        XCTAssertFalse(networkId.isEmpty, "Network ID should not be empty")
+
+        // Test getting the network public key by ID
+        let retrievedPublicKey = try await mobileKeys.getNetworkPublicKeyByNetworkId(networkId: networkId)
+        XCTAssertEqual(retrievedPublicKey, networkDataKey, "Retrieved public key should match the original")
+    }
+
+    func testGetNetworkPublicKeyByNetworkIdWithInvalidId() async throws {
+        // Test with an invalid network ID
+        let invalidNetworkId = "invalid-network-id-12345"
+
+        do {
+            _ = try await nodeKeys.getNetworkPublicKeyByNetworkId(networkId: invalidNetworkId)
+            XCTFail("Expected getNetworkPublicKeyByNetworkId to throw for invalid ID")
+        } catch {
+            XCTAssertTrue(error is FFIError, "Should throw FFIError for invalid network ID")
+        }
+    }
+
+    func testGetNetworkPublicKeyByNetworkIdWithEmptyId() async throws {
+        // Test with an empty network ID
+        let emptyNetworkId = ""
+
+        do {
+            _ = try await nodeKeys.getNetworkPublicKeyByNetworkId(networkId: emptyNetworkId)
+            XCTFail("Expected getNetworkPublicKeyByNetworkId to throw for empty ID")
+        } catch {
+            XCTAssertTrue(error is FFIError, "Should throw FFIError for empty network ID")
+        }
+    }
+
+    func testGetNetworkPublicKeyByNetworkIdConsistency() async throws {
+        // Test that multiple calls with the same ID return the same result
+        let networkDataKey = try await mobileKeys.generateNetworkDataKey()
+        try await mobileKeys.installNetworkPublicKey(networkDataKey)
+
+        let networkId = try await mobileKeys.getCompactId(for: networkDataKey)
+
+        // Call multiple times
+        let key1 = try await mobileKeys.getNetworkPublicKeyByNetworkId(networkId: networkId)
+        let key2 = try await mobileKeys.getNetworkPublicKeyByNetworkId(networkId: networkId)
+        let key3 = try await mobileKeys.getNetworkPublicKeyByNetworkId(networkId: networkId)
+
+        XCTAssertEqual(key1, key2, "Multiple calls should return the same key")
+        XCTAssertEqual(key2, key3, "Multiple calls should return the same key")
+        XCTAssertEqual(key1, networkDataKey, "Retrieved key should match the original")
+    }
 }

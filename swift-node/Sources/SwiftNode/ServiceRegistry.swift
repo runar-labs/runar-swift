@@ -3,6 +3,49 @@ import RunarSerializer
 import SwiftCommon
 import SwiftFFI
 
+/// Errors that can occur in RemoteService operations
+public enum RemoteServiceError: Error, LocalizedError {
+    case networkKeyResolutionFailed(String)
+    case invalidServicePath(String)
+    case serviceCreationFailed(String)
+    
+    public var errorDescription: String? {
+        switch self {
+        case .networkKeyResolutionFailed(let message):
+            return "Network key resolution failed: \(message)"
+        case .invalidServicePath(let path):
+            return "Invalid service path: \(path)"
+        case .serviceCreationFailed(let message):
+            return "Service creation failed: \(message)"
+        }
+    }
+}
+
+/// Lifecycle context for remote services (matches Rust RemoteLifecycleContext)
+public struct RemoteLifecycleContext {
+    /// Network ID for the context
+    public let networkId: String
+    /// Service path - identifies the service within the network
+    public let servicePath: String
+    /// Logger instance with service context
+    public let logger: RunarLogger
+    /// Registry delegate for registry operations
+    private let registryDelegate: ServiceRegistry
+    
+    /// Create a new RemoteLifecycleContext with the given topic path and logger
+    public init(serviceTopic: TopicPath, logger: RunarLogger, registryDelegate: ServiceRegistry) {
+        self.networkId = serviceTopic.networkId
+        self.servicePath = serviceTopic.servicePath
+        self.logger = logger
+        self.registryDelegate = registryDelegate
+    }
+    
+    /// Remove a remote action handler (matches Rust remove_remote_action_handler)
+    public func removeRemoteActionHandler(_ topicPath: TopicPath) async throws {
+        try await registryDelegate.removeRemoteActionHandler(topicPath: topicPath)
+    }
+}
+
 // MARK: - RemoteService Configuration Structs
 
 /// Configuration for creating a RemoteService instance (matches Rust RemoteServiceConfig)
@@ -42,7 +85,6 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     public let serviceTopic: TopicPath
     public let version: String
     public let description: String
-    public let networkPublicKey: Data
 
     /// Remote peer information
     public let peerNodeId: String
@@ -70,16 +112,10 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
 
     /// Create a new RemoteService instance (matches Rust RemoteService::new exactly)
     public init(config: RemoteServiceConfig, dependencies: RemoteServiceDependencies) {
-        let _ = config.serviceTopic.networkId
-        // Network public key should be resolved from keystore based on network_id
-        // For now, we'll use a placeholder until keystore integration is complete
-        let networkPublicKey = Data(count: 32)
-        
         self.name = config.name
         self.serviceTopic = config.serviceTopic
         self.version = config.version
         self.description = config.description
-        self.networkPublicKey = networkPublicKey
         self.peerNodeId = config.peerNodeId
         self.actions = [:]
         self.networkTransport = dependencies.networkTransport
@@ -93,6 +129,25 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     /// Add an action to this service (matches Rust add_action)
     public func addAction(name: String, action: ActionMetadata) throws {
         actions[name] = action
+    }
+    
+    /// Stop the remote service and clean up handlers (matches Rust stop method)
+    public func stop(context: RemoteLifecycleContext) async throws {
+        let actionNames = getAvailableActions()
+        
+        for actionName in actionNames {
+            do {
+                let actionTopicPath = try serviceTopic.newActionTopic(actionName)
+                try await context.removeRemoteActionHandler(actionTopicPath)
+            } catch {
+                logger.warning("Failed to create topic path for action: \(serviceTopic)/\(actionName)")
+            }
+        }
+    }
+    
+    /// Get available action names (matches Rust get_available_actions)
+    private func getAvailableActions() -> [String] {
+        return Array(actions.keys)
     }
 
     /// Create RemoteService instances from a list of service metadata.
@@ -168,10 +223,6 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
         return serviceTopic.networkId
     }
 
-    /// Get a list of available actions this service can handle
-    public func getAvailableActions() -> [String] {
-        return Array(actions.keys)
-    }
 
     /// Create a handler for a remote action
     /// This matches the Rust RemoteService::create_action_handler implementation
@@ -195,8 +246,14 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
             // Extract profile keys from AnyValue - matches Rust: profile_public_keys_arc.as_type::<Vec<Vec<u8>>>()
             let profilePublicKeys: [Data] = try await profilePublicKeysValue.asType()
 
-            // Get network public key from keystore
-            let networkPublicKey = self.networkPublicKey // TODO: Should be resolved from keystore
+            // Get network public key from keystore (resolved dynamically like in Rust)
+            let networkPublicKey: Data
+            do {
+                networkPublicKey = try self.keystore.getNetworkPublicKeyByNetworkId(self.serviceTopic.networkId)
+            } catch {
+                self.logger.error("Failed to get network public key for network \(self.serviceTopic.networkId): \(error)")
+                return .failure(.serviceError("Network key resolution failed: \(error)"))
+            }
 
             // Create serialization context
             // For now, create a basic resolver and use a placeholder keystore
@@ -274,7 +331,6 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
                lhs.serviceTopic == rhs.serviceTopic &&
                lhs.version == rhs.version &&
                lhs.description == rhs.description &&
-               lhs.networkPublicKey == rhs.networkPublicKey &&
                lhs.peerNodeId == rhs.peerNodeId
     }
 }
@@ -634,8 +690,20 @@ public final class ServiceRegistry: NodeDelegate {
             throw ServiceRegistryError.serviceNotFound("Service not found for topic: \(serviceTopic)")
         }
 
-        // TODO: Implement remote service stopping when RemoteLifecycleContext is available
-        // For now, just remove from registry
+        // Stop each remote service before removing from registry (matches Rust exactly)
+        for service in services {
+            // Create RemoteLifecycleContext for service stopping
+            let context = RemoteLifecycleContext(serviceTopic: serviceTopic, logger: logger, registryDelegate: self)
+            
+            // Stop the service - this triggers handler cleanup via the context
+            do {
+                try await service.stop(context: context)
+            } catch {
+                logger.error("Failed to stop remote service '\(service.path())' error: \(error)")
+            }
+        }
+        
+        // Remove the services from the registry
         for service in services {
             remoteServices.remove(topic: serviceTopic, content: service)
         }
