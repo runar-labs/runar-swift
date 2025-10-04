@@ -1541,8 +1541,8 @@ public final class Node {
     // MARK: - Core Methods
 
     /// Get or create resolver using node's cache instance
-    private func getOrCreateResolver(userProfileKeys: [Data]) throws -> LabelResolver {
-        try LabelResolver.createContextResolver(
+    private func getOrCreateResolver(userProfileKeys: [Data]) async throws -> LabelResolver {
+        try await labelResolverCache.getOrCreateResolver(
             systemConfig: systemLabelConfig,
             userProfilePublicKeys: userProfileKeys
         )
@@ -2555,16 +2555,18 @@ public final class Node {
 
     /// Get or create resolver for user profile keys
     /// Matches Rust: get_or_create_resolver
-    private func getOrCreateResolver(_: [Data]) throws -> LabelResolver {
-        // TODO: Implement proper resolver cache when ResolverCache is available
-        // For now, create a basic resolver with empty mapping
-        LabelResolver(mapping: [:])
+    private func getOrCreateResolver(_ profilePublicKeys: [Data]) async throws -> LabelResolver {
+        // Use the node's cache instance to get or create resolver (matches Rust exactly)
+        return try await labelResolverCache.getOrCreateResolver(
+            systemConfig: systemLabelConfig,
+            userProfilePublicKeys: profilePublicKeys
+        )
     }
 
     // MARK: - Network Message Handling
 
     /// Handle network request synchronously (required by FFI transport)
-    private nonisolated func handleNetworkRequestSync(_ message: NetworkMessage) -> NetworkMessage {
+    private func handleNetworkRequestSync(_ message: NetworkMessage) -> NetworkMessage {
         logger.trace("[handle_network_request] path: \(message.payload.path) correlation_id: \(message.payload.correlationId) profile_public_keys size: \(message.payload.profilePublicKeys.count)")
 
         // Parse topic path to get network ID
@@ -2635,7 +2637,7 @@ public final class Node {
     }
 
     /// Create error response synchronously
-    private nonisolated func createErrorResponseSync(originalMessage: NetworkMessage, error: String) -> NetworkMessage {
+    private func createErrorResponseSync(originalMessage: NetworkMessage, error: String) -> NetworkMessage {
         // Create proper error response using AnyValue (matching Rust pattern)
         let errorValue = AnyValue.map([
             "error": AnyValue.primitive(true),
@@ -2732,7 +2734,7 @@ public final class Node {
         logger.trace("[handle_network_request] local request completed successfully correlation_id: \(message.payload.correlationId)")
 
         // Create resolver for response serialization
-        let resolver = try getOrCreateResolver(profilePublicKeys)
+        let resolver = try await getOrCreateResolver(profilePublicKeys)
 
         // Create serialization context
         let serializationContext = SerializationContext(
@@ -2773,7 +2775,7 @@ public final class Node {
         let networkPublicKey = Data() // Placeholder until FFI method is implemented
 
         // Create resolver for error response serialization
-        let resolver = try getOrCreateResolver(profilePublicKeys)
+        let resolver = try await getOrCreateResolver(profilePublicKeys)
 
         // Create serialization context
         let serializationContext = SerializationContext(
@@ -2852,7 +2854,7 @@ public final class Node {
                 
                 // Add actions to the service
                 for action in service.actions {
-                    try remoteService.addAction(name: action.name, action: action)
+                    try await remoteService.addAction(name: action.name, action: action)
                 }
                 await serviceRegistry.registerRemoteService(remoteService)
             } catch {
@@ -2931,7 +2933,7 @@ public final class Node {
         let networkPublicKey = Data()
 
         // Create proper serialization context with encryption (matching Rust pattern exactly)
-        let resolver = try getOrCreateResolver(profilePublicKeys)
+        let resolver = try await getOrCreateResolver(profilePublicKeys)
         let serializationContext = SerializationContext(
             keystore: keysManager,
             resolver: resolver,

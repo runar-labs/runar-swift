@@ -6,7 +6,7 @@ import XCTest
 
 /// AtomicBoolean implementation to match Rust AtomicBool behavior
 /// Used for callback execution tracking in tests
-final class AtomicBoolean: @unchecked Sendable {
+final class AtomicBoolean {
     private let lock = NSLock()
     private var _value: Bool
 
@@ -74,7 +74,7 @@ enum TimeoutError: Error {
 /// Service registry tests following the rules - no mocks, no shortcuts, real implementations
 /// These tests match the Rust service_registry_test.rs exactly
 @MainActor
-final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
+final class ServiceRegistryTests: XCTestCase {
     // Swift logger for trace-level logging
     private var testLogger: RunarLogger!
 

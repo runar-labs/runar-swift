@@ -22,7 +22,7 @@ public enum RemoteServiceError: Error, LocalizedError {
 }
 
 /// Lifecycle context for remote services (matches Rust RemoteLifecycleContext)
-public struct RemoteLifecycleContext {
+public actor RemoteLifecycleContext {
     /// Network ID for the context
     public let networkId: String
     /// Service path - identifies the service within the network
@@ -89,8 +89,8 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     /// Remote peer information
     public let peerNodeId: String
 
-    /// Service capabilities
-    private var actions: [String: ActionMetadata]
+    /// Service capabilities (thread-safe with concurrent access)
+    private let actions: ShardedConcurrentMap<String, ActionMetadata>
 
     /// Network transport for making remote requests
     private let networkTransport: NodeTransport?
@@ -117,7 +117,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
         self.version = config.version
         self.description = config.description
         self.peerNodeId = config.peerNodeId
-        self.actions = [:]
+        self.actions = ShardedConcurrentMap<String, ActionMetadata>()
         self.networkTransport = dependencies.networkTransport
         self.logger = dependencies.logger
         self.keystore = dependencies.keystore
@@ -127,13 +127,13 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     }
 
     /// Add an action to this service (matches Rust add_action)
-    public func addAction(name: String, action: ActionMetadata) throws {
-        actions[name] = action
+    public func addAction(name: String, action: ActionMetadata) async throws {
+        await actions.insert(action, for: name)
     }
     
     /// Stop the remote service and clean up handlers (matches Rust stop method)
     public func stop(context: RemoteLifecycleContext) async throws {
-        let actionNames = getAvailableActions()
+        let actionNames = await getAvailableActions()
         
         for actionName in actionNames {
             do {
@@ -146,8 +146,8 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     }
     
     /// Get available action names (matches Rust get_available_actions)
-    private func getAvailableActions() -> [String] {
-        return Array(actions.keys)
+    private func getAvailableActions() async -> [String] {
+        return await actions.keys()
     }
 
     /// Create RemoteService instances from a list of service metadata.
@@ -198,7 +198,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
 
             // Add actions to the service
             for action in serviceMetadata.actions {
-                try service.addAction(name: action.name, action: action)
+                try await service.addAction(name: action.name, action: action)
             }
             // Add subscriptions to the service
             // for subscription in serviceMetadata.subscriptions {
@@ -249,21 +249,21 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
             // Get network public key from keystore (resolved dynamically like in Rust)
             let networkPublicKey: Data
             do {
-                networkPublicKey = try self.keystore.getNetworkPublicKeyByNetworkId(self.serviceTopic.networkId)
+                networkPublicKey = try await self.keystore.getNetworkPublicKeyByNetworkId(networkId: self.serviceTopic.networkId)
             } catch {
                 self.logger.error("Failed to get network public key for network \(self.serviceTopic.networkId): \(error)")
-                return .failure(.serviceError("Network key resolution failed: \(error)"))
+                throw ServiceRegistryError.actionNotFound("Network key resolution failed: \(error)")
             }
 
-            // Create serialization context
-            // For now, create a basic resolver and use a placeholder keystore
-            let resolver = LabelResolver(mapping: [:])
-            // TODO: Create proper keystore - this will need to be passed in from the Node
-            // For now, we'll use a placeholder approach by creating a basic keystore
-            // This is a temporary workaround until we have proper keystore integration
-            let placeholderKeystore = try await NodeKeyManager()
+            // Create serialization context using the provided keystore and resolver
+            // Create dynamic resolver with user context using cache (matches Rust exactly)
+            let resolver = try await self.labelResolverCache.getOrCreateResolver(
+                systemConfig: self.labelResolverConfig,
+                userProfilePublicKeys: profilePublicKeys
+            )
+            
             let serializationContext = SerializationContext(
-                keystore: placeholderKeystore,
+                keystore: self.keystore,
                 resolver: resolver,
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
@@ -288,8 +288,8 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
                 profilePublicKeys: profilePublicKeys
             )
 
-            // Deserialize response
-            let response = try AnyValue.deserialize(responseBytes, keystore: placeholderKeystore)
+            // Deserialize response using the proper keystore
+            let response = try AnyValue.deserialize(responseBytes, keystore: self.keystore)
             return response
         }
     }
@@ -699,7 +699,7 @@ public final class ServiceRegistry: NodeDelegate {
             do {
                 try await service.stop(context: context)
             } catch {
-                logger.error("Failed to stop remote service '\(service.path())' error: \(error)")
+                logger.error("Failed to stop remote service '\(service.path)' error: \(error)")
             }
         }
         
