@@ -1091,6 +1091,115 @@ public struct TransportPublishParams: Codable, Equatable {
     }
 }
 
+// MARK: - Quic Transport Options Config
+
+/// Swift representation of QuicTransportOptionsConfig from Rust FFI
+/// Matches the Rust struct in runar-ffi/src/lib.rs
+public struct QuicTransportOptionsConfig: Codable, Equatable, Sendable {
+    /// Bind address for the transport (e.g., "0.0.0.0:0")
+    public let bindAddr: String?
+    /// Handshake response timeout in milliseconds
+    public let handshakeTimeoutMs: UInt64?
+    /// Open stream timeout in milliseconds
+    public let openStreamTimeoutMs: UInt64?
+    /// Maximum message size in bytes
+    public let maxMessageSize: UInt?
+    /// Response cache TTL in milliseconds
+    public let responseCacheTtlMs: UInt64?
+    /// Maximum number of request retries
+    public let maxRequestRetries: UInt32?
+    /// Certificate chain DER data (for testing only)
+    public let certChainDer: [[UInt8]]
+    /// Private key DER data (for testing only)
+    public let privateKeyDer: [UInt8]?
+    /// Root certificates DER data (for testing only)
+    public let rootCertsDer: [[UInt8]]
+
+    public init(
+        bindAddr: String? = nil,
+        handshakeTimeoutMs: UInt64? = nil,
+        openStreamTimeoutMs: UInt64? = nil,
+        maxMessageSize: UInt? = nil,
+        responseCacheTtlMs: UInt64? = nil,
+        maxRequestRetries: UInt32? = nil,
+        certChainDer: [[UInt8]] = [],
+        privateKeyDer: [UInt8]? = nil,
+        rootCertsDer: [[UInt8]] = []
+    ) {
+        self.bindAddr = bindAddr
+        self.handshakeTimeoutMs = handshakeTimeoutMs
+        self.openStreamTimeoutMs = openStreamTimeoutMs
+        self.maxMessageSize = maxMessageSize
+        self.responseCacheTtlMs = responseCacheTtlMs
+        self.maxRequestRetries = maxRequestRetries
+        self.certChainDer = certChainDer
+        self.privateKeyDer = privateKeyDer
+        self.rootCertsDer = rootCertsDer
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bindAddr = "bind_addr"
+        case handshakeTimeoutMs = "handshake_timeout_ms"
+        case openStreamTimeoutMs = "open_stream_timeout_ms"
+        case maxMessageSize = "max_message_size"
+        case responseCacheTtlMs = "response_cache_ttl_ms"
+        case maxRequestRetries = "max_request_retries"
+        case certChainDer = "cert_chain_der"
+        case privateKeyDer = "private_key_der"
+        case rootCertsDer = "root_certs_der"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bindAddr = try container.decodeIfPresent(String.self, forKey: .bindAddr)
+        handshakeTimeoutMs = try container.decodeIfPresent(UInt64.self, forKey: .handshakeTimeoutMs)
+        openStreamTimeoutMs = try container.decodeIfPresent(UInt64.self, forKey: .openStreamTimeoutMs)
+        maxMessageSize = try container.decodeIfPresent(UInt.self, forKey: .maxMessageSize)
+        responseCacheTtlMs = try container.decodeIfPresent(UInt64.self, forKey: .responseCacheTtlMs)
+        maxRequestRetries = try container.decodeIfPresent(UInt32.self, forKey: .maxRequestRetries)
+        certChainDer = try Self.decodeVecVecU8(from: container, forKey: .certChainDer)
+        privateKeyDer = try Self.decodeVecU8Optional(from: container, forKey: .privateKeyDer)
+        rootCertsDer = try Self.decodeVecVecU8(from: container, forKey: .rootCertsDer)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(bindAddr, forKey: .bindAddr)
+        try container.encodeIfPresent(handshakeTimeoutMs, forKey: .handshakeTimeoutMs)
+        try container.encodeIfPresent(openStreamTimeoutMs, forKey: .openStreamTimeoutMs)
+        try container.encodeIfPresent(maxMessageSize, forKey: .maxMessageSize)
+        try container.encodeIfPresent(responseCacheTtlMs, forKey: .responseCacheTtlMs)
+        try container.encodeIfPresent(maxRequestRetries, forKey: .maxRequestRetries)
+        try container.encode(certChainDer, forKey: .certChainDer)
+        try container.encodeIfPresent(privateKeyDer, forKey: .privateKeyDer)
+        try container.encode(rootCertsDer, forKey: .rootCertsDer)
+    }
+
+    // Helper methods for Vec<u8> and Vec<Vec<u8>> decoding
+    private static func decodeVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> [UInt8] {
+        // Try to decode as Data first (byte string)
+        if let data = try? container.decode(Data.self, forKey: key) {
+            return Array(data)
+        }
+        // Fallback to [UInt8] then convert
+        return try container.decode([UInt8].self, forKey: key)
+    }
+
+    private static func decodeVecU8Optional(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> [UInt8]? {
+        guard container.contains(key) else { return nil }
+        return try decodeVecU8(from: container, forKey: key)
+    }
+
+    private static func decodeVecVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> [[UInt8]] {
+        // Try to decode as [Data] first (array of byte strings)
+        if let dataArray = try? container.decode([Data].self, forKey: key) {
+            return dataArray.map { Array($0) }
+        }
+        // Fallback to [[UInt8]]
+        return try container.decode([[UInt8]].self, forKey: key)
+    }
+}
+
 // MARK: - Discovery Options
 
 /// Swift representation of DiscoveryOptions from Rust FFI

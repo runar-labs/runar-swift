@@ -3739,11 +3739,21 @@ public actor QuicTransport {
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
     public static func create(keys: NodeKeyManager, nodeInfo: NodeInfo, options: QuicTransportOptions, callbacks: TransportCallbacks, logger: RunarLogger) async throws -> QuicTransport {
-        // Convert QuicTransportOptions to FFIQuicTransportOptions for FFI layer
-        let ffiOptions = options.toFFIOptions()
+        // Convert QuicTransportOptions to QuicTransportOptionsConfig for FFI layer
+        let config = QuicTransportOptionsConfig(
+            bindAddr: options.bindAddr,
+            handshakeTimeoutMs: options.handshakeTimeoutMs,
+            openStreamTimeoutMs: options.openStreamTimeoutMs,
+            maxMessageSize: options.maxMessageSize.map { UInt($0) },
+            responseCacheTtlMs: options.responseCacheTtlMs,
+            maxRequestRetries: options.maxRequestRetries,
+            certChainDer: [], // Will be populated by the transport layer
+            privateKeyDer: nil, // Will be populated by the transport layer
+            rootCertsDer: [] // Will be populated by the transport layer
+        )
 
         // Encode inputs to CBOR internally (pure encoding, no MainActor)
-        let optionsCbor = try CodableCBOREncoder().encode(ffiOptions)
+        let optionsCbor = try CodableCBOREncoder().encode(config)
         let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
 
         // Get the keys handle for FFI call

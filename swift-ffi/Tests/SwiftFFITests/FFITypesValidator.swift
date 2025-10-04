@@ -81,6 +81,9 @@ final class FFITypesValidator: XCTestCase {
             // Discovery Types (1 type)
             ("DiscoveryOptions", validateDiscoveryOptions),
 
+            // Transport Config Types (1 type)
+            ("QuicTransportOptionsConfig", validateQuicTransportOptionsConfig),
+
             // Transport Event Types (4 types)
             ("PeerConnectedEvent", validatePeerConnectedEvent),
             ("TransportRequestEvent", validateTransportRequestEvent),
@@ -257,6 +260,10 @@ final class FFITypesValidator: XCTestCase {
 
     private func validateDiscoveryOptions() async throws {
         try await validateTypeNonEquatable(DiscoveryOptions.self, filename: "discovery_options_basic.bin")
+    }
+
+    private func validateQuicTransportOptionsConfig() async throws {
+        try await validateType(QuicTransportOptionsConfig.self, filename: "quic_transport_options_config_basic.bin")
     }
 
     private func validatePeerConnectedEvent() async throws {

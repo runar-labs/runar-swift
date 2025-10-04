@@ -69,11 +69,14 @@ final class FFITypesVectorGenerator: XCTestCase {
 
         // Discovery Types (1 type)
         try generateDiscoveryOptions()
+        
+        // Transport Config Types (1 type)
+        try generateQuicTransportOptionsConfig()
 
         // Transport Event Types (4 types)
         try generateTypedTransportEventVectors()
 
-        print("✅ All 37 FFI types test vectors generated successfully")
+        print("✅ All 38 FFI types test vectors generated successfully")
         print("📁 Output directory: \(outputDir.path)")
     }
 
@@ -504,6 +507,27 @@ final class FFITypesVectorGenerator: XCTestCase {
             multicastGroup: "239.255.42.98"
         )
         try encodeAndWrite(options, filename: "discovery_options_basic.bin")
+    }
+
+    private func generateQuicTransportOptionsConfig() throws {
+        let config = QuicTransportOptionsConfig(
+            bindAddr: "0.0.0.0:0",
+            handshakeTimeoutMs: 5000,
+            openStreamTimeoutMs: 10000,
+            maxMessageSize: 1024 * 1024, // 1MB
+            responseCacheTtlMs: 30000,
+            maxRequestRetries: 3,
+            certChainDer: [
+                [0x30, 0x82, 0x01, 0x22], // Sample DER data
+                [0x30, 0x82, 0x01, 0x33]
+            ],
+            privateKeyDer: [0x30, 0x82, 0x01, 0x44], // Sample DER data
+            rootCertsDer: [
+                [0x30, 0x82, 0x01, 0x55], // Sample DER data
+                [0x30, 0x82, 0x01, 0x66]
+            ]
+        )
+        try encodeAndWrite(config, filename: "quic_transport_options_config_basic.bin")
     }
 
     // MARK: - Transport Event Types Generation

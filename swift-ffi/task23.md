@@ -20,3 +20,11 @@ Another change is what the Discovery oiptoins was being provided using a CBOR ma
 FINAL aftar all the previous changes are done and working properly and all tests refacored and working
 3) the object DiscoveryHandle shuold be renamed to MulticastDiscovery 
 
+NEW GOAL
+A NEW ISSUE WAS FOUND AND FIXED with the rn_transport_new_with_keys
+It was using a CBOR map to pass parameters. This is now fixed and it uses a proper struct
+pub struct QuicTransportOptionsConfig {
+
+1) Create the SWIFT COUNTERpart for this and test it properly using our CBOR guidelines swift-ffi/CBOR.md
+
+2) update he Swift FFI to align with the latest verison of rn_transport_new_with_keys and pass the proper QuicTransportOptionsConfig struct serialized in CBOR
