@@ -102,7 +102,7 @@ final class SwiftNodeTests: XCTestCase {
         let node = try await Node.new(config: config)
         try await node.start()
         let exp = expectation(description: "recv")
-        _ = try await node.subscribe(topic: "echo/data", options: nil as EventRegistrationOptions?) { data in
+        _ = try await node.subscribe(topic: "echo/data", options: nil as EventRegistrationOptions?) { eventContext, data in
             if let d = data {
                 let val: String? = try? await d.asType() as String
                 if val == "ping" { exp.fulfill() }
@@ -143,7 +143,7 @@ final class SwiftNodeTests: XCTestCase {
         try await node.addService(PubService())
         try await node.start()
         let exp = expectation(description: "evt")
-        _ = try await node.subscribe(topic: "pub/evt", options: nil as EventRegistrationOptions?) { data in
+        _ = try await node.subscribe(topic: "pub/evt", options: nil as EventRegistrationOptions?) { eventContext, data in
             if let d = data {
                 let val: String? = try? await d.asType() as String
                 if val == "event" { exp.fulfill() }

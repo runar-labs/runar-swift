@@ -156,9 +156,8 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
                 throw NodeError.invalidConfiguration("Profile public keys not found in metadata")
             }
 
-            // For now, we'll use a simplified approach to extract profile keys
-            // This is a temporary workaround until we have proper keystore integration
-            let profilePublicKeys: [Data] = [] // TODO: Implement proper profile key extraction
+            // Extract profile keys from AnyValue - matches Rust: profile_public_keys_arc.as_type::<Vec<Vec<u8>>>()
+            let profilePublicKeys: [Data] = try await profilePublicKeysValue.asType()
 
             // Get network public key from keystore
             let networkPublicKey = self.networkPublicKey // TODO: Should be resolved from keystore
@@ -776,7 +775,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func subscribeToEvents(
         networkId: String,
         servicePath: String,
-        handler: @escaping EventHandler,
+        handler: @escaping @Sendable EventHandler,
         options: EventRegistrationOptions
     ) async throws -> String {
         let subscriptionId = UUID().uuidString
@@ -842,7 +841,7 @@ public final class ServiceRegistry: NodeDelegate {
     /// INTENTION: Register a callback to be invoked when events are published locally.
     public func registerLocalEventSubscription(
         topicPath: TopicPath,
-        callback: @escaping EventHandler,
+        callback: @escaping @Sendable EventHandler,
         options: EventRegistrationOptions
     ) async throws -> String {
         let subscriptionId = UUID().uuidString
@@ -874,7 +873,7 @@ public final class ServiceRegistry: NodeDelegate {
     /// INTENTION: Register a callback to be invoked when events are published from remote nodes.
     public func registerRemoteEventSubscription(
         topicPath: TopicPath,
-        callback _: @escaping EventHandler, // Using same type for simplicity
+        callback _: EventHandler, // Using same type for simplicity
         options: EventRegistrationOptions
     ) async throws -> String {
         let subscriptionId = UUID().uuidString
@@ -973,7 +972,8 @@ public final class ServiceRegistry: NodeDelegate {
                 if case .remote = subscription.subscriberKind {
                     seenIds.insert(subscription.subscriptionId)
                     // For now, return empty handler since we don't have RemoteEventHandler type
-                    result.append((subscription.subscriptionId, { _ in }, subscription))
+                    let emptyHandler: EventHandler = { _, _ in }
+                    result.append((subscription.subscriptionId, emptyHandler, subscription))
                 }
             }
         }
@@ -1137,8 +1137,21 @@ public final class ServiceRegistry: NodeDelegate {
             switch subscription.subscriberKind {
             case let .local(handler):
                 logger.trace("Calling local handler for subscription: \(subscription.subscriptionId)")
-                // Call the handler directly with the data
-                await handler(data)
+                
+                // Create event context (matching Rust)
+                let eventContext = EventContext(
+                    topicPath: topicPath,
+                    nodeDelegate: nodeDelegate ?? self,
+                    isLocal: true,
+                    logger: logger
+                )
+                
+                // Call handler with context (matching Rust)
+                do {
+                    try await handler(eventContext, data)
+                } catch {
+                    logger.error("Error in local event handler for \(topic): \(error)")
+                }
             case let .remote(nodeId):
                 // Remote event handling would go here
                 logger.debug("Remote event for node \(nodeId): \(String(describing: data))")
@@ -1466,9 +1479,20 @@ public final class ServiceRegistry: NodeDelegate {
     // MARK: - Remote Service Management
 
     /// Register a remote service
-    public func registerRemoteService(_ service: RemoteService) async {
+    /// Returns true if registered successfully, false if service already exists
+    public func registerRemoteService(_ service: RemoteService) async -> Bool {
         logger.trace("Registering remote service: \(service.name) from peer: \(service.peerNodeId)")
+        
+        // Check if service already exists (matching Rust pattern)
+        let existingServices = remoteServices.find(topic: service.serviceTopic)
+        if !existingServices.isEmpty {
+            logger.warning("Service already exists for topic: \(service.serviceTopic)")
+            return false
+        }
+        
+        // Register the new service
         remoteServices.setValue(topic: service.serviceTopic, content: service)
+        return true
     }
 
     /// Get a remote service by topic path

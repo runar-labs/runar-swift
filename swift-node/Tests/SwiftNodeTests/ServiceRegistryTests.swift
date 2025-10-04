@@ -310,7 +310,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             let wasCalled = AtomicBoolean(initialValue: false)
 
             // Create a callback that would be invoked when an event is published (matching Rust)
-            let callback: EventHandler = { _ in
+            let callback: EventHandler = { _, _ in
                 // Set the flag to true when called (matching Rust)
                 wasCalled.setValue(true)
             }
@@ -345,7 +345,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             let registry = ServiceRegistry(logger: self.testLogger.child(component: .node))
 
             // Create a callback (matching Rust)
-            let callback: EventHandler = { _ in
+            let callback: EventHandler = { _, _ in
                 // Simple callback that does nothing (matching Rust)
             }
 
@@ -390,11 +390,11 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         let registry = createTestRegistry()
 
         // Create multiple callbacks
-        let callback1: EventHandler = { _ in
+        let callback1: EventHandler = { _, _ in
             // Event callback 1 - logging removed due to actor isolation
         }
 
-        let callback2: EventHandler = { _ in
+        let callback2: EventHandler = { _, _ in
             // Event callback 2 - logging removed due to actor isolation
         }
 
@@ -822,7 +822,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
             let topicPath = try TopicPath.new("test/event", defaultNetwork: "net1")
 
             // Register remote event subscription (matching Rust)
-            let callback: EventHandler = { _ in
+            let callback: EventHandler = { _, _ in
                 // Simple callback
             }
             _ = try await registry.registerRemoteEventSubscription(
@@ -851,7 +851,7 @@ final class ServiceRegistryTests: XCTestCase, @unchecked Sendable {
         let registry = createTestRegistry()
 
         // Create a callback
-        let callback: EventHandler = { _ in
+        let callback: EventHandler = { _, _ in
             // Event callback - logging removed due to actor isolation
         }
 

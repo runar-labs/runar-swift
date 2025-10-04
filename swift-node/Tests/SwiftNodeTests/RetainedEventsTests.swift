@@ -39,7 +39,7 @@ final class RetainedEventsTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Retained event received")
         let subscriptionOptions = EventRegistrationOptions(includePast: 120) // Look back 120 seconds
 
-        let subscriptionId = try await node.subscribe(topic: "test/retained", options: subscriptionOptions) { data in
+        let subscriptionId = try await node.subscribe(topic: "test/retained", options: subscriptionOptions) { eventContext, data in
             if let data {
                 let stringValue = try? await data.asType() as String
                 XCTAssertEqual(stringValue, "retained data")
@@ -79,7 +79,7 @@ final class RetainedEventsTests: XCTestCase {
         let expectation2 = XCTestExpectation(description: "Retained event received by subscriber 2")
         let subscriptionOptions = EventRegistrationOptions(includePast: 120) // Look back 120 seconds
 
-        let subscriptionId1 = try await node.subscribe(topic: "test/retained", options: subscriptionOptions) { data in
+        let subscriptionId1 = try await node.subscribe(topic: "test/retained", options: subscriptionOptions) { eventContext, data in
             if let data {
                 let stringValue = try? await data.asType() as String
                 XCTAssertEqual(stringValue, "retained data")
@@ -87,7 +87,7 @@ final class RetainedEventsTests: XCTestCase {
             }
         }
 
-        let subscriptionId2 = try await node.subscribe(topic: "test/retained", options: subscriptionOptions) { data in
+        let subscriptionId2 = try await node.subscribe(topic: "test/retained", options: subscriptionOptions) { eventContext, data in
             if let data {
                 let stringValue = try? await data.asType() as String
                 XCTAssertEqual(stringValue, "retained data")
@@ -129,7 +129,7 @@ final class RetainedEventsTests: XCTestCase {
         expectation.isInverted = true // This expectation should NOT be fulfilled
         let subscriptionOptions = EventRegistrationOptions(includePast: 1) // Look back 1 second
 
-        let subscriptionId = try await node.subscribe(topic: "test/short", options: subscriptionOptions) { _ in
+        let subscriptionId = try await node.subscribe(topic: "test/short", options: subscriptionOptions) { eventContext, _ in
             // This should not be called since the event should be expired
             expectation.fulfill()
         }
@@ -167,7 +167,7 @@ final class RetainedEventsTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Retained event received")
         let subscriptionOptions = EventRegistrationOptions(includePast: 120) // Look back 120 seconds
 
-        let subscriptionId = try await node.subscribe(topic: "test/capacity", options: subscriptionOptions) { data in
+        let subscriptionId = try await node.subscribe(topic: "test/capacity", options: subscriptionOptions) { eventContext, data in
             if let data {
                 let stringValue = try? await data.asType() as String
                 // Should receive one of the retained events (the most recent ones due to capacity limits)

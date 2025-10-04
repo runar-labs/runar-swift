@@ -712,33 +712,6 @@ public struct RequestContext: Sendable {
     }
 }
 
-/// Event context for handling event publishing and subscription
-public struct EventContext: Sendable {
-    /// Complete topic path for this event
-    public let topicPath: TopicPath
-    /// Logger instance specific to this context
-    public let logger: RunarLogger
-    /// Node delegate for making requests or publishing events
-    public let nodeDelegate: NodeDelegate
-    /// Delivery options used when publishing this event
-    public let deliveryOptions: PublishOptions?
-    /// Whether this event is local or remote
-    public let isLocal: Bool
-
-    public init(
-        topicPath: TopicPath,
-        logger: RunarLogger,
-        nodeDelegate: NodeDelegate,
-        deliveryOptions: PublishOptions? = nil,
-        isLocal: Bool = true
-    ) {
-        self.topicPath = topicPath
-        self.logger = logger
-        self.nodeDelegate = nodeDelegate
-        self.deliveryOptions = deliveryOptions
-        self.isLocal = isLocal
-    }
-}
 
 /// Protocol for node delegate
 public protocol NodeDelegate: AnyObject, Sendable {
@@ -789,7 +762,8 @@ public protocol RegistryDelegate: AnyObject, Sendable {
 public typealias ActionHandler = @Sendable (AnyValue?, RequestContext) async throws -> AnyValue
 
 /// Event handler type
-public typealias EventHandler = @Sendable (AnyValue?) async -> Void
+/// Matches Rust: EventHandler = Arc<dyn Fn(Arc<EventContext>, Option<ArcValue>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync>
+public typealias EventHandler = @Sendable (EventContext, AnyValue?) async throws -> Void
 
 /// Publish options
 public struct PublishOptions: Sendable {
@@ -1773,7 +1747,14 @@ public final class Node {
             // Deliver the newest retained event if found
             if let (_, data, _) = newestEvent {
                 logger.debug("Delivering retained event to new subscriber for topic '\(topic)'")
-                await callback(data)
+                // Create event context for the callback
+                let eventContext = EventContext(
+                    topicPath: topicPath,
+                    nodeDelegate: self,
+                    isLocal: true,
+                    logger: logger
+                )
+                try await callback(eventContext, data)
             } else {
                 logger.debug("No retained event found for topic '\(topic)' within lookback window")
             }
@@ -2921,7 +2902,12 @@ public final class Node {
                     actions: Dictionary(uniqueKeysWithValues: service.actions.map { ($0.name, $0) }),
                     logger: logger
                 )
-                await serviceRegistry.registerRemoteService(remoteService)
+                let registered = await serviceRegistry.registerRemoteService(remoteService)
+                if registered {
+                    logger.trace("Successfully registered remote service: \(service.name)")
+                } else {
+                    logger.warning("Remote service already exists, skipping: \(service.name)")
+                }
             } catch {
                 logger.error("Failed to create service topic for \(service.servicePath): \(error)")
             }
@@ -3231,10 +3217,10 @@ public final class Node {
             // Create event context (currently unused since EventHandler doesn't take context)
             _ = EventContext(
                 topicPath: topicPath,
-                logger: logger,
                 nodeDelegate: self,
-                deliveryOptions: nil,
-                isLocal: false
+                isLocal: false,
+                logger: logger,
+                deliveryOptions: nil
             )
 
             // Get subscribers for this topic
@@ -3247,7 +3233,14 @@ public final class Node {
 
             // Dispatch to all subscribers
             for (_, handler, _) in subscribers {
-                await handler(payloadOption)
+                // Create event context for the handler
+                let eventContext = EventContext(
+                    topicPath: topicPath,
+                    nodeDelegate: self,
+                    isLocal: false,
+                    logger: logger
+                )
+                try await handler(eventContext, payloadOption)
             }
 
             logger.trace("Network event dispatched successfully")
