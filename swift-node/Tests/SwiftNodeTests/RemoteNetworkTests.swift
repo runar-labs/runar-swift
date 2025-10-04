@@ -20,7 +20,7 @@ final class RemoteNetworkTests: XCTestCase {
 
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
-            level: .info,
+            level: .trace,
             includeTimestamp: true,
             includeComponent: true,
             includeContext: true
@@ -35,14 +35,12 @@ final class RemoteNetworkTests: XCTestCase {
     /// INTENTION: Create two Node instances with QUIC network enabled using certificates from a shared CA.
     /// Nodes should discover and securely connect to each other, then test remote service calls.
     func testRemoteActionCall() async throws {
-        // Configure logging to trace level for detailed debugging
-        let LoggerConfig = LoggerConfig(level: .trace)
 
         // Set up logger with trace level
         let logger = testLogger.child(component: .node)
 
         // Enable trace logging for Rust FFI layer
-        try await FFILogger.setLogLevel(.info)
+        try await FFILogger.setLogLevel(.trace)
         try await FFILogger.setLoggerContext("remote-action-test")
 
         // Force trace logging for this test

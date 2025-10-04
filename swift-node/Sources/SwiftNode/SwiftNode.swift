@@ -1858,10 +1858,10 @@ public final class Node {
         // Update the transport with the new NodeInfo if the node is already running
         // If the node is not yet started, the transport will be created with the current NodeInfo when it starts
         if isRunning {
-            print("🔍 SERVICE: Node is running, updating transport with new NodeInfo...")
+            logger.trace("🔍 SERVICE: Node is running, updating transport with new NodeInfo...")
             await updateTransportNodeInfo()
         } else {
-            print("🔍 SERVICE: Node not yet started, transport will be created with current NodeInfo when started")
+            logger.trace("🔍 SERVICE: Node not yet started, transport will be created with current NodeInfo when started")
         }
 
         // If the node is already running, start the service immediately (matching Rust pattern)
@@ -1947,9 +1947,9 @@ public final class Node {
         logger.trace("Node started networkId=\(networkId)")
 
         // Start all registered services
-        print("🔍 DEBUG: About to start all local services for networkId: \(networkId)")
+        logger.trace("🔍 DEBUG: About to start all local services for networkId: \(networkId)")
         try await serviceRegistry.startAllServices(networkId: networkId)
-        print("🔍 DEBUG: All local services started successfully")
+        logger.trace("🔍 DEBUG: All local services started successfully")
 
         // Initialize network transport if networking is enabled
         if supportsNetworking {
@@ -1957,7 +1957,7 @@ public final class Node {
 
             // Update the transport with current NodeInfo after it's created
             // This ensures the transport has the latest NodeInfo with all services
-            print("🔍 START: Updating transport with current NodeInfo after creation...")
+            logger.trace("🔍 START: Updating transport with current NodeInfo after creation...")
             await updateTransportNodeInfo()
         }
 
@@ -2132,12 +2132,10 @@ public final class Node {
 
     /// Initialize network transport for remote communication
     private func initializeNetworkTransport() async throws {
-        print("🔍 NETWORKING: Starting networking components...")
-        logger.trace("Starting networking components...")
+        logger.trace("🔍 NETWORKING: Starting networking components...")
 
         guard supportsNetworking else {
-            print("🔍 NETWORKING: Networking is disabled, skipping network initialization")
-            logger.trace("Networking is disabled, skipping network initialization")
+            logger.trace("🔍 NETWORKING: Networking is disabled, skipping network initialization")
             return
         }
 
@@ -2145,27 +2143,25 @@ public final class Node {
             throw NodeError.invalidConfiguration("Network configuration is required")
         }
 
-        print("🔍 NETWORKING: Network config: \(networkConfig)")
-        logger.trace("Network config: \(networkConfig)")
+        logger.trace("🔍 NETWORKING: Network config: \(networkConfig)")
 
         // Initialize the network transport
         if networkTransport == nil {
-            print("🔍 NETWORKING: Initializing network transport...")
-            logger.trace("Initializing network transport...")
+            logger.trace("🔍 NETWORKING: Initializing network transport...")
 
             // Create network transport using the factory pattern based on transport_type
             let transport = try await createTransport(networkConfig: networkConfig)
 
-            print("🔍 NETWORKING: Starting transport...")
+            logger.trace("🔍 NETWORKING: Starting transport...")
             try await transport.start()
-            print("🔍 NETWORKING: Transport started successfully")
+            logger.trace("🔍 NETWORKING: Transport started successfully")
 
             // Store the transport
             networkTransport = transport
 
             // Note: Local peer info will be updated after discovery providers are created
         } else {
-            print("🔍 NETWORKING: Transport already initialized, skipping")
+            logger.trace("🔍 NETWORKING: Transport already initialized, skipping")
         }
 
         // Update local node info after transport is initialized
@@ -2173,21 +2169,19 @@ public final class Node {
 
         // Initialize discovery if enabled
         if let discoveryOptions = networkConfig.discoveryOptions {
-            print("🔍 NETWORKING: Initializing node discovery providers...")
-            logger.trace("Initializing node discovery providers...")
+            logger.trace("🔍 NETWORKING: Initializing node discovery providers...")
 
             // Check if any providers are configured
             if networkConfig.discoveryProviders.isEmpty {
                 throw NodeError.invalidConfiguration("No discovery providers configured")
             }
 
-            print("🔍 NETWORKING: Found \(networkConfig.discoveryProviders.count) discovery providers")
+            logger.trace("🔍 NETWORKING: Found \(networkConfig.discoveryProviders.count) discovery providers")
             var discoveryProviders: [NodeDiscovery] = []
 
             // Iterate through all discovery providers and initialize each one
             for providerConfig in networkConfig.discoveryProviders {
-                print("🔍 NETWORKING: Creating discovery provider: \(providerConfig)")
-                logger.trace("Creating discovery provider: \(providerConfig)")
+                logger.trace("🔍 NETWORKING: Creating discovery provider: \(providerConfig)")
 
                 // Create discovery provider instance
                 let discoveryProvider = try await createDiscoveryProvider(
@@ -2196,34 +2190,32 @@ public final class Node {
                 )
 
                 // Start announcing on this provider
-                print("🔍 NETWORKING: Starting to announce on discovery provider")
-                logger.trace("Starting to announce on discovery provider")
+                logger.trace("🔍 NETWORKING: Starting to announce on discovery provider")
                 try await discoveryProvider.start()
-                print("🔍 NETWORKING: Discovery provider started successfully")
+                logger.trace("🔍 NETWORKING: Discovery provider started successfully")
 
                 discoveryProviders.append(discoveryProvider)
             }
 
             // Store the discovery providers
             networkDiscoveryProviders = discoveryProviders
-            print("🔍 NETWORKING: Stored \(discoveryProviders.count) discovery providers")
+            logger.trace("🔍 NETWORKING: Stored \(discoveryProviders.count) discovery providers")
 
             // CRITICAL: Update local peer info for discovery announcements
             // This must be done after discovery providers are created and started
-            print("🔍 DISCOVERY: About to update local peer info for discovery announcements")
+            logger.trace("🔍 DISCOVERY: About to update local peer info for discovery announcements")
             try await updateLocalPeerInfoForDiscoveryAfterTransportStart()
-            print("🔍 DISCOVERY: Completed updating local peer info for discovery announcements")
+            logger.trace("🔍 DISCOVERY: Completed updating local peer info for discovery announcements")
 
             // Update the transport with the current NodeInfo (including any services added before networking started)
-            print("🔍 NETWORKING: Updating transport with current NodeInfo...")
+            logger.trace("🔍 NETWORKING: Updating transport with current NodeInfo...")
             _ = await getLocalNodeInfo()
-            print("🔍 NETWORKING: Transport updated with current NodeInfo")
+            logger.trace("🔍 NETWORKING: Transport updated with current NodeInfo")
         } else {
-            print("🔍 NETWORKING: No discovery options configured, skipping discovery")
+            logger.trace("🔍 NETWORKING: No discovery options configured, skipping discovery")
         }
 
-        print("🔍 NETWORKING: Networking components started successfully")
-        logger.trace("Networking components started successfully")
+        logger.trace("🔍 NETWORKING: Networking components started successfully")
     }
 
     /// Create network transport based on configuration
@@ -2249,12 +2241,12 @@ public final class Node {
         let callbacks = TransportCallbacks(
             peerConnectedCallback: { [weak self] peerNodeId, nodeInfo in
                 Task { @MainActor in
-                    print("🔍 HANDSHAKE: Peer connected callback triggered for peer: \(peerNodeId) at \(Date())")
-                    print("🔍 HANDSHAKE: NodeInfo received: \(nodeInfo)")
-                    print("🔍 HANDSHAKE: Raw FFI NodeInfo - services: \(nodeInfo.nodeMetadata.services.count), subscriptions: \(nodeInfo.nodeMetadata.subscriptions.count)")
-                    print("🔍 HANDSHAKE: This NodeInfo was sent by the peer during handshake - it should contain the peer's services")
+                    self?.logger.trace("🔍 HANDSHAKE: Peer connected callback triggered for peer: \(peerNodeId) at \(Date())")
+                    self?.logger.trace("🔍 HANDSHAKE: NodeInfo received: \(nodeInfo)")
+                    self?.logger.trace("🔍 HANDSHAKE: Raw FFI NodeInfo - services: \(nodeInfo.nodeMetadata.services.count), subscriptions: \(nodeInfo.nodeMetadata.subscriptions.count)")
+                    self?.logger.trace("🔍 HANDSHAKE: This NodeInfo was sent by the peer during handshake - it should contain the peer's services")
                     for (index, service) in nodeInfo.nodeMetadata.services.enumerated() {
-                        print("🔍 HANDSHAKE: Service \(index): path=\(service.servicePath), name=\(service.name)")
+                        self?.logger.trace("🔍 HANDSHAKE: Service \(index): path=\(service.servicePath), name=\(service.name)")
                     }
 
                     // Convert SwiftFFI.NodeInfo to SwiftNode.NodeInfo
@@ -2264,7 +2256,7 @@ public final class Node {
                         addresses: nodeInfo.addresses,
                         nodeMetadata: {
                             let ffiMetadata = nodeInfo.nodeMetadata
-                            print("🔍 HANDSHAKE: Converting FFI metadata: \(ffiMetadata.services.count) services, \(ffiMetadata.subscriptions.count) subscriptions")
+                            self?.logger.trace("🔍 HANDSHAKE: Converting FFI metadata: \(ffiMetadata.services.count) services, \(ffiMetadata.subscriptions.count) subscriptions")
 
                             // Convert SwiftFFI.ServiceMetadata to SwiftNode.ServiceMetadata
                             let services = ffiMetadata.services.map { ffiService in
@@ -2296,8 +2288,8 @@ public final class Node {
                         }(),
                         version: nodeInfo.version
                     )
-                    print("🔍 HANDSHAKE: Converted NodeInfo: \(swiftNodeInfo)")
-                    print("🔍 HANDSHAKE: Converted services: \(swiftNodeInfo.nodeMetadata.services)")
+                    self?.logger.trace("🔍 HANDSHAKE: Converted NodeInfo: \(swiftNodeInfo)")
+                    self?.logger.trace("🔍 HANDSHAKE: Converted services: \(swiftNodeInfo.nodeMetadata.services)")
                     await self?.handlePeerConnected(peerNodeId: peerNodeId, nodeInfo: swiftNodeInfo)
                 }
             },
@@ -2442,19 +2434,16 @@ public final class Node {
     /// Update local peer info for discovery announcements after transport is started
     private func updateLocalPeerInfoForDiscoveryAfterTransportStart() async throws {
         logger.trace("🔍 DISCOVERY: Updating local peer info for discovery announcements after transport start")
-        print("🔍 DISCOVERY: Updating local peer info for discovery announcements after transport start")
 
         // Get the local transport address
         guard let transport = networkTransport else {
             logger.warning("🔍 DISCOVERY: No transport available, cannot get local address")
-            print("🔍 DISCOVERY: No transport available, cannot get local address")
             return
         }
 
         // Get key manager
         guard let keyManager = config.getKeyManager() else {
             logger.warning("🔍 DISCOVERY: No key manager available")
-            print("🔍 DISCOVERY: No key manager available")
             return
         }
 
@@ -2462,50 +2451,44 @@ public final class Node {
             // Get local address from transport
             let localAddr = try await transport.localAddr()
             logger.trace("🔍 DISCOVERY: Local address: \(localAddr)")
-            print("🔍 DISCOVERY: Local address: \(localAddr)")
 
             // Get node public key from key manager
             let nodePublicKey = try await keyManager.getNodePublicKey()
             logger.trace("🔍 DISCOVERY: Node public key: \(nodePublicKey.count) bytes")
-            print("🔍 DISCOVERY: Node public key: \(nodePublicKey.count) bytes")
 
             // Create peer info
             let peerInfo = SwiftFFI.PeerInfo(
                 publicKey: nodePublicKey,
                 addresses: [localAddr]
             )
-            print("🔍 DISCOVERY: Created PeerInfo with address: \(localAddr)")
+            logger.trace("🔍 DISCOVERY: Created PeerInfo with address: \(localAddr)")
 
             // Encode peer info to CBOR
             let encoder = CodableCBOREncoder()
             let peerInfoCbor = try encoder.encode(peerInfo)
             logger.trace("🔍 DISCOVERY: Peer info encoded to CBOR: \(peerInfoCbor.count) bytes")
-            print("🔍 DISCOVERY: Peer info encoded to CBOR: \(peerInfoCbor.count) bytes")
 
             // Update all discovery providers with the peer info
             if let discoveryProviders = networkDiscoveryProviders {
-                print("🔍 DISCOVERY: Found \(discoveryProviders.count) discovery providers to update")
+                logger.trace("🔍 DISCOVERY: Found \(discoveryProviders.count) discovery providers to update")
                 for (index, discoveryProvider) in discoveryProviders.enumerated() {
-                    print("🔍 DISCOVERY: Updating discovery provider \(index + 1) of \(discoveryProviders.count)")
+                    logger.trace("🔍 DISCOVERY: Updating discovery provider \(index + 1) of \(discoveryProviders.count)")
                     if let discovery = discoveryProvider as? Discovery {
-                        print("🔍 DISCOVERY: Calling updateLocalPeerInfo on discovery provider \(index + 1)")
+                        logger.trace("🔍 DISCOVERY: Calling updateLocalPeerInfo on discovery provider \(index + 1)")
                         try await discovery.updateLocalPeerInfo(peerInfoCbor: peerInfoCbor)
-                        logger.trace("🔍 DISCOVERY: Updated peer info for discovery provider")
-                        print("🔍 DISCOVERY: Successfully updated peer info for discovery provider \(index + 1)")
+                        logger.trace("🔍 DISCOVERY: Successfully updated peer info for discovery provider \(index + 1)")
                     } else {
-                        print("🔍 DISCOVERY: Discovery provider \(index + 1) is not a Discovery instance")
+                        logger.trace("🔍 DISCOVERY: Discovery provider \(index + 1) is not a Discovery instance")
                     }
                 }
             } else {
-                print("🔍 DISCOVERY: No discovery providers available (networkDiscoveryProviders is nil)")
+                logger.trace("🔍 DISCOVERY: No discovery providers available (networkDiscoveryProviders is nil)")
             }
 
             logger.trace("🔍 DISCOVERY: Local peer info updated successfully for all discovery providers")
-            print("🔍 DISCOVERY: Local peer info updated successfully for all discovery providers")
 
         } catch {
             logger.error("🔍 DISCOVERY: Failed to update local peer info: \(error)")
-            print("🔍 DISCOVERY: Failed to update local peer info: \(error)")
             throw error
         }
     }
@@ -2516,9 +2499,9 @@ public final class Node {
         let currentServices = await serviceRegistry.getLocalServices()
         let servicePaths = Array(currentServices.keys).map { $0.asString() }
 
-        print("🔍 DEBUG: Found \(currentServices.count) local services")
+        logger.trace("🔍 DEBUG: Found \(currentServices.count) local services")
         for (topicPath, serviceEntry) in currentServices {
-            print("🔍 DEBUG: Service: \(topicPath.asString()) -> \(serviceEntry.service.name)")
+            logger.trace("🔍 DEBUG: Service: \(topicPath.asString()) -> \(serviceEntry.service.name)")
         }
 
         // Get current subscriptions from the service registry (currently returns empty array)
@@ -2540,8 +2523,7 @@ public final class Node {
             version: localNodeInfo.version
         )
 
-        print("🔍 DEBUG: Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionPaths.count) subscriptions")
-        logger.trace("🔍 Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionPaths.count) subscriptions")
+        logger.trace("🔍 DEBUG: Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionPaths.count) subscriptions")
 
         return updatedNodeInfo
     }
@@ -2549,11 +2531,11 @@ public final class Node {
     /// Update the transport with current NodeInfo (SETTER ONLY)
     private func updateTransportNodeInfo() async {
         guard let transport = networkTransport as? QuicTransport else {
-            print("🔍 DEBUG: No transport found (networkTransport is nil or not QuicTransport)")
+            logger.trace("🔍 DEBUG: No transport found (networkTransport is nil or not QuicTransport)")
             return
         }
 
-        print("🔍 DEBUG: Transport found, updating with NodeInfo...")
+        logger.trace("🔍 DEBUG: Transport found, updating with NodeInfo...")
         do {
             // Get current NodeInfo
             let currentNodeInfo = await getLocalNodeInfo()
@@ -2561,16 +2543,14 @@ public final class Node {
             // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
             let ffiNodeInfo = await convertToFFINodeInfo(currentNodeInfo)
 
-            print("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
-            print("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to transport")
-            print("🔍 DEBUG: This should update the transport-scoped NodeInfo storage for handshakes")
+            logger.trace("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
+            logger.trace("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to transport")
+            logger.trace("🔍 DEBUG: This should update the transport-scoped NodeInfo storage for handshakes")
             try await transport.updateLocalNodeInfo(nodeInfo: ffiNodeInfo)
-            print("🔍 DEBUG: Successfully updated transport with new NodeInfo at \(Date())")
-            print("🔍 DEBUG: The transport-scoped NodeInfo storage should now contain \(ffiNodeInfo.nodeMetadata.services.count) services")
-            logger.trace("🔍 Successfully updated transport with new NodeInfo")
+            logger.trace("🔍 DEBUG: Successfully updated transport with new NodeInfo at \(Date())")
+            logger.trace("🔍 DEBUG: The transport-scoped NodeInfo storage should now contain \(ffiNodeInfo.nodeMetadata.services.count) services")
         } catch {
-            print("🔍 DEBUG: Failed to update transport with new NodeInfo: \(error)")
-            logger.error("🔍 Failed to update transport with new NodeInfo: \(error)")
+            logger.error("🔍 DEBUG: Failed to update transport with new NodeInfo: \(error)")
         }
     }
 
@@ -2874,24 +2854,22 @@ public final class Node {
 
     /// Handle peer connected event
     private func handlePeerConnected(peerNodeId: String, nodeInfo: NodeInfo) async {
-        print("🔍 HANDSHAKE: handlePeerConnected called for peer: \(peerNodeId)")
+        logger.trace("🔍 HANDSHAKE: handlePeerConnected called for peer: \(peerNodeId)")
         logger.trace("Peer connected: \(peerNodeId)")
         logger.trace("Peer NodeInfo: \(nodeInfo)")
 
         // Store peer info in remote_node_info (matching Rust implementation)
-        print("🔍 HANDSHAKE: Storing peer info in remote_node_info")
+        logger.trace("🔍 HANDSHAKE: Storing peer info in remote_node_info")
         _ = await remoteNodeInfo.insert(nodeInfo, for: peerNodeId)
-        print("🔍 HANDSHAKE: Peer info stored successfully")
+        logger.trace("🔍 HANDSHAKE: Peer info stored successfully")
 
         // Process service metadata from the peer's NodeInfo
         let nodeMetadata = nodeInfo.nodeMetadata
-        print("🔍 HANDSHAKE: Processing peer service metadata: \(nodeMetadata.services.count) services")
-        logger.trace("Processing peer service metadata: \(nodeMetadata.services.count) services")
+        logger.trace("🔍 HANDSHAKE: Processing peer service metadata: \(nodeMetadata.services.count) services")
 
         // Register remote services from the peer's metadata
         for service in nodeMetadata.services {
-            print("🔍 HANDSHAKE: Registering remote service: \(service.name) from peer: \(peerNodeId)")
-            logger.trace("Registering remote service: \(service.name) from peer: \(peerNodeId)")
+            logger.trace("🔍 HANDSHAKE: Registering remote service: \(service.name) from peer: \(peerNodeId)")
 
             // Create RemoteService instance and register it
             do {
@@ -2914,8 +2892,7 @@ public final class Node {
             // Register each action from the service
             for action in service.actions {
                 let actionPath = "\(service.servicePath)/\(action.name)"
-                print("🔍 HANDSHAKE: Registering remote action: \(actionPath) from peer: \(peerNodeId)")
-                logger.trace("Registering remote action: \(actionPath) from peer: \(peerNodeId)")
+                logger.trace("🔍 HANDSHAKE: Registering remote action: \(actionPath) from peer: \(peerNodeId)")
 
                 // Create a real network call handler (matching Rust implementation)
                 let remoteHandler: ActionHandler = { [weak self] params, context in
@@ -2935,14 +2912,13 @@ public final class Node {
                         topicPath: topicPath,
                         handler: remoteHandler
                     )
-                    print("🔍 HANDSHAKE: Successfully registered remote action handler for: \(actionPath)")
+                    logger.trace("🔍 HANDSHAKE: Successfully registered remote action handler for: \(actionPath)")
                 } catch {
-                    print("🔍 HANDSHAKE: Failed to register remote action handler for \(actionPath): \(error)")
-                    logger.error("Failed to register remote action handler for \(actionPath): \(error)")
+                    logger.error("🔍 HANDSHAKE: Failed to register remote action handler for \(actionPath): \(error)")
                 }
             }
         }
-        print("🔍 HANDSHAKE: handlePeerConnected completed for peer: \(peerNodeId)")
+        logger.trace("🔍 HANDSHAKE: handlePeerConnected completed for peer: \(peerNodeId)")
     }
 
     /// Make a real remote network call (matching Rust implementation)
@@ -3033,7 +3009,6 @@ public final class Node {
     /// Handle peer discovered event from discovery system
     private func handlePeerDiscovered(peerInfo: SwiftFFI.PeerInfo) async {
         logger.trace("🔍 DISCOVERY: Peer discovered: \(peerInfo.addresses)")
-        print("🔍 DISCOVERY: Peer discovered with addresses: \(peerInfo.addresses)")
 
         // Convert SwiftFFI.PeerInfo to a format we can use
         // For now, we'll use the first address as the peer ID
@@ -3072,38 +3047,31 @@ public final class Node {
     /// Connect to a discovered peer and perform handshake
     private func connectToDiscoveredPeer(peerInfo: SwiftFFI.PeerInfo, peerNodeId: String) async {
         logger.trace("🔍 CONNECTION: Connecting to discovered peer: \(peerNodeId)")
-        print("🔍 CONNECTION: Connecting to discovered peer: \(peerNodeId)")
 
         guard let transport = networkTransport else {
             logger.error("🔍 CONNECTION: No transport available for connection")
-            print("🔍 CONNECTION: No transport available for connection")
             return
         }
 
         do {
             // Connect to the peer using the transport
             logger.trace("🔍 CONNECTION: Calling transport.connectToPeer()")
-            print("🔍 CONNECTION: Calling transport.connectToPeer()")
             try await transport.connectToPeer(peerInfo: peerInfo)
             logger.trace("🔍 CONNECTION: Transport connection successful")
-            print("🔍 CONNECTION: Transport connection successful")
 
             // The handshake will happen automatically via the transport callbacks
             // The peerConnectedCallback will be called with the peer's NodeInfo
             // which will trigger handlePeerConnected() to register remote services
             logger.trace("🔍 CONNECTION: Handshake will be handled by transport callbacks")
-            print("🔍 CONNECTION: Handshake will be handled by transport callbacks")
 
         } catch {
             logger.error("🔍 CONNECTION: Failed to connect to peer \(peerNodeId): \(error)")
-            print("🔍 CONNECTION: Failed to connect to peer \(peerNodeId): \(error)")
         }
     }
 
     /// Handle peer updated event from discovery system
     private func handlePeerUpdated(peerInfo: SwiftFFI.PeerInfo) async {
         logger.trace("🔍 DISCOVERY: Peer updated: \(peerInfo.addresses)")
-        print("🔍 DISCOVERY: Peer updated with addresses: \(peerInfo.addresses)")
 
         // Handle peer information updates
         // This could include address changes, service updates, etc.
@@ -3119,7 +3087,6 @@ public final class Node {
     /// Handle peer lost event from discovery system
     private func handlePeerLost(nodeId: String) async {
         logger.trace("🔍 DISCOVERY: Peer lost: \(nodeId)")
-        print("🔍 DISCOVERY: Peer lost: \(nodeId)")
 
         // Handle peer being lost from discovery
         // This doesn't necessarily mean the peer disconnected (it might still be connected)
