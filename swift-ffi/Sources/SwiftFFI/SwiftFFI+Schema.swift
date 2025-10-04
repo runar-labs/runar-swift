@@ -131,11 +131,11 @@ public struct SetupToken: Codable, Equatable, Sendable {
         let cborData = Data(cbor.encode())
         let decoder = CodableCBORDecoder()
         let setupToken = try decoder.decode(SetupToken.self, from: cborData)
-        
-        self.node_id = setupToken.node_id
-        self.node_public_key = setupToken.node_public_key
-        self.node_agreement_public_key = setupToken.node_agreement_public_key
-        self.csr_der = setupToken.csr_der
+
+        node_id = setupToken.node_id
+        node_public_key = setupToken.node_public_key
+        node_agreement_public_key = setupToken.node_agreement_public_key
+        csr_der = setupToken.csr_der
     }
 
     public init(from decoder: Decoder) throws {
@@ -207,7 +207,7 @@ public struct CsrEnrollResponse: Codable, Equatable, Sendable {
         case root_ca_der
         case expires_at
     }
-    
+
     public init(network_id: String, certificate_der: Data, issuing_ca_der: Data, root_ca_der: Data? = nil, expires_at: UInt64) {
         self.network_id = network_id
         self.certificate_der = certificate_der
@@ -215,17 +215,17 @@ public struct CsrEnrollResponse: Codable, Equatable, Sendable {
         self.root_ca_der = root_ca_der
         self.expires_at = expires_at
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         network_id = try container.decode(String.self, forKey: .network_id)
         certificate_der = try container.decode(Data.self, forKey: .certificate_der)
         issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
         root_ca_der = try container.decodeIfPresent(Data.self, forKey: .root_ca_der)
         expires_at = try container.decode(UInt64.self, forKey: .expires_at)
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(network_id, forKey: .network_id)
@@ -248,23 +248,23 @@ public struct RenewResponse: Codable, Equatable, Sendable {
         case issuing_ca_der
         case expires_at
     }
-    
+
     public init(network_id: String, certificate_der: Data, issuing_ca_der: Data, expires_at: UInt64) {
         self.network_id = network_id
         self.certificate_der = certificate_der
         self.issuing_ca_der = issuing_ca_der
         self.expires_at = expires_at
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         network_id = try container.decode(String.self, forKey: .network_id)
         certificate_der = try container.decode(Data.self, forKey: .certificate_der)
         issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
         expires_at = try container.decode(UInt64.self, forKey: .expires_at)
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(network_id, forKey: .network_id)
@@ -284,21 +284,21 @@ public struct ChainResponse: Codable, Equatable, Sendable {
         case issuing_ca_der
         case root_ca_der
     }
-    
+
     public init(network_id: String, issuing_ca_der: Data, root_ca_der: Data? = nil) {
         self.network_id = network_id
         self.issuing_ca_der = issuing_ca_der
         self.root_ca_der = root_ca_der
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         network_id = try container.decode(String.self, forKey: .network_id)
         issuing_ca_der = try container.decode(Data.self, forKey: .issuing_ca_der)
         root_ca_der = try container.decodeIfPresent(Data.self, forKey: .root_ca_der)
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(network_id, forKey: .network_id)
@@ -350,7 +350,6 @@ public struct RenewRequest: Codable, Equatable, Sendable {
     }
 }
 
-
 // MARK: - CA Configuration Types
 
 public struct CaServerConfig: Codable, Equatable, Sendable {
@@ -359,7 +358,7 @@ public struct CaServerConfig: Codable, Equatable, Sendable {
     public let networkId: String
     public let rateLimitPerMinute: Int
     public let rateLimitPerHour: Int
-    
+
     public init(bootstrapBind: String, authenticatedBind: String, networkId: String, rateLimitPerMinute: Int, rateLimitPerHour: Int) {
         self.bootstrapBind = bootstrapBind
         self.authenticatedBind = authenticatedBind
@@ -367,7 +366,7 @@ public struct CaServerConfig: Codable, Equatable, Sendable {
         self.rateLimitPerMinute = rateLimitPerMinute
         self.rateLimitPerHour = rateLimitPerHour
     }
-    
+
     private enum CodingKeys: String, CodingKey {
         case bootstrapBind = "bootstrap_bind"
         case authenticatedBind = "authenticated_bind"
@@ -375,7 +374,7 @@ public struct CaServerConfig: Codable, Equatable, Sendable {
         case rateLimitPerMinute = "rate_limit_per_minute"
         case rateLimitPerHour = "rate_limit_per_hour"
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(bootstrapBind, forKey: .bootstrapBind)
@@ -394,7 +393,7 @@ public struct CaClientConfigAll: Codable, Equatable, Sendable {
     public let max_retries: Int
     public let root_ca_der: [UInt8]
     public let issuing_ca_der: [UInt8]
-    
+
     public init(bootstrap_server: String, authenticated_server: String, network_id: String, request_timeout_seconds: Int, max_retries: Int, root_ca_der: [UInt8], issuing_ca_der: [UInt8]) throws {
         // Validate that certificates are not empty
         guard !root_ca_der.isEmpty else {
@@ -403,7 +402,7 @@ public struct CaClientConfigAll: Codable, Equatable, Sendable {
         guard !issuing_ca_der.isEmpty else {
             throw FFIError.operationFailed("issuing_ca_der cannot be empty")
         }
-        
+
         self.bootstrap_server = bootstrap_server
         self.authenticated_server = authenticated_server
         self.network_id = network_id
@@ -420,7 +419,7 @@ public struct CustomCaServerConfig: Codable, Equatable, Sendable {
     public let network_id: String
     public let rate_limit_per_minute: Int
     public let rate_limit_per_hour: Int
-    
+
     public init(bootstrap_bind: String, authenticated_bind: String, network_id: String, rate_limit_per_minute: Int, rate_limit_per_hour: Int) {
         self.bootstrap_bind = bootstrap_bind
         self.authenticated_bind = authenticated_bind
@@ -434,26 +433,26 @@ public struct RevokeRequest: Codable, Equatable, Sendable {
     public let network_id: String
     public let certificate_serial: Data
     public let reason: String
-    
+
     public init(network_id: String, certificate_serial: Data, reason: String) {
         self.network_id = network_id
         self.certificate_serial = certificate_serial
         self.reason = reason
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case certificate_serial
         case reason
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         network_id = try container.decode(String.self, forKey: .network_id)
         certificate_serial = try container.decode(Data.self, forKey: .certificate_serial)
         reason = try container.decode(String.self, forKey: .reason)
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(network_id, forKey: .network_id)
@@ -465,7 +464,7 @@ public struct RevokeRequest: Codable, Equatable, Sendable {
 public struct RevokeResponse: Codable, Equatable, Sendable {
     public let network_id: String
     public let ok: Bool
-    
+
     public init(network_id: String, ok: Bool) {
         self.network_id = network_id
         self.ok = ok
@@ -478,7 +477,7 @@ public struct CaStatus: Codable, Equatable, Sendable {
     public let issuing_serial_hex: String
     public let not_before: UInt64
     public let not_after: UInt64
-    
+
     public init(network_id: String, issuing_subject: String, issuing_serial_hex: String, not_before: UInt64, not_after: UInt64) {
         self.network_id = network_id
         self.issuing_subject = issuing_subject
@@ -486,7 +485,7 @@ public struct CaStatus: Codable, Equatable, Sendable {
         self.not_before = not_before
         self.not_after = not_after
     }
-    
+
     enum CodingKeys: String, CodingKey {
         case network_id
         case issuing_subject
@@ -495,6 +494,7 @@ public struct CaStatus: Codable, Equatable, Sendable {
         case not_after
     }
 }
+
 public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
     /// The path/topic associated with this payload
     public let path: String
@@ -533,7 +533,7 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
         try container.encode(payloadBytes, forKey: .payloadBytes)
         try container.encode(correlationId, forKey: .correlationId)
         try container.encodeIfPresent(networkPublicKey, forKey: .networkPublicKey)
-        
+
         // Encode profilePublicKeys as array of Data (which will be encoded as byte strings)
         try container.encode(profilePublicKeys, forKey: .profilePublicKeys)
     }
@@ -546,7 +546,6 @@ public struct NetworkMessagePayloadItem: Codable, Equatable, Sendable {
         networkPublicKey = try container.decodeIfPresent(Data.self, forKey: .networkPublicKey)
         profilePublicKeys = try container.decode([Data].self, forKey: .profilePublicKeys)
     }
-    
 }
 
 /// Swift representation of NetworkMessage structure from Rust
@@ -584,7 +583,7 @@ public struct NetworkMessage: Codable, Equatable, Sendable {
 public enum ConnectionRole: String, Codable, Sendable, Equatable {
     case initiator = "Initiator"
     case responder = "Responder"
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let intValue = try? container.decode(Int.self) {
@@ -599,7 +598,7 @@ public enum ConnectionRole: String, Codable, Sendable, Equatable {
             throw DecodingError.typeMismatch(ConnectionRole.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected Int or String for ConnectionRole"))
         }
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
@@ -877,6 +876,7 @@ public struct QuicTransportOptions: Codable, Sendable {
         )
     }
 }
+
 public struct TransportRequestParams: Codable, Equatable {
     public let path: String
     public let correlationId: String
@@ -905,7 +905,7 @@ public struct TransportRequestParams: Codable, Equatable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        
+
         // Encode fields in the exact order that Rust expects:
         // 1. path
         try container.encode(path, forKey: .path)
@@ -941,7 +941,6 @@ public struct TransportRequestParams: Codable, Equatable {
         // Decode profilePublicKeys as array of Data (now using serde_bytes in Rust)
         profilePublicKeys = try container.decode([Data].self, forKey: .profilePublicKeys)
     }
-    
 }
 
 /// Swift representation of TransportCompleteRequestParams from Rust FFI
@@ -984,7 +983,6 @@ public struct TransportCompleteRequestParams: Codable, Equatable {
         // Decode profilePublicKeys as array of Data (now using serde_bytes in Rust)
         profilePublicKeys = try container.decode([Data].self, forKey: .profilePublicKeys)
     }
-    
 }
 
 /// Swift representation of PeerInfo from Rust
@@ -1011,12 +1009,12 @@ public struct PeerInfo: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         // Decode publicKey as Data (Rust serde_bytes encodes Vec<u8> as CBOR byte string)
         publicKey = try container.decode(Data.self, forKey: .publicKey)
         addresses = try container.decode([String].self, forKey: .addresses)
     }
-    
+
     /// Decode Vec<Vec<u8>> field from Rust CBOR format (array of unsignedInt arrays)
     private static func decodeVecVecU8(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> [Data] {
         // Rust serde_cbor encodes Vec<Vec<u8>> as array of arrays of unsignedInt
@@ -1096,36 +1094,99 @@ public struct TransportPublishParams: Codable, Equatable {
 // MARK: - Discovery Options
 
 /// Swift representation of DiscoveryOptions from Rust FFI
+/// Matches the Rust struct in runar-transporter/src/discovery/mod.rs
 public struct DiscoveryOptions: Codable, Sendable {
+    /// How often to announce this node's presence (in seconds)
+    public let announceInterval: TimeInterval
+    /// Timeout for discovery operations (in seconds)
+    public let discoveryTimeout: TimeInterval
+    /// Per-peer debounce window to coalesce bursty events (in seconds)
+    public let debounceWindow: TimeInterval
+    /// Whether to use multicast for discovery (if supported)
+    public let useMulticast: Bool
+    /// Whether to limit discovery to the local network
+    public let localNetworkOnly: Bool
+    /// The multicast group address (e.g., "239.255.42.98")
     public let multicastGroup: String
-    public let announceIntervalMs: UInt32
-    public let discoveryTimeoutMs: UInt32
-    public let debounceWindowMs: UInt32
 
-    public init(multicastGroup: String = "224.0.0.251:5353",
-                announceIntervalMs: UInt32 = 1000,
-                discoveryTimeoutMs: UInt32 = 5000,
-                debounceWindowMs: UInt32 = 200)
+    public init(announceInterval: TimeInterval = 1.0,
+                discoveryTimeout: TimeInterval = 5.0,
+                debounceWindow: TimeInterval = 0.2,
+                useMulticast: Bool = true,
+                localNetworkOnly: Bool = true,
+                multicastGroup: String = "239.255.42.98")
     {
+        self.announceInterval = announceInterval
+        self.discoveryTimeout = discoveryTimeout
+        self.debounceWindow = debounceWindow
+        self.useMulticast = useMulticast
+        self.localNetworkOnly = localNetworkOnly
         self.multicastGroup = multicastGroup
-        self.announceIntervalMs = announceIntervalMs
-        self.discoveryTimeoutMs = discoveryTimeoutMs
-        self.debounceWindowMs = debounceWindowMs
     }
-    
+
     private enum CodingKeys: String, CodingKey {
-        case multicastGroup = "multicastGroup"
-        case announceIntervalMs = "announceIntervalMs"
-        case discoveryTimeoutMs = "discoveryTimeoutMs"
-        case debounceWindowMs = "debounceWindowMs"
+        case announceInterval = "announce_interval"
+        case discoveryTimeout = "discovery_timeout"
+        case debounceWindow = "debounce_window"
+        case useMulticast = "use_multicast"
+        case localNetworkOnly = "local_network_only"
+        case multicastGroup = "multicast_group"
     }
-    
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Handle Duration fields that come from Rust as {secs: u64, nanos: u32}
+        announceInterval = try Self.decodeDuration(from: container, forKey: .announceInterval)
+        discoveryTimeout = try Self.decodeDuration(from: container, forKey: .discoveryTimeout)
+        debounceWindow = try Self.decodeDuration(from: container, forKey: .debounceWindow)
+
+        useMulticast = try container.decode(Bool.self, forKey: .useMulticast)
+        localNetworkOnly = try container.decode(Bool.self, forKey: .localNetworkOnly)
+        multicastGroup = try container.decode(String.self, forKey: .multicastGroup)
+    }
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+
+        // Encode Duration fields as {secs: u64, nanos: u32} to match Rust
+        try Self.encodeDuration(announceInterval, to: &container, forKey: .announceInterval)
+        try Self.encodeDuration(discoveryTimeout, to: &container, forKey: .discoveryTimeout)
+        try Self.encodeDuration(debounceWindow, to: &container, forKey: .debounceWindow)
+
+        try container.encode(useMulticast, forKey: .useMulticast)
+        try container.encode(localNetworkOnly, forKey: .localNetworkOnly)
         try container.encode(multicastGroup, forKey: .multicastGroup)
-        try container.encode(announceIntervalMs, forKey: .announceIntervalMs)
-        try container.encode(discoveryTimeoutMs, forKey: .discoveryTimeoutMs)
-        try container.encode(debounceWindowMs, forKey: .debounceWindowMs)
+    }
+
+    // MARK: - Duration Helpers
+
+    private static func decodeDuration(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) throws -> TimeInterval {
+        // Try to decode as simple TimeInterval first (for Swift-generated data)
+        if let timeInterval = try? container.decode(TimeInterval.self, forKey: key) {
+            return timeInterval
+        }
+
+        // Try to decode as Rust Duration struct {secs: u64, nanos: u32}
+        let durationContainer = try container.nestedContainer(keyedBy: DurationCodingKeys.self, forKey: key)
+        let secs = try durationContainer.decode(UInt64.self, forKey: .secs)
+        let nanos = try durationContainer.decode(UInt32.self, forKey: .nanos)
+
+        return TimeInterval(secs) + TimeInterval(nanos) / 1_000_000_000.0
+    }
+
+    private static func encodeDuration(_ timeInterval: TimeInterval, to container: inout KeyedEncodingContainer<CodingKeys>, forKey key: CodingKeys) throws {
+        // Encode as Rust Duration struct {secs: u64, nanos: u32}
+        var durationContainer = container.nestedContainer(keyedBy: DurationCodingKeys.self, forKey: key)
+        let secs = UInt64(timeInterval)
+        let nanos = UInt32((timeInterval - TimeInterval(secs)) * 1_000_000_000.0)
+        try durationContainer.encode(secs, forKey: .secs)
+        try durationContainer.encode(nanos, forKey: .nanos)
+    }
+
+    private enum DurationCodingKeys: String, CodingKey {
+        case secs
+        case nanos
     }
 }
 
@@ -1286,5 +1347,3 @@ public struct TransportResponseEvent: Codable, Sendable, Equatable {
         try container.encode([UInt8](payload), forKey: .payload)
     }
 }
-
-

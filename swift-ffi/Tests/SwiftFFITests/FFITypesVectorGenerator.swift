@@ -20,7 +20,7 @@ final class FFITypesVectorGenerator: XCTestCase {
         print("🔬 Generating ALL FFI Types Test Vectors")
         print("======================================")
         print("Generating vectors for all 37 types from SwiftFFI+Schema.swift")
-        
+
         // CA Client Types (9 types)
         try generateEnrollmentTokenBody()
         try generateEnrollmentToken()
@@ -31,7 +31,7 @@ final class FFITypesVectorGenerator: XCTestCase {
         try generateRenewResponse()
         try generateRevokeRequest()
         try generateRevokeResponse()
-        
+
         // CA Configuration Types (6 types)
         try generateCaStatus()
         try generateChainResponse()
@@ -39,15 +39,15 @@ final class FFITypesVectorGenerator: XCTestCase {
         try generateCaServerConfig()
         try generateCaClientConfigAll()
         try generateCustomCaServerConfig()
-        
+
         // Network Message Types (2 types)
         try generateNetworkMessagePayloadItem()
         try generateNetworkMessage()
-        
+
         // Handshake Types (2 types)
         try generateConnectionRole()
         try generateHandshakeData()
-        
+
         // Node Info Types (6 types)
         try generateNodeInfo()
         try generateNodeMetadata()
@@ -56,23 +56,23 @@ final class FFITypesVectorGenerator: XCTestCase {
         try generateSubscriptionMetadata()
         try generateFieldSchema()
         try generateSchemaDataType()
-        
+
         // Transport Types (4 types)
         try generatePeerInfo()
         try generateTransportRequestParams()
         try generateTransportCompleteRequestParams()
         try generateTransportPublishParams()
-        
+
         // Transport Options (2 types)
         try generateFFIQuicTransportOptions()
         try generateQuicTransportOptions()
-        
+
         // Discovery Types (1 type)
         try generateDiscoveryOptions()
-        
+
         // Transport Event Types (4 types)
         try generateTypedTransportEventVectors()
-        
+
         print("✅ All 37 FFI types test vectors generated successfully")
         print("📁 Output directory: \(outputDir.path)")
     }
@@ -308,7 +308,7 @@ final class FFITypesVectorGenerator: XCTestCase {
         )
         let handshakeData = HandshakeData(
             nodeInfo: basicNode,
-            nonce: 1234567890,
+            nonce: 1_234_567_890,
             role: .initiator
         )
         try encodeAndWrite(handshakeData, filename: "handshake_data_basic.bin")
@@ -411,7 +411,7 @@ final class FFITypesVectorGenerator: XCTestCase {
         let bytesType = SchemaDataType.bytes
         let arrayType = SchemaDataType.array
         let mapType = SchemaDataType.map
-        
+
         try encodeAndWrite(stringType, filename: "schema_data_type_string.bin")
         try encodeAndWrite(int32Type, filename: "schema_data_type_int32.bin")
         try encodeAndWrite(int64Type, filename: "schema_data_type_int64.bin")
@@ -496,10 +496,12 @@ final class FFITypesVectorGenerator: XCTestCase {
 
     private func generateDiscoveryOptions() throws {
         let options = DiscoveryOptions(
-            multicastGroup: "224.0.0.251:5353",
-            announceIntervalMs: 1000,
-            discoveryTimeoutMs: 5000,
-            debounceWindowMs: 200
+            announceInterval: 1.0,
+            discoveryTimeout: 5.0,
+            debounceWindow: 0.2,
+            useMulticast: true,
+            localNetworkOnly: true,
+            multicastGroup: "239.255.42.98"
         )
         try encodeAndWrite(options, filename: "discovery_options_basic.bin")
     }

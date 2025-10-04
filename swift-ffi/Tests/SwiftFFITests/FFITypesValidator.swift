@@ -15,21 +15,21 @@ final class FFITypesValidator: XCTestCase {
         print("🔬 Validating ALL FFI Types Against Rust")
         print("======================================")
         print("Validating all 37 types from SwiftFFI+Schema.swift against Rust counterparts")
-        
+
         guard FileManager.default.fileExists(atPath: swiftDir.path) else {
             XCTFail("Swift FFI types vectors directory not found: \(swiftDir.path). Run Swift FFI types vectors first.")
             return
         }
-        
+
         guard FileManager.default.fileExists(atPath: rustDir.path) else {
             XCTFail("Rust FFI types vectors directory not found: \(rustDir.path). Run Rust FFI types vectors first.")
             return
         }
-        
+
         print("📁 Found FFI types vector directories:")
         print("   Swift: \(swiftDir.path)")
         print("   Rust:  \(rustDir.path)")
-        
+
         // Define all 37 types with their validation functions
         let typeValidations = [
             // CA Client Types (9 types)
@@ -42,7 +42,7 @@ final class FFITypesValidator: XCTestCase {
             ("RenewResponse", validateRenewResponse),
             ("RevokeRequest", validateRevokeRequest),
             ("RevokeResponse", validateRevokeResponse),
-            
+
             // CA Configuration Types (6 types)
             ("CaStatus", validateCaStatus),
             ("ChainResponse", validateChainResponse),
@@ -50,15 +50,15 @@ final class FFITypesValidator: XCTestCase {
             ("CaServerConfig", validateCaServerConfig),
             ("CaClientConfigAll", validateCaClientConfigAll),
             ("CustomCaServerConfig", validateCustomCaServerConfig),
-            
+
             // Network Message Types (2 types)
             ("NetworkMessagePayloadItem", validateNetworkMessagePayloadItem),
             ("NetworkMessage", validateNetworkMessage),
-            
+
             // Handshake Types (2 types)
             ("ConnectionRole", validateConnectionRole),
             ("HandshakeData", validateHandshakeData),
-            
+
             // Node Info Types (6 types)
             ("NodeInfo", validateNodeInfo),
             ("NodeMetadata", validateNodeMetadata),
@@ -67,30 +67,30 @@ final class FFITypesValidator: XCTestCase {
             ("SubscriptionMetadata", validateSubscriptionMetadata),
             ("FieldSchema", validateFieldSchema),
             ("SchemaDataType", validateSchemaDataType),
-            
+
             // Transport Types (4 types)
             ("PeerInfo", validatePeerInfo),
             ("TransportRequestParams", validateTransportRequestParams),
             ("TransportCompleteRequestParams", validateTransportCompleteRequestParams),
             ("TransportPublishParams", validateTransportPublishParams),
-            
+
             // Transport Options (2 types)
             ("FFIQuicTransportOptions", validateFFIQuicTransportOptions),
             ("QuicTransportOptions", validateQuicTransportOptions),
-            
+
             // Discovery Types (1 type)
             ("DiscoveryOptions", validateDiscoveryOptions),
-            
+
             // Transport Event Types (4 types)
             ("PeerConnectedEvent", validatePeerConnectedEvent),
             ("TransportRequestEvent", validateTransportRequestEvent),
             ("TransportEventEvent", validateTransportEventEvent),
             ("TransportResponseEvent", validateTransportResponseEvent),
         ]
-        
+
         var passed = 0
         var failed = 0
-        
+
         for (typeName, validationFunc) in typeValidations {
             do {
                 try await validationFunc()
@@ -101,13 +101,13 @@ final class FFITypesValidator: XCTestCase {
                 failed += 1
             }
         }
-        
+
         print("\n📊 FFI Types Validation Results")
         print("================================")
         print("✅ Passed: \(passed)")
         print("❌ Failed: \(failed)")
         print("📈 Success Rate: \(String(format: "%.1f", (Double(passed) / Double(passed + failed)) * 100.0))%")
-        
+
         if failed > 0 {
             XCTFail("\(failed) FFI types validations failed")
         } else {
@@ -288,7 +288,7 @@ final class FFITypesValidator: XCTestCase {
             throw ValidationError.mismatch("\(type) validation failed - Swift and Rust data don't match")
         }
     }
-    
+
     private enum ValidationError: Error {
         case mismatch(String)
     }
@@ -300,7 +300,7 @@ final class FFITypesValidator: XCTestCase {
         // For non-equatable types, we just verify they can be decoded successfully
         let _: T = try CodableCBORDecoder().decode(type, from: swiftData)
         let _: T = try CodableCBORDecoder().decode(type, from: rustData)
-        
+
         // If we get here, both decoded successfully
         print("✅ \(type) validation passed (both decoded successfully)")
     }

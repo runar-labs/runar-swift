@@ -1462,17 +1462,18 @@ func ffi_create_ca_client(
 
 @inline(__always)
 func ffi_create_discovery(
-    _ handle: UnsafeMutableRawPointer,
+    peerInfoCbor: Data,
     optionsCbor: Data
 ) throws -> UnsafeMutableRawPointer {
     var outPtr: UnsafeMutableRawPointer?
 
     let (code, err) = withRnErrorCode { errPtr in
-        HandleLockRegistry.shared.withLock(for: handle) {
-            optionsCbor.withUnsafeBytes { raw in
+        peerInfoCbor.withUnsafeBytes { peerRaw in
+            optionsCbor.withUnsafeBytes { optionsRaw in
                 rn_discovery_new_with_multicast(
-                    handle,
-                    raw.bindMemory(to: UInt8.self).baseAddress,
+                    peerRaw.bindMemory(to: UInt8.self).baseAddress,
+                    peerInfoCbor.count,
+                    optionsRaw.bindMemory(to: UInt8.self).baseAddress,
                     optionsCbor.count,
                     &outPtr,
                     errPtr
@@ -1578,7 +1579,6 @@ func ffi_create_transport(
 
 // MARK: - Additional Helper Functions for CBOR Encoding
 
-
 // MARK: - Copy-and-free helpers for FFI outputs
 
 @inline(__always)
@@ -1624,10 +1624,6 @@ extension Data {
 
 // These are the data structures used by the tests
 // They need to match the Rust FFI interface
-
-
-
-
 
 // MARK: - Public Server Config to match test usage
 
@@ -2395,6 +2391,11 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
     /// The underlying Rust FFI handle
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
 
+    /// Get the raw handle for internal use
+    nonisolated var rawHandle: UnsafeMutableRawPointer {
+        return handle
+    }
+
     /// Initialize a new node key manager
     ///
     /// Creates a new key manager and initializes it specifically for node operations.
@@ -2829,31 +2830,6 @@ public actor NodeKeyManager: NodeOnly, CommonKeyManager {
         let clientHandle = try ffi_create_ca_client(nodeHandle, configCbor: cbor)
         let token = HandleRegistry.shared.insert(kind: .caClient, pointer: clientHandle)
         return try CAClient(token: token)
-    }
-
-    /// Create a discovery handle with this node's handle
-    public func createDiscoveryHandle(optionsCbor: Data) async throws -> DiscoveryHandle {
-        // Copy handle to local to avoid capturing actor state in closures
-        let handle = self.handle
-
-        // Call nonisolated helper - no suspension during FFI
-        let discoveryHandle = try ffi_create_discovery(handle, optionsCbor: optionsCbor)
-        let token = HandleRegistry.shared.insert(kind: .discovery, pointer: discoveryHandle)
-        return try DiscoveryHandle(token: token)
-    }
-
-    /// Create a transport handle with this node's handle (typed API)
-    public func createTransportHandle(nodeInfo: NodeInfo, options: FFIQuicTransportOptions) async throws -> HandleToken {
-        // Encode inputs to CBOR internally (pure encoding, no MainActor)
-        let optionsCbor = try CodableCBOREncoder().encode(options)
-        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
-        // Copy handle to local to avoid capturing actor state in closures
-        let handle = self.handle
-
-        // Call nonisolated helper - no suspension during FFI
-        let transportHandle = try ffi_create_transport(handle, nodeInfoCbor: nodeInfoCbor, optionsCbor: optionsCbor)
-        let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
-        return token
     }
 }
 
@@ -3500,17 +3476,12 @@ public enum EnrollmentTokenUtils {
 
 // MARK: - Network Message Structures
 
-
 // MARK: - Typed Transport Events (Swift counterparts of Rust structs)
 
+// MARK: - Multicast Discovery
 
-
-
-
-// MARK: - Discovery Handle
-
-/// Handle for Discovery operations
-public actor DiscoveryHandle {
+/// Handle for Multicast Discovery operations
+public actor MulticastDiscovery {
     private nonisolated(unsafe) let handle: UnsafeMutableRawPointer
     private let logger = RunarLogger.root(component: .custom("discovery"))
 
@@ -3523,8 +3494,15 @@ public actor DiscoveryHandle {
     }
 
     /// Create a new discovery instance with multicast
-    public static func create(keys: NodeKeyManager, optionsCbor: Data) async throws -> DiscoveryHandle {
-        return try await keys.createDiscoveryHandle(optionsCbor: optionsCbor)
+    public static func create(peerInfo: PeerInfo, options: DiscoveryOptions) async throws -> MulticastDiscovery {
+        // Encode inputs to CBOR internally (pure encoding, no MainActor)
+        let peerInfoCbor = try CodableCBOREncoder().encode(peerInfo)
+        let optionsCbor = try CodableCBOREncoder().encode(options)
+
+        // Call nonisolated helper - no suspension during FFI
+        let discoveryHandle = try ffi_create_discovery(peerInfoCbor: peerInfoCbor, optionsCbor: optionsCbor)
+        let token = HandleRegistry.shared.insert(kind: .discovery, pointer: discoveryHandle)
+        return try MulticastDiscovery(token: token)
     }
 
     /// Initialize discovery with options
@@ -3731,7 +3709,7 @@ public actor QuicTransport {
     private let options: QuicTransportOptions
     private var pollingTask: Task<Void, Never>?
     private var isPolling = false
-    
+
     // Response delivery mechanism for request() method
     private var pendingRequests: [String: CheckedContinuation<Data, Error>] = [:]
 
@@ -3754,14 +3732,26 @@ public actor QuicTransport {
     /// Create a new transport instance with keys and callbacks
     /// - Parameters:
     ///   - keys: Keys handle instance
+    ///   - nodeInfo: Node information for the transport
     ///   - options: Transport options (encoded to CBOR internally)
     ///   - callbacks: Transport callbacks for handling events
+    ///   - logger: Logger instance
     /// - Returns: New transport handle
     /// - Throws: FFIError if creation fails
     public static func create(keys: NodeKeyManager, nodeInfo: NodeInfo, options: QuicTransportOptions, callbacks: TransportCallbacks, logger: RunarLogger) async throws -> QuicTransport {
         // Convert QuicTransportOptions to FFIQuicTransportOptions for FFI layer
         let ffiOptions = options.toFFIOptions()
-        let token = try await keys.createTransportHandle(nodeInfo: nodeInfo, options: ffiOptions)
+
+        // Encode inputs to CBOR internally (pure encoding, no MainActor)
+        let optionsCbor = try CodableCBOREncoder().encode(ffiOptions)
+        let nodeInfoCbor = try CodableCBOREncoder().encode(nodeInfo)
+
+        // Get the keys handle for FFI call
+        let keysHandle = keys.rawHandle
+
+        // Call nonisolated helper - no suspension during FFI
+        let transportHandle = try ffi_create_transport(keysHandle, nodeInfoCbor: nodeInfoCbor, optionsCbor: optionsCbor)
+        let token = HandleRegistry.shared.insert(kind: .transport, pointer: transportHandle)
         return try QuicTransport(token: token, callbacks: callbacks, logger: logger, options: options)
     }
 
@@ -4008,11 +3998,11 @@ public actor QuicTransport {
             logger.trace("QuicTransport.request() - Request CBOR hex: \(hex)")
         }
         logger.trace("QuicTransport.request() - Request CBOR length: \(requestCbor.count)")
-        
+
         // Use the correlation ID from the request parameters
         let correlationId = request.correlationId
         logger.trace("QuicTransport.request() - Using correlation ID: \(correlationId)")
-        
+
         // Copy handle to local to avoid capturing actor state in closures
         let transportHandle = handle
         let (code, err) = withRnErrorCode { errPtr in
@@ -4037,7 +4027,7 @@ public actor QuicTransport {
         return try await withCheckedThrowingContinuation { continuation in
             // Store the continuation to be resumed when response arrives
             pendingRequests[correlationId] = continuation
-            
+
             // Set up timeout
             Task {
                 try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds timeout
@@ -4075,7 +4065,7 @@ public actor QuicTransport {
             throw FFIError.operationFailed("Failed to publish event")
         }
         logger.info("QuicTransport.publish() - Event published successfully")
-        
+
         // Give the async task time to complete
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         logger.trace("QuicTransport.publish() - Async task should have completed")
@@ -4225,7 +4215,7 @@ public actor QuicTransport {
     private func handleRequestEvent(_ event: TransportRequestEvent) async {
         logger.info("QuicTransport.handleRequestEvent() - path=\(event.path) corr=\(event.correlationId)")
 
-                // Call the request callback and get the response
+        // Call the request callback and get the response
         // The callback now always returns a NetworkMessage (never nil)
         let responseMessage = await callbacks.requestCallback(
             event.requestId,
@@ -4235,20 +4225,20 @@ public actor QuicTransport {
             event.correlationId
         )
 
-                    // Serialize the NetworkMessage to CBOR data
-                    do {
-                        let responseData = try CodableCBOREncoder().encode(responseMessage)
-                        
-                        // Send the response back to the peer
-                        let completeParams = TransportCompleteRequestParams(
-                requestId: event.requestId,
-                            responsePayload: responseData,
-                            profilePublicKeys: responseMessage.payload.profilePublicKeys
-                        )
+        // Serialize the NetworkMessage to CBOR data
+        do {
+            let responseData = try CodableCBOREncoder().encode(responseMessage)
 
-                        try await completeRequest(completeParams)
+            // Send the response back to the peer
+            let completeParams = TransportCompleteRequestParams(
+                requestId: event.requestId,
+                responsePayload: responseData,
+                profilePublicKeys: responseMessage.payload.profilePublicKeys
+            )
+
+            try await completeRequest(completeParams)
             logger.trace("QuicTransport.handleRequestEvent() - Request completed successfully")
-                    } catch {
+        } catch {
             logger.error("QuicTransport.handleRequestEvent() - Failed to serialize NetworkMessage response: \(error)")
         }
     }
@@ -4264,7 +4254,7 @@ public actor QuicTransport {
         // Deliver response payload to awaiting continuation if present
         if let cont = pendingRequests.removeValue(forKey: event.correlationId) {
             cont.resume(returning: event.payload)
-            } else {
+        } else {
             logger.warning("QuicTransport.handleResponseEvent() - No pending request for correlationId=\(event.correlationId)")
         }
     }

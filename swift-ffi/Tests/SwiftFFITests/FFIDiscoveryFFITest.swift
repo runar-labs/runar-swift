@@ -18,15 +18,15 @@ final class FFIDiscoveryFFITest: XCTestCase {
     /// Create discovery options CBOR data
     private func createDiscoveryOptions(
         multicastGroup: String,
-        announceIntervalMs: UInt32,
-        discoveryTimeoutMs: UInt32,
-        debounceWindowMs: UInt32
+        announceInterval: TimeInterval,
+        discoveryTimeout: TimeInterval,
+        debounceWindow: TimeInterval
     ) -> Data {
         let options = DiscoveryOptions(
-            multicastGroup: multicastGroup,
-            announceIntervalMs: announceIntervalMs,
-            discoveryTimeoutMs: discoveryTimeoutMs,
-            debounceWindowMs: debounceWindowMs
+            announceInterval: announceInterval,
+            discoveryTimeout: discoveryTimeout,
+            debounceWindow: debounceWindow,
+            multicastGroup: multicastGroup
         )
 
         let encoder = CodableCBOREncoder()
@@ -39,21 +39,17 @@ final class FFIDiscoveryFFITest: XCTestCase {
     func testFFIDiscoveryTTLLostAndDebounce() async throws {
         print("🔍 Starting FFI Discovery TTL and Debounce Test")
 
-        // Create two node key managers for two nodes
-        let keysA = try await NodeKeyManager()
-        let keysB = try await NodeKeyManager()
-
         // Create discovery options with short TTL for testing
         let discoveryOptions = createDiscoveryOptions(
             multicastGroup: "239.255.0.1:45678",
-            announceIntervalMs: 50,
-            discoveryTimeoutMs: 1000,
-            debounceWindowMs: 100
+            announceInterval: 0.05,
+            discoveryTimeout: 1.0,
+            debounceWindow: 0.1
         )
 
         // Create discovery instances for both nodes
-        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptions)
-        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptions)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: DiscoveryOptions(announceInterval: 0.05, discoveryTimeout: 1.0, debounceWindow: 0.1, multicastGroup: "239.255.0.1:45678"))
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: DiscoveryOptions(announceInterval: 0.05, discoveryTimeout: 1.0, debounceWindow: 0.1, multicastGroup: "239.255.0.1:45678"))
 
         // Initialize both discovery instances
         try await discoveryA.initialize(optionsCbor: discoveryOptions)
@@ -83,21 +79,17 @@ final class FFIDiscoveryFFITest: XCTestCase {
     func testFFIMulticastAnnounceAndDiscover() async throws {
         print("🔍 Starting FFI Multicast Announce and Discover Test")
 
-        // Create two node key managers for two nodes
-        let keysA = try await NodeKeyManager()
-        let keysB = try await NodeKeyManager()
-
         // Create discovery options
         let discoveryOptions = createDiscoveryOptions(
             multicastGroup: "239.255.0.1:45679",
-            announceIntervalMs: 100,
-            discoveryTimeoutMs: 2000,
-            debounceWindowMs: 200
+            announceInterval: 0.1,
+            discoveryTimeout: 2.0,
+            debounceWindow: 0.2
         )
 
         // Create discovery instances for both nodes
-        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptions)
-        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptions)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45679"))
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45679"))
 
         // Initialize both discovery instances
         try await discoveryA.initialize(optionsCbor: discoveryOptions)
@@ -121,19 +113,16 @@ final class FFIDiscoveryFFITest: XCTestCase {
     func testFFIDiscoveryStartStopIdempotence() async throws {
         print("🔍 Starting FFI Discovery Start/Stop Idempotence Test")
 
-        // Create node key manager
-        let keys = try await NodeKeyManager()
-
         // Create discovery options
         let discoveryOptions = createDiscoveryOptions(
             multicastGroup: "239.255.0.1:45680",
-            announceIntervalMs: 100,
-            discoveryTimeoutMs: 2000,
-            debounceWindowMs: 200
+            announceInterval: 0.1,
+            discoveryTimeout: 2.0,
+            debounceWindow: 0.2
         )
 
         // Create discovery instance
-        let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: discoveryOptions)
+        let discovery = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"]), options: DiscoveryOptions(announceInterval: 0.1, discoveryTimeout: 2.0, debounceWindow: 0.2, multicastGroup: "239.255.0.1:45680"))
 
         // Initialize discovery
         try await discovery.initialize(optionsCbor: discoveryOptions)
@@ -156,15 +145,12 @@ final class FFIDiscoveryFFITest: XCTestCase {
     func testFFIDiscoveryInvalidCborHandling() async throws {
         print("🔍 Starting FFI Discovery Invalid CBOR Handling Test")
 
-        // Create node key manager
-        let keys = try await NodeKeyManager()
+        // Test with default options (no invalid CBOR since we now use structured API)
+        let discoveryOptions = DiscoveryOptions()
+        let peerInfo = PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"])
 
-        // Test with invalid CBOR data
-        let invalidCbor = Data("invalid cbor data".utf8)
-
-        // This should succeed with invalid CBOR (uses default options)
-        // The Swift FFI layer should handle invalid CBOR gracefully
-        let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: invalidCbor)
+        // This should succeed with default options
+        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
 
         // Cleanup
         try await discovery.shutdown()

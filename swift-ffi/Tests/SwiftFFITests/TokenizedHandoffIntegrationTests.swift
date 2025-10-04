@@ -29,10 +29,14 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
 
         // Test DiscoveryHandle creation with default options
         let discoveryOptions = DiscoveryOptions()
-        let encoder = CodableCBOREncoder()
-        let optionsCbor = try encoder.encode(discoveryOptions)
 
-        let discoveryHandle = try await nodeKeyManager.createDiscoveryHandle(optionsCbor: optionsCbor)
+        // Create a dummy PeerInfo for testing
+        let peerInfo = PeerInfo(
+            publicKey: Data([1, 2, 3, 4, 5]),
+            addresses: ["127.0.0.1:8080"]
+        )
+
+        let discoveryHandle = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
         XCTAssertNotNil(discoveryHandle)
 
         // Note: QuicTransport creation requires certificate setup, which is beyond the scope
@@ -59,18 +63,22 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
         )
 
         let discoveryOptions = DiscoveryOptions()
-        let encoder = CodableCBOREncoder()
-        let optionsCbor = try encoder.encode(discoveryOptions)
+
+        // Create a dummy PeerInfo for testing
+        let peerInfo = PeerInfo(
+            publicKey: Data([1, 2, 3, 4, 5]),
+            addresses: ["127.0.0.1:8080"]
+        )
 
         // Create handles concurrently (excluding transport handle which requires certificate setup)
         async let caClient = nodeKeyManager.createCAClient(config: caConfig)
-        async let discoveryHandle = nodeKeyManager.createDiscoveryHandle(optionsCbor: optionsCbor)
+        async let discoveryHandle = MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
 
         // Wait for all to complete
-        let (ca, discovery) = try await (caClient, discoveryHandle)
+        let (caClientResult, discoveryHandleResult) = try await (caClient, discoveryHandle)
 
-        XCTAssertNotNil(ca)
-        XCTAssertNotNil(discovery)
+        XCTAssertNotNil(caClientResult)
+        XCTAssertNotNil(discoveryHandleResult)
     }
 
     func testHandleRegistryTokenUniqueness() async throws {
@@ -218,16 +226,22 @@ final class TokenizedHandoffIntegrationTests: XCTestCase {
         )
 
         // Create 50 handles concurrently
-        let handles = await withTaskGroup(of: CAClient.self) { group in
+        let handles = await withTaskGroup(of: CAClient?.self) { group in
             for _ in 0 ..< 50 {
                 group.addTask {
-                    try! await nodeKeyManager.createCAClient(config: caConfig)
+                    do {
+                        return try await nodeKeyManager.createCAClient(config: caConfig)
+                    } catch {
+                        return nil
+                    }
                 }
             }
 
             var collectedHandles: [CAClient] = []
             for await handle in group {
-                collectedHandles.append(handle)
+                if let handle = handle {
+                    collectedHandles.append(handle)
+                }
             }
             return collectedHandles
         }

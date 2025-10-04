@@ -27,21 +27,23 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create discovery options
         let discoveryOptions = DiscoveryOptions(
-            multicastGroup: "224.0.0.251:5353",
-            announceIntervalMs: 1000,
-            discoveryTimeoutMs: 5000,
-            debounceWindowMs: 200
+            announceInterval: 1.0,
+            discoveryTimeout: 5.0,
+            debounceWindow: 0.2,
+            multicastGroup: "224.0.0.251:5353"
         )
 
-        // Encode options to CBOR
-        let encoder = CodableCBOREncoder()
-        let optionsCbor = try encoder.encode(discoveryOptions)
+        // Create a dummy PeerInfo for testing
+        let peerInfo = PeerInfo(
+            publicKey: Data([1, 2, 3, 4, 5]),
+            addresses: ["127.0.0.1:8080"]
+        )
 
         // Create discovery instance
-        let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: optionsCbor)
+        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
 
         // Initialize discovery (bindEvents is called automatically)
-        try await discovery.initialize(optionsCbor: optionsCbor)
+        try await discovery.initialize(optionsCbor: try CodableCBOREncoder().encode(discoveryOptions))
 
         // Shutdown discovery
         try await discovery.shutdown()
@@ -72,20 +74,20 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery options with short intervals for testing
         let uniquePort = UInt16.random(in: 46000 ... 47000)
         let discoveryOptions = DiscoveryOptions(
-            multicastGroup: "224.0.0.251:\(uniquePort)",
-            announceIntervalMs: 50,
-            discoveryTimeoutMs: 1000,
-            debounceWindowMs: 100
+            announceInterval: 0.05,
+            discoveryTimeout: 1.0,
+            debounceWindow: 0.1,
+            multicastGroup: "224.0.0.251:\(uniquePort)"
         )
 
         let encoder = CodableCBOREncoder()
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Get public keys for peer info
@@ -185,20 +187,20 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery options with short intervals for testing
         let uniquePort = UInt16.random(in: 47000 ... 48000)
         let discoveryOptions = DiscoveryOptions(
-            multicastGroup: "224.0.0.251:\(uniquePort)",
-            announceIntervalMs: 50,
-            discoveryTimeoutMs: 1000,
-            debounceWindowMs: 100
+            announceInterval: 0.05,
+            discoveryTimeout: 1.0,
+            debounceWindow: 0.1,
+            multicastGroup: "224.0.0.251:\(uniquePort)"
         )
 
         let encoder = CodableCBOREncoder()
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Set up simple discovery callbacks that just log
@@ -285,17 +287,17 @@ final class FFIDiscoveryTest: XCTestCase {
 
         // Create discovery options
         let discoveryOptions = DiscoveryOptions(
-            multicastGroup: "224.0.0.251:5353",
-            announceIntervalMs: 100,
-            discoveryTimeoutMs: 2000,
-            debounceWindowMs: 200
+            announceInterval: 0.1,
+            discoveryTimeout: 2.0,
+            debounceWindow: 0.2,
+            multicastGroup: "224.0.0.251:5353"
         )
 
         let encoder = CodableCBOREncoder()
         let optionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instance
-        let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: optionsCbor)
+        let discovery = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"]), options: discoveryOptions)
         try await discovery.initialize(optionsCbor: optionsCbor)
 
         // Test multiple start calls (should be idempotent)
@@ -340,20 +342,20 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery options with short TTL for testing
         let uniquePort = UInt16.random(in: 48000 ... 49000)
         let discoveryOptions = DiscoveryOptions(
-            multicastGroup: "224.0.0.251:\(uniquePort)",
-            announceIntervalMs: 50,
-            discoveryTimeoutMs: 1000,
-            debounceWindowMs: 100
+            announceInterval: 0.05,
+            discoveryTimeout: 1.0,
+            debounceWindow: 0.1,
+            multicastGroup: "224.0.0.251:\(uniquePort)"
         )
 
         let encoder = CodableCBOREncoder()
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Get public keys for peer info
@@ -414,20 +416,20 @@ final class FFIDiscoveryTest: XCTestCase {
         // Create discovery options
         let uniquePort = UInt16.random(in: 49000 ... 50000)
         let discoveryOptions = DiscoveryOptions(
-            multicastGroup: "224.0.0.251:\(uniquePort)",
-            announceIntervalMs: 100,
-            discoveryTimeoutMs: 2000,
-            debounceWindowMs: 200
+            announceInterval: 0.1,
+            discoveryTimeout: 2.0,
+            debounceWindow: 0.2,
+            multicastGroup: "224.0.0.251:\(uniquePort)"
         )
 
         let encoder = CodableCBOREncoder()
         let discoveryOptionsCbor = try encoder.encode(discoveryOptions)
 
         // Create discovery instances
-        let discoveryA = try await DiscoveryHandle.create(keys: keysA, optionsCbor: discoveryOptionsCbor)
+        let discoveryA = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8000"]), options: discoveryOptions)
         try await discoveryA.initialize(optionsCbor: discoveryOptionsCbor)
 
-        let discoveryB = try await DiscoveryHandle.create(keys: keysB, optionsCbor: discoveryOptionsCbor)
+        let discoveryB = try await MulticastDiscovery.create(peerInfo: PeerInfo(publicKey: Data([6, 7, 8, 9, 10]), addresses: ["127.0.0.1:8001"]), options: discoveryOptions)
         try await discoveryB.initialize(optionsCbor: discoveryOptionsCbor)
 
         // Get public keys for peer info
@@ -463,14 +465,12 @@ final class FFIDiscoveryTest: XCTestCase {
         try await FFILogger.setLogLevel(.debug)
         try await FFILogger.setLoggerContext("discovery-invalid-cbor-test")
 
-        // Create keys for discovery
-        let keys = try await NodeKeyManager()
-
-        // Create discovery instance with invalid CBOR data
-        let invalidCbor = Data("invalid cbor data".utf8)
+        // Create discovery instance with default options
+        let discoveryOptions = DiscoveryOptions()
+        let peerInfo = PeerInfo(publicKey: Data([1, 2, 3, 4, 5]), addresses: ["127.0.0.1:8080"])
         
-        // Should succeed with invalid CBOR (uses default options)
-        let discovery = try await DiscoveryHandle.create(keys: keys, optionsCbor: invalidCbor)
+        // Should succeed with default options
+        let discovery = try await MulticastDiscovery.create(peerInfo: peerInfo, options: discoveryOptions)
         
         // Cleanup
         try await discovery.shutdown()

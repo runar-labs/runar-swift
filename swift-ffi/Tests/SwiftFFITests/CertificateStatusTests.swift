@@ -68,8 +68,8 @@ final class CertificateStatusTests: XCTestCase {
                 network_id: "test_network",
                 request_timeout_seconds: 30,
                 max_retries: 3,
-            root_ca_der: Array(rootCa),
-            issuing_ca_der: Array(issuingCa)
+                root_ca_der: Array(rootCa),
+                issuing_ca_der: Array(issuingCa)
             )
 
             caClient = try await nodeKeys.createCAClient(config: caClientConfig)
