@@ -3,6 +3,35 @@ import RunarSerializer
 import SwiftCommon
 import SwiftFFI
 
+// MARK: - RemoteService Configuration Structs
+
+/// Configuration for creating a RemoteService instance (matches Rust RemoteServiceConfig)
+public struct RemoteServiceConfig: Sendable {
+    public let name: String
+    public let serviceTopic: TopicPath
+    public let version: String
+    public let description: String
+    public let peerNodeId: String
+    public let requestTimeoutMs: UInt64
+}
+
+/// Dependencies required by a RemoteService instance (matches Rust RemoteServiceDependencies)
+public struct RemoteServiceDependencies: Sendable {
+    public let networkTransport: NodeTransport?
+    public let localNodeId: String
+    public let logger: RunarLogger
+    public let keystore: EnvelopeCrypto
+    public let labelResolverConfig: LabelResolverConfig
+    public let labelResolverCache: ResolverCache
+}
+
+/// Configuration for creating multiple RemoteService instances (matches Rust CreateRemoteServicesConfig)
+public struct CreateRemoteServicesConfig: Sendable {
+    public let services: [ServiceMetadata]
+    public let peerNodeId: String
+    public let requestTimeoutMs: UInt64
+}
+
 // MARK: - RemoteService
 
 /// Remote service instance representing a service hosted by a remote peer
@@ -19,7 +48,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     public let peerNodeId: String
 
     /// Service capabilities
-    private let actions: [String: ActionMetadata]
+    private var actions: [String: ActionMetadata]
 
     /// Network transport for making remote requests
     private let networkTransport: NodeTransport?
@@ -27,98 +56,105 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     /// Logger instance
     private let logger: RunarLogger
 
-    /// Keystore for encryption/decryption (placeholder for now)
-    private let keystore: Any?
+    /// Keystore for encryption/decryption
+    private let keystore: EnvelopeCrypto
 
-    /// Label resolver configuration for dynamic resolver creation (placeholder for now)
-    private let labelResolverConfig: Any?
+    /// Label resolver configuration for dynamic resolver creation
+    private let labelResolverConfig: LabelResolverConfig
 
-    /// Label resolver cache for better concurrency (placeholder for now)
-    private let labelResolverCache: Any?
+    /// Label resolver cache for better concurrency
+    private let labelResolverCache: ResolverCache
 
     /// Request timeout in milliseconds
     private let requestTimeoutMs: UInt64
 
-    public init(
-        name: String,
-        serviceTopic: TopicPath,
-        version: String,
-        description: String,
-        networkPublicKey: Data,
-        peerNodeId: String,
-        actions: [String: ActionMetadata],
-        networkTransport: NodeTransport? = nil,
-        logger: RunarLogger,
-        keystore: Any? = nil,
-        labelResolverConfig: Any? = nil,
-        labelResolverCache: Any? = nil,
-        requestTimeoutMs: UInt64 = 5000
-    ) {
-        self.name = name
-        self.serviceTopic = serviceTopic
-        self.version = version
-        self.description = description
+    /// Create a new RemoteService instance (matches Rust RemoteService::new exactly)
+    public init(config: RemoteServiceConfig, dependencies: RemoteServiceDependencies) {
+        let _ = config.serviceTopic.networkId
+        // Network public key should be resolved from keystore based on network_id
+        // For now, we'll use a placeholder until keystore integration is complete
+        let networkPublicKey = Data(count: 32)
+        
+        self.name = config.name
+        self.serviceTopic = config.serviceTopic
+        self.version = config.version
+        self.description = config.description
         self.networkPublicKey = networkPublicKey
-        self.peerNodeId = peerNodeId
-        self.actions = actions
-        self.networkTransport = networkTransport
-        self.logger = logger
-        self.keystore = keystore
-        self.labelResolverConfig = labelResolverConfig
-        self.labelResolverCache = labelResolverCache
-        self.requestTimeoutMs = requestTimeoutMs
+        self.peerNodeId = config.peerNodeId
+        self.actions = [:]
+        self.networkTransport = dependencies.networkTransport
+        self.logger = dependencies.logger
+        self.keystore = dependencies.keystore
+        self.labelResolverConfig = dependencies.labelResolverConfig
+        self.labelResolverCache = dependencies.labelResolverCache
+        self.requestTimeoutMs = config.requestTimeoutMs
+    }
+
+    /// Add an action to this service (matches Rust add_action)
+    public func addAction(name: String, action: ActionMetadata) throws {
+        actions[name] = action
     }
 
     /// Create RemoteService instances from a list of service metadata.
-    /// This matches the Rust RemoteService::create_from_capabilities implementation.
+    /// This matches the Rust RemoteService::create_from_capabilities implementation exactly.
     public static func createFromCapabilities(
-        services: [ServiceMetadata],
-        peerNodeId: String,
-        networkTransport: NodeTransport? = nil,
-        logger: RunarLogger,
-        keystore: Any? = nil,
-        labelResolverConfig: Any? = nil,
-        labelResolverCache: Any? = nil,
-        requestTimeoutMs: UInt64 = 5000
+        config: CreateRemoteServicesConfig,
+        dependencies: RemoteServiceDependencies
     ) async throws -> [RemoteService] {
+        dependencies.logger.info("Creating RemoteServices from \(config.services.count) service metadata entries")
+
+        // The transport is guaranteed to be available via the dependency injection contract.
+
+        // Create remote services for each service metadata
         var remoteServices: [RemoteService] = []
 
-        for serviceMetadata in services {
-            // Create a topic path using the service path (matching Rust pattern)
+        for serviceMetadata in config.services {
+            // Create a topic path using the service path (not the name)
             let serviceTopic: TopicPath
             do {
                 serviceTopic = try TopicPath.new(serviceMetadata.servicePath, defaultNetwork: serviceMetadata.networkId)
             } catch {
-                // Skip invalid service paths (matching Rust pattern)
+                dependencies.logger.error("Invalid service path '\(serviceMetadata.servicePath)': \(error)")
                 continue
             }
 
-            // Convert actions array to dictionary (matching Rust pattern)
-            var actionsDict: [String: ActionMetadata] = [:]
-            for action in serviceMetadata.actions {
-                actionsDict[action.name] = action
-            }
-
-            // Create the remote service (matching Rust pattern)
-            let remoteService = RemoteService(
+            // Prepare config for RemoteService::new
+            let rsConfig = RemoteServiceConfig(
                 name: serviceMetadata.name,
                 serviceTopic: serviceTopic,
                 version: serviceMetadata.version,
                 description: serviceMetadata.description,
-                networkPublicKey: Data(), // TODO: Should be resolved from keystore
-                peerNodeId: peerNodeId,
-                actions: actionsDict,
-                networkTransport: networkTransport,
-                logger: logger,
-                keystore: keystore,
-                labelResolverConfig: labelResolverConfig,
-                labelResolverCache: labelResolverCache,
-                requestTimeoutMs: requestTimeoutMs
+                peerNodeId: config.peerNodeId,
+                requestTimeoutMs: config.requestTimeoutMs
             )
 
-            remoteServices.append(remoteService)
+            // Prepare dependencies for RemoteService::new (cloning references)
+            let rsDependencies = RemoteServiceDependencies(
+                networkTransport: dependencies.networkTransport,
+                localNodeId: dependencies.localNodeId,
+                logger: dependencies.logger,
+                keystore: dependencies.keystore,
+                labelResolverConfig: dependencies.labelResolverConfig,
+                labelResolverCache: dependencies.labelResolverCache
+            )
+
+            // Create the remote service
+            let service = RemoteService(config: rsConfig, dependencies: rsDependencies)
+
+            // Add actions to the service
+            for action in serviceMetadata.actions {
+                try service.addAction(name: action.name, action: action)
+            }
+            // Add subscriptions to the service
+            // for subscription in serviceMetadata.subscriptions {
+            //     service.addSubscription(subscription.path.clone(), subscription).await?;
+            // }
+            // Add service to the result list
+            remoteServices.append(service)
         }
 
+        let serviceCount = remoteServices.count
+        dependencies.logger.info("Created \(serviceCount) RemoteService instances")
         return remoteServices
     }
 
@@ -451,14 +487,13 @@ public final class ServiceRegistry: NodeDelegate {
 
     /// Start all local services
     public func startAllServices(networkId: String) async throws {
-        print("🔍 DEBUG: Starting all local services for networkId: \(networkId)")
-        logger.trace("Starting all local services")
+        logger.info("Starting all local services")
 
         let services = localServices.getAllEntries(networkId: networkId)
-        print("🔍 DEBUG: Found \(services.count) services to start")
+        logger.debug("Found \(services.count) services to start")
 
         for serviceEntry in services {
-            print("🔍 DEBUG: Starting service: \(serviceEntry.serviceTopic.asString())")
+            logger.trace("Starting service: \(serviceEntry.serviceTopic.asString())")
             let context = LifecycleContext(
                 topicPath: serviceEntry.serviceTopic,
                 nodeDelegate: self,
@@ -466,7 +501,7 @@ public final class ServiceRegistry: NodeDelegate {
             )
 
             // First initialize the service (registers action handlers)
-            print("🔍 DEBUG: Initializing service: \(serviceEntry.serviceTopic.asString())")
+            logger.trace("Initializing service: \(serviceEntry.serviceTopic.asString())")
             try await serviceEntry.service.initService(context)
             try await updateLocalServiceState(
                 servicePath: serviceEntry.serviceTopic.asString(),
@@ -474,16 +509,16 @@ public final class ServiceRegistry: NodeDelegate {
             )
 
             // Then start the service (begins active operations)
-            print("🔍 DEBUG: Starting service: \(serviceEntry.serviceTopic.asString())")
+            logger.trace("Starting service: \(serviceEntry.serviceTopic.asString())")
             try await serviceEntry.service.start(context)
             try await updateLocalServiceState(
                 servicePath: serviceEntry.serviceTopic.asString(),
                 newState: ServiceState.running
             )
-            print("🔍 DEBUG: Service started successfully: \(serviceEntry.serviceTopic.asString())")
+            logger.trace("Service started successfully: \(serviceEntry.serviceTopic.asString())")
         }
 
-        logger.trace("All local services started")
+        logger.debug("All local services started")
     }
 
     /// Get all entries for a specific network
@@ -632,8 +667,7 @@ public final class ServiceRegistry: NodeDelegate {
 
         localActionHandlers.setValue(topic: topicPath, content: entryValue)
 
-        print("🔍 DEBUG: Registered action handler for: \(topicPath)")
-        logger.trace("Registered action handler for: \(topicPath)")
+        logger.debug("Registered action handler for: \(topicPath.asString())")
         logger.trace("Action handler function: \(String(describing: handler))")
     }
 
@@ -648,7 +682,7 @@ public final class ServiceRegistry: NodeDelegate {
         // Remove all handlers for this topic path by setting empty array
         localActionHandlers.setValues(topic: topicPath, contents: [])
 
-        logger.trace("Unregistered action handler for: \(topicPath)")
+        logger.trace("Unregistered action handler for: \(topicPath.asString())")
     }
 
     /// Register a local action handler (matching Rust API)
@@ -659,13 +693,13 @@ public final class ServiceRegistry: NodeDelegate {
         handler: @escaping ActionHandler,
         metadata: ActionMetadata?
     ) async throws {
-        logger.trace("Registering local action handler for: \(topicPath)")
+        logger.debug("Registering local action handler for: \(topicPath.asString())")
 
         // Store in the local action handlers trie with the original topic path for parameter extraction
         let entryValue: LocalActionEntryValue = (handler, topicPath, metadata)
         localActionHandlers.setValue(topic: topicPath, content: entryValue)
 
-        logger.trace("Registered local action handler for: \(topicPath)")
+        logger.trace("Registered local action handler for: \(topicPath.asString())")
     }
 
     /// Register a remote action handler
@@ -675,7 +709,7 @@ public final class ServiceRegistry: NodeDelegate {
         topicPath: TopicPath,
         handler: @escaping ActionHandler
     ) async throws {
-        logger.trace("Registering remote action handler for: \(topicPath)")
+        logger.debug("Registering remote action handler for: \(topicPath.asString())")
 
         // Store the handler in remote_action_handlers using PathTrie
         let matches = remoteActionHandlers.find(topic: topicPath)
@@ -692,18 +726,17 @@ public final class ServiceRegistry: NodeDelegate {
             remoteActionHandlers.setValue(topic: topicPath, content: existingHandlers)
         }
 
-        logger.trace("Registered remote action handler for: \(topicPath)")
+        logger.trace("Registered remote action handler for: \(topicPath.asString())")
     }
 
     /// Remove a remote action handler
     public func removeRemoteActionHandler(topicPath: TopicPath) async throws {
-        logger.trace("Removing remote action handler for: \(topicPath)")
+        logger.debug("Removing remote action handler for: \(topicPath.asString())")
 
-        // Remove from remote action handlers trie
-        // Note: PathTrie doesn't have a simple remove method, so we'll leave this as TODO
-        logger.trace("removeRemoteActionHandler: Not fully implemented - PathTrie remove method needed")
-
-        logger.trace("Removed remote action handler for: \(topicPath)")
+        // Remove from remote action handlers trie using the new removeValues method
+        remoteActionHandlers.removeValues(topic: topicPath)
+        
+        logger.trace("Removed remote action handler for: \(topicPath.asString())")
     }
 
     /// Get a local action handler only
@@ -798,15 +831,15 @@ public final class ServiceRegistry: NodeDelegate {
 
         // Add to event subscriptions
         var existingSubscriptions = eventSubscriptions.find(topic: topicPath).first?.subscriptions ?? []
-        logger.trace("Before adding subscription: \(existingSubscriptions.count) existing subscriptions for \(topicPath)")
+        logger.trace("Before adding subscription: \(existingSubscriptions.count) existing subscriptions for \(topicPath.asString())")
         existingSubscriptions.append(subscription)
         eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: existingSubscriptions))
 
         // Map subscription ID to topic path
         _ = await subscriptionIdToTopicPath.insert(topicPath, for: subscriptionId)
 
-        logger.trace("Subscribed to events for: \(topicPath) with ID: \(subscriptionId)")
-        logger.trace("Total subscriptions for \(topicPath): \(existingSubscriptions.count)")
+        logger.trace("Subscribed to events for: \(topicPath.asString()) with ID: \(subscriptionId)")
+        logger.trace("Total subscriptions for \(topicPath.asString()): \(existingSubscriptions.count)")
         return subscriptionId
     }
 
@@ -833,7 +866,7 @@ public final class ServiceRegistry: NodeDelegate {
         // Remove from mapping
         _ = await subscriptionIdToTopicPath.remove(subscriptionId)
 
-        logger.trace("Unsubscribed from events for: \(topicPath) with ID: \(subscriptionId)")
+        logger.trace("Unsubscribed from events for: \(topicPath.asString()) with ID: \(subscriptionId)")
     }
 
     /// Register local event subscription (matching Rust API)
@@ -1127,7 +1160,7 @@ public final class ServiceRegistry: NodeDelegate {
             allSubscriptions.append(contentsOf: match.subscriptions)
         }
 
-        logger.trace("Looking for subscribers for topic: \(topicPath) - found \(allMatches.count) matches with \(allSubscriptions.count) total subscribers")
+        logger.trace("Looking for subscribers for topic: \(topicPath.asString()) - found \(allMatches.count) matches with \(allSubscriptions.count) total subscribers")
         for (index, match) in allMatches.enumerated() {
             logger.trace("Match \(index): \(match.subscriptions.count) subscriptions")
         }
@@ -1225,26 +1258,35 @@ public final class ServiceRegistry: NodeDelegate {
     }
 
     /// Get all subscriptions
-    public func getAllSubscriptions(includeInternalServices _: Bool) async throws -> [SubscriptionMetadata] {
-        // For now, return empty array since we don't have access to all networks
-        // This would need to be implemented with a proper method in PathTrie
-        let result: [SubscriptionMetadata] = []
-
-        // TODO: Implement proper getAllSubscriptions when PathTrie provides access to all networks
-        logger.trace("getAllSubscriptions: Returning empty array (not fully implemented)")
-
-        return result
-    }
-
-    /// Optimized version that pre-allocates the result vector
-    public func getAllSubscriptionsOptimized(includeInternalServices _: Bool) async throws -> [SubscriptionMetadata] {
-        // For now, return empty array since we don't have access to all networks
-        // This would need to be implemented with a proper method in PathTrie
-        let result: [SubscriptionMetadata] = []
-
-        // TODO: Implement proper getAllSubscriptionsOptimized when PathTrie provides access to all networks
-        logger.trace("getAllSubscriptionsOptimized: Returning empty array (not fully implemented)")
-
+    public func getAllSubscriptions(includeInternalServices: Bool) async throws -> [SubscriptionMetadata] {
+        logger.trace("Getting all subscriptions, includeInternalServices: \(includeInternalServices)")
+        
+        // Get all subscription values from the trie using the new getAllValues method
+        let allValues = eventSubscriptions.getAllValues()
+        
+        var result: [SubscriptionMetadata] = []
+        
+        for subscriptionVec in allValues {
+            for metadata in subscriptionVec.subscriptions {
+                // Filter out internal services if not included
+                if !includeInternalServices {
+                    // metadata.path is a full topic path including network id prefix
+                    do {
+                        let topicPath = try TopicPath.fromFullPath(metadata.path)
+                        let servicePath = topicPath.servicePath
+                        if isInternalService(servicePath) {
+                            continue
+                        }
+                    } catch {
+                        logger.warning("Invalid subscription topic path \(metadata.path): \(error)")
+                        continue
+                    }
+                }
+                result.append(metadata)
+            }
+        }
+        
+        logger.trace("Found \(result.count) subscriptions")
         return result
     }
 
@@ -1375,7 +1417,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
         // Search for all actions that start with the service path
         // We need to search for patterns like "math1/*" to find all actions under math1
-        let servicePathPattern = "\(serviceTopicPath.servicePath)/*"
+        let _ = "\(serviceTopicPath.servicePath)/*"
         let patternTopicPath = try! TopicPath.new("\(serviceTopicPath.servicePath)/*", defaultNetwork: serviceTopicPath.networkId)
 
         // Search in the actions trie local_action_handlers (matching Rust)

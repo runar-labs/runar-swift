@@ -20,7 +20,7 @@ final class RemoteNetworkTests: XCTestCase {
 
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
-            level: .trace,
+            level: .debug,
             includeTimestamp: true,
             includeComponent: true,
             includeContext: true
@@ -370,8 +370,7 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
     var configs: [NodeConfig] = []
 
     // Set up trace logging for detailed debugging
-    let LoggerConfig = LoggerConfig(level: .trace)
-    let logger = RunarLogger.root(component: .node)
+    let logger: RunarLogger = RunarLogger.root(component: .node)
 
     logger.trace("🔍 Creating \(count) networked node test configs with trace logging")
 
@@ -379,30 +378,30 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
     let caKeys = try await MobileKeyManager()
 
     for i in 0 ..< count {
-        print("🔍 CONFIG: Creating config for node \(i)")
+        logger.trace("🔍 CONFIG: Creating config for node \(i)")
         // All nodes should be on the same network to communicate
         let networkId = "test-network"
-        print("🔍 CONFIG: Network ID: \(networkId)")
+        logger.trace("🔍 CONFIG: Network ID: \(networkId)")
 
         // Create key manager for this node
-        print("🔍 CONFIG: Creating key manager for node \(i)")
+        logger.trace("🔍 CONFIG: Creating key manager for node \(i)")
         let keyManager = try await createTestKeyManager()
-        print("🔍 CONFIG: Key manager created for node \(i)")
+        logger.trace("🔍 CONFIG: Key manager created for node \(i)")
 
         // Set local node info (required for transport creation)
         // Note: NodeInfo is now managed at the transport level, not keys level
         // The transport will be created with the current NodeInfo when the node starts
-        print("🔍 CONFIG: NodeInfo will be set at transport level when node starts")
+        logger.trace("🔍 CONFIG: NodeInfo will be set at transport level when node starts")
 
         // Generate and install certificate for QUIC transport
-        print("🔍 CONFIG: Generating certificate for node \(i)")
+        logger.trace("🔍 CONFIG: Generating certificate for node \(i)")
         let csr = try await keyManager.generateCsrSetupToken(logger: logger.child(component: .network))
         let cert = try await caKeys.processSetupToken(csr)
         try await keyManager.installCertificate(cert)
-        print("🔍 CONFIG: Certificate installed for node \(i)")
+        logger.trace("🔍 CONFIG: Certificate installed for node \(i)")
 
         // Create network config with QUIC transport and discovery
-        print("🔍 CONFIG: Creating network config for node \(i)")
+        logger.trace("🔍 CONFIG: Creating network config for node \(i)")
         let discoveryOptions = SwiftFFI.DiscoveryOptions(
             announceInterval: 1000,
             discoveryTimeout: 5000,
@@ -425,13 +424,13 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
         )
 
         // Create node config
-        print("🔍 CONFIG: Creating node config for node \(i)")
+        logger.trace("🔍 CONFIG: Creating node config for node \(i)")
         let config = NodeConfig(defaultNetworkId: networkId)
             .withKeyManager(keyManager)
             .withNetworkConfig(networkConfig)
 
         configs.append(config)
-        print("🔍 CONFIG: Config created for node \(i)")
+        logger.trace("🔍 CONFIG: Config created for node \(i)")
     }
 
     return configs

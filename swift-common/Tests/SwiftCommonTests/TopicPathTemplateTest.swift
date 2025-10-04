@@ -13,7 +13,7 @@ struct TopicPathTemplateTest {
         let template = "services/{service_path}/state"
 
         // An actual path that matches the template
-        let path = try TopicPath.new("services/math/state", networkId: "main")
+        let path = try TopicPath.new("main:services/math/state", defaultNetwork: "main")
 
         // Extract parameters from the path
         let params = path.extractParams(template)

@@ -379,7 +379,7 @@ public struct DiscoveryProviderConfig: Sendable, Codable {
 public final class RegistryService: AbstractService {
     public let name: String = "RegistryService"
     public let version: String = "1.0.0"
-    public let path: String = "registry"
+    public let path: String = "$registry"
     public let description: String = "Internal registry service"
 
     public let logger: RunarLogger
@@ -805,33 +805,6 @@ public struct RequestOptions: Sendable {
     }
 }
 
-// MARK: - Logging Configuration
-
-/// Log levels matching standard logging levels
-public enum LogLevel: String, CaseIterable, Sendable, Codable {
-    case error
-    case warn
-    case info
-    case debug
-    case trace
-    case off
-}
-
-/// Logging configuration for the node and its services
-public struct LoggerConfig: Sendable, Codable {
-    /// Default log level for all runar modules
-    public let defaultLevel: LogLevel
-
-    public init(defaultLevel: LogLevel = .info) {
-        self.defaultLevel = defaultLevel
-    }
-
-    /// Create a default info-level logging configuration
-    public static func defaultInfo() -> LoggerConfig {
-        LoggerConfig(defaultLevel: .info)
-    }
-}
-
 // MARK: - Network Configuration
 
 /// Network configuration for peer-to-peer communication
@@ -932,7 +905,7 @@ public struct NodeConfig: Sendable {
     ///
     /// Controls log levels, output format, and logging destinations.
     /// If `nil`, default Info-level logging is applied.
-    public var LoggerConfig: LoggerConfig?
+    public var loggerConfig: LoggerConfig?
 
     /// Request timeout in milliseconds for all service requests.
     ///
@@ -993,7 +966,7 @@ public struct NodeConfig: Sendable {
         self.defaultNetworkId = defaultNetworkId
         networkIds = []
         networkConfig = nil
-        LoggerConfig = SwiftNode.LoggerConfig.defaultInfo() // Default to Info logging
+        loggerConfig = LoggerConfigManager.shared.globalConfig 
         keyManager = nil // Must be set via withKeyManager()
         requestTimeoutMs = 30000 // 30 seconds
         self.labelResolverConfig = labelResolverConfig
@@ -1060,7 +1033,7 @@ public struct NodeConfig: Sendable {
     /// ```
     public func withLoggerConfig(_ config: LoggerConfig) -> NodeConfig {
         var newConfig = self
-        newConfig.LoggerConfig = config
+        newConfig.loggerConfig = config
         return newConfig
     }
 
@@ -1437,16 +1410,6 @@ public final class Node {
     /// - Key manager state cannot be deserialized
     /// - Internal components fail to initialize
     public static func new(config: NodeConfig) async throws -> Node {
-        // Apply logging configuration (default to Info level if none provided)
-        if config.LoggerConfig != nil {
-            // Apply logging configuration here
-            // This would integrate with the logging system
-        } else {
-            // Apply default Info logging when no configuration is provided
-            _ = LoggerConfig.defaultInfo()
-            // Apply default logging configuration
-        }
-
         // Clone fields before moving config
         let defaultNetworkId = config.defaultNetworkId
         let networkingEnabled = config.networkConfig != nil
@@ -1455,16 +1418,7 @@ public final class Node {
         networkIds.append(defaultNetworkId)
         networkIds = Array(Set(networkIds)) // Remove duplicates
 
-        // Convert SwiftNode.LoggerConfig to SwiftCommon.LoggerConfig
-        let commonLoggerConfig = config.LoggerConfig.map { nodeConfig in
-            SwiftCommon.LoggerConfig(
-                level: SwiftCommon.LogLevel(rawValue: nodeConfig.defaultLevel.rawValue) ?? .info,
-                includeTimestamp: true,
-                includeComponent: true,
-                includeContext: true
-            )
-        }
-        let logger = RunarLogger.root(component: .node, config: commonLoggerConfig)
+        let logger = RunarLogger.root(component: .node, config: config.loggerConfig)
         let serviceRegistry = ServiceRegistry(logger: logger, nodeDelegate: nil) // Will be set after initialization
 
         // Extract the key manager from config
@@ -2041,7 +1995,7 @@ public final class Node {
         // Parse topic path (matching Rust pattern exactly)
         let topicPath = try TopicPath.new(path, defaultNetwork: actualNetworkId)
 
-        logger.debug("Processing request: \(topicPath)")
+        logger.debug("Processing request: \(topicPath.asString())")
 
         // 1. Check local service state first (matching Rust pattern exactly)
         let serviceTopic = TopicPath.newService(actualNetworkId, serviceName: topicPath.servicePath)
@@ -2056,6 +2010,7 @@ public final class Node {
                     let response = try await remoteRequest(path: path, payload: requestPayload, networkId: actualNetworkId, options: options)
                     return response
                 } catch {
+                    logger.error("Remote request failed: \(error)")
                     // Remote request failed - return state-specific error since we know local service exists but is not running
                     throw NodeError.serviceNotFound("Service is not Running - it is in \(state) state")
                 }
@@ -2064,7 +2019,7 @@ public final class Node {
 
         // 3. Check for local handler (matching Rust pattern exactly)
         if let (handler, registrationPath) = await serviceRegistry.getLocalActionHandler(topicPath: topicPath) {
-            logger.debug("Executing local handler for: \(topicPath)")
+            logger.debug("Executing local handler for: \(topicPath.asString())")
 
             // Create request context with profile public keys (matching Rust pattern exactly)
             var metadata: [String: AnyValue] = [:]
@@ -2874,16 +2829,31 @@ public final class Node {
             // Create RemoteService instance and register it
             do {
                 let serviceTopic = try TopicPath.new(service.servicePath, defaultNetwork: nodeInfo.networkIds.first ?? "default")
-                let remoteService = RemoteService(
+                // Create RemoteServiceConfig and RemoteServiceDependencies
+                let rsConfig = RemoteServiceConfig(
                     name: service.name,
                     serviceTopic: serviceTopic,
                     version: service.version,
                     description: service.description,
-                    networkPublicKey: Data(), // TODO: Get from peer info
                     peerNodeId: peerNodeId,
-                    actions: Dictionary(uniqueKeysWithValues: service.actions.map { ($0.name, $0) }),
-                    logger: logger
+                    requestTimeoutMs: 5000 // Default timeout
                 )
+                
+                let rsDependencies = RemoteServiceDependencies(
+                    networkTransport: networkTransport,
+                    localNodeId: nodeId,
+                    logger: logger,
+                    keystore: keysManager,
+                    labelResolverConfig: systemLabelConfig,
+                    labelResolverCache: labelResolverCache
+                )
+                
+                let remoteService = RemoteService(config: rsConfig, dependencies: rsDependencies)
+                
+                // Add actions to the service
+                for action in service.actions {
+                    try remoteService.addAction(name: action.name, action: action)
+                }
                 await serviceRegistry.registerRemoteService(remoteService)
             } catch {
                 logger.error("Failed to create service topic for \(service.servicePath): \(error)")
@@ -3386,7 +3356,7 @@ extension Node: RegistryDelegate {
         let remoteHandlers = await serviceRegistry.getRemoteActionHandlers(topicPath: topicPath)
 
         if !remoteHandlers.isEmpty {
-            logger.trace("Found \(remoteHandlers.count) remote handlers for: \(topicPath)")
+            logger.trace("Found \(remoteHandlers.count) remote handlers for: \(topicPath.asString())")
 
             // Extract profile public keys from options (matching Rust pattern exactly)
             let profilePublicKeys = options?.profilePublicKeys ?? []
@@ -3409,13 +3379,14 @@ extension Node: RegistryDelegate {
             let handlerIndex = await loadBalancer.selectHandler(handlers: remoteHandlers, context: requestContext)
 
             guard let selectedIndex = handlerIndex else {
-                throw NodeError.serviceNotFound("No handler available for action: \(topicPath)")
+                logger.error("No handler available for action: \(topicPath.asString())")
+                throw NodeError.serviceNotFound("No handler available for action: \(topicPath.asString())")
             }
 
             // Get the selected handler
             let handler = remoteHandlers[selectedIndex]
 
-            logger.trace("Selected remote handler \(selectedIndex + 1) of \(remoteHandlers.count) for: \(topicPath)")
+            logger.trace("Selected remote handler \(selectedIndex + 1) of \(remoteHandlers.count) for: \(topicPath.asString())")
 
             // Execute the selected handler (this will make the actual network call)
             do {
@@ -3428,7 +3399,8 @@ extension Node: RegistryDelegate {
         }
 
         // No remote handlers found
-        throw NodeError.serviceNotFound("No handler found for action: \(topicPath)")
+        logger.error("No handler found for action: \(topicPath.asString())")
+        throw NodeError.serviceNotFound("No handler found for action: \(topicPath.asString())")
     }
 }
 

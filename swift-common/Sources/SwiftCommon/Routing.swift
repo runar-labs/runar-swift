@@ -403,4 +403,182 @@ public final class PathTrie<T> {
         guard let netTrie = networks[networkId] else { return [] }
         return netTrie.findAllConcretePaths()
     }
+
+    /// Add handlers for a vector of topic paths (matches Rust add_batch_values)
+    public func addBatchValues(topics: [TopicPath], contents: [T]) {
+        for topic in topics {
+            setValues(topic: topic, contents: contents)
+        }
+    }
+
+    /// Find all handlers that match a wildcard topic pattern (matches Rust find_wildcard_matches)
+    public func findWildcardMatches(pattern: TopicPath) -> [PathTrieMatch<T>] {
+        let networkId = pattern.networkId
+        
+        guard let netTrie = networks[networkId] else { return [] }
+        
+        return netTrie.findWildcardMatchesInternal(segments: pattern.segments.map { $0.asString() }, index: 0)
+    }
+
+    /// Remove handlers that match a predicate for a specific topic path (matches Rust remove_handler)
+    public func removeHandler(topic: TopicPath, predicate: (T) -> Bool) -> Bool {
+        let networkId = topic.networkId
+        
+        guard let netTrie = networks[networkId] else { return false }
+        
+        return netTrie.removeHandlerInternal(segments: topic.segments.map { $0.asString() }, index: 0, predicate: predicate)
+    }
+
+    /// Check if this trie is empty (matches Rust is_empty)
+    public var isEmpty: Bool {
+        content.isEmpty
+            && multiWildcard.isEmpty
+            && children.isEmpty
+            && wildcardChild == nil
+            && templateChild == nil
+            && networks.isEmpty
+    }
+
+    /// Get the total number of handlers in the trie (matches Rust handler_count)
+    public var handlerCount: Int {
+        var count = 0
+        for networkTrie in networks.values {
+            count += networkTrie.countAllValues()
+        }
+        return count
+    }
+
+    /// Get all values from all networks (matches Rust get_all_values)
+    public func getAllValues() -> [T] {
+        var results: [T] = []
+        for networkTrie in networks.values {
+            networkTrie.collectAllValuesInternal(&results)
+        }
+        return results
+    }
+
+    /// Internal method to collect all values from this trie and its children (matches Rust collect_all_values_internal)
+    private func collectAllValuesInternal(_ results: inout [T]) {
+        // Add content from this node
+        results.append(contentsOf: content)
+        results.append(contentsOf: multiWildcard)
+
+        // Recursively collect from children
+        for child in children.values {
+            child.collectAllValuesInternal(&results)
+        }
+
+        if let wildcard = wildcardChild {
+            wildcard.collectAllValuesInternal(&results)
+        }
+
+        if let template = templateChild {
+            template.collectAllValuesInternal(&results)
+        }
+    }
+
+    /// Remove all values for a specific topic path (matches Rust remove_values)
+    public func removeValues(topic: TopicPath) {
+        let networkId = topic.networkId
+        
+        // Get or create network-specific trie
+        let networkTrie = networks[networkId] ?? PathTrie<T>()
+        networks[networkId] = networkTrie
+        
+        // Remove from the network-specific trie
+        networkTrie.removeValuesInternal(segments: topic.segments.map { $0.asString() }, index: 0)
+    }
+
+    /// Internal recursive implementation of remove (matches Rust remove_values_internal)
+    private func removeValuesInternal(segments: [String], index: Int) {
+        if index >= segments.count {
+            // We've reached the end of the path, remove handlers here
+            content.removeAll()
+            return
+        }
+
+        let segment = segments[index]
+
+        if segment == "*" {
+            // Single wildcard - remove from wildcard child
+            wildcardChild?.removeValuesInternal(segments: segments, index: index + 1)
+        } else if segment.hasPrefix("{"), segment.hasSuffix("}") {
+            // Template parameter - remove from template child
+            templateChild?.removeValuesInternal(segments: segments, index: index + 1)
+        } else {
+            // Literal segment - remove from child
+            children[segment]?.removeValuesInternal(segments: segments, index: index + 1)
+        }
+    }
+
+    /// Internal method to find wildcard matches with parameters (matches Rust find_wildcard_matches_internal)
+    private func findWildcardMatchesInternal(segments: [String], index: Int) -> [PathTrieMatch<T>] {
+        var results: [PathTrieMatch<T>] = []
+        
+        if index >= segments.count {
+            // Pattern is exhausted, collect all values at this level
+            collectAllConcreteMatches(&results, params: [:]) 
+            return results
+        }
+        
+        let segment = segments[index]
+        
+        if segment == "*" {
+            // Single wildcard - collect all values from this level and below
+            collectAllConcreteMatches(&results, params: [:]) 
+        } else if segment == ">" {
+            // Multi-wildcard - collect all values from this level and below
+            collectAllConcreteMatches(&results, params: [:]) 
+        } else {
+            // Literal segment - only search in matching child
+            if let child = children[segment] {
+                results.append(contentsOf: child.findWildcardMatchesInternal(segments: segments, index: index + 1))
+            }
+        }
+        
+        return results
+    }
+
+    /// Internal method to remove handlers matching a predicate (matches Rust remove_handler_internal)
+    private func removeHandlerInternal(segments: [String], index: Int, predicate: (T) -> Bool) -> Bool {
+        if index >= segments.count {
+            // We've reached the end of the path, remove matching handlers here
+            let originalCount = content.count
+            content.removeAll { predicate($0) }
+            return content.count != originalCount
+        }
+        
+        let segment = segments[index]
+        
+        if segment == "*" {
+            // Single wildcard - remove from wildcard child
+            return wildcardChild?.removeHandlerInternal(segments: segments, index: index + 1, predicate: predicate) ?? false
+        } else if segment.hasPrefix("{"), segment.hasSuffix("}") {
+            // Template parameter - remove from template child
+            return templateChild?.removeHandlerInternal(segments: segments, index: index + 1, predicate: predicate) ?? false
+        } else {
+            // Literal segment - remove from child
+            return children[segment]?.removeHandlerInternal(segments: segments, index: index + 1, predicate: predicate) ?? false
+        }
+    }
+
+    /// Internal method to count all values in this trie and its children
+    private func countAllValues() -> Int {
+        var count = content.count + multiWildcard.count
+        
+        // Recursively count from children
+        for child in children.values {
+            count += child.countAllValues()
+        }
+        
+        if let wildcard = wildcardChild {
+            count += wildcard.countAllValues()
+        }
+        
+        if let template = templateChild {
+            count += template.countAllValues()
+        }
+        
+        return count
+    }
 }
