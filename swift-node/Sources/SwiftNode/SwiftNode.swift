@@ -2902,12 +2902,7 @@ public final class Node {
                     actions: Dictionary(uniqueKeysWithValues: service.actions.map { ($0.name, $0) }),
                     logger: logger
                 )
-                let registered = await serviceRegistry.registerRemoteService(remoteService)
-                if registered {
-                    logger.trace("Successfully registered remote service: \(service.name)")
-                } else {
-                    logger.warning("Remote service already exists, skipping: \(service.name)")
-                }
+                await serviceRegistry.registerRemoteService(remoteService)
             } catch {
                 logger.error("Failed to create service topic for \(service.servicePath): \(error)")
             }
@@ -3347,7 +3342,7 @@ extension Node: NodeDelegate {
         try await serviceRegistry.unregisterAction(networkId: networkId, servicePath: servicePath, action: action)
     }
 
-    public func subscribeToEvents(networkId: String, servicePath: String, handler: @escaping EventHandler) async throws -> String {
+    public func subscribeToEvents(networkId: String, servicePath: String, handler: EventHandler) async throws -> String {
         try await serviceRegistry.subscribeToEvents(networkId: networkId, servicePath: servicePath, handler: handler)
     }
 
