@@ -16,7 +16,7 @@ final class ProfileKeyTests: XCTestCase {
 
         // Set log level to trace to see detailed logs
         do {
-            try await FFILogger.setLogLevel(.trace)
+            try await FFILogger.setLogLevel(.info)
 
             // Create node keys handle
             nodeKeys = try await NodeKeyManager()

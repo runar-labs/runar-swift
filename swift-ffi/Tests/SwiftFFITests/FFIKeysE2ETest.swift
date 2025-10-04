@@ -17,7 +17,7 @@ final class FFIKeysE2ETest: XCTestCase {
         // ==========================================
 
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("mobile-test")
 
         // Create mobile keys manager
@@ -83,7 +83,7 @@ final class FFIKeysE2ETest: XCTestCase {
 
     func testPrimitivesE2ECANodeFlow() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("ca-node-test")
 
         // ==========================================

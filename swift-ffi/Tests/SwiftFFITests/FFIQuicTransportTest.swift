@@ -56,7 +56,7 @@ final class FFIQuicTransportTest: XCTestCase {
     /// This is the main test that validates the complete transport functionality including both request/response and publish/event patterns
     func testTwoTransportsRequestResponseAndPublishEvents() async throws {
         // Set up logging to match Rust test
-        try await FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("two-transports-test")
 
         // Step 1: Create two node key managers (A and B) - exactly like Rust
@@ -275,7 +275,7 @@ final class FFIQuicTransportTest: XCTestCase {
     /// Test transport start/stop idempotence - exactly matching Rust test_transport_start_stop_idempotence
     func testTransportStartStopIdempotence() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("idempotence-test")
 
         // Create keys for the transport
@@ -345,7 +345,7 @@ final class FFIQuicTransportTest: XCTestCase {
     /// Test basic transport connection - exactly matching Rust test_basic_transport_connection
     func testBasicTransportConnection() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("connection-test")
 
         // Create two node key managers (A and B)
@@ -457,7 +457,7 @@ final class FFIQuicTransportTest: XCTestCase {
     /// Test basic transport setup - exactly matching Rust test_basic_transport_setup
     func testBasicTransportSetup() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("setup-test")
 
         // Create node key manager

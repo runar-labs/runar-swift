@@ -53,7 +53,7 @@ final class RustParityEncryptionTest: XCTestCase {
         testLogger.info("Setting up logging for Rust parity test")
         
         // Set Rust FFI testLogger to trace level
-        try await FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLogLevel(.info)
         testLogger.info("Rust FFI testLogger set to trace level")
         
         // Set Swift testLogger node ID for context

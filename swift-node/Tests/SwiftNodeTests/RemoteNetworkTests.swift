@@ -42,7 +42,7 @@ final class RemoteNetworkTests: XCTestCase {
         let logger = testLogger.child(component: .node)
 
         // Enable trace logging for Rust FFI layer
-        try await FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("remote-action-test")
 
         // Force trace logging for this test

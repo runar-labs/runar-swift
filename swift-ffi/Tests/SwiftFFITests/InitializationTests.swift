@@ -13,7 +13,7 @@ final class InitializationTests: XCTestCase {
 
         // Set log level to trace to see detailed logs
         do {
-            try await FFILogger.setLogLevel(.trace)
+            try await FFILogger.setLogLevel(.info)
         } catch {
             XCTFail("Failed to set log level: \(error)")
         }

@@ -3747,9 +3747,9 @@ public actor QuicTransport {
             maxMessageSize: options.maxMessageSize.map { UInt($0) },
             responseCacheTtlMs: options.responseCacheTtlMs,
             maxRequestRetries: options.maxRequestRetries,
-            certChainDer: [], // Will be populated by the transport layer
-            privateKeyDer: nil, // Will be populated by the transport layer
-            rootCertsDer: [] // Will be populated by the transport layer
+            certChainDer: [], // Empty for now - will be populated by transport layer
+            privateKeyDer: [], // Empty for now - will be populated by transport layer
+            rootCertsDer: [] // Empty for now - will be populated by transport layer
         )
 
         // Encode inputs to CBOR internally (pure encoding, no MainActor)

@@ -53,7 +53,7 @@ final class FFIHandshakeTest: XCTestCase {
         try await super.setUp()
 
         // Set up logging to match Rust test - both FFI and Swift loggers at trace level
-        try await FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("handshake-test")
 
         // Set global logger config to trace level for all tests

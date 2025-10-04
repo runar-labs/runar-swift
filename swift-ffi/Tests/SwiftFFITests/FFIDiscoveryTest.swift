@@ -19,7 +19,7 @@ final class FFIDiscoveryTest: XCTestCase {
     /// Test basic discovery setup and configuration
     func testBasicDiscoverySetup() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-setup-test")
 
         // Create keys for discovery
@@ -52,7 +52,7 @@ final class FFIDiscoveryTest: XCTestCase {
     /// Test discovery event polling and validation
     func testDiscoveryEventPolling() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-event-polling-test")
 
         // Create two node key managers (A and B)
@@ -165,7 +165,7 @@ final class FFIDiscoveryTest: XCTestCase {
     /// Test discovery with callback system
     func testDiscoveryWithCallbacks() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-callbacks-test")
 
         // Create two node key managers (A and B)
@@ -279,7 +279,7 @@ final class FFIDiscoveryTest: XCTestCase {
     /// Test discovery start/stop idempotence
     func testDiscoveryStartStopIdempotence() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-idempotence-test")
 
         // Create keys for discovery
@@ -320,7 +320,7 @@ final class FFIDiscoveryTest: XCTestCase {
     /// Test discovery TTL, lost events, and debouncing
     func testDiscoveryTTLLostAndDebounce() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-ttl-test")
 
         // Create two node key managers (A and B)
@@ -394,7 +394,7 @@ final class FFIDiscoveryTest: XCTestCase {
     /// Test multicast announce and discover functionality
     func testMulticastAnnounceAndDiscover() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-multicast-test")
 
         // Create two node key managers (A and B)
@@ -462,7 +462,7 @@ final class FFIDiscoveryTest: XCTestCase {
     /// Test discovery with invalid CBOR data handling
     func testDiscoveryInvalidCBORHandling() async throws {
         // Set up logging
-        try await FFILogger.setLogLevel(.debug)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("discovery-invalid-cbor-test")
 
         // Create discovery instance with default options

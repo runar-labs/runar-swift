@@ -76,9 +76,9 @@ final class FFIE2EIntegrationTest: XCTestCase {
         logger.debug("\n🚀 Starting Full-transport E2E QUIC mTLS test")
 
         // Enable trace logging for detailed debugging
-        logger.debug("DEBUG: About to call FFILogger.setLogLevel(.trace)")
-        try await FFILogger.setLogLevel(.trace)
-        logger.debug("DEBUG: FFILogger.setLogLevel(.trace) completed successfully")
+        logger.debug("DEBUG: About to call FFILogger.setLogLevel(.info)")
+        try await FFILogger.setLogLevel(.info)
+        logger.debug("DEBUG: FFILogger.setLogLevel(.info) completed successfully")
 
         logger.debug("DEBUG: About to call FFILogger.setLoggerContext")
         try await FFILogger.setLoggerContext("e2e-integration-test")

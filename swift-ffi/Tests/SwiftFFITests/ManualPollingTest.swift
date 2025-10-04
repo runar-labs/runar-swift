@@ -11,7 +11,7 @@ final class ManualPollingTest: XCTestCase {
     /// Test manual polling for events - exactly like Rust test
     func testManualPollingForEvents() async throws {
         // Set up logging to match Rust test
-        try await FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLogLevel(.info)
         try await FFILogger.setLoggerContext("manual-polling-test")
 
         // Step 1: Create two node key managers (A and B) - exactly like Rust
