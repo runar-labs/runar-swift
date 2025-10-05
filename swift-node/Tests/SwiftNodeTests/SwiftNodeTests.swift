@@ -57,6 +57,7 @@ final class SwiftNodeTests: XCTestCase {
         }
         try await node.addService(EchoService(logger: testLogger.child(component: .custom("EchoService"))))
         try await node.start()
+        try await node.waitForServicesToStart()
         let res = try await node.request("echo/say", payload: AnyValue.primitive("hello"), networkId: "net")
         let text: String = try await res.asType()
         XCTAssertEqual(text, "hello")
@@ -142,6 +143,7 @@ final class SwiftNodeTests: XCTestCase {
         }
         try await node.addService(PubService())
         try await node.start()
+        try await node.waitForServicesToStart()
         let exp = expectation(description: "evt")
         _ = try await node.subscribe(topic: "pub/evt", options: nil as EventRegistrationOptions?) { eventContext, data in
             if let d = data {

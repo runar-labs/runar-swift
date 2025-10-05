@@ -1186,21 +1186,8 @@ public struct NodeMetadata: Sendable, Codable {
 
 // MARK: - Service Task
 
-/// Service task for tracking service lifecycle
-public struct ServiceTask: Sendable, Codable {
-    /// Service path
-    public let servicePath: String
-    /// Task identifier
-    public let taskId: String
-    /// Task status
-    public let status: String
-
-    public init(servicePath: String, taskId: String, status: String) {
-        self.servicePath = servicePath
-        self.taskId = taskId
-        self.status = status
-    }
-}
+/// Service task type alias matching Rust exactly: (TopicPath, Task<Void, Never>)
+public typealias ServiceTask = (TopicPath, Task<Void, Never>)
 
 // MARK: - Retained Events
 
@@ -1363,7 +1350,7 @@ public final class Node {
     /// Key manager containing node credentials
     public let keysManager: FFIKeys
 
-    /// Service tasks for tracking service lifecycle
+    /// Service tasks for tracking service lifecycle (matching Rust service_tasks exactly)
     private var serviceTasks: [ServiceTask] = []
 
     /// Local node information
@@ -1975,7 +1962,7 @@ public final class Node {
             let serviceTopicRef = serviceTopic
             let serviceEntryRef = serviceEntry
             
-            Task {
+            let task = Task {
                 logger.info("Starting separate thread to start service: \(serviceTopicRef)")
                 
                 // Add timeout to the service start operation (matching Rust exactly)
@@ -1988,8 +1975,12 @@ public final class Node {
                     logger.error("Service start timed out after 30 seconds: \(serviceTopicRef)")
                 }
             }
+            
+            // Store the task for later waiting (matching Rust exactly: tasks_store.push((service_topic.clone(), task)))
+            serviceTasks.append((serviceTopicRef, task))
         }
     }
+
 
     /// Helper function to check if a service is internal (matching Rust is_internal_service)
     private func isInternalService(_ servicePath: String) -> Bool {
@@ -2059,36 +2050,19 @@ public final class Node {
         logger.trace("Node has been stopped")
     }
 
-    /// Wait for all services to start
-    ///
-    /// This method waits for all registered services to complete their startup process.
+    /// Wait for all services to start (matching Rust wait_for_services_to_start exactly)
     public func waitForServicesToStart() async throws {
-        logger.trace("Waiting for services to start")
-
-        // Wait for all services to be in running state
-        let services = serviceRegistry.getAllEntries(networkId: networkId)
-        for serviceEntry in services {
-            // Wait for service to be in running state
-            var attempts = 0
-            let maxAttempts = 100 // 10 seconds with 100ms intervals
-
-            while attempts < maxAttempts {
-                if let state = await serviceRegistry.getLocalServiceState(servicePath: serviceEntry.serviceTopic) {
-                    if state == .running {
-                        break
-                    }
-                }
-
-                try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                attempts += 1
-            }
-
-            if attempts >= maxAttempts {
-                logger.warning("Service \(serviceEntry.serviceTopic.rawPath) did not start within timeout")
-            }
+        logger.trace("Waiting for all services to start...")
+        
+        // Wait for all service tasks to complete (matching Rust: for (_service_topic, task) in service_tasks.drain(..))
+        for (_, task) in serviceTasks {
+            await task.value
         }
-
-        logger.trace("All services started")
+        
+        // Clear the tasks after waiting (matching Rust: service_tasks.drain(..))
+        serviceTasks.removeAll()
+        
+        logger.trace("All services have started successfully")
     }
 
     /// Make a request to a service

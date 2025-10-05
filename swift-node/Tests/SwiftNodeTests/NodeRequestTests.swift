@@ -32,6 +32,7 @@ final class NodeRequestTests: XCTestCase {
 
         // Start the node to initialize all services
         try await node.start()
+        try await node.waitForServicesToStart()
 
         // Create parameters for addition
         let params = AnyValue.map([
@@ -64,6 +65,7 @@ final class NodeRequestTests: XCTestCase {
 
         // Start the node to initialize all services
         try await node.start()
+        try await node.waitForServicesToStart()
 
         // Create parameters for multiplication
         let params = AnyValue.map([
