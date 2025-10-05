@@ -257,25 +257,6 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         self.segmentTypeBitmap = segmentTypeBitmap
     }
 
-    /// Legacy constructor - DEPRECATED: Use TopicPath.new() instead
-    @available(*, deprecated, message: "Use TopicPath.new(path:networkId:) instead")
-    public init(networkId: String = "default", segments: [String]) throws {
-        // Convert to new API format
-        let path = segments.joined(separator: "/")
-        let newPath = try TopicPath.new(path, defaultNetwork: networkId)
-
-        // Copy all properties
-        rawPath = newPath.rawPath
-        self.networkId = newPath.networkId
-        self.segments = newPath.segments
-        isPattern = newPath.isPattern
-        hasTemplates = newPath.hasTemplates
-        servicePath = newPath.servicePath
-        actionPath = newPath.actionPath
-        segmentCount = newPath.segmentCount
-        hashComponents = newPath.hashComponents
-        segmentTypeBitmap = newPath.segmentTypeBitmap
-    }
 
     /// Create a TopicPath from a full path string (matches Rust from_full_path)
     public static func fromFullPath(_ path: String) throws -> TopicPath {
@@ -305,11 +286,6 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         }
     }
 
-    /// Legacy parse method - DEPRECATED: Use fromFullPath instead
-    @available(*, deprecated, message: "Use TopicPath.fromFullPath() instead")
-    public static func parse(_ fullPath: String) throws -> TopicPath {
-        try fromFullPath(fullPath)
-    }
 
     /// Create a service-only TopicPath (matches Rust new_service exactly)
     public static func newService(_ networkId: String, serviceName: String) -> TopicPath {

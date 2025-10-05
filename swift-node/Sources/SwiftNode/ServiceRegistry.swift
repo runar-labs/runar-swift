@@ -128,7 +128,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
 
     /// Add an action to this service (matches Rust add_action)
     public func addAction(name: String, action: ActionMetadata) async throws {
-        await actions.insert(action, for: name)
+        _ = await actions.insert(action, for: name)
     }
     
     /// Stop the remote service and clean up handlers (matches Rust stop method)
@@ -1560,12 +1560,12 @@ public final class ServiceRegistry: NodeDelegate {
 
     /// Return all (path, sub_id) pairs for a peer and clear them (used on peer disconnect)
     public func drainRemotePeerSubscriptions(peerId: String) async -> [String] {
-        guard let peerSubscriptions = await remotePeerSubscriptions.remove(peerId) else {
+        guard await remotePeerSubscriptions.remove(peerId) != nil else {
             return []
         }
 
         // Get all subscription IDs from the peer subscriptions
-        var result: [String] = []
+        let result: [String] = []
         // Note: This would need to be implemented with a proper method in ShardedConcurrentMap
         // For now, return empty array
         logger.trace("drainRemotePeerSubscriptions: Not fully implemented - ShardedConcurrentMap iteration needed")
@@ -1574,7 +1574,7 @@ public final class ServiceRegistry: NodeDelegate {
 
     /// Return current set of paths for a peer
     public func remoteSubscriptionPaths(peerId: String) async -> Set<String> {
-        guard let peerSubscriptions = await remotePeerSubscriptions.get(peerId) else {
+        guard await remotePeerSubscriptions.get(peerId) != nil else {
             return []
         }
 

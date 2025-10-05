@@ -451,8 +451,7 @@ public final class RegistryService: AbstractService {
             logger.trace("RegistryService.services/{service_path}: Looking for service: \(servicePathString)")
 
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId,
-                                            segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath.new(servicePathString, defaultNetwork: requestContext.networkId)
 
             // Get service metadata
             if let metadata = await registryDelegate.getServiceMetadata(servicePath: servicePath) {
@@ -482,8 +481,7 @@ public final class RegistryService: AbstractService {
             logger.trace("RegistryService.services/{service_path}/state: Looking for service state: \(servicePathString)")
 
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId,
-                                            segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath.new(servicePathString, defaultNetwork: requestContext.networkId)
 
             // Get service state
             guard let state = await registryDelegate.getLocalServiceState(servicePath: servicePath) else {
@@ -514,8 +512,7 @@ public final class RegistryService: AbstractService {
             logger.trace("RegistryService.services/{service_path}/pause: Looking for service to pause: \(servicePathString)")
 
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId,
-                                            segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath.new(servicePathString, defaultNetwork: requestContext.networkId)
 
             // Get current state first to check if service exists
             if let currentState = await registryDelegate.getLocalServiceState(servicePath: servicePath) {
@@ -550,8 +547,7 @@ public final class RegistryService: AbstractService {
             logger.trace("RegistryService.services/{service_path}/resume: Looking for service to resume: \(servicePathString)")
 
             // Create TopicPath using networkId from requestContext
-            let servicePath = try TopicPath(networkId: requestContext.networkId,
-                                            segments: servicePathString.split(separator: "/").map(String.init))
+            let servicePath = try TopicPath.new(servicePathString, defaultNetwork: requestContext.networkId)
 
             // Get current state first to check if service exists
             if let currentState = await registryDelegate.getLocalServiceState(servicePath: servicePath) {
@@ -2610,7 +2606,6 @@ public final class Node {
     private func getLocalNodeInfo() async -> NodeInfo {
         // Get current services from the service registry with proper metadata including actions
         let currentServices = await serviceRegistry.getLocalServices()
-        let servicePaths = Array(currentServices.keys).map { $0.asString() }
 
         logger.trace("🔍 DEBUG: Found \(currentServices.count) local services")
         for (topicPath, serviceEntry) in currentServices {
@@ -2739,7 +2734,7 @@ public final class Node {
         let paramsOption: AnyValue? = payload.isNull ? nil : payload
 
         // Parse topic path to get network ID
-        let topicPath = try TopicPath.parse(message.payload.path)
+        let topicPath = try TopicPath.fromFullPath(message.payload.path)
         let networkId = topicPath.networkId
         let profilePublicKeys = message.payload.profilePublicKeys
 
@@ -2871,7 +2866,7 @@ public final class Node {
                 for action in service.actions {
                     try await remoteService.addAction(name: action.name, action: action)
                 }
-                await serviceRegistry.registerRemoteService(remoteService)
+                _ = await serviceRegistry.registerRemoteService(remoteService)
             } catch {
                 logger.error("Failed to create service topic for \(service.servicePath): \(error)")
             }
@@ -3097,7 +3092,7 @@ public final class Node {
 
         do {
             // Parse the topic path
-            let topicPath = try TopicPath.parse(path)
+            let topicPath = try TopicPath.fromFullPath(path)
 
             // Deserialize payload using keystore (matching Rust pattern exactly)
             let deserializedPayload = try AnyValue.deserialize(
