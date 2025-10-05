@@ -640,33 +640,30 @@ public struct LifecycleContext: Sendable {
     /// Service path - identifies the service within the network
     public let servicePath: String
     /// Optional configuration data
-    public let config: AnyValue?
+    public var config: AnyValue?
     /// Logger instance with service context
     public let logger: RunarLogger
     /// Node delegate for node operations
     public let nodeDelegate: NodeDelegate
 
+    /// Create a new LifecycleContext with a topic path and logger (matching Rust exactly)
     public init(
-        networkId: String,
-        servicePath: String,
-        config: AnyValue? = nil,
-        logger: RunarLogger,
-        nodeDelegate: NodeDelegate
+        topicPath: TopicPath,
+        nodeDelegate: NodeDelegate,
+        logger: RunarLogger
     ) {
-        self.networkId = networkId
-        self.servicePath = servicePath
-        self.config = config
+        self.networkId = topicPath.networkId
+        self.servicePath = topicPath.servicePath
+        self.config = nil
         self.logger = logger
         self.nodeDelegate = nodeDelegate
     }
 
-    /// Create a new LifecycleContext with a topic path and logger
-    public init(topicPath: TopicPath, nodeDelegate: NodeDelegate, logger: RunarLogger) {
-        networkId = topicPath.networkId
-        servicePath = topicPath.servicePath
-        config = nil
-        self.logger = logger
-        self.nodeDelegate = nodeDelegate
+    /// Add configuration to a LifecycleContext (matching Rust builder pattern)
+    public func withConfig(_ config: AnyValue) -> LifecycleContext {
+        var newContext = self
+        newContext.config = config
+        return newContext
     }
 
     /// Register an action handler for this service
@@ -684,31 +681,32 @@ public struct LifecycleContext: Sendable {
 public struct RequestContext: Sendable {
     /// Complete topic path for this request
     public let topicPath: TopicPath
-    /// Network ID for this request
-    public let networkId: String
     /// Metadata for this request
     public let metadata: [String: AnyValue]
     /// Logger for this context
     public let logger: RunarLogger
     /// Path parameters extracted from template matching
-    public let pathParams: [String: String]
+    public var pathParams: [String: String]
     /// Node delegate for making requests or publishing events
     public let nodeDelegate: NodeDelegate
 
+    /// Create a new RequestContext with a TopicPath and logger (matching Rust exactly)
     public init(
         topicPath: TopicPath,
-        networkId: String,
-        metadata: [String: AnyValue] = [:],
-        logger: RunarLogger,
-        pathParams: [String: String] = [:],
-        nodeDelegate: NodeDelegate
+        nodeDelegate: NodeDelegate,
+        metadata: [String: AnyValue],
+        logger: RunarLogger
     ) {
         self.topicPath = topicPath
-        self.networkId = networkId
         self.metadata = metadata
         self.logger = logger
-        self.pathParams = pathParams
+        self.pathParams = [:]
         self.nodeDelegate = nodeDelegate
+    }
+
+    /// Get the network ID from the topic path (matching Rust network_id method)
+    public var networkId: String {
+        return topicPath.networkId
     }
 }
 
@@ -770,18 +768,39 @@ public struct PublishOptions: Sendable {
     public var broadcast: Bool
     public var guaranteedDelivery: Bool
     public var retainFor: TimeInterval?
+    public var profilePublicKeys: [Data]?
     public var target: String?
 
     public init(
         broadcast: Bool = false,
         guaranteedDelivery: Bool = false,
         retainFor: TimeInterval? = nil,
+        profilePublicKeys: [Data]? = nil,
         target: String? = nil
     ) {
         self.broadcast = broadcast
         self.guaranteedDelivery = guaranteedDelivery
         self.retainFor = retainFor
+        self.profilePublicKeys = profilePublicKeys
         self.target = target
+    }
+
+    /// Create local-only publish options (matching Rust PublishOptions::local_only())
+    public static func localOnly() -> PublishOptions {
+        PublishOptions(
+            broadcast: false,
+            guaranteedDelivery: false,
+            retainFor: nil,
+            profilePublicKeys: nil,
+            target: nil
+        )
+    }
+
+    /// Add retention duration (matching Rust with_retain_for pattern)
+    public func withRetainFor(_ duration: TimeInterval) -> PublishOptions {
+        var newOptions = self
+        newOptions.retainFor = duration
+        return newOptions
     }
 }
 
@@ -1429,7 +1448,7 @@ public final class Node {
         let nodePublicKey = try await keysManager.getNodePublicKey()
 
         let nodeId = try await keysManager.getCompactId(for: nodePublicKey)
-        // logger.setContext(nodeId) // RunarLogger doesn't have setContext method
+        logger.setContext(nodeId)
 
         logger.trace("Successfully loaded existing node credentials.")
 
@@ -1742,24 +1761,30 @@ public final class Node {
     /// try await node.addService(service)
     /// ```
     public func addService(_ service: AbstractService) async throws {
-        // Set the service's network ID
-        service.setNetworkId(networkId)
+        // Check if service already has a network ID, otherwise use default (matching Rust exactly)
+        let serviceNetworkId = service.networkId ?? networkId
+        service.setNetworkId(serviceNetworkId)
 
         let servicePath = service.path
         let serviceName = service.name
 
         logger.trace("Adding service '\(serviceName)' to node using path \(servicePath)")
+        logger.debug("network id \(networkId)")
 
-        // Create a proper topic path for the service (matching Rust pattern)
-        let serviceTopic = try TopicPath.new(servicePath, defaultNetwork: networkId)
+        // Create a proper topic path for the service (matching Rust pattern exactly)
+        let serviceTopic: TopicPath
+        do {
+            serviceTopic = try TopicPath.new(servicePath, defaultNetwork: networkId)
+        } catch {
+            logger.error("Failed to create topic path for service name:\(serviceName) path:\(servicePath) error:\(error)")
+            throw NodeError.invalidConfiguration("Failed to create topic path for service \(serviceName): \(error)")
+        }
 
-        // Create a lifecycle context for initialization (matching Rust pattern)
+        // Create a lifecycle context for initialization (matching Rust pattern exactly)
         let initContext = LifecycleContext(
-            networkId: networkId,
-            servicePath: servicePath,
-            config: nil,
-            logger: logger,
-            nodeDelegate: self
+            topicPath: serviceTopic,
+            nodeDelegate: self,
+            logger: logger
         )
 
         // Initialize the service using the context (matching Rust pattern)
@@ -1772,11 +1797,17 @@ public final class Node {
                 servicePath: serviceTopic.rawPath,
                 newState: ServiceState.error
             )
-            // Publish error event (matching Rust pattern)
+            // Publish error event (matching Rust pattern exactly)
             try await publish(
                 topic: "$registry/services/\(servicePath)/state/error",
                 data: AnyValue.primitive(serviceTopic.rawPath),
-                options: PublishOptions(retainFor: 10.0)
+                options: PublishOptions(
+                    broadcast: false,
+                    guaranteedDelivery: false,
+                    retainFor: 10.0,
+                    profilePublicKeys: nil,
+                    target: nil
+                )
             )
             throw NodeError.serviceInitializationFailed("Failed to initialize service: \(error)")
         }
@@ -1787,11 +1818,17 @@ public final class Node {
             newState: ServiceState.initialized
         )
 
-        // Publish initialized event (matching Rust pattern)
+        // Publish initialized event (matching Rust pattern exactly)
         try await publish(
             topic: "$registry/services/\(servicePath)/state/initialized",
             data: AnyValue.primitive(serviceTopic.rawPath),
-            options: PublishOptions(retainFor: 10.0)
+            options: PublishOptions(
+                broadcast: false,
+                guaranteedDelivery: false,
+                retainFor: 10.0,
+                profilePublicKeys: nil,
+                target: nil
+            )
         )
 
         // Service initialized successfully, create the ServiceEntry and register it (matching Rust pattern)
@@ -1898,27 +1935,100 @@ public final class Node {
     /// try await node.start()
     /// ```
     public func start() async throws {
-        logger.trace("Node started networkId=\(networkId)")
+        logger.info("Starting node...")
 
-        // Start all registered services
-        logger.trace("🔍 DEBUG: About to start all local services for networkId: \(networkId)")
-        try await serviceRegistry.startAllServices(networkId: networkId)
-        logger.trace("🔍 DEBUG: All local services started successfully")
-
-        // Initialize network transport if networking is enabled
-        if supportsNetworking {
-            try await initializeNetworkTransport()
-
-            // Update the transport with current NodeInfo after it's created
-            // This ensures the transport has the latest NodeInfo with all services
-            logger.trace("🔍 START: Updating transport with current NodeInfo after creation...")
-            await updateTransportNodeInfo()
+        // Check if already running (matching Rust exactly)
+        if running {
+            logger.warning("Node already running")
+            return
         }
 
-        // Set the node as running
+        // Get services directly from the registry (matching Rust exactly)
+        let localServices = await serviceRegistry.getLocalServices()
+
+        // Separate internal vs non-internal services (matching Rust exactly)
+        let internalServices = localServices.filter { (_, serviceEntry) in
+            isInternalService(serviceEntry.service.path)
+        }
+        let nonInternalServices = localServices.filter { (_, serviceEntry) in
+            !isInternalService(serviceEntry.service.path)
+        }
+
+        // Start internal services first (matching Rust exactly)
+        for (serviceTopic, serviceEntry) in internalServices {
+            try await startService(serviceTopic: serviceTopic, serviceEntry: serviceEntry)
+        }
+
+        // Start networking if enabled (matching Rust exactly)
+        if supportsNetworking {
+            do {
+                try await startNetworking()
+            } catch {
+                logger.error("Failed to start networking components: \(error)")
+                throw error
+            }
+        }
+
+        logger.info("Node started successfully - it will start all services now")
         running = true
 
-        logger.trace("Node is now running")
+        // Start non-internal services in parallel to avoid blocking the loop (matching Rust exactly)
+        let serviceStartTimeout: TimeInterval = 30.0 // TODO: MOVE THIS TO A CONFIG
+        for (serviceTopic, serviceEntry) in nonInternalServices {
+            let nodeRef = self
+            let serviceTopicRef = serviceTopic
+            let serviceEntryRef = serviceEntry
+            
+            Task {
+                logger.info("Starting separate thread to start service: \(serviceTopicRef)")
+                
+                // Add timeout to the service start operation (matching Rust exactly)
+                do {
+                    try await withTimeout(serviceStartTimeout) {
+                        try await nodeRef.startService(serviceTopic: serviceTopicRef, serviceEntry: serviceEntryRef)
+                    }
+                    logger.info("Service start completed: \(serviceTopicRef)")
+                } catch {
+                    logger.error("Service start timed out after 30 seconds: \(serviceTopicRef)")
+                }
+            }
+        }
+    }
+
+    /// Helper function to check if a service is internal (matching Rust is_internal_service)
+    private func isInternalService(_ servicePath: String) -> Bool {
+        return servicePath.hasPrefix("$")
+    }
+
+    /// Helper function to implement timeout (matching Rust timeout pattern)
+    private func withTimeout<T: Sendable>(_ timeout: TimeInterval, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                throw NodeError.timeout("Operation timed out after \(timeout) seconds")
+            }
+            
+            guard let result = try await group.next() else {
+                throw NodeError.timeout("Operation timed out after \(timeout) seconds")
+            }
+            
+            group.cancelAll()
+            return result
+        }
+    }
+
+    /// Start networking components (matching Rust start_networking)
+    private func startNetworking() async throws {
+        try await initializeNetworkTransport()
+        
+        // Update the transport with current NodeInfo after it's created
+        // This ensures the transport has the latest NodeInfo with all services
+        logger.trace("🔍 START: Updating transport with current NodeInfo after creation...")
+        await updateTransportNodeInfo()
     }
 
     /// Stop the node and all its services.
@@ -1993,7 +2103,12 @@ public final class Node {
         let requestPayload = payload ?? AnyValue.null()
 
         // Parse topic path (matching Rust pattern exactly)
-        let topicPath = try TopicPath.new(path, defaultNetwork: actualNetworkId)
+        let topicPath: TopicPath
+        do {
+            topicPath = try TopicPath.new(path, defaultNetwork: actualNetworkId)
+        } catch {
+            throw NodeError.invalidPath("Failed to parse topic path: \(path) : \(error)")
+        }
 
         logger.debug("Processing request: \(topicPath.asString())")
 
@@ -2034,15 +2149,14 @@ public final class Node {
             let pathParams = topicPath.extractParams(registrationPath.actionPath) ?? [:]
             logger.debug("Extracted path parameters: \(pathParams)")
 
-            // Create request context with extracted path parameters
-            let requestContext = RequestContext(
-                topicPath: topicPath,
-                networkId: actualNetworkId,
-                metadata: metadata,
-                logger: logger,
-                pathParams: pathParams,
-                nodeDelegate: self
-            )
+        // Create request context with extracted path parameters (matching Rust exactly)
+        var requestContext = RequestContext(
+            topicPath: topicPath,
+            nodeDelegate: self,
+            metadata: metadata,
+            logger: logger
+        )
+        requestContext.pathParams = pathParams
 
             // Execute the handler and return result
             let response = try await handler(requestPayload, requestContext)
@@ -2289,42 +2403,52 @@ public final class Node {
                 }
 
                 // Use async request handling (matching Rust pattern)
-                // Now that callbacks are async, we can properly handle async work
-                do {
-                    return try await handleNetworkRequest(networkMessage)
-                } catch {
-                    // Create error response for transport callback
-                    logger.error("Network request failed: \(error)")
-                    // Create error response using proper HashMap serialization (matching Rust exactly)
-                    let errorValue = AnyValue.map([
-                        "error": AnyValue.primitive(true),
-                        "message": AnyValue.primitive(error.localizedDescription)
-                    ])
-                    
-                    // Serialize error response using proper context (matching Rust exactly)
-                    let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkMessage.payload.path.components(separatedBy: ":").first ?? "default")
-                    let resolver = try await getOrCreateResolver(networkMessage.payload.profilePublicKeys)
-                    let serializationContext = SerializationContext(
-                        keystore: keysManager,
-                        resolver: resolver,
-                        networkPublicKey: networkPublicKey,
-                        profilePublicKeys: networkMessage.payload.profilePublicKeys
-                    )
-                    let serializedError = try await errorValue.serialize(context: serializationContext)
-                    
-                    return NetworkMessage(
-                        sourceNodeId: self.nodeId,
-                        destinationNodeId: networkMessage.sourceNodeId,
-                        messageType: 5, // MESSAGE_TYPE_RESPONSE
-                        payload: NetworkMessagePayloadItem(
-                            path: networkMessage.payload.path,
-                            payloadBytes: serializedError,
-                            correlationId: networkMessage.payload.correlationId,
-                            networkPublicKey: networkPublicKey,
-                            profilePublicKeys: networkMessage.payload.profilePublicKeys
-                        )
-                    )
+                // Wrap in Task to handle async/await in non-async callback
+                Task {
+                    do {
+                        _ = try await handleNetworkRequest(networkMessage)
+                        // Note: The transport callback doesn't return the response, it's handled internally
+                    } catch {
+                        // Create error response for transport callback
+                        logger.error("Network request failed: \(error)")
+                        // Create error response using proper HashMap serialization (matching Rust exactly)
+                        let errorValue = AnyValue.map([
+                            "error": AnyValue.primitive(true),
+                            "message": AnyValue.primitive(error.localizedDescription)
+                        ])
+                        
+                        // Serialize error response using proper context (matching Rust exactly)
+                        do {
+                            let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkMessage.payload.path.components(separatedBy: ":").first ?? "default")
+                            let resolver = try await getOrCreateResolver(networkMessage.payload.profilePublicKeys)
+                            let serializationContext = SerializationContext(
+                                keystore: keysManager,
+                                resolver: resolver,
+                                networkPublicKey: networkPublicKey,
+                                profilePublicKeys: networkMessage.payload.profilePublicKeys
+                            )
+                            _ = try await errorValue.serialize(context: serializationContext)
+                            
+                            // Note: The transport callback doesn't return the response, it's handled internally
+                        } catch {
+                            logger.error("Failed to serialize error response: \(error)")
+                        }
+                    }
                 }
+                
+                // Return a default response since the callback is non-throwing
+                return NetworkMessage(
+                    sourceNodeId: sourcePeerId,
+                    destinationNodeId: self.nodeId,
+                    messageType: 5, // MESSAGE_TYPE_RESPONSE
+                    payload: NetworkMessagePayloadItem(
+                        path: path,
+                        payloadBytes: Data("{\"status\": \"processing\"}".utf8),
+                        correlationId: correlationId ?? "",
+                        networkPublicKey: nil,
+                        profilePublicKeys: []
+                    )
+                )
             },
             eventCallback: { [weak self] requestId, path, payload, sourcePeerId, correlationId in
                 Task { @MainActor in
@@ -3200,11 +3324,9 @@ extension Node: RegistryDelegate {
 
             let requestContext = RequestContext(
                 topicPath: topicPath,
-                networkId: networkId,
+                nodeDelegate: self,
                 metadata: metadata,
-                logger: logger,
-                pathParams: [:],
-                nodeDelegate: self
+                logger: logger
             )
 
             // Apply load balancing strategy to select a handler
@@ -3253,6 +3375,7 @@ public enum NodeError: Error, Sendable {
     case peerNotFound(String)
     case invalidPath(String)
     case serviceNotFound(String)
+    case timeout(String)
 
     public var localizedDescription: String {
         switch self {
@@ -3280,6 +3403,8 @@ public enum NodeError: Error, Sendable {
             "Invalid path: \(message)"
         case let .serviceNotFound(message):
             "Service not found: \(message)"
+        case let .timeout(message):
+            "Timeout: \(message)"
         }
     }
 }

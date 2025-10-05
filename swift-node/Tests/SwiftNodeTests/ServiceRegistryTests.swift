@@ -6,8 +6,7 @@ import XCTest
 
 /// AtomicBoolean implementation to match Rust AtomicBool behavior
 /// Used for callback execution tracking in tests
-final class AtomicBoolean {
-    private let lock = NSLock()
+actor AtomicBoolean {
     private var _value: Bool
 
     init(initialValue: Bool) {
@@ -15,14 +14,10 @@ final class AtomicBoolean {
     }
 
     var value: Bool {
-        lock.lock()
-        defer { lock.unlock() }
         return _value
     }
 
     func setValue(_ newValue: Bool) {
-        lock.lock()
-        defer { lock.unlock() }
         _value = newValue
     }
 }
@@ -312,7 +307,9 @@ final class ServiceRegistryTests: XCTestCase {
             // Create a callback that would be invoked when an event is published (matching Rust)
             let callback: EventHandler = { _, _ in
                 // Set the flag to true when called (matching Rust)
-                wasCalled.setValue(true)
+                Task {
+                    await wasCalled.setValue(true)
+                }
             }
 
             // Subscribe to the topic using the correct method (matching Rust)

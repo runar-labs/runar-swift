@@ -110,7 +110,7 @@ IF youn are running a test and the logs you expect are not displaying, check the
 
 ## WORKFLOW
 
-1. Analyze full requirements and cmopare with rust codebase ( don not make assumptions always check the rust source code to confirm the requiremnts for a swift feature)
+1. Analyze full requirements and cmopare with rust codebase ( don not make assumptions always check the rust source code to confirm the requiremnts for a swift feature)Some unused variable warnings (non-critical)
 2. Complete all dependencies first
 3. Implement complete feature 
 4. Double check the rust code to make sure the swift implementation aligns 100% with rust

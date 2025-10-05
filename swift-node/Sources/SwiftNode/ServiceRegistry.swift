@@ -656,11 +656,9 @@ public final class ServiceRegistry: NodeDelegate {
 
         for serviceEntry in services {
             let context = LifecycleContext(
-                networkId: "default",
-                servicePath: serviceEntry.serviceTopic.asString(),
-                config: nil,
-                logger: logger,
-                nodeDelegate: self
+                topicPath: serviceEntry.serviceTopic,
+                nodeDelegate: self,
+                logger: logger
             )
 
             do {
