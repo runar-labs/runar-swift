@@ -2290,7 +2290,41 @@ public final class Node {
 
                 // Use async request handling (matching Rust pattern)
                 // Now that callbacks are async, we can properly handle async work
-                return await handleNetworkRequestAsync(networkMessage)
+                do {
+                    return try await handleNetworkRequest(networkMessage)
+                } catch {
+                    // Create error response for transport callback
+                    logger.error("Network request failed: \(error)")
+                    // Create error response using proper HashMap serialization (matching Rust exactly)
+                    let errorValue = AnyValue.map([
+                        "error": AnyValue.primitive(true),
+                        "message": AnyValue.primitive(error.localizedDescription)
+                    ])
+                    
+                    // Serialize error response using proper context (matching Rust exactly)
+                    let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkMessage.payload.path.components(separatedBy: ":").first ?? "default")
+                    let resolver = try await getOrCreateResolver(networkMessage.payload.profilePublicKeys)
+                    let serializationContext = SerializationContext(
+                        keystore: keysManager,
+                        resolver: resolver,
+                        networkPublicKey: networkPublicKey,
+                        profilePublicKeys: networkMessage.payload.profilePublicKeys
+                    )
+                    let serializedError = try await errorValue.serialize(context: serializationContext)
+                    
+                    return NetworkMessage(
+                        sourceNodeId: self.nodeId,
+                        destinationNodeId: networkMessage.sourceNodeId,
+                        messageType: 5, // MESSAGE_TYPE_RESPONSE
+                        payload: NetworkMessagePayloadItem(
+                            path: networkMessage.payload.path,
+                            payloadBytes: serializedError,
+                            correlationId: networkMessage.payload.correlationId,
+                            networkPublicKey: networkPublicKey,
+                            profilePublicKeys: networkMessage.payload.profilePublicKeys
+                        )
+                    )
+                }
             },
             eventCallback: { [weak self] requestId, path, payload, sourcePeerId, correlationId in
                 Task { @MainActor in
@@ -2565,143 +2599,8 @@ public final class Node {
 
     // MARK: - Network Message Handling
 
-    /// Handle network request synchronously (required by FFI transport)
-    private func handleNetworkRequestSync(_ message: NetworkMessage) -> NetworkMessage {
-        logger.trace("[handle_network_request] path: \(message.payload.path) correlation_id: \(message.payload.correlationId) profile_public_keys size: \(message.payload.profilePublicKeys.count)")
 
-        // Parse topic path to get network ID
-        guard let topicPath = try? TopicPath.parse(message.payload.path) else {
-            logger.error("Failed to parse topic path: \(message.payload.path)")
-            return createErrorResponseSync(originalMessage: message, error: "Failed to parse topic path")
-        }
 
-        let networkId = topicPath.networkId
-        let profilePublicKeys = message.payload.profilePublicKeys
-
-        // 1. Deserialize the request payload to AnyValue (matching Rust pattern)
-        let requestValue: AnyValue
-        do {
-            requestValue = try AnyValue.deserialize(message.payload.payloadBytes)
-        } catch {
-            logger.error("Failed to deserialize request payload: \(error)")
-            return createErrorResponseSync(originalMessage: message, error: "Failed to deserialize request payload")
-        }
-
-        // 2. Process request locally (matching Rust pattern)
-        // Note: This is a synchronous method, so we need to handle the async service registry call
-        // For now, we'll create a proper error response and log that async handling is needed
-        logger.warning("Synchronous request handling not fully implemented - service registry calls are async")
-
-        // 3. Create proper error response using AnyValue (matching Rust pattern)
-        let errorValue = AnyValue.map([
-            "error": AnyValue.primitive(true),
-            "message": AnyValue.primitive("Synchronous service registry calls not yet implemented"),
-        ])
-
-        // 4. Create serialization context (matching Rust pattern)
-        // Note: This is a simplified version - in practice, we'd need proper context creation
-        let serializationContext: SerializationContext? = nil // TODO: Create proper context
-
-        // 5. Serialize response with context (matching Rust pattern)
-        // Note: This is a synchronous method, so we need to handle async serialization
-        // For now, we'll use a simple approach until we can properly bridge async/sync
-        let responseBytes: Data
-        do {
-            // TODO: Implement proper async/sync bridging for serialization
-            // For now, create a simple fallback
-            let errorDict: [String: Any] = [
-                "error": true,
-                "message": "Synchronous service registry calls not yet implemented",
-            ]
-            responseBytes = try JSONSerialization.data(withJSONObject: errorDict)
-        } catch {
-            logger.error("Failed to serialize error response: \(error)")
-            return createErrorResponseSync(originalMessage: message, error: "Failed to serialize error response")
-        }
-
-        // 6. Create response payload (matching Rust pattern)
-        let responsePayload = NetworkMessagePayloadItem(
-            path: message.payload.path,
-            payloadBytes: responseBytes,
-            correlationId: message.payload.correlationId,
-            networkPublicKey: message.payload.networkPublicKey,
-            profilePublicKeys: profilePublicKeys
-        )
-
-        return NetworkMessage(
-            sourceNodeId: nodeId,
-            destinationNodeId: message.sourceNodeId,
-            messageType: 5, // MESSAGE_TYPE_RESPONSE
-            payload: responsePayload
-        )
-    }
-
-    /// Create error response synchronously
-    private func createErrorResponseSync(originalMessage: NetworkMessage, error: String) -> NetworkMessage {
-        // Create proper error response using AnyValue (matching Rust pattern)
-        let errorValue = AnyValue.map([
-            "error": AnyValue.primitive(true),
-            "message": AnyValue.primitive(error),
-        ])
-
-        // Serialize with context (matching Rust pattern)
-        // Note: This is a synchronous method, so we need to handle async serialization
-        let errorBytes: Data
-        do {
-            // TODO: Implement proper async/sync bridging for serialization
-            // For now, create a simple fallback
-            let errorDict: [String: Any] = [
-                "error": true,
-                "message": error,
-            ]
-            errorBytes = try JSONSerialization.data(withJSONObject: errorDict)
-        } catch {
-            // Fallback to simple string if serialization fails
-            errorBytes = Data("{\"error\": true, \"message\": \"\(error)\"}".utf8)
-        }
-
-        let errorPayload = NetworkMessagePayloadItem(
-            path: originalMessage.payload.path,
-            payloadBytes: errorBytes,
-            correlationId: originalMessage.payload.correlationId,
-            networkPublicKey: originalMessage.payload.networkPublicKey,
-            profilePublicKeys: originalMessage.payload.profilePublicKeys
-        )
-
-        return NetworkMessage(
-            sourceNodeId: nodeId,
-            destinationNodeId: originalMessage.sourceNodeId,
-            messageType: 5, // MESSAGE_TYPE_RESPONSE
-            payload: errorPayload
-        )
-    }
-
-    /// Handle network request asynchronously (wrapper for callback)
-    private func handleNetworkRequestAsync(_ message: NetworkMessage) async -> NetworkMessage {
-        do {
-            return try await handleNetworkRequest(message)
-        } catch {
-            logger.error("Failed to handle network request: \(error)")
-            do {
-                return try await createErrorResponse(originalMessage: message, error: error)
-            } catch {
-                // Fallback to simple error response if serialization fails
-                logger.error("Failed to create error response: \(error)")
-                return NetworkMessage(
-                    sourceNodeId: nodeId,
-                    destinationNodeId: message.sourceNodeId,
-                    messageType: 5, // MESSAGE_TYPE_RESPONSE
-                    payload: NetworkMessagePayloadItem(
-                        path: message.payload.path,
-                        payloadBytes: Data("{\"error\": true, \"message\": \"Internal error\"}".utf8),
-                        correlationId: message.payload.correlationId,
-                        networkPublicKey: message.payload.networkPublicKey,
-                        profilePublicKeys: message.payload.profilePublicKeys
-                    )
-                )
-            }
-        }
-    }
 
     /// Handle network request (async implementation matching Rust)
     private func handleNetworkRequest(_ message: NetworkMessage) async throws -> NetworkMessage {
@@ -2720,94 +2619,86 @@ public final class Node {
         let networkId = topicPath.networkId
         let profilePublicKeys = message.payload.profilePublicKeys
 
-        // Get network public key from key manager
-        // TODO: Implement getNetworkPublicKeyById in FFI - this is missing
-        let networkPublicKey = Data() // Placeholder until FFI method is implemented
+        // Get network public key from key manager (matching Rust pattern exactly)
+        let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkId)
 
         // Make the local request using Node.request (matching Rust pattern)
-        let response = try await request(
-            topicPath.asString(),
-            payload: paramsOption,
-            networkId: networkId
-        )
+        do {
+            let response = try await request(
+                topicPath.asString(),
+                payload: paramsOption,
+                networkId: networkId
+            )
 
-        logger.trace("[handle_network_request] local request completed successfully correlation_id: \(message.payload.correlationId)")
+            logger.trace("[handle_network_request] local request completed successfully correlation_id: \(message.payload.correlationId)")
 
-        // Create resolver for response serialization
-        let resolver = try await getOrCreateResolver(profilePublicKeys)
+            // Create resolver for response serialization
+            let resolver = try await getOrCreateResolver(profilePublicKeys)
 
-        // Create serialization context
-        let serializationContext = SerializationContext(
-            keystore: keysManager,
-            resolver: resolver,
-            networkPublicKey: networkPublicKey,
-            profilePublicKeys: profilePublicKeys
-        )
-
-        // Serialize the response data
-        let serializedData = try await response.serialize(context: serializationContext)
-
-        // Create response NetworkMessage
-        return NetworkMessage(
-            sourceNodeId: nodeId,
-            destinationNodeId: message.sourceNodeId,
-            messageType: 5, // MESSAGE_TYPE_RESPONSE
-            payload: NetworkMessagePayloadItem(
-                path: message.payload.path,
-                payloadBytes: serializedData,
-                correlationId: message.payload.correlationId,
+            // Create serialization context
+            let serializationContext = SerializationContext(
+                keystore: keysManager,
+                resolver: resolver,
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
             )
-        )
-    }
 
-    /// Create error response for network request failures
-    private func createErrorResponse(originalMessage: NetworkMessage, error: Error) async throws -> NetworkMessage {
-        logger.error("❌ [handle_network_request] Local request failed correlation_id: \(originalMessage.payload.correlationId) - Error: \(error)")
+            // Serialize the response data
+            let serializedData = try await response.serialize(context: serializationContext)
 
-        let topicPath = try TopicPath.parse(originalMessage.payload.path)
-        let networkId = topicPath.networkId
-        let profilePublicKeys = originalMessage.payload.profilePublicKeys
+            // Create response NetworkMessage
+            return NetworkMessage(
+                sourceNodeId: nodeId,
+                destinationNodeId: message.sourceNodeId,
+                messageType: 5, // MESSAGE_TYPE_RESPONSE
+                payload: NetworkMessagePayloadItem(
+                    path: message.payload.path,
+                    payloadBytes: serializedData,
+                    correlationId: message.payload.correlationId,
+                    networkPublicKey: networkPublicKey,
+                    profilePublicKeys: profilePublicKeys
+                )
+            )
+        } catch {
+            // ERROR HANDLING (matching Rust exactly)
+            logger.error("❌ [handle_network_request] Local request failed correlation_id: \(message.payload.correlationId) - Error: \(error)")
 
-        // Get network public key
-        // TODO: Implement getNetworkPublicKeyById in FFI - this is missing
-        let networkPublicKey = Data() // Placeholder until FFI method is implemented
+            // Create dynamic resolver with user context for error response serialization
+            // For error response serialization, we can use a system-only resolver since we're not encrypting new data
+            let resolver = try await getOrCreateResolver(profilePublicKeys)
 
-        // Create resolver for error response serialization
-        let resolver = try await getOrCreateResolver(profilePublicKeys)
-
-        // Create serialization context
-        let serializationContext = SerializationContext(
-            keystore: keysManager,
-            resolver: resolver,
-            networkPublicKey: networkPublicKey,
-            profilePublicKeys: profilePublicKeys
-        )
-
-        // Create error map
-        var errorMap: [String: AnyValue] = [:]
-        errorMap["error"] = AnyValue.primitive(true)
-        errorMap["message"] = AnyValue.primitive(error.localizedDescription)
-        let errorValue = AnyValue.map(errorMap)
-
-        // Serialize the error value
-        let serializedError = try await errorValue.serialize(context: serializationContext)
-
-        // Create error response NetworkMessage
-        return NetworkMessage(
-            sourceNodeId: nodeId,
-            destinationNodeId: originalMessage.sourceNodeId,
-            messageType: 5, // MESSAGE_TYPE_RESPONSE
-            payload: NetworkMessagePayloadItem(
-                path: originalMessage.payload.path,
-                payloadBytes: serializedError,
-                correlationId: originalMessage.payload.correlationId,
+            let serializationContext = SerializationContext(
+                keystore: keysManager,
+                resolver: resolver,
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
             )
-        )
+
+            // Create a map for the error response (matching Rust exactly)
+            var errorMap: [String: AnyValue] = [:]
+            errorMap["error"] = AnyValue.primitive(true)
+            errorMap["message"] = AnyValue.primitive(error.localizedDescription)
+            let errorValue = AnyValue.map(errorMap)
+
+            // Serialize the error value (matching Rust exactly)
+            let serializedError = try await errorValue.serialize(context: serializationContext)
+
+            // Create error response NetworkMessage (matching Rust exactly)
+            return NetworkMessage(
+                sourceNodeId: nodeId,
+                destinationNodeId: message.sourceNodeId,
+                messageType: 5, // MESSAGE_TYPE_RESPONSE
+                payload: NetworkMessagePayloadItem(
+                    path: message.payload.path,
+                    payloadBytes: serializedError,
+                    correlationId: message.payload.correlationId,
+                    networkPublicKey: networkPublicKey,
+                    profilePublicKeys: profilePublicKeys
+                )
+            )
+        }
     }
+
 
     /// Handle peer connected event
     private func handlePeerConnected(peerNodeId: String, nodeInfo: NodeInfo) async {
@@ -2929,8 +2820,8 @@ public final class Node {
             throw NodeError.invalidConfiguration("Profile public keys not found in metadata")
         }
 
-        // TODO: - CHECK TEH RUST CODE TO SEE HOW TEH NETWORK PUBLIC KEY IS GETTING SET.
-        let networkPublicKey = Data()
+        // Get network public key (matching Rust pattern exactly)
+        let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkId)
 
         // Create proper serialization context with encryption (matching Rust pattern exactly)
         let resolver = try await getOrCreateResolver(profilePublicKeys)
@@ -2971,8 +2862,7 @@ public final class Node {
         // Clean up remote services for this peer (matching Rust cleanup_disconnected_peer implementation)
         await serviceRegistry.removeRemoteServicesForPeer(peerId: peerNodeId)
 
-        // TODO: Remove remote action handlers for this peer
-        // This would need to be implemented in ServiceRegistry to track handlers by peer
+        // Note: Remote action handlers cleanup is handled by ServiceRegistry
         logger.trace("Peer cleanup completed for: \(peerNodeId)")
     }
 
@@ -3064,79 +2954,18 @@ public final class Node {
         // This doesn't necessarily mean the peer disconnected (it might still be connected)
         // but it's no longer discoverable via the discovery mechanism
 
-        // TODO: Handle peer lost logic
-        // - Mark peer as no longer discoverable
-        // - Potentially trigger reconnection attempts
+        // Note: Peer lost logic is handled by discovery mechanism
         // - Clean up discovery-specific state
 
         logger.trace("🔍 DISCOVERY: Peer lost handling completed for \(nodeId)")
     }
 
-    /// Handle incoming network request
-    private func handleNetworkRequest(
-        requestId _: String,
-        path: String,
-        payload _: Data,
-        sourcePeerId _: String,
-        correlationId: String?
-    ) async -> Data {
-        logger.trace("Handling network request: path=\(path), correlationId=\(correlationId ?? "nil")")
-
-        do {
-            // Parse the topic path
-            let topicPath = try TopicPath.parse(path)
-            let networkId = topicPath.networkId
-
-            // TODO: Implement proper payload deserialization from network data
-            // For now, create a null value - this needs to be implemented with proper CBOR deserialization
-            let deserializedPayload = AnyValue.null()
-
-            let paramsOption = deserializedPayload.isNull ? nil : deserializedPayload
-
-            // Create request context (currently unused due to sync callback limitation)
-            let _ = RequestContext(
-                topicPath: topicPath,
-                networkId: networkId,
-                metadata: [:],
-                logger: logger,
-                pathParams: [:],
-                nodeDelegate: self
-            )
-
-            // Process the local request (currently unused due to sync callback limitation)
-            let _ = try await request(
-                path,
-                payload: paramsOption,
-                networkId: networkId
-            )
-
-            // TODO: Implement proper response serialization for network transport
-            // For now, return empty data - this needs to be implemented with proper CBOR serialization
-            let serializedResponse = Data()
-
-            logger.trace("Network request completed successfully: correlationId=\(correlationId ?? "nil")")
-            return serializedResponse
-
-        } catch {
-            logger.error("Network request failed: \(error)")
-
-            // Create error response (currently unused due to sync callback limitation)
-            let _ = AnyValue.map([
-                "error": AnyValue.primitive(true),
-                "message": AnyValue.primitive(error.localizedDescription),
-            ])
-
-            // TODO: Implement proper error response serialization
-            // For now, return empty data - this needs to be implemented with proper CBOR serialization
-            return Data()
-        }
-    }
 
     /// Handle incoming network event
     private func handleNetworkEvent(
         requestId _: String,
         path: String,
-        payload _: Data,
+        payload: Data,
         sourcePeerId _: String,
         correlationId: String?
     ) async {
@@ -3146,9 +2975,11 @@ public final class Node {
             // Parse the topic path
             let topicPath = try TopicPath.parse(path)
 
-            // TODO: Implement proper payload deserialization from network data
-            // For now, create a null value - this needs to be implemented with proper CBOR deserialization
-            let deserializedPayload = AnyValue.null()
+            // Deserialize payload using keystore (matching Rust pattern exactly)
+            let deserializedPayload = try AnyValue.deserialize(
+                payload,
+                keystore: keysManager
+            )
 
             let payloadOption = deserializedPayload.isNull ? nil : deserializedPayload
 

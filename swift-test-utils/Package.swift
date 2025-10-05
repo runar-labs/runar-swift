@@ -4,7 +4,8 @@ import PackageDescription
 let package = Package(
     name: "swift-test-utils",
     platforms: [
-        .iOS(.v15), .macOS(.v13),
+        .macOS(.v13),
+        .iOS(.v16),
     ],
     products: [
         .library(name: "RunarTestUtils", targets: ["RunarTestUtils"]),

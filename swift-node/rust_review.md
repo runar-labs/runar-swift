@@ -8,3 +8,9 @@ Do a line by line detailed analisys of SeiftNoden implementation swift-node/Sour
 Prodiuce a full detailed report that we can use to fix all issues an gaps in the Swift IMPL - THe only accceptable differences (which u dont need to add to your report) are langauge differences.
 
 API and Fielod names must match, bust rust use name_sub_name format and seift uses nameSubName format. that is fine. but the name but still match. Argument order must match.. everything.
+
+LANGUAGE DIFFERENCES (ACCEPTABLE):
+Rust: Arc::new(NodeKeyManagerWrapper(...)) vs Swift: keysManager directly ✅
+Rust: HashMap::new() vs Swift: [:] dictionary literal ✅
+Rust: ArcValue::new_primitive() vs Swift: AnyValue.primitive() ✅
+Rust: response.serialize(Some(&context)) vs Swift: response.serialize(context: context) ✅

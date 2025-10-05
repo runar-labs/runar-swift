@@ -5,7 +5,7 @@ let package = Package(
     name: "swift-test-vectors",
     platforms: [
         .macOS(.v13),
-        .iOS(.v15),
+        .iOS(.v16),
     ],
     dependencies: [
         .package(name: "swift-serializer", path: "../swift-serializer"),

@@ -141,10 +141,11 @@ public final class LoggerConfigManager: Sendable {
 
 // MARK: - Logger Implementation
 
+@available(macOS 13.0, iOS 16.0, *)
 public final class RunarLogger: Sendable {
     private let parent: RunarLogger?
     private let component: Component
-    private let context: String?
+    private let contextLock: OSAllocatedUnfairLock<String?>
     private let explicitConfig: LoggerConfig?
 
     // MARK: - Initialization
@@ -153,11 +154,13 @@ public final class RunarLogger: Sendable {
         parent: RunarLogger? = nil,
         component: Component,
         context: String? = nil,
-        config: LoggerConfig? = nil
+        config: LoggerConfig? = nil,
+        sharedContextLock: OSAllocatedUnfairLock<String?>? = nil
     ) {
         self.parent = parent
         self.component = component
-        self.context = context
+        // Use shared lock if provided (for child loggers), otherwise create new one
+        self.contextLock = sharedContextLock ?? OSAllocatedUnfairLock(initialState: context)
         explicitConfig = config
     }
 
@@ -168,7 +171,21 @@ public final class RunarLogger: Sendable {
     }
 
     public func child(component: Component, context: String? = nil) -> RunarLogger {
-        RunarLogger(parent: self, component: component, context: context, config: self.explicitConfig)
+        RunarLogger(
+            parent: self,
+            component: component,
+            context: context,
+            config: self.explicitConfig,
+            sharedContextLock: self.contextLock
+        )
+    }
+
+    // MARK: - Context Management
+
+    public func setContext(_ newContext: String?) {
+        contextLock.withLock { currentContext in
+            currentContext = newContext
+        }
     }
 
     // MARK: - Logging Methods with @autoclosure
@@ -302,7 +319,11 @@ public final class RunarLogger: Sendable {
             if logger.component.shouldShowInHierarchy {
                 components.insert(logger.component.displayName, at: 0)
             }
-            if let context = logger.context {
+            // Safely read context from lock
+            let context = logger.contextLock.withLock { currentContext in
+                return currentContext
+            }
+            if let context = context {
                 contexts.insert(context, at: 0)
             }
             current = logger.parent

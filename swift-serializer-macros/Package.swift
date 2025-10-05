@@ -5,10 +5,8 @@ import PackageDescription
 let package = Package(
     name: "RunarSerializerMacros",
     platforms: [
-        .iOS(.v15),
         .macOS(.v13),
-        .tvOS(.v15),
-        .watchOS(.v8),
+        .iOS(.v16),
     ],
     products: [
         .library(

@@ -4,8 +4,8 @@ import PackageDescription
 let package = Package(
     name: "swift-common",
     platforms: [
-        .macOS(.v12),
-        .iOS(.v15),
+        .macOS(.v13),
+        .iOS(.v16),
     ],
     products: [
         .library(

@@ -4,7 +4,8 @@ import PackageDescription
 let package = Package(
     name: "swift-ffi",
     platforms: [
-        .macOS(.v12)
+        .macOS(.v13),
+        .iOS(.v16),
     ],
     products: [
         .library(name: "SwiftFFI", targets: ["SwiftFFI"]),
