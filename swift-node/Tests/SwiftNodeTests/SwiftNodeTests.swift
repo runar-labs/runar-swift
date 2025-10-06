@@ -88,9 +88,9 @@ final class SwiftNodeTests: XCTestCase {
         try await node.start()
         let res = try await node.request("$registry/services/list", payload: nil as AnyValue?, networkId: "net")
         let listArray = try await res.asType() as [AnyValue]
-        var list: [SwiftNode.ServiceMetadata] = []
+        var list: [ServiceMetadata] = []
         for av in listArray {
-            let service = try await av.asType() as SwiftNode.ServiceMetadata
+            let service = try await av.asType() as ServiceMetadata
             list.append(service)
         }
         XCTAssertTrue(list.contains(where: { $0.servicePath == "svc" && $0.name == "svc" }))

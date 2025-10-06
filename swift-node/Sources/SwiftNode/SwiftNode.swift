@@ -4,201 +4,13 @@ import SwiftCBOR
 import SwiftCommon
 import SwiftFFI
 
-// MARK: - Missing Rust Schema Types
+// MARK: - Type Aliases for SwiftFFI Types
 
-/// Action metadata structure matching Rust ActionMetadata
-public struct ActionMetadata: Sendable, Codable, Equatable {
-    public let name: String
-    public let description: String
-    public let inputSchema: FieldSchema?
-    public let outputSchema: FieldSchema?
-
-    public init(name: String, description: String, inputSchema: FieldSchema? = nil, outputSchema: FieldSchema? = nil) {
-        self.name = name
-        self.description = description
-        self.inputSchema = inputSchema
-        self.outputSchema = outputSchema
-    }
-}
-
-/// Service metadata structure matching Rust ServiceMetadata
-public struct ServiceMetadata: Sendable, Codable {
-    public let networkId: String
-    public let servicePath: String
-    public let name: String
-    public let version: String
-    public let description: String
-    public let actions: [ActionMetadata]
-    public let registrationTime: UInt64
-    public let lastStartTime: UInt64?
-
-    public init(
-        networkId: String,
-        servicePath: String,
-        name: String,
-        version: String,
-        description: String,
-        actions: [ActionMetadata] = [],
-        registrationTime: UInt64,
-        lastStartTime: UInt64? = nil
-    ) {
-        self.networkId = networkId
-        self.servicePath = servicePath
-        self.name = name
-        self.version = version
-        self.description = description
-        self.actions = actions
-        self.registrationTime = registrationTime
-        self.lastStartTime = lastStartTime
-    }
-}
-
-/// Schema data type enum matching Rust SchemaDataType
-public enum SchemaDataType: Sendable, Codable, Equatable {
-    case string
-    case int32
-    case int64
-    case float
-    case double
-    case boolean
-    case timestamp
-    case binary
-    case object
-    case array
-    case reference(String)
-    case union([SchemaDataType])
-    case any
-
-    /// Convert to FFI SchemaDataType
-    public func toFFIDataType() -> SwiftFFI.SchemaDataType {
-        switch self {
-        case .string:
-            .string
-        case .int32:
-            .int32
-        case .int64:
-            .int64
-        case .float:
-            .float32
-        case .double:
-            .float64
-        case .boolean:
-            .boolean
-        case .binary, .timestamp:
-            .bytes
-        case .array:
-            .array
-        case .object:
-            .map
-        case .reference, .union, .any:
-            // For complex types, default to map
-            .map
-        }
-    }
-}
-
-// MARK: - SwiftFFI to SwiftNode Schema Conversion
-
-public extension SwiftFFI.FieldSchema {
-    func toSwiftSchema() -> FieldSchema? {
-        FieldSchema.primitive(
-            name: "field", // Default name since FFI doesn't have name
-            dataType: dataType.toSwiftDataType(),
-            description: description,
-            defaultValue: nil
-        )
-    }
-}
-
-public extension SwiftFFI.SchemaDataType {
-    func toSwiftDataType() -> SchemaDataType {
-        switch self {
-        case .string:
-            .string
-        case .int32:
-            .int32
-        case .int64:
-            .int64
-        case .float32:
-            .float
-        case .float64:
-            .double
-        case .boolean:
-            .boolean
-        case .bytes:
-            .binary
-        case .array:
-            .array
-        case .map:
-            .object
-        }
-    }
-}
-
-/// Field schema structure matching Rust FieldSchema
-public indirect enum FieldSchema: Sendable, Codable, Equatable {
-    case primitive(
-        name: String,
-        dataType: SchemaDataType,
-        description: String? = nil,
-        nullable: Bool? = nil,
-        defaultValue: String? = nil
-    )
-    case object(
-        name: String,
-        properties: [String: FieldSchema],
-        description: String? = nil,
-        nullable: Bool? = nil,
-        defaultValue: String? = nil
-    )
-    case array(
-        name: String,
-        items: FieldSchema,
-        description: String? = nil,
-        nullable: Bool? = nil,
-        defaultValue: String? = nil
-    )
-
-    public var name: String {
-        switch self {
-        case let .primitive(name, _, _, _, _),
-             let .object(name, _, _, _, _),
-             let .array(name, _, _, _, _):
-            name
-        }
-    }
-
-    /// Convert to FFI FieldSchema
-    public func toFFISchema() -> SwiftFFI.FieldSchema? {
-        switch self {
-        case let .primitive(_, dataType, description, _, _):
-            SwiftFFI.FieldSchema(
-                dataType: dataType.toFFIDataType(),
-                required: true, // Primitive fields are required by default
-                description: description
-            )
-        case .object, .array:
-            // For complex types, we'll use a generic Map type for now
-            // This could be enhanced to handle nested schemas properly
-            SwiftFFI.FieldSchema(
-                dataType: .map,
-                required: true,
-                description: "Complex schema type"
-            )
-        }
-    }
-
-    public var dataType: SchemaDataType {
-        switch self {
-        case let .primitive(_, dataType, _, _, _):
-            dataType
-        case .object:
-            .object
-        case .array:
-            .array
-        }
-    }
-}
+/// Use SwiftFFI types directly - no duplication
+public typealias ActionMetadata = SwiftFFI.ActionMetadata
+public typealias ServiceMetadata = SwiftFFI.ServiceMetadata
+public typealias FieldSchema = SwiftFFI.FieldSchema
+public typealias SchemaDataType = SwiftFFI.SchemaDataType
 
 // MARK: - FFI Integration
 
@@ -2297,7 +2109,7 @@ public final class Node {
                             let ffiMetadata = nodeInfo.nodeMetadata
                             self?.logger.trace("🔍 HANDSHAKE: Converting FFI metadata: \(ffiMetadata.services.count) services, \(ffiMetadata.subscriptions.count) subscriptions")
 
-                            // Convert SwiftFFI.ServiceMetadata to SwiftNode.ServiceMetadata
+                            // Use SwiftFFI.ServiceMetadata directly (no conversion needed)
                             let services = ffiMetadata.services.map { ffiService in
                                 ServiceMetadata(
                                     networkId: ffiService.networkId,
@@ -2309,8 +2121,8 @@ public final class Node {
                                         ActionMetadata(
                                             name: ffiAction.name,
                                             description: ffiAction.description,
-                                            inputSchema: ffiAction.inputSchema?.toSwiftSchema(),
-                                            outputSchema: ffiAction.outputSchema?.toSwiftSchema()
+                                            inputSchema: ffiAction.inputSchema,
+                                            outputSchema: ffiAction.outputSchema
                                         )
                                     },
                                     registrationTime: ffiService.registrationTime,
@@ -2646,25 +2458,7 @@ public final class Node {
             networkIds: nodeInfo.networkIds,
             addresses: nodeInfo.addresses,
             nodeMetadata: SwiftFFI.NodeMetadata(
-                services: Array(serviceMetadata.values).map { service in
-                    SwiftFFI.ServiceMetadata(
-                        networkId: service.networkId,
-                        servicePath: service.servicePath,
-                        name: service.name,
-                        version: service.version,
-                        description: service.description,
-                        actions: service.actions.map { action in
-                            SwiftFFI.ActionMetadata(
-                                name: action.name,
-                                description: action.description,
-                                inputSchema: action.inputSchema?.toFFISchema(),
-                                outputSchema: action.outputSchema?.toFFISchema()
-                            )
-                        },
-                        registrationTime: service.registrationTime,
-                        lastStartTime: service.lastStartTime
-                    )
-                },
+                services: Array(serviceMetadata.values),
                 subscriptions: nodeInfo.nodeMetadata.subscriptions.map { subscriptionPath in
                     SwiftFFI.SubscriptionMetadata(path: subscriptionPath)
                 }

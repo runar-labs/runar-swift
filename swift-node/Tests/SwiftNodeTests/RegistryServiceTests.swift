@@ -59,9 +59,9 @@ final class RegistryServiceTests: XCTestCase {
 
             // Convert AnyValue list into [ServiceMetadata]
             let listArray = try await servicesAv.asType() as [AnyValue]
-            var services: [SwiftNode.ServiceMetadata] = []
+            var services: [ServiceMetadata] = []
             for av in listArray {
-                let service = try await av.asType() as SwiftNode.ServiceMetadata
+                let service = try await av.asType() as ServiceMetadata
                 services.append(service)
             }
 
@@ -128,9 +128,9 @@ final class RegistryServiceTests: XCTestCase {
             // Debug log available handlers using logger
             let listAv: AnyValue = try await node.request("$registry/services/list", payload: nil, networkId: nil)
             let listArray = try await listAv.asType() as [AnyValue]
-            var listResponse: [SwiftNode.ServiceMetadata] = []
+            var listResponse: [ServiceMetadata] = []
             for av in listArray {
-                let service = try await av.asType() as SwiftNode.ServiceMetadata
+                let service = try await av.asType() as ServiceMetadata
                 listResponse.append(service)
             }
             testLogger.debug("Available services: \(listResponse)")
@@ -138,7 +138,7 @@ final class RegistryServiceTests: XCTestCase {
             // Use the request method to query the registry service for the math service
             // Note: We should use the correct parameter path format
             let responseAv: AnyValue = try await node.request("$registry/services/math", payload: nil, networkId: nil)
-            let response: SwiftNode.ServiceMetadata = try await responseAv.asType() as SwiftNode.ServiceMetadata
+            let response: ServiceMetadata = try await responseAv.asType() as ServiceMetadata
             testLogger.debug("Service info response: \(response)")
 
             // Dump the complete response data for debugging

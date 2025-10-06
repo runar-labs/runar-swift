@@ -146,7 +146,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     }
     
     /// Get available action names (matches Rust get_available_actions)
-    private func getAvailableActions() async -> [String] {
+    public func getAvailableActions() async -> [String] {
         return await actions.keys()
     }
 
