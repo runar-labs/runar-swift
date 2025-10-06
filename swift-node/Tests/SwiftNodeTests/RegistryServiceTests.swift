@@ -21,7 +21,7 @@ final class RegistryServiceTests: XCTestCase {
 
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
-            level: .info,
+            level: .debug,
             includeTimestamp: true,
             includeComponent: true,
             includeContext: true

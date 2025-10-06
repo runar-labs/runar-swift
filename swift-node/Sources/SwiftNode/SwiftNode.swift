@@ -460,9 +460,9 @@ public struct LifecycleContext: Sendable {
         nodeDelegate: NodeDelegate,
         logger: RunarLogger
     ) {
-        self.networkId = topicPath.networkId
-        self.servicePath = topicPath.servicePath
-        self.config = nil
+        networkId = topicPath.networkId
+        servicePath = topicPath.servicePath
+        config = nil
         self.logger = logger
         self.nodeDelegate = nodeDelegate
     }
@@ -508,16 +508,15 @@ public struct RequestContext: Sendable {
         self.topicPath = topicPath
         self.metadata = metadata
         self.logger = logger
-        self.pathParams = [:]
+        pathParams = [:]
         self.nodeDelegate = nodeDelegate
     }
 
     /// Get the network ID from the topic path (matching Rust network_id method)
     public var networkId: String {
-        return topicPath.networkId
+        topicPath.networkId
     }
 }
-
 
 /// Protocol for node delegate
 public protocol NodeDelegate: AnyObject, Sendable {
@@ -793,7 +792,7 @@ public struct NodeConfig: Sendable {
         self.defaultNetworkId = defaultNetworkId
         networkIds = []
         networkConfig = nil
-        loggerConfig = LoggerConfigManager.shared.globalConfig 
+        loggerConfig = LoggerConfigManager.shared.globalConfig
         keyManager = nil // Must be set via withKeyManager()
         requestTimeoutMs = 30000 // 30 seconds
         self.labelResolverConfig = labelResolverConfig
@@ -955,46 +954,10 @@ extension NodeConfig: CustomStringConvertible {
 
 // MARK: - Node Information
 
-/// Node information structure containing metadata about a node
-public struct NodeInfo: Sendable, Codable {
-    /// Node's public key
-    public let nodePublicKey: Data
-    /// Network IDs this node participates in
-    public let networkIds: [String]
-    /// Network addresses for this node
-    public let addresses: [String]
-    /// Node metadata including services and subscriptions
-    public let nodeMetadata: NodeMetadata
-    /// Version number for this node info
-    public let version: Int64
-
-    public init(
-        nodePublicKey: Data,
-        networkIds: [String],
-        addresses: [String],
-        nodeMetadata: NodeMetadata,
-        version: Int64 = 0
-    ) {
-        self.nodePublicKey = nodePublicKey
-        self.networkIds = networkIds
-        self.addresses = addresses
-        self.nodeMetadata = nodeMetadata
-        self.version = version
-    }
-}
-
-/// Node metadata containing services and subscriptions
-public struct NodeMetadata: Sendable, Codable {
-    /// List of services provided by this node
-    public let services: [ServiceMetadata]
-    /// List of event subscriptions for this node
-    public let subscriptions: [String]
-
-    public init(services: [ServiceMetadata] = [], subscriptions: [String] = []) {
-        self.services = services
-        self.subscriptions = subscriptions
-    }
-}
+// NodeInfo and NodeMetadata are now type aliases to SwiftFFI types
+public typealias NodeInfo = SwiftFFI.NodeInfo
+public typealias NodeMetadata = SwiftFFI.NodeMetadata
+public typealias SubscriptionMetadata = SwiftFFI.SubscriptionMetadata
 
 // MARK: - Service Task
 
@@ -1742,10 +1705,10 @@ public final class Node {
         let localServices = await serviceRegistry.getLocalServices()
 
         // Separate internal vs non-internal services (matching Rust exactly)
-        let internalServices = localServices.filter { (_, serviceEntry) in
+        let internalServices = localServices.filter { _, serviceEntry in
             isInternalService(serviceEntry.service.path)
         }
-        let nonInternalServices = localServices.filter { (_, serviceEntry) in
+        let nonInternalServices = localServices.filter { _, serviceEntry in
             !isInternalService(serviceEntry.service.path)
         }
 
@@ -1773,10 +1736,10 @@ public final class Node {
             let nodeRef = self
             let serviceTopicRef = serviceTopic
             let serviceEntryRef = serviceEntry
-            
+
             let task = Task {
                 logger.info("Starting separate thread to start service: \(serviceTopicRef)")
-                
+
                 // Add timeout to the service start operation (matching Rust exactly)
                 do {
                     try await withTimeout(serviceStartTimeout) {
@@ -1787,34 +1750,33 @@ public final class Node {
                     logger.error("Service start timed out after 30 seconds: \(serviceTopicRef)")
                 }
             }
-            
+
             // Store the task for later waiting (matching Rust exactly: tasks_store.push((service_topic.clone(), task)))
             serviceTasks.append((serviceTopicRef, task))
         }
     }
 
-
     /// Helper function to check if a service is internal (matching Rust is_internal_service)
     private func isInternalService(_ servicePath: String) -> Bool {
-        return servicePath.hasPrefix("$")
+        servicePath.hasPrefix("$")
     }
 
     /// Helper function to implement timeout (matching Rust timeout pattern)
     private func withTimeout<T: Sendable>(_ timeout: TimeInterval, operation: @escaping @Sendable () async throws -> T) async throws -> T {
-        return try await withThrowingTaskGroup(of: T.self) { group in
+        try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {
                 try await operation()
             }
-            
+
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 throw NodeError.timeout("Operation timed out after \(timeout) seconds")
             }
-            
+
             guard let result = try await group.next() else {
                 throw NodeError.timeout("Operation timed out after \(timeout) seconds")
             }
-            
+
             group.cancelAll()
             return result
         }
@@ -1823,7 +1785,7 @@ public final class Node {
     /// Start networking components (matching Rust start_networking)
     private func startNetworking() async throws {
         try await initializeNetworkTransport()
-        
+
         // Update the transport with current NodeInfo after it's created
         // This ensures the transport has the latest NodeInfo with all services
         logger.trace("🔍 START: Updating transport with current NodeInfo after creation...")
@@ -1865,15 +1827,15 @@ public final class Node {
     /// Wait for all services to start (matching Rust wait_for_services_to_start exactly)
     public func waitForServicesToStart() async throws {
         logger.trace("Waiting for all services to start...")
-        
+
         // Wait for all service tasks to complete (matching Rust: for (_service_topic, task) in service_tasks.drain(..))
         for (_, task) in serviceTasks {
             await task.value
         }
-        
+
         // Clear the tasks after waiting (matching Rust: service_tasks.drain(..))
         serviceTasks.removeAll()
-        
+
         logger.trace("All services have started successfully")
     }
 
@@ -1931,14 +1893,14 @@ public final class Node {
             let pathParams = topicPath.extractParams(registrationPath.actionPath) ?? [:]
             logger.debug("Extracted path parameters: \(pathParams)")
 
-        // Create request context with extracted path parameters (matching Rust exactly)
-        var requestContext = RequestContext(
-            topicPath: topicPath,
-            nodeDelegate: self,
-            metadata: metadata,
-            logger: logger
-        )
-        requestContext.pathParams = pathParams
+            // Create request context with extracted path parameters (matching Rust exactly)
+            var requestContext = RequestContext(
+                topicPath: topicPath,
+                nodeDelegate: self,
+                metadata: metadata,
+                logger: logger
+            )
+            requestContext.pathParams = pathParams
 
             // Execute the handler and return result
             let response = try await handler(requestPayload, requestContext)
@@ -2034,16 +1996,11 @@ public final class Node {
             for providerConfig in networkConfig.discoveryProviders {
                 logger.trace("🔍 NETWORKING: Creating discovery provider: \(providerConfig)")
 
-                // Create discovery provider instance
+                // Create discovery provider instance (don't start yet)
                 let discoveryProvider = try await createDiscoveryProvider(
                     providerConfig: providerConfig,
                     discoveryOptions: discoveryOptions
                 )
-
-                // Start announcing on this provider
-                logger.trace("🔍 NETWORKING: Starting to announce on discovery provider")
-                try await discoveryProvider.start()
-                logger.trace("🔍 NETWORKING: Discovery provider started successfully")
 
                 discoveryProviders.append(discoveryProvider)
             }
@@ -2053,10 +2010,17 @@ public final class Node {
             logger.trace("🔍 NETWORKING: Stored \(discoveryProviders.count) discovery providers")
 
             // CRITICAL: Update local peer info for discovery announcements
-            // This must be done after discovery providers are created and started
+            // This must be done after discovery providers are created but BEFORE starting them
             logger.trace("🔍 DISCOVERY: About to update local peer info for discovery announcements")
             try await updateLocalPeerInfoForDiscoveryAfterTransportStart()
             logger.trace("🔍 DISCOVERY: Completed updating local peer info for discovery announcements")
+
+            // NOW start discovery providers with proper addresses
+            for discoveryProvider in discoveryProviders {
+                logger.trace("🔍 NETWORKING: Starting to announce on discovery provider")
+                try await discoveryProvider.start()
+                logger.trace("🔍 NETWORKING: Discovery provider started successfully")
+            }
 
             // Update the transport with the current NodeInfo (including any services added before networking started)
             logger.trace("🔍 NETWORKING: Updating transport with current NodeInfo...")
@@ -2079,7 +2043,6 @@ public final class Node {
 
         // Note: The transport will be created with transport-scoped NodeInfo storage
         // The initial NodeInfo will be set when the transport is created
-        
 
         // Create transport options matching Rust implementation
         let transportOptions = QuicTransportOptions(
@@ -2109,32 +2072,10 @@ public final class Node {
                             let ffiMetadata = nodeInfo.nodeMetadata
                             self?.logger.trace("🔍 HANDSHAKE: Converting FFI metadata: \(ffiMetadata.services.count) services, \(ffiMetadata.subscriptions.count) subscriptions")
 
-                            // Use SwiftFFI.ServiceMetadata directly (no conversion needed)
-                            let services = ffiMetadata.services.map { ffiService in
-                                ServiceMetadata(
-                                    networkId: ffiService.networkId,
-                                    servicePath: ffiService.servicePath,
-                                    name: ffiService.name,
-                                    version: ffiService.version,
-                                    description: ffiService.description,
-                                    actions: ffiService.actions.map { ffiAction in
-                                        ActionMetadata(
-                                            name: ffiAction.name,
-                                            description: ffiAction.description,
-                                            inputSchema: ffiAction.inputSchema,
-                                            outputSchema: ffiAction.outputSchema
-                                        )
-                                    },
-                                    registrationTime: ffiService.registrationTime,
-                                    lastStartTime: ffiService.lastStartTime
-                                )
-                            }
-
+                            // Use SwiftFFI types directly (no conversion needed since they're type aliases)
                             return NodeMetadata(
-                                services: services,
-                                subscriptions: ffiMetadata.subscriptions.map { ffiSubscription in
-                                    ffiSubscription.path
-                                }
+                                services: ffiMetadata.services,
+                                subscriptions: ffiMetadata.subscriptions
                             )
                         }(),
                         version: nodeInfo.version
@@ -2196,9 +2137,9 @@ public final class Node {
                         // Create error response using proper HashMap serialization (matching Rust exactly)
                         let errorValue = AnyValue.map([
                             "error": AnyValue.primitive(true),
-                            "message": AnyValue.primitive(error.localizedDescription)
+                            "message": AnyValue.primitive(error.localizedDescription),
                         ])
-                        
+
                         // Serialize error response using proper context (matching Rust exactly)
                         do {
                             let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkMessage.payload.path.components(separatedBy: ":").first ?? "default")
@@ -2210,18 +2151,18 @@ public final class Node {
                                 profilePublicKeys: networkMessage.payload.profilePublicKeys
                             )
                             _ = try await errorValue.serialize(context: serializationContext)
-                            
+
                             // Note: The transport callback doesn't return the response, it's handled internally
                         } catch {
                             logger.error("Failed to serialize error response: \(error)")
                         }
                     }
                 }
-                
+
                 // Return a default response since the callback is non-throwing
                 return NetworkMessage(
                     sourceNodeId: sourcePeerId,
-                    destinationNodeId: self.nodeId,
+                    destinationNodeId: nodeId,
                     messageType: 5, // MESSAGE_TYPE_RESPONSE
                     payload: NetworkMessagePayloadItem(
                         path: path,
@@ -2245,8 +2186,8 @@ public final class Node {
             }
         )
 
-        // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
-        let ffiNodeInfo = await convertToFFINodeInfo(currentNodeInfo)
+        // NodeInfo is now a type alias to SwiftFFI.NodeInfo, no conversion needed
+        let ffiNodeInfo = currentNodeInfo
 
         // Create the QuicTransport using the key manager
         let keyManager: FFIKeys = try config.getKeyManager()
@@ -2273,18 +2214,18 @@ public final class Node {
         guard let keyManager = config.getKeyManager() else {
             throw NodeError.missingKeyManager("Key manager not set in configuration")
         }
-        
+
         // Get node public key for PeerInfo
         let nodePublicKey = try await keyManager.getNodePublicKey()
         logger.trace("🔍 Node public key: \(nodePublicKey.count) bytes")
-        
+
         // Create PeerInfo for discovery (addresses will be set later when transport is available)
         let peerInfo = SwiftFFI.PeerInfo(
             publicKey: nodePublicKey,
             addresses: [] // Will be updated when transport address is available
         )
         logger.trace("🔍 Created PeerInfo for discovery")
-        
+
         // Create MulticastDiscovery using the new API
         logger.trace("🔍 Creating MulticastDiscovery with new API")
         let discoveryHandle = try await MulticastDiscovery.create(
@@ -2400,7 +2341,7 @@ public final class Node {
 
         // Get current subscriptions from the service registry (currently returns empty array)
         let currentSubscriptions = try? await serviceRegistry.getAllSubscriptions(includeInternalServices: false)
-        let subscriptionPaths = currentSubscriptions?.map(\.path) ?? []
+        let subscriptionMetadata = currentSubscriptions?.map { $0.subscriptionMetadata } ?? []
 
         // Get proper service metadata from the service registry
         let serviceMetadata = await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: false)
@@ -2412,12 +2353,12 @@ public final class Node {
             addresses: localNodeInfo.addresses,
             nodeMetadata: NodeMetadata(
                 services: Array(serviceMetadata.values),
-                subscriptions: subscriptionPaths
+                subscriptions: subscriptionMetadata
             ),
             version: localNodeInfo.version
         )
 
-        logger.trace("🔍 DEBUG: Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionPaths.count) subscriptions")
+        logger.trace("🔍 DEBUG: Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionMetadata.count) subscriptions")
 
         return updatedNodeInfo
     }
@@ -2434,8 +2375,8 @@ public final class Node {
             // Get current NodeInfo
             let currentNodeInfo = await getLocalNodeInfo()
 
-            // Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
-            let ffiNodeInfo = await convertToFFINodeInfo(currentNodeInfo)
+            // NodeInfo is now a type alias to SwiftFFI.NodeInfo, no conversion needed
+            let ffiNodeInfo = currentNodeInfo
 
             logger.trace("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
             logger.trace("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to transport")
@@ -2446,25 +2387,6 @@ public final class Node {
         } catch {
             logger.error("🔍 DEBUG: Failed to update transport with new NodeInfo: \(error)")
         }
-    }
-
-    /// Convert SwiftNode.NodeInfo to SwiftFFI.NodeInfo
-    private func convertToFFINodeInfo(_ nodeInfo: NodeInfo) async -> SwiftFFI.NodeInfo {
-        // Get proper service metadata from the service registry
-        let serviceMetadata = await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: false)
-
-        return SwiftFFI.NodeInfo(
-            nodePublicKey: nodeInfo.nodePublicKey,
-            networkIds: nodeInfo.networkIds,
-            addresses: nodeInfo.addresses,
-            nodeMetadata: SwiftFFI.NodeMetadata(
-                services: Array(serviceMetadata.values),
-                subscriptions: nodeInfo.nodeMetadata.subscriptions.map { subscriptionPath in
-                    SwiftFFI.SubscriptionMetadata(path: subscriptionPath)
-                }
-            ),
-            version: nodeInfo.version
-        )
     }
 
     /// Compact ID generation from public key
@@ -2478,16 +2400,13 @@ public final class Node {
     /// Matches Rust: get_or_create_resolver
     private func getOrCreateResolver(_ profilePublicKeys: [Data]) async throws -> LabelResolver {
         // Use the node's cache instance to get or create resolver (matches Rust exactly)
-        return try await labelResolverCache.getOrCreateResolver(
+        try await labelResolverCache.getOrCreateResolver(
             systemConfig: systemLabelConfig,
             userProfilePublicKeys: profilePublicKeys
         )
     }
 
     // MARK: - Network Message Handling
-
-
-
 
     /// Handle network request (async implementation matching Rust)
     private func handleNetworkRequest(_ message: NetworkMessage) async throws -> NetworkMessage {
@@ -2586,7 +2505,6 @@ public final class Node {
         }
     }
 
-
     /// Handle peer connected event
     private func handlePeerConnected(peerNodeId: String, nodeInfo: NodeInfo) async {
         logger.trace("🔍 HANDSHAKE: handlePeerConnected called for peer: \(peerNodeId)")
@@ -2618,7 +2536,7 @@ public final class Node {
                     peerNodeId: peerNodeId,
                     requestTimeoutMs: 5000 // Default timeout
                 )
-                
+
                 let rsDependencies = RemoteServiceDependencies(
                     networkTransport: networkTransport,
                     localNodeId: nodeId,
@@ -2627,9 +2545,9 @@ public final class Node {
                     labelResolverConfig: systemLabelConfig,
                     labelResolverCache: labelResolverCache
                 )
-                
+
                 let remoteService = RemoteService(config: rsConfig, dependencies: rsDependencies)
-                
+
                 // Add actions to the service
                 for action in service.actions {
                     try await remoteService.addAction(name: action.name, action: action)
@@ -2846,7 +2764,6 @@ public final class Node {
 
         logger.trace("🔍 DISCOVERY: Peer lost handling completed for \(nodeId)")
     }
-
 
     /// Handle incoming network event
     private func handleNetworkEvent(

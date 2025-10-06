@@ -8,15 +8,15 @@ public enum RemoteServiceError: Error, LocalizedError {
     case networkKeyResolutionFailed(String)
     case invalidServicePath(String)
     case serviceCreationFailed(String)
-    
+
     public var errorDescription: String? {
         switch self {
-        case .networkKeyResolutionFailed(let message):
-            return "Network key resolution failed: \(message)"
-        case .invalidServicePath(let path):
-            return "Invalid service path: \(path)"
-        case .serviceCreationFailed(let message):
-            return "Service creation failed: \(message)"
+        case let .networkKeyResolutionFailed(message):
+            "Network key resolution failed: \(message)"
+        case let .invalidServicePath(path):
+            "Invalid service path: \(path)"
+        case let .serviceCreationFailed(message):
+            "Service creation failed: \(message)"
         }
     }
 }
@@ -31,15 +31,15 @@ public actor RemoteLifecycleContext {
     public let logger: RunarLogger
     /// Registry delegate for registry operations
     private let registryDelegate: ServiceRegistry
-    
+
     /// Create a new RemoteLifecycleContext with the given topic path and logger
     public init(serviceTopic: TopicPath, logger: RunarLogger, registryDelegate: ServiceRegistry) {
-        self.networkId = serviceTopic.networkId
-        self.servicePath = serviceTopic.servicePath
+        networkId = serviceTopic.networkId
+        servicePath = serviceTopic.servicePath
         self.logger = logger
         self.registryDelegate = registryDelegate
     }
-    
+
     /// Remove a remote action handler (matches Rust remove_remote_action_handler)
     public func removeRemoteActionHandler(_ topicPath: TopicPath) async throws {
         try await registryDelegate.removeRemoteActionHandler(topicPath: topicPath)
@@ -112,29 +112,29 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
 
     /// Create a new RemoteService instance (matches Rust RemoteService::new exactly)
     public init(config: RemoteServiceConfig, dependencies: RemoteServiceDependencies) {
-        self.name = config.name
-        self.serviceTopic = config.serviceTopic
-        self.version = config.version
-        self.description = config.description
-        self.peerNodeId = config.peerNodeId
-        self.actions = ShardedConcurrentMap<String, ActionMetadata>()
-        self.networkTransport = dependencies.networkTransport
-        self.logger = dependencies.logger
-        self.keystore = dependencies.keystore
-        self.labelResolverConfig = dependencies.labelResolverConfig
-        self.labelResolverCache = dependencies.labelResolverCache
-        self.requestTimeoutMs = config.requestTimeoutMs
+        name = config.name
+        serviceTopic = config.serviceTopic
+        version = config.version
+        description = config.description
+        peerNodeId = config.peerNodeId
+        actions = ShardedConcurrentMap<String, ActionMetadata>()
+        networkTransport = dependencies.networkTransport
+        logger = dependencies.logger
+        keystore = dependencies.keystore
+        labelResolverConfig = dependencies.labelResolverConfig
+        labelResolverCache = dependencies.labelResolverCache
+        requestTimeoutMs = config.requestTimeoutMs
     }
 
     /// Add an action to this service (matches Rust add_action)
     public func addAction(name: String, action: ActionMetadata) async throws {
         _ = await actions.insert(action, for: name)
     }
-    
+
     /// Stop the remote service and clean up handlers (matches Rust stop method)
     public func stop(context: RemoteLifecycleContext) async throws {
         let actionNames = await getAvailableActions()
-        
+
         for actionName in actionNames {
             do {
                 let actionTopicPath = try serviceTopic.newActionTopic(actionName)
@@ -144,10 +144,10 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
             }
         }
     }
-    
+
     /// Get available action names (matches Rust get_available_actions)
     public func getAvailableActions() async -> [String] {
-        return await actions.keys()
+        await actions.keys()
     }
 
     /// Create RemoteService instances from a list of service metadata.
@@ -215,25 +215,24 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
 
     /// Get the remote peer identifier for this service
     public func getPeerNodeId() -> String {
-        return peerNodeId
+        peerNodeId
     }
 
     /// Get the network identifier for this service path
     public func getNetworkId() -> String {
-        return serviceTopic.networkId
+        serviceTopic.networkId
     }
-
 
     /// Create a handler for a remote action
     /// This matches the Rust RemoteService::create_action_handler implementation
     public func createActionHandler(actionName: String) -> ActionHandler {
-        return { [weak self] params, requestContext in
-            guard let self = self else {
+        { [weak self] params, requestContext in
+            guard let self else {
                 return AnyValue.null()
             }
 
             // Create action topic path
-            guard let actionTopicPath = try? self.serviceTopic.newActionTopic(actionName) else {
+            guard let actionTopicPath = try? serviceTopic.newActionTopic(actionName) else {
                 throw NodeError.invalidConfiguration("Failed to create action topic path for: \(actionName)")
             }
 
@@ -249,21 +248,21 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
             // Get network public key from keystore (resolved dynamically like in Rust)
             let networkPublicKey: Data
             do {
-                networkPublicKey = try await self.keystore.getNetworkPublicKeyByNetworkId(networkId: self.serviceTopic.networkId)
+                networkPublicKey = try await keystore.getNetworkPublicKeyByNetworkId(networkId: serviceTopic.networkId)
             } catch {
-                self.logger.error("Failed to get network public key for network \(self.serviceTopic.networkId): \(error)")
+                logger.error("Failed to get network public key for network \(serviceTopic.networkId): \(error)")
                 throw ServiceRegistryError.actionNotFound("Network key resolution failed: \(error)")
             }
 
             // Create serialization context using the provided keystore and resolver
             // Create dynamic resolver with user context using cache (matches Rust exactly)
-            let resolver = try await self.labelResolverCache.getOrCreateResolver(
-                systemConfig: self.labelResolverConfig,
+            let resolver = try await labelResolverCache.getOrCreateResolver(
+                systemConfig: labelResolverConfig,
                 userProfilePublicKeys: profilePublicKeys
             )
-            
+
             let serializationContext = SerializationContext(
-                keystore: self.keystore,
+                keystore: keystore,
                 resolver: resolver,
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
@@ -274,7 +273,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
             let paramsBytes = try await paramsToSerialize.serialize(context: serializationContext)
 
             // Send network request
-            guard let networkTransport = self.networkTransport else {
+            guard let networkTransport else {
                 throw NodeError.transportNotImplemented("Network transport not available for remote service")
             }
 
@@ -283,13 +282,13 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
                 path: actionTopicPath.asString(),
                 correlationId: correlationId,
                 payload: paramsBytes,
-                peerNodeId: self.peerNodeId,
+                peerNodeId: peerNodeId,
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
             )
 
             // Deserialize response using the proper keystore
-            let response = try AnyValue.deserialize(responseBytes, keystore: self.keystore)
+            let response = try AnyValue.deserialize(responseBytes, keystore: keystore)
             return response
         }
     }
@@ -297,29 +296,29 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     // MARK: - AbstractService Implementation
 
     public var path: String {
-        return serviceTopic.asString()
+        serviceTopic.asString()
     }
 
     public var networkId: String? {
-        get { return serviceTopic.networkId }
+        get { serviceTopic.networkId }
         set { /* Remote services cannot change network ID */ }
     }
 
-    public func setNetworkId(_ networkId: String) {
+    public func setNetworkId(_: String) {
         // Remote services cannot change network ID
     }
 
-    public func initService(_ context: LifecycleContext) async throws {
+    public func initService(_: LifecycleContext) async throws {
         // Remote services don't need initialization since they're just proxies
         logger.info("Initialized remote service proxy for \(serviceTopic)")
     }
 
-    public func start(_ context: LifecycleContext) async throws {
+    public func start(_: LifecycleContext) async throws {
         // Remote services don't need to be started
         logger.info("Started remote service proxy for \(serviceTopic)")
     }
 
-    public func stop(_ context: LifecycleContext) async throws {
+    public func stop(_: LifecycleContext) async throws {
         // Remote services don't need to be stopped
         logger.info("Stopped remote service proxy for \(serviceTopic)")
     }
@@ -327,11 +326,11 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     // MARK: - Equatable Implementation
 
     public nonisolated static func == (lhs: RemoteService, rhs: RemoteService) -> Bool {
-        return lhs.name == rhs.name &&
-               lhs.serviceTopic == rhs.serviceTopic &&
-               lhs.version == rhs.version &&
-               lhs.description == rhs.description &&
-               lhs.peerNodeId == rhs.peerNodeId
+        lhs.name == rhs.name &&
+            lhs.serviceTopic == rhs.serviceTopic &&
+            lhs.version == rhs.version &&
+            lhs.description == rhs.description &&
+            lhs.peerNodeId == rhs.peerNodeId
     }
 }
 
@@ -360,40 +359,47 @@ public struct EventRegistrationOptions: Sendable {
 /// Matches Rust: (ActionHandler, TopicPath, Option<ActionMetadata>)
 public typealias LocalActionEntryValue = (ActionHandler, TopicPath, ActionMetadata?)
 
-/// Subscription metadata for event subscriptions
-public struct SubscriptionMetadata: Sendable, Equatable {
-    public let path: String
-    public let subscriberKind: SubscriberKind
+/// Subscription entry tuple matching Rust SubscriptionEntry = (String, SubscriberKind, SubscriptionMetadata)
+public struct SubscriptionEntry: Sendable, Equatable {
     public let subscriptionId: String
-    public let qos: Int
-    public let retain: Bool
-    public let includePast: TimeInterval?
+    public let subscriberKind: SubscriberKind
+    public let subscriptionMetadata: SubscriptionMetadata
 
-    public init(path: String, subscriberKind: SubscriberKind, subscriptionId: String, qos: Int = 0, retain: Bool = false, includePast: TimeInterval? = nil) {
-        self.path = path
-        self.subscriberKind = subscriberKind
+    public init(subscriptionId: String, subscriberKind: SubscriberKind, subscriptionMetadata: SubscriptionMetadata) {
         self.subscriptionId = subscriptionId
-        self.qos = qos
-        self.retain = retain
-        self.includePast = includePast
+        self.subscriberKind = subscriberKind
+        self.subscriptionMetadata = subscriptionMetadata
     }
 
-    public static func == (lhs: SubscriptionMetadata, rhs: SubscriptionMetadata) -> Bool {
+    public static func == (lhs: SubscriptionEntry, rhs: SubscriptionEntry) -> Bool {
         lhs.subscriptionId == rhs.subscriptionId
     }
 }
 
-/// Subscriber kind for event subscriptions
-public enum SubscriberKind: Sendable {
+/// Subscriber kind for event subscriptions (Node-only, not in FFI)
+public enum SubscriberKind: Sendable, Equatable {
     case local(EventHandler)
     case remote(String) // node ID
+
+    public static func == (lhs: SubscriberKind, rhs: SubscriberKind) -> Bool {
+        switch (lhs, rhs) {
+        case (.local, .local):
+            // For local handlers, we can't compare functions directly
+            // Return true if both are local (this is a limitation)
+            true
+        case let (.remote(lhsId), .remote(rhsId)):
+            lhsId == rhsId
+        default:
+            false
+        }
+    }
 }
 
 /// Subscription vector for managing multiple subscriptions
 public struct SubscriptionVec: Sendable, Equatable {
-    public let subscriptions: [SubscriptionMetadata]
+    public let subscriptions: [SubscriptionEntry]
 
-    public init(subscriptions: [SubscriptionMetadata] = []) {
+    public init(subscriptions: [SubscriptionEntry] = []) {
         self.subscriptions = subscriptions
     }
 
@@ -692,7 +698,7 @@ public final class ServiceRegistry: NodeDelegate {
         for service in services {
             // Create RemoteLifecycleContext for service stopping
             let context = RemoteLifecycleContext(serviceTopic: serviceTopic, logger: logger, registryDelegate: self)
-            
+
             // Stop the service - this triggers handler cleanup via the context
             do {
                 try await service.stop(context: context)
@@ -700,7 +706,7 @@ public final class ServiceRegistry: NodeDelegate {
                 logger.error("Failed to stop remote service '\(service.path)' error: \(error)")
             }
         }
-        
+
         // Remove the services from the registry
         for service in services {
             remoteServices.remove(topic: serviceTopic, content: service)
@@ -801,7 +807,7 @@ public final class ServiceRegistry: NodeDelegate {
 
         // Remove from remote action handlers trie using the new removeValues method
         remoteActionHandlers.removeValues(topic: topicPath)
-        
+
         logger.trace("Removed remote action handler for: \(topicPath.asString())")
     }
 
@@ -863,14 +869,14 @@ public final class ServiceRegistry: NodeDelegate {
         servicePath: String,
         handler: @escaping EventHandler
     ) async throws -> String {
-        return try await subscribeToEvents(
+        try await subscribeToEvents(
             networkId: networkId,
             servicePath: servicePath,
             handler: handler,
             options: EventRegistrationOptions(qos: 0, retain: false, includePast: nil)
         )
     }
-    
+
     public func subscribeToEvents(
         networkId: String,
         servicePath: String,
@@ -886,13 +892,10 @@ public final class ServiceRegistry: NodeDelegate {
             throw ServiceRegistryError.invalidTopicPath(servicePath)
         }
 
-        let subscription = SubscriptionMetadata(
-            path: servicePath,
-            subscriberKind: .local(handler),
+        let subscription = SubscriptionEntry(
             subscriptionId: subscriptionId,
-            qos: options.qos,
-            retain: options.retain,
-            includePast: options.includePast
+            subscriberKind: .local(handler),
+            subscriptionMetadata: SubscriptionMetadata(path: servicePath)
         )
 
         // Add to event subscriptions
@@ -947,13 +950,10 @@ public final class ServiceRegistry: NodeDelegate {
 
         // Insert into unified event_subscriptions trie
         var existingSubscriptions = eventSubscriptions.find(topic: topicPath).first?.subscriptions ?? []
-        let subscription = SubscriptionMetadata(
-            path: topicPath.asString(),
-            subscriberKind: .local(callback),
+        let subscription = SubscriptionEntry(
             subscriptionId: subscriptionId,
-            qos: options.qos,
-            retain: options.retain,
-            includePast: options.includePast
+            subscriberKind: .local(callback),
+            subscriptionMetadata: SubscriptionMetadata(path: topicPath.asString())
         )
         existingSubscriptions.append(subscription)
         eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: existingSubscriptions))
@@ -978,13 +978,10 @@ public final class ServiceRegistry: NodeDelegate {
         let subscriptionId = UUID().uuidString
 
         var existingSubscriptions = eventSubscriptions.find(topic: topicPath).first?.subscriptions ?? []
-        let subscription = SubscriptionMetadata(
-            path: topicPath.asString(),
-            subscriberKind: .remote("remote"), // Simplified for now
+        let subscription = SubscriptionEntry(
             subscriptionId: subscriptionId,
-            qos: options.qos,
-            retain: options.retain,
-            includePast: options.includePast
+            subscriberKind: .remote("remote"), // Simplified for now
+            subscriptionMetadata: SubscriptionMetadata(path: topicPath.asString())
         )
         existingSubscriptions.append(subscription)
         eventSubscriptions.setValue(topic: topicPath, content: SubscriptionVec(subscriptions: existingSubscriptions))
@@ -1035,10 +1032,10 @@ public final class ServiceRegistry: NodeDelegate {
     /// Get local event subscribers
     ///
     /// INTENTION: Find all local subscribers for a specific event topic.
-    public func getLocalEventSubscribers(topicPath: TopicPath) async -> [(String, EventHandler, SubscriptionMetadata)] {
+    public func getLocalEventSubscribers(topicPath: TopicPath) async -> [(String, EventHandler, SubscriptionEntry)] {
         let matches = eventSubscriptions.find(topic: topicPath)
 
-        var result: [(String, EventHandler, SubscriptionMetadata)] = []
+        var result: [(String, EventHandler, SubscriptionEntry)] = []
         var seenIds = Set<String>()
 
         for match in matches {
@@ -1057,10 +1054,10 @@ public final class ServiceRegistry: NodeDelegate {
     }
 
     /// Get remote event subscribers
-    public func getRemoteEventSubscribers(topicPath: TopicPath) async -> [(String, EventHandler, SubscriptionMetadata)] {
+    public func getRemoteEventSubscribers(topicPath: TopicPath) async -> [(String, EventHandler, SubscriptionEntry)] {
         let matches = eventSubscriptions.find(topic: topicPath)
 
-        var result: [(String, EventHandler, SubscriptionMetadata)] = []
+        var result: [(String, EventHandler, SubscriptionEntry)] = []
         var seenIds = Set<String>()
 
         for match in matches {
@@ -1221,7 +1218,7 @@ public final class ServiceRegistry: NodeDelegate {
         let allMatches = eventSubscriptions.find(topic: topicPath)
 
         // Collect all subscriptions from all matches
-        var allSubscriptions: [SubscriptionMetadata] = []
+        var allSubscriptions: [SubscriptionEntry] = []
         for match in allMatches {
             allSubscriptions.append(contentsOf: match.subscriptions)
         }
@@ -1236,7 +1233,7 @@ public final class ServiceRegistry: NodeDelegate {
             switch subscription.subscriberKind {
             case let .local(handler):
                 logger.trace("Calling local handler for subscription: \(subscription.subscriptionId)")
-                
+
                 // Create event context (matching Rust)
                 let eventContext = EventContext(
                     topicPath: topicPath,
@@ -1244,7 +1241,7 @@ public final class ServiceRegistry: NodeDelegate {
                     isLocal: true,
                     logger: logger
                 )
-                
+
                 // Call handler with context (matching Rust)
                 do {
                     try await handler(eventContext, data)
@@ -1265,7 +1262,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func subscribe(topic: String, options: EventRegistrationOptions?, callback: @escaping EventHandler) async throws -> String {
         let defaultOptions = EventRegistrationOptions(qos: 0, retain: false, includePast: nil)
         let eventOptions = options ?? defaultOptions
-        
+
         return try await subscribeToEvents(
             networkId: "default",
             servicePath: topic,
@@ -1301,12 +1298,12 @@ public final class ServiceRegistry: NodeDelegate {
     ///
     /// INTENTION: Retrieve metadata for all events registered under a service path.
     /// This is useful for service discovery and introspection.
-    public func getSubscriptionsMetadata(searchPath: TopicPath) async -> [SubscriptionMetadata] {
+    public func getSubscriptionsMetadata(searchPath: TopicPath) async -> [SubscriptionEntry] {
         // Search unified subscriptions and filter local ones
         let matches = eventSubscriptions.find(topic: searchPath)
 
         // Collect all events that match the service path
-        var result: [SubscriptionMetadata] = []
+        var result: [SubscriptionEntry] = []
 
         for matchItem in matches {
             // Extract the topic path from the match
@@ -1324,34 +1321,34 @@ public final class ServiceRegistry: NodeDelegate {
     }
 
     /// Get all subscriptions
-    public func getAllSubscriptions(includeInternalServices: Bool) async throws -> [SubscriptionMetadata] {
+    public func getAllSubscriptions(includeInternalServices: Bool) async throws -> [SubscriptionEntry] {
         logger.trace("Getting all subscriptions, includeInternalServices: \(includeInternalServices)")
-        
+
         // Get all subscription values from the trie using the new getAllValues method
         let allValues = eventSubscriptions.getAllValues()
-        
-        var result: [SubscriptionMetadata] = []
-        
+
+        var result: [SubscriptionEntry] = []
+
         for subscriptionVec in allValues {
             for metadata in subscriptionVec.subscriptions {
                 // Filter out internal services if not included
                 if !includeInternalServices {
                     // metadata.path is a full topic path including network id prefix
                     do {
-                        let topicPath = try TopicPath.fromFullPath(metadata.path)
+                        let topicPath = try TopicPath.fromFullPath(metadata.subscriptionMetadata.path)
                         let servicePath = topicPath.servicePath
                         if isInternalService(servicePath) {
                             continue
                         }
                     } catch {
-                        logger.warning("Invalid subscription topic path \(metadata.path): \(error)")
+                        logger.warning("Invalid subscription topic path \(metadata.subscriptionMetadata.path): \(error)")
                         continue
                     }
                 }
                 result.append(metadata)
             }
         }
-        
+
         logger.trace("Found \(result.count) subscriptions")
         return result
     }
@@ -1364,7 +1361,7 @@ public final class ServiceRegistry: NodeDelegate {
         let keys = await localServicesList.keys()
         for topicPath in keys {
             guard let serviceEntry = await localServicesList.get(topicPath) else { continue }
-            
+
             let service = serviceEntry.service
             let pathStr = service.path
 
@@ -1396,7 +1393,7 @@ public final class ServiceRegistry: NodeDelegate {
         let keys = await localServicesList.keys()
         for topicPath in keys {
             guard let serviceEntry = await localServicesList.get(topicPath) else { continue }
-            
+
             let servicePath = topicPath.asString()
             let isInternal = isInternalService(servicePath)
             logger.trace("ServiceRegistry.getAllLocalServiceMetadata: checking service '\(servicePath)', isInternal = \(isInternal)")
@@ -1483,7 +1480,7 @@ public final class ServiceRegistry: NodeDelegate {
     public func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
         // Search for all actions that start with the service path
         // We need to search for patterns like "math1/*" to find all actions under math1
-        let _ = "\(serviceTopicPath.servicePath)/*"
+        _ = "\(serviceTopicPath.servicePath)/*"
         let patternTopicPath = try! TopicPath.new("\(serviceTopicPath.servicePath)/*", defaultNetwork: serviceTopicPath.networkId)
 
         // Search in the actions trie local_action_handlers (matching Rust)
@@ -1590,14 +1587,14 @@ public final class ServiceRegistry: NodeDelegate {
     /// Returns true if registered successfully, false if service already exists
     public func registerRemoteService(_ service: RemoteService) async -> Bool {
         logger.trace("Registering remote service: \(service.name) from peer: \(service.peerNodeId)")
-        
+
         // Check if service already exists (matching Rust pattern)
         let existingServices = remoteServices.find(topic: service.serviceTopic)
         if !existingServices.isEmpty {
             logger.warning("Service already exists for topic: \(service.serviceTopic)")
             return false
         }
-        
+
         // Register the new service
         remoteServices.setValue(topic: service.serviceTopic, content: service)
         return true
