@@ -1977,9 +1977,6 @@ public final class Node {
             logger.trace("🔍 NETWORKING: Transport already initialized, skipping")
         }
 
-        // Update local node info after transport is initialized
-        _ = await getLocalNodeInfo()
-
         // Initialize discovery if enabled
         if let discoveryOptions = networkConfig.discoveryOptions {
             logger.trace("🔍 NETWORKING: Initializing node discovery providers...")
@@ -2021,11 +2018,6 @@ public final class Node {
                 try await discoveryProvider.start()
                 logger.trace("🔍 NETWORKING: Discovery provider started successfully")
             }
-
-            // Update the transport with the current NodeInfo (including any services added before networking started)
-            logger.trace("🔍 NETWORKING: Updating transport with current NodeInfo...")
-            _ = await getLocalNodeInfo()
-            logger.trace("🔍 NETWORKING: Transport updated with current NodeInfo")
         } else {
             logger.trace("🔍 NETWORKING: No discovery options configured, skipping discovery")
         }
@@ -2185,15 +2177,14 @@ public final class Node {
                 }
             }
         )
-
-        // NodeInfo is now a type alias to SwiftFFI.NodeInfo, no conversion needed
-        let ffiNodeInfo = currentNodeInfo
+ 
+        logger.trace("Creating QuicTransport with nodeInfo: \(currentNodeInfo)")
 
         // Create the QuicTransport using the key manager
         let keyManager: FFIKeys = try config.getKeyManager()
         let transport = try await QuicTransport.create(
             keys: keyManager,
-            nodeInfo: ffiNodeInfo,
+            nodeInfo: currentNodeInfo,
             options: transportOptions,
             callbacks: callbacks,
             logger: logger.child(component: .network)
@@ -2334,9 +2325,9 @@ public final class Node {
         // Get current services from the service registry with proper metadata including actions
         let currentServices = await serviceRegistry.getLocalServices()
 
-        logger.trace("🔍 DEBUG: Found \(currentServices.count) local services")
+        logger.trace("getLocalNodeInfo(): Found \(currentServices.count) local services")
         for (topicPath, serviceEntry) in currentServices {
-            logger.trace("🔍 DEBUG: Service: \(topicPath.asString()) -> \(serviceEntry.service.name)")
+            logger.trace("getLocalNodeInfo(): Service: \(topicPath.asString()) -> \(serviceEntry.service.name)")
         }
 
         // Get current subscriptions from the service registry (currently returns empty array)
@@ -2347,7 +2338,7 @@ public final class Node {
         let serviceMetadata = await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: false)
 
         // Create updated NodeInfo with current service metadata
-        let updatedNodeInfo = NodeInfo(
+        let nodeInfo = NodeInfo(
             nodePublicKey: localNodeInfo.nodePublicKey,
             networkIds: localNodeInfo.networkIds,
             addresses: localNodeInfo.addresses,
@@ -2358,9 +2349,9 @@ public final class Node {
             version: localNodeInfo.version
         )
 
-        logger.trace("🔍 DEBUG: Updated NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionMetadata.count) subscriptions")
+        logger.trace("NodeInfo with \(Array(serviceMetadata.values).count) services and \(subscriptionMetadata.count) subscriptions")
 
-        return updatedNodeInfo
+        return nodeInfo
     }
 
     /// Update the transport with current NodeInfo (SETTER ONLY)
@@ -3042,7 +3033,7 @@ extension Node: RegistryDelegate {
 // MARK: - Node Errors
 
 /// Errors that can occur during node operations
-public enum NodeError: Error, Sendable {
+public enum NodeError: Error, LocalizedError, Sendable {
     case missingKeyManager(String)
     case missingNodePublicKey(String)
     case serviceRegistrationFailed(String)

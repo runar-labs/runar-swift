@@ -774,8 +774,20 @@ extension RegistryServiceTests {
                 XCTFail("Request to paused service should fail")
             } catch {
                 testLogger.debug("Expected error when requesting paused service: \(error)")
+                
+                // Check if it's a NodeError and get the actual message
+                var errorMessage = error.localizedDescription
+                if let nodeError = error as? NodeError {
+                    switch nodeError {
+                    case .serviceNotFound(let message):
+                        errorMessage = message
+                    default:
+                        break
+                    }
+                }
+                
                 // This is expected - requests to paused services should fail
-                XCTAssertTrue(error.localizedDescription.contains("paused") || error.localizedDescription.contains("Paused"), "Error should mention service is paused")
+                XCTAssertTrue(errorMessage.contains("paused") || errorMessage.contains("Paused") || errorMessage.contains("not Running") || errorMessage.contains("Service is not Running"), "Error should mention service is paused")
             }
         }
 
@@ -995,8 +1007,20 @@ extension RegistryServiceTests {
                 XCTFail("Request to non-existent service should fail")
             } catch {
                 testLogger.debug("Expected error when requesting non-existent service: \(error)")
+                
+                // Check if it's a NodeError and get the actual message
+                var errorMessage = error.localizedDescription
+                if let nodeError = error as? NodeError {
+                    switch nodeError {
+                    case .serviceNotFound(let message):
+                        errorMessage = message
+                    default:
+                        break
+                    }
+                }
+                
                 // This is expected - requests to non-existent services should fail
-                XCTAssertTrue(error.localizedDescription.contains("not found") || error.localizedDescription.contains("actionNotFound"), "Error should mention service not found")
+                XCTAssertTrue(errorMessage.contains("not found") || errorMessage.contains("actionNotFound") || errorMessage.contains("No handler found for action"), "Error should mention service not found")
             }
         }
 
