@@ -504,7 +504,7 @@ final class ServiceRegistryTests: XCTestCase {
         try await registry.registerLocalService(serviceEntry)
 
         // Get service metadata
-        let metadata = await registry.getServiceMetadata(servicePath: serviceTopic)
+        let metadata = try await registry.getServiceMetadata(servicePath: serviceTopic)
 
         // Verify metadata was retrieved
         XCTAssertNotNil(metadata)
@@ -614,7 +614,7 @@ final class ServiceRegistryTests: XCTestCase {
             let searchPath = try TopicPath.new(wildcardPath, defaultNetwork: servicePath.networkId)
 
             // Get the action metadata for the service using the wildcard path (matching Rust)
-            let actionsMetadata = await registry.getActionsMetadata(serviceTopicPath: searchPath)
+            let actionsMetadata = try await registry.getActionsMetadata(serviceTopicPath: searchPath)
 
             // Verify that we got metadata for all three actions (matching Rust)
             XCTAssertEqual(actionsMetadata.count, 3, "Should have metadata for all three actions")
@@ -807,12 +807,12 @@ final class ServiceRegistryTests: XCTestCase {
             let topicPath = try TopicPath.new("test/event", defaultNetwork: "net1")
 
             // Register remote event subscription (matching Rust)
-            let callback: EventHandler = { _, _ in
+            let handler: RemoteEventHandler = { _ in
                 // Simple callback
             }
             _ = try await registry.registerRemoteEventSubscription(
                 topicPath: topicPath,
-                callback: callback,
+                handler: handler,
                 options: EventRegistrationOptions()
             )
 

@@ -5,7 +5,7 @@ import SwiftFFI
 
 public typealias CommonKeyManager = SwiftFFI.CommonKeyManager
 
-public struct SerializationContext {
+public struct SerializationContext: Sendable {
     public let keystore: CommonKeyManager
     public let resolver: LabelResolver // Use the Swift-side label resolver
     public let networkPublicKey: Data // ← PRE-RESOLVED PUBLIC KEY (matches Rust)

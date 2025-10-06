@@ -266,7 +266,7 @@ public final class RegistryService: AbstractService {
             let servicePath = try TopicPath.new(servicePathString, defaultNetwork: requestContext.networkId)
 
             // Get service metadata
-            if let metadata = await registryDelegate.getServiceMetadata(servicePath: servicePath) {
+            if let metadata = try await registryDelegate.getServiceMetadata(servicePath: servicePath) {
                 // Service found, return metadata as struct (matching Rust behavior)
                 logger.trace("RegistryService.services/{service_path}: Found service metadata: \(metadata.name)")
                 let result = AnyValue.struct(metadata)
@@ -544,12 +544,12 @@ public protocol KeysDelegate: AnyObject {
 public protocol RegistryDelegate: AnyObject, Sendable {
     func getLocalServiceState(servicePath: TopicPath) async -> ServiceState?
     func getRemoteServiceState(servicePath: TopicPath) async -> ServiceState?
-    func getServiceMetadata(servicePath: TopicPath) async -> ServiceMetadata?
+    func getServiceMetadata(servicePath: TopicPath) async throws -> ServiceMetadata?
     func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata]
-    func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata]
-    func registerRemoteActionHandler(topicPath: TopicPath, handler: ActionHandler) async throws
+    func getActionsMetadata(serviceTopicPath: TopicPath) async throws -> [ActionMetadata]
+    func registerRemoteActionHandler(topicPath: TopicPath, handler: @escaping ActionHandler) async throws
     func removeRemoteActionHandler(topicPath: TopicPath) async throws
-    func registerRemoteEventHandler(topicPath: TopicPath, handler: EventHandler) async throws
+    func registerRemoteEventHandler(topicPath: TopicPath, handler: @escaping EventHandler) async throws
     func removeRemoteEventHandler(topicPath: TopicPath) async throws
     func remoteRequest(path: String, payload: AnyValue?, networkId: String, options: RequestOptions?) async throws -> AnyValue
 
@@ -569,6 +569,10 @@ public typealias ActionHandler = @Sendable (AnyValue?, RequestContext) async thr
 /// Event handler type
 /// Matches Rust: EventHandler = Arc<dyn Fn(Arc<EventContext>, Option<ArcValue>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync>
 public typealias EventHandler = @Sendable (EventContext, AnyValue?) async throws -> Void
+
+/// Remote event handler type
+/// Matches Rust: RemoteEventHandler = Arc<dyn Fn(Option<ArcValue>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync>
+public typealias RemoteEventHandler = @Sendable (AnyValue?) async throws -> Void
 
 /// Publish options
 public struct PublishOptions: Sendable {
@@ -2932,33 +2936,36 @@ extension Node: RegistryDelegate {
         nil
     }
 
-    public func getServiceMetadata(servicePath: TopicPath) async -> ServiceMetadata? {
-        await serviceRegistry.getServiceMetadata(servicePath: servicePath)
+    public func getServiceMetadata(servicePath: TopicPath) async throws -> ServiceMetadata? {
+        try await serviceRegistry.getServiceMetadata(servicePath: servicePath)
     }
 
     public func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
         try await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: includeInternalServices)
     }
 
-    public func getActionsMetadata(serviceTopicPath _: TopicPath) async -> [ActionMetadata] {
-        // TODO: Implement actions metadata lookup
-        []
+    public func getActionsMetadata(serviceTopicPath: TopicPath) async throws -> [ActionMetadata] {
+        try await serviceRegistry.getActionsMetadata(serviceTopicPath: serviceTopicPath)
     }
 
-    public func registerRemoteActionHandler(topicPath _: TopicPath, handler _: ActionHandler) async throws {
-        // TODO: Implement remote action handler registration when networking is available
+    public func registerRemoteActionHandler(topicPath: TopicPath, handler: @escaping ActionHandler) async throws {
+        try await serviceRegistry.registerRemoteActionHandler(topicPath: topicPath, handler: handler)
     }
 
-    public func removeRemoteActionHandler(topicPath _: TopicPath) async throws {
-        // TODO: Implement remote action handler removal when networking is available
+    public func removeRemoteActionHandler(topicPath: TopicPath) async throws {
+        try await serviceRegistry.removeRemoteActionHandler(topicPath: topicPath)
     }
 
-    public func registerRemoteEventHandler(topicPath _: TopicPath, handler _: EventHandler) async throws {
-        // TODO: Implement remote event handler registration when networking is available
+    public func registerRemoteEventHandler(topicPath: TopicPath, handler: @escaping EventHandler) async throws {
+        _ = try await serviceRegistry.registerRemoteEventSubscription(
+            topicPath: topicPath,
+            handler: { payload in try await handler(EventContext(topicPath: topicPath, nodeDelegate: self, isLocal: false, logger: self.logger), payload) },
+            options: EventRegistrationOptions()
+        )
     }
 
-    public func removeRemoteEventHandler(topicPath _: TopicPath) async throws {
-        // TODO: Implement remote event handler removal when networking is available
+    public func removeRemoteEventHandler(topicPath: TopicPath) async throws {
+        try await serviceRegistry.removeRemoteEventSubscription(topicPath: topicPath)
     }
 
     public func updateLocalServiceStateIfValid(servicePath: TopicPath, newState: ServiceState, currentState: ServiceState) async throws {
@@ -3024,6 +3031,398 @@ extension Node: RegistryDelegate {
         logger.error("No handler found for action: \(topicPath.asString())")
         throw NodeError.serviceNotFound("No handler found for action: \(topicPath.asString())")
     }
+
+    // MARK: - Peer Management
+
+    /// Add a new peer and process their capabilities (matches Rust add_new_peer)
+    public func addNewPeer(nodeInfo: NodeInfo) async throws -> [RemoteService] {
+        let capabilities = nodeInfo.nodeMetadata
+        self.logger.info("Processing \(capabilities.services.count) services and \(capabilities.subscriptions.count) subscriptions from node \(self.compactId(nodeInfo.nodePublicKey))")
+
+        // Check if capabilities is empty
+        if capabilities.services.isEmpty && capabilities.subscriptions.isEmpty {
+            self.logger.info("Received empty capabilities list.")
+            return [] // Nothing to process
+        }
+
+        // Get the local node ID
+        let localPeerId = self.nodeId
+
+        let peerNodeId = self.compactId(nodeInfo.nodePublicKey)
+        
+        // Create RemoteService instances directly
+        let rsConfig = CreateRemoteServicesConfig(
+            services: capabilities.services,
+            peerNodeId: peerNodeId,
+            requestTimeoutMs: self.config.requestTimeoutMs
+        )
+
+        // Acquire the transport (should be initialized by now)
+        guard let transportArc = self.networkTransport else {
+            throw NodeError.transportNotAvailable("Network transport not available")
+        }
+
+        let rsDependencies = RemoteServiceDependencies(
+            networkTransport: transportArc,
+            localNodeId: localPeerId,
+            logger: self.logger,
+            keystore: self.keysManager,
+            labelResolverConfig: self.systemLabelConfig,
+            labelResolverCache: self.labelResolverCache
+        )
+
+        let remoteServices: [RemoteService]
+        do {
+            remoteServices = try await RemoteService.createFromCapabilities(config: rsConfig, dependencies: rsDependencies)
+        } catch {
+            self.logger.error("Failed to create remote services from capabilities: \(error)")
+            throw error
+        }
+
+        // Register each service and initialize it to register its handlers
+        for service in remoteServices {
+            // Register the service instance with the registry
+            let registered = await self.serviceRegistry.registerRemoteService(service)
+            if !registered {
+                continue // Skip initialization if registration fails
+            }
+
+            // Create RemoteLifecycleContext for the service to register its handlers
+            // The context needs a reference back to the registry (as ServiceRegistry)
+            // The Node itself implements RegistryDelegate but RemoteLifecycleContext needs ServiceRegistry
+
+            // The TopicPath for the context should represent the service itself
+            let serviceTopicPath: TopicPath
+            do {
+                serviceTopicPath = try TopicPath.new(service.path, defaultNetwork: self.networkId)
+            } catch {
+                self.logger.error("Failed to create TopicPath for remote service init: \(error)")
+                continue
+            }
+
+            // Pass TopicPath by reference
+            let context = RemoteLifecycleContext(serviceTopic: serviceTopicPath, logger: self.logger, registryDelegate: self.serviceRegistry)
+
+            // Initialize the service - this triggers handler registration via the context
+            do {
+                try await service.initService(context: context)
+            } catch {
+                self.logger.error("Failed to initialize remote service '\(service.path)' (handler registration): \(error)")
+            }
+            
+            try await self.serviceRegistry.updateRemoteServiceState(serviceTopic: serviceTopicPath, state: .running)
+
+            // Publish local-only running state for remote service so local components can await readiness
+            do {
+                try await self.publish(
+                    topic: "$registry/services/\(serviceTopicPath.servicePath)/state/running",
+                    data: AnyValue.primitive(serviceTopicPath.asString()),
+                    options: PublishOptions.localOnly().withRetainFor(120)
+                )
+            } catch {
+                self.logger.error("Failed to publish remote service running state: \(error)")
+            }
+        }
+
+        // Handle remote node subscriptions - only for services that exist locally
+        for subscription in capabilities.subscriptions {
+            let path = subscription.path
+            let topicPath: TopicPath
+            do {
+                topicPath = try TopicPath.fromFullPath(path)
+            } catch {
+                self.logger.warning("Failed to parse subscription path '\(path)': \(error)")
+                continue
+            }
+
+            // Skip if our node does not participate in the requested network
+            if !self.networkIds.contains(topicPath.networkId) {
+                self.logger.debug("Ignoring remote subscription \(path) - network id not supported")
+                continue
+            }
+
+            // Create serialization context for this subscription
+            let networkId = topicPath.networkId
+            // Resolve network ID to public key
+            let networkPublicKey: Data
+            do {
+                networkPublicKey = try await self.keysManager.getNetworkPublicKeyByNetworkId(networkId: networkId)
+            } catch {
+                self.logger.warning("Failed to resolve network public key for \(networkId): \(error)")
+                continue
+            }
+            
+            // Create dynamic resolver for remote subscription (system context)
+            let emptyProfileKeys: [Data] = []
+            let resolver = try await self.getOrCreateResolver(emptyProfileKeys)
+
+            let serializationContext = SerializationContext(
+                keystore: self.keysManager,
+                resolver: resolver,
+                networkPublicKey: networkPublicKey,
+                profilePublicKeys: []
+            )
+
+            // Create event handler forwarding events to remote peer
+            let eventHandler: RemoteEventHandler = { [weak self] eventData in
+                guard let self = self else { return }
+                let correlationId = UUID().uuidString
+                self.logger.debug("🚀 [RemoteEvent] Sending remote event - Event: \(topicPath), Target: \(peerNodeId) correlation_id: \(correlationId)")
+                
+                do {
+                    let topicPathStr = topicPath.asString()
+                    // Serialize the event data
+                    let payloadBytes = try await (eventData ?? AnyValue.null()).serialize(context: serializationContext)
+                    
+                    try await transportArc.publish(
+                        topic: topicPathStr,
+                        payload: payloadBytes,
+                        options: PublishOptions()
+                    )
+                    
+                    self.logger.debug("✅ [RemoteEvent] Event forwarded - Event: \(topicPath), Target: \(peerNodeId) correlation_id: \(correlationId)")
+                } catch {
+                    self.logger.error("Failed to forward event to remote peer: \(error)")
+                    throw error
+                }
+            }
+
+            do {
+                let subscriptionId = try await self.serviceRegistry.registerRemoteEventSubscription(
+                    topicPath: topicPath,
+                    handler: eventHandler,
+                    options: EventRegistrationOptions()
+                )
+                await self.serviceRegistry.upsertRemotePeerSubscription(peerId: peerNodeId, path: topicPath, subId: subscriptionId)
+            } catch {
+                self.logger.warning("Failed to register remote subscription \(path) for peer \(peerNodeId): \(error)")
+            }
+        }
+
+        self.logger.info("Successfully processed \(remoteServices.count) remote services and \(capabilities.subscriptions.count) remote subscriptions from node \(self.compactId(nodeInfo.nodePublicKey))")
+
+        return remoteServices
+    }
+
+    /// Update peer capabilities by diffing old and new peer info (matches Rust update_peer_capabilities exactly)
+    public func updatePeerCapabilities(oldPeer: NodeInfo, newPeer: NodeInfo) async throws {
+        let peerNodeId = self.compactId(oldPeer.nodePublicKey)
+
+        // FIRST: Diff services
+        let oldServices: Set<String> = Set(oldPeer.nodeMetadata.services.map { service in
+            "\(service.networkId):\(service.servicePath)"
+        })
+        let newServices: Set<String> = Set(newPeer.nodeMetadata.services.map { service in
+            "\(service.networkId):\(service.servicePath)"
+        })
+
+        // Services to add
+        let servicesToAdd = newServices.subtracting(oldServices)
+        for serviceKey in servicesToAdd {
+            // Find the actual service metadata for this key
+            if let serviceMetadata = newPeer.nodeMetadata.services.first(where: { service in
+                "\(service.networkId):\(service.servicePath)" == serviceKey
+            }) {
+                self.logger.info("Adding new remote service: \(serviceKey) from peer: \(peerNodeId)")
+
+                // Create and register the new remote service (reuse logic from add_new_peer)
+                guard let transportArc = self.networkTransport else {
+                    throw NodeError.transportNotAvailable("Network transport not available")
+                }
+                let localPeerId = self.nodeId
+
+                let rsConfig = CreateRemoteServicesConfig(
+                    services: [serviceMetadata],
+                    peerNodeId: peerNodeId,
+                    requestTimeoutMs: self.config.requestTimeoutMs
+                )
+
+                let rsDependencies = RemoteServiceDependencies(
+                    networkTransport: transportArc,
+                    localNodeId: localPeerId,
+                    logger: self.logger,
+                    keystore: self.keysManager,
+                    labelResolverConfig: self.systemLabelConfig,
+                    labelResolverCache: self.labelResolverCache
+                )
+
+                do {
+                    let remoteServices = try await RemoteService.createFromCapabilities(config: rsConfig, dependencies: rsDependencies)
+                    
+                    for service in remoteServices {
+                        // Register the service instance with the registry
+                        let registered = await self.serviceRegistry.registerRemoteService(service)
+                        if !registered {
+                            continue
+                        }
+
+                        // Initialize the service - this triggers handler registration via the context
+                        let serviceTopicPath: TopicPath
+                        do {
+                            serviceTopicPath = try TopicPath.new(service.path, defaultNetwork: self.networkId)
+                        } catch {
+                            self.logger.error("Failed to create TopicPath for remote service init: \(error)")
+                            continue
+                        }
+
+                        let context = RemoteLifecycleContext(serviceTopic: serviceTopicPath, logger: self.logger, registryDelegate: self.serviceRegistry)
+
+                        do {
+                            try await service.initService(context: context)
+                        } catch {
+                            self.logger.error("Failed to initialize remote service '\(service.path)': \(error)")
+                        }
+                        
+                        try await self.serviceRegistry.updateRemoteServiceState(serviceTopic: serviceTopicPath, state: .running)
+
+                        // Publish local-only running state for remote service so local components can await readiness
+                        do {
+                            try await self.publish(
+                                topic: "$registry/services/\(serviceTopicPath.servicePath)/state/running",
+                                data: AnyValue.primitive(serviceTopicPath.asString()),
+                                options: PublishOptions.localOnly().withRetainFor(120)
+                            )
+                        } catch {
+                            self.logger.error("Failed to publish remote service running state: \(error)")
+                        }
+                        
+                        self.logger.info("Published local-only running for remote service \(serviceTopicPath)")
+                    }
+                } catch {
+                    self.logger.error("Failed to create remote services from capabilities: \(error)")
+                }
+            }
+        }
+
+        // Services to remove
+        let servicesToRemove = oldServices.subtracting(newServices)
+        for serviceKey in servicesToRemove {
+            // Find the actual service metadata for this key
+            if let serviceMetadata = oldPeer.nodeMetadata.services.first(where: { service in
+                "\(service.networkId):\(service.servicePath)" == serviceKey
+            }) {
+                self.logger.info("Removing remote service: \(serviceKey) from peer: \(peerNodeId)")
+                
+                let servicePath: TopicPath
+                do {
+                    servicePath = try TopicPath.new(serviceMetadata.servicePath, defaultNetwork: serviceMetadata.networkId)
+                } catch {
+                    self.logger.warning("Failed to create TopicPath for service removal: \(error)")
+                    continue
+                }
+                
+                do {
+                    try await self.serviceRegistry.removeRemoteService(serviceTopic: servicePath)
+                } catch {
+                    self.logger.warning("Failed to remove remote service \(serviceKey): \(error)")
+                }
+            }
+        }
+
+        // SECOND: Diff subscriptions
+        let oldSet: Set<String> = Set(oldPeer.nodeMetadata.subscriptions.map { $0.path })
+        let newSet: Set<String> = Set(newPeer.nodeMetadata.subscriptions.map { $0.path })
+
+        self.logger.debug("Subscription diffing for peer \(peerNodeId): old_set=\(oldSet), new_set=\(newSet)")
+
+        guard let transportArc = self.networkTransport else {
+            throw NodeError.transportNotAvailable("Network transport not available")
+        }
+
+        // Paths to add
+        let pathsToAdd = newSet.subtracting(oldSet)
+        for path in pathsToAdd {
+            self.logger.info("Adding new remote subscription: \(path) for peer: \(peerNodeId)")
+            
+            // Create remote handler same as add_new_peer logic (reuse closure building)
+            let topicPath: TopicPath
+            do {
+                topicPath = try TopicPath.fromFullPath(path)
+            } catch {
+                self.logger.warning("Invalid topic path \(path): \(error)")
+                continue
+            }
+            
+            let networkId = topicPath.networkId
+            
+            // Resolve network ID to public key
+            let networkPublicKey: Data
+            do {
+                networkPublicKey = try await self.keysManager.getNetworkPublicKeyByNetworkId(networkId: networkId)
+            } catch {
+                self.logger.warning("Failed to resolve network public key for \(networkId): \(error)")
+                continue
+            }
+            
+            // Create dynamic resolver for remote subscription (system context)
+            let emptyProfileKeys: [Data] = []
+            let resolver = try await self.getOrCreateResolver(emptyProfileKeys)
+
+            let serializationContext = SerializationContext(
+                keystore: self.keysManager,
+                resolver: resolver,
+                networkPublicKey: networkPublicKey,
+                profilePublicKeys: []
+            )
+
+            // Create event handler forwarding events to remote peer
+            let eventHandler: RemoteEventHandler = { [weak self] eventData in
+                guard let self = self else { return }
+                let correlationId = UUID().uuidString
+                self.logger.debug("🚀 [RemoteEvent] Sending remote event - Event: \(topicPath), Target: \(peerNodeId) correlation_id: \(correlationId)")
+                
+                do {
+                    let topicPathStr = topicPath.asString()
+                    // Serialize the event data
+                    let payloadBytes = try await (eventData ?? AnyValue.null()).serialize(context: serializationContext)
+                    
+                    try await transportArc.publish(
+                        topic: topicPathStr,
+                        payload: payloadBytes,
+                        options: PublishOptions()
+                    )
+                    
+                    self.logger.debug("✅ [RemoteEvent] Event forwarded - Event: \(topicPath), Target: \(peerNodeId) correlation_id: \(correlationId)")
+                } catch {
+                    self.logger.error("Failed to forward event to remote peer: \(error)")
+                    throw error
+                }
+            }
+
+            do {
+                let subscriptionId = try await self.serviceRegistry.registerRemoteEventSubscription(
+                    topicPath: topicPath,
+                    handler: eventHandler,
+                    options: EventRegistrationOptions()
+                )
+                await self.serviceRegistry.upsertRemotePeerSubscription(peerId: peerNodeId, path: topicPath, subId: subscriptionId)
+            } catch {
+                self.logger.warning("Failed to register remote subscription \(path) for peer \(peerNodeId): \(error)")
+            }
+        }
+
+        // Paths to remove
+        let pathsToRemove = oldSet.subtracting(newSet)
+        for path in pathsToRemove {
+            self.logger.info("Removing remote subscription: \(path) for peer: \(peerNodeId)")
+            
+            let topicPath: TopicPath
+            do {
+                topicPath = try TopicPath.fromFullPath(path)
+            } catch {
+                self.logger.warning("Failed to parse topic path \(path): \(error)")
+                continue
+            }
+            
+            if let subId = await self.serviceRegistry.removeRemotePeerSubscription(peerId: peerNodeId, path: topicPath) {
+                do {
+                    try await self.serviceRegistry.unsubscribeRemote(subscriptionId: subId)
+                } catch {
+                    self.logger.warning("Failed to unsubscribe remote subscription \(subId): \(error)")
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Node Errors
@@ -3036,6 +3435,7 @@ public enum NodeError: Error, LocalizedError, Sendable {
     case networkInitializationFailed(String)
     case invalidConfiguration(String)
     case transportNotImplemented(String)
+    case transportNotAvailable(String)
     case discoveryNotImplemented(String)
     case invalidServicePath(String)
     case serviceInitializationFailed(String)
@@ -3062,6 +3462,8 @@ public enum NodeError: Error, LocalizedError, Sendable {
             "Service initialization failed: \(message)"
         case let .transportNotImplemented(message):
             "Transport not implemented: \(message)"
+        case let .transportNotAvailable(message):
+            "Network transport not available: \(message)"
         case let .discoveryNotImplemented(message):
             "Discovery not implemented: \(message)"
         case let .peerNotFound(message):
