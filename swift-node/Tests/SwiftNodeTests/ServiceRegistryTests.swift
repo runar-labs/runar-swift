@@ -543,7 +543,7 @@ final class ServiceRegistryTests: XCTestCase {
         try await registry.registerLocalService(entry2)
 
         // Get all service metadata
-        let allMetadata = await registry.getAllLocalServiceMetadata(includeInternalServices: false)
+        let allMetadata = try await registry.getAllLocalServiceMetadata(includeInternalServices: false)
 
         // Verify metadata was retrieved
         XCTAssertEqual(allMetadata.count, 2)

@@ -227,6 +227,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
     /// This matches the Rust RemoteService::create_action_handler implementation
     public func createActionHandler(actionName: String) -> ActionHandler {
         { [weak self] params, requestContext in
+            //REVIEW what is this condition ? what is this doing ? is thi aligned with the RUST code ? what is the correpondent RUST rule for this ?
             guard let self else {
                 return AnyValue.null()
             }
@@ -251,6 +252,7 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
                 networkPublicKey = try await keystore.getNetworkPublicKeyByNetworkId(networkId: serviceTopic.networkId)
             } catch {
                 logger.error("Failed to get network public key for network \(serviceTopic.networkId): \(error)")
+                //REVIEW actionNotFound ?? that is not the correct error to be used here.. the issu here is the Network key NOT found.. thisn is wrong
                 throw ServiceRegistryError.actionNotFound("Network key resolution failed: \(error)")
             }
 
@@ -274,10 +276,13 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
 
             // Send network request
             guard let networkTransport else {
+                //REVIEW transportNotImplemented ?? why kind of error is this.. this is wrong.. 
+                //ther is no such errfor as transportNotImplemented .. the erro shuold be transport not available.
                 throw NodeError.transportNotImplemented("Network transport not available for remote service")
             }
 
             let correlationId = UUID().uuidString
+            logger.debug("Sending network request to \(actionTopicPath.asString()) with correlationId \(correlationId) peerNodeId \(peerNodeId)")
             let responseBytes = try await networkTransport.request(
                 path: actionTopicPath.asString(),
                 correlationId: correlationId,
@@ -286,6 +291,8 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
             )
+
+            logger.debug("Received response from \(actionTopicPath.asString()) with correlationId \(correlationId) peerNodeId \(peerNodeId)")
 
             // Deserialize response using the proper keystore
             let response = try AnyValue.deserialize(responseBytes, keystore: keystore)
@@ -304,10 +311,13 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
         set { /* Remote services cannot change network ID */ }
     }
 
+    //REVIEW why do we have this method setNetworkId() where i comes from ? is this in the rust IMPL ?
     public func setNetworkId(_: String) {
         // Remote services cannot change network ID
     }
 
+    //REVIEW This is wront.. is during initService that the remote service cerate the action.. that is when createActionHandler shuold be called to craete all the actions fo the service
+    //check the rust code for reference.
     public func initService(_: LifecycleContext) async throws {
         // Remote services don't need initialization since they're just proxies
         logger.info("Initialized remote service proxy for \(serviceTopic)")
@@ -318,6 +328,9 @@ public final class RemoteService: AbstractService, Sendable, Equatable {
         logger.info("Started remote service proxy for \(serviceTopic)")
     }
 
+    //REVIEW this is wrong.. is during stop that the remote service REMOVE the actions usinfg the context
+    // context.remove_remote_action_handler(&action_topic_path) //RUST
+    //  check the rust code for reference. 
     public func stop(_: LifecycleContext) async throws {
         // Remote services don't need to be stopped
         logger.info("Stopped remote service proxy for \(serviceTopic)")
@@ -375,7 +388,8 @@ public struct SubscriptionEntry: Sendable, Equatable {
         lhs.subscriptionId == rhs.subscriptionId
     }
 }
-
+//REVIEW case remote(String) // node ID is completely WRONG>. this need to be  RemoteEventHandler
+// like it is in RUST.  FIX THIS create the proper RemoteEventHandler and use it exactly like it is used in RUST
 /// Subscriber kind for event subscriptions (Node-only, not in FFI)
 public enum SubscriberKind: Sendable, Equatable {
     case local(EventHandler)
@@ -1386,7 +1400,7 @@ public final class ServiceRegistry: NodeDelegate {
     }
 
     /// Get all local service metadata
-    public func getAllLocalServiceMetadata(includeInternalServices: Bool) async -> [String: ServiceMetadata] {
+    public func getAllLocalServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
         logger.trace("ServiceRegistry.getAllLocalServiceMetadata: includeInternalServices = \(includeInternalServices)")
         var metadata: [String: ServiceMetadata] = [:]
 
@@ -1405,38 +1419,21 @@ public final class ServiceRegistry: NodeDelegate {
             }
 
             // Get actions metadata for this service
-            do {
-                let serviceTopicPath = try TopicPath.new(topicPath.servicePath, defaultNetwork: topicPath.networkId)
-                let actions = await getActionsMetadata(serviceTopicPath: serviceTopicPath)
+            let serviceTopicPath = try TopicPath.new(topicPath.servicePath, defaultNetwork: topicPath.networkId)
+            let actions = await getActionsMetadata(serviceTopicPath: serviceTopicPath)
 
-                let serviceMetadata = ServiceMetadata(
-                    networkId: topicPath.networkId,
-                    servicePath: topicPath.servicePath,
-                    name: serviceEntry.service.name,
-                    version: serviceEntry.service.version,
-                    description: serviceEntry.service.description,
-                    actions: actions,
-                    registrationTime: serviceEntry.registrationTime,
-                    lastStartTime: serviceEntry.lastStartTime
-                )
+            let serviceMetadata = ServiceMetadata(
+                networkId: topicPath.networkId,
+                servicePath: topicPath.servicePath,
+                name: serviceEntry.service.name,
+                version: serviceEntry.service.version,
+                description: serviceEntry.service.description,
+                actions: actions,
+                registrationTime: serviceEntry.registrationTime,
+                lastStartTime: serviceEntry.lastStartTime
+            )
 
-                metadata[topicPath.asString()] = serviceMetadata
-            } catch {
-                logger.error("Failed to create TopicPath for service metadata: \(error)")
-                // Continue with empty actions if TopicPath creation fails
-                let serviceMetadata = ServiceMetadata(
-                    networkId: topicPath.networkId,
-                    servicePath: topicPath.servicePath,
-                    name: serviceEntry.service.name,
-                    version: serviceEntry.service.version,
-                    description: serviceEntry.service.description,
-                    actions: [],
-                    registrationTime: serviceEntry.registrationTime,
-                    lastStartTime: serviceEntry.lastStartTime
-                )
-
-                metadata[topicPath.asString()] = serviceMetadata
-            }
+            metadata[topicPath.asString()] = serviceMetadata
         }
 
         return metadata
@@ -1480,7 +1477,6 @@ public final class ServiceRegistry: NodeDelegate {
     public func getActionsMetadata(serviceTopicPath: TopicPath) async -> [ActionMetadata] {
         // Search for all actions that start with the service path
         // We need to search for patterns like "math1/*" to find all actions under math1
-        _ = "\(serviceTopicPath.servicePath)/*"
         let patternTopicPath = try! TopicPath.new("\(serviceTopicPath.servicePath)/*", defaultNetwork: serviceTopicPath.networkId)
 
         // Search in the actions trie local_action_handlers (matching Rust)

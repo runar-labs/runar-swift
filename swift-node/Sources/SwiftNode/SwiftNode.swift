@@ -1608,7 +1608,7 @@ public final class Node {
         // If the node is not yet started, the transport will be created with the current NodeInfo when it starts
         if isRunning {
             logger.trace("🔍 SERVICE: Node is running, updating transport with new NodeInfo...")
-            await updateTransportNodeInfo()
+            try await updateTransportNodeInfo()
         } else {
             logger.trace("🔍 SERVICE: Node not yet started, transport will be created with current NodeInfo when started")
         }
@@ -1789,7 +1789,7 @@ public final class Node {
         // Update the transport with current NodeInfo after it's created
         // This ensures the transport has the latest NodeInfo with all services
         logger.trace("🔍 START: Updating transport with current NodeInfo after creation...")
-        await updateTransportNodeInfo()
+        try await updateTransportNodeInfo()
     }
 
     /// Stop the node and all its services.
@@ -2030,7 +2030,7 @@ public final class Node {
         logger.trace("Creating QUIC transport")
 
         // Get the current NodeInfo (this is just a getter, no transport update)
-        let currentNodeInfo = await getLocalNodeInfo()
+        let currentNodeInfo = try await getLocalNodeInfo()
         logger.trace("Got current NodeInfo with \(currentNodeInfo.nodeMetadata.services.count) services")
 
         // Note: The transport will be created with transport-scoped NodeInfo storage
@@ -2321,7 +2321,7 @@ public final class Node {
     }
 
     /// Get local node information with current service metadata (GETTER ONLY)
-    private func getLocalNodeInfo() async -> NodeInfo {
+    private func getLocalNodeInfo() async throws -> NodeInfo {
         // Get current services from the service registry with proper metadata including actions
         let currentServices = await serviceRegistry.getLocalServices()
 
@@ -2335,7 +2335,7 @@ public final class Node {
         let subscriptionMetadata = currentSubscriptions?.map { $0.subscriptionMetadata } ?? []
 
         // Get proper service metadata from the service registry
-        let serviceMetadata = await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: false)
+        let serviceMetadata = try await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: false)
 
         // Create updated NodeInfo with current service metadata
         let nodeInfo = NodeInfo(
@@ -2355,28 +2355,24 @@ public final class Node {
     }
 
     /// Update the transport with current NodeInfo (SETTER ONLY)
-    private func updateTransportNodeInfo() async {
+    private func updateTransportNodeInfo() async throws {
         guard let transport = networkTransport as? QuicTransport else {
-            logger.trace("🔍 DEBUG: No transport found (networkTransport is nil or not QuicTransport)")
+            logger.debug("No transport found (networkTransport is nil or not QuicTransport)")
             return
         }
 
-        logger.trace("🔍 DEBUG: Transport found, updating with NodeInfo...")
+        logger.trace("Transport found, updating with NodeInfo...")
         do {
             // Get current NodeInfo
-            let currentNodeInfo = await getLocalNodeInfo()
+            let currentNodeInfo = try await getLocalNodeInfo()
 
             // NodeInfo is now a type alias to SwiftFFI.NodeInfo, no conversion needed
             let ffiNodeInfo = currentNodeInfo
 
-            logger.trace("🔍 DEBUG: Calling transport.updateLocalNodeInfo()... at \(Date())")
-            logger.trace("🔍 DEBUG: About to send NodeInfo with \(ffiNodeInfo.nodeMetadata.services.count) services to transport")
-            logger.trace("🔍 DEBUG: This should update the transport-scoped NodeInfo storage for handshakes")
+            logger.trace("Calling transport.updateLocalNodeInfo() with \(ffiNodeInfo.nodeMetadata.services.count) services to transport")
             try await transport.updateLocalNodeInfo(nodeInfo: ffiNodeInfo)
-            logger.trace("🔍 DEBUG: Successfully updated transport with new NodeInfo at \(Date())")
-            logger.trace("🔍 DEBUG: The transport-scoped NodeInfo storage should now contain \(ffiNodeInfo.nodeMetadata.services.count) services")
         } catch {
-            logger.error("🔍 DEBUG: Failed to update transport with new NodeInfo: \(error)")
+            logger.error("Failed to update transport with new NodeInfo: \(error)")
         }
     }
 
@@ -2941,7 +2937,7 @@ extension Node: RegistryDelegate {
     }
 
     public func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
-        await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: includeInternalServices)
+        try await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: includeInternalServices)
     }
 
     public func getActionsMetadata(serviceTopicPath _: TopicPath) async -> [ActionMetadata] {
