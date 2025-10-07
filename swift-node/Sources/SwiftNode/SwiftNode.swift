@@ -400,7 +400,7 @@ public final class RegistryService: AbstractService {
 public final class KeysService: AbstractService {
     public let name: String = "KeysService"
     public let version: String = "1.0.0"
-    public let path: String = "keys"
+    public let path: String = "$keys"
     public let description: String = "Internal keys service"
 
     public let logger: RunarLogger
@@ -2381,11 +2381,11 @@ public final class Node {
     }
 
     /// Compact ID generation from public key
-    private func compactId(_ publicKey: Data) -> String {
-        // Generate a compact ID from the public key
-        // This should match the Rust implementation
-        publicKey.prefix(8).map { String(format: "%02x", $0) }.joined()
-    }
+    // private func compactId(_ publicKey: Data) -> String {
+    //     // Use the proper CompactId implementation from SwiftCommon
+    //     // This matches the Rust implementation exactly
+    //     return CompactId.compactId(from: publicKey)
+    // }
 
     /// Get or create resolver for user profile keys
     /// Matches Rust: get_or_create_resolver
@@ -3037,7 +3037,7 @@ extension Node: RegistryDelegate {
     /// Add a new peer and process their capabilities (matches Rust add_new_peer)
     public func addNewPeer(nodeInfo: NodeInfo) async throws -> [RemoteService] {
         let capabilities = nodeInfo.nodeMetadata
-        self.logger.info("Processing \(capabilities.services.count) services and \(capabilities.subscriptions.count) subscriptions from node \(self.compactId(nodeInfo.nodePublicKey))")
+        self.logger.info("Processing \(capabilities.services.count) services and \(capabilities.subscriptions.count) subscriptions from node \(CompactId.compactId(from: nodeInfo.nodePublicKey))")
 
         // Check if capabilities is empty
         if capabilities.services.isEmpty && capabilities.subscriptions.isEmpty {
@@ -3048,7 +3048,7 @@ extension Node: RegistryDelegate {
         // Get the local node ID
         let localPeerId = self.nodeId
 
-        let peerNodeId = self.compactId(nodeInfo.nodePublicKey)
+        let peerNodeId = CompactId.compactId(from: nodeInfo.nodePublicKey)
         
         // Create RemoteService instances directly
         let rsConfig = CreateRemoteServicesConfig(
@@ -3199,14 +3199,14 @@ extension Node: RegistryDelegate {
             }
         }
 
-        self.logger.info("Successfully processed \(remoteServices.count) remote services and \(capabilities.subscriptions.count) remote subscriptions from node \(self.compactId(nodeInfo.nodePublicKey))")
+        self.logger.info("Successfully processed \(remoteServices.count) remote services and \(capabilities.subscriptions.count) remote subscriptions from node \(CompactId.compactId(from: nodeInfo.nodePublicKey))")
 
         return remoteServices
     }
 
     /// Update peer capabilities by diffing old and new peer info (matches Rust update_peer_capabilities exactly)
     public func updatePeerCapabilities(oldPeer: NodeInfo, newPeer: NodeInfo) async throws {
-        let peerNodeId = self.compactId(oldPeer.nodePublicKey)
+        let peerNodeId = CompactId.compactId(from: oldPeer.nodePublicKey)
 
         // FIRST: Diff services
         let oldServices: Set<String> = Set(oldPeer.nodeMetadata.services.map { service in

@@ -30,7 +30,7 @@ Step 4: The problem is that the discovery is working, but the transport connecti
 
 
 Step 5:
-create a test for updatePeerCapabilities... based on the rust code,.,. so u knoe what to expecte the result to be..  nalso add a test for addNewPeer.. both tests must be based excalt on what the rust code doesl. so we an verify swift behaviour is aligned... 
+create a test for addNewPeer and updatePeerCapabilities... based all the expected behaviour asserts, setup etc on the rust code,.,. so u know what to expecte the result to be..   both tests must be based excalt on what the rust code doesl. so we an verify swift behaviour is aligned... 
 
 ## REVIEW COMMENTS ANALYSIS
 

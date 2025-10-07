@@ -1526,12 +1526,65 @@ public final class ServiceRegistry: NodeDelegate {
     }
 
     /// Check if a service is internal
+    /// This matches the Rust implementation exactly
     private func isInternalService(_ servicePath: String) -> Bool {
-        // Extract just the service path from the full topic path (e.g., "test-network:keys" -> "keys")
-        let pathComponents = servicePath.split(separator: ":")
-        let actualServicePath = pathComponents.count > 1 ? String(pathComponents[1]) : servicePath
-        return actualServicePath == "registry" || actualServicePath == "keys"
+        let internalServices = ["$registry", "$keys"]
+        
+        // Check if it starts with an internal service directly (exact match or followed by /)
+        for serviceName in internalServices {
+            if servicePath == serviceName || servicePath.hasPrefix("\(serviceName)/") {
+                return true
+            }
+        }
+        
+        // Check if it has the pattern <network_id>:<internal_service>/...
+        if let colonPos = servicePath.firstIndex(of: ":") {
+            let afterColon = String(servicePath[servicePath.index(after: colonPos)...])
+            for serviceName in internalServices {
+                if afterColon == serviceName || afterColon.hasPrefix("\(serviceName)/") {
+                    return true
+                }
+            }
+        }
+        
+        return false
     }
+
+    #if DEBUG
+    /// TEST-ONLY: Return all remote peer subscriptions for assertions (not part of Rust parity)
+    /// Keys are full topic path strings, values are subscription IDs
+    public func getAllRemotePeerSubscriptions(peerId: String) async -> [String: String] {
+        guard let peerSubscriptions = await remotePeerSubscriptions.get(peerId) else {
+            return [:]
+        }
+        // ShardedConcurrentMap lacks iteration API; extend minimally for test under DEBUG
+        return await peerSubscriptions.toDictionary()
+    }
+
+    /// TEST-ONLY: Return all remote service states for assertions (not part of Rust parity)
+    public func getAllRemoteServiceStates() async -> [TopicPath: ServiceState] {
+        let map = await remoteServiceStates.toDictionary()
+        var out: [TopicPath: ServiceState] = [:]
+        out.reserveCapacity(map.count)
+        for (k, v) in map {
+            if let tp = try? TopicPath.fromFullPath(k) { out[tp] = v }
+        }
+        return out
+    }
+
+    /// TEST-ONLY: Return all peers' remote subscriptions for assertions
+    /// Structure: [peerId: [pathString: subId]]
+    public func getAllPeersRemoteSubscriptions() async -> [String: [String: String]] {
+        var result: [String: [String: String]] = [:]
+        let peerIds = await remotePeerSubscriptions.keys()
+        for peer in peerIds {
+            if let map = await remotePeerSubscriptions.get(peer) {
+                result[peer] = await map.toDictionary()
+            }
+        }
+        return result
+    }
+    #endif
 
     // MARK: - Remote Peer Subscription Management
 
