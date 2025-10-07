@@ -53,62 +53,7 @@ public actor RoundRobinLoadBalancer: LoadBalancingStrategy {
     }
 }
 
-/// Protocol for node discovery
-public protocol NodeDiscovery: Sendable {
-    func start() async throws
-    func stop() async throws
-}
-
-/// Discovery implementation using Swift FFI MulticastDiscovery
-@MainActor
-public final class Discovery: NodeDiscovery, Sendable {
-    private let discoveryHandle: MulticastDiscovery
-    private let logger: RunarLogger
-    private var isStarted = false
-
-    public init(discoveryHandle: MulticastDiscovery, logger: RunarLogger) {
-        self.discoveryHandle = discoveryHandle
-        self.logger = logger
-        logger.trace("🔍 Discovery initialized")
-    }
-
-    public func start() async throws {
-        guard !isStarted else {
-            logger.trace("🔍 Discovery already started, skipping")
-            return
-        }
-
-        logger.trace("🔍 Starting discovery...")
-        try await discoveryHandle.startAnnouncing()
-        isStarted = true
-        logger.trace("🔍 Discovery started successfully")
-    }
-
-    public func stop() async throws {
-        guard isStarted else {
-            logger.trace("🔍 Discovery not started, skipping stop")
-            return
-        }
-
-        logger.trace("🔍 Stopping discovery...")
-        try await discoveryHandle.stopAnnouncing()
-        isStarted = false
-        logger.trace("🔍 Discovery stopped successfully")
-    }
-
-    /// Set discovery callbacks for handling discovered/updated/lost events
-    public func setCallbacks(_ callbacks: DiscoveryCallbacks) async {
-        logger.trace("🔍 Setting discovery callbacks")
-        await discoveryHandle.setCallbacks(callbacks)
-    }
-
-    /// Update local peer info for discovery announcements
-    public func updateLocalPeerInfo(peerInfoCbor: Data) async throws {
-        logger.trace("🔍 Discovery: Updating local peer info")
-        try await discoveryHandle.updateLocalPeerInfo(peerInfoCbor: peerInfoCbor)
-        logger.trace("🔍 Discovery: Local peer info updated successfully")
-    }
-}
+// Discovery classes moved to swift-ffi package
 
 // MARK: - Real Transport Implementation
 
@@ -1062,6 +1007,9 @@ public actor RetainedDeque {
     }
 }
 
+// MARK: - Node Public API Extensions
+
+
 // MARK: - Node
 
 /// Main Node implementation matching Rust structure
@@ -1112,7 +1060,7 @@ public final class Node {
     private var networkTransport: (any NodeTransport)?
 
     /// Network discovery providers
-    private var networkDiscoveryProviders: [NodeDiscovery]?
+    private var networkDiscoveryProviders: [SwiftFFI.NodeDiscovery]?
 
     /// Load balancer for selecting remote handlers
     private var loadBalancer: RoundRobinLoadBalancer
@@ -1962,6 +1910,11 @@ public final class Node {
 
         logger.trace("🔍 NETWORKING: Network config: \(networkConfig)")
 
+        // Always require a transport (matches Rust behavior)
+        guard !networkConfig.transportType.isEmpty else {
+            throw NodeError.transportNotImplemented("Transport type is required - discovery-only mode not supported")
+        }
+        
         // Initialize the network transport
         if networkTransport == nil {
             logger.trace("🔍 NETWORKING: Initializing network transport...")
@@ -2181,7 +2134,7 @@ public final class Node {
                 }
             }
         )
- 
+
         logger.trace("Creating QuicTransport with nodeInfo: \(currentNodeInfo)")
 
         // Create the QuicTransport using the key manager
@@ -2202,7 +2155,7 @@ public final class Node {
     private func createDiscoveryProvider(
         providerConfig _: DiscoveryProviderConfig,
         discoveryOptions: SwiftFFI.DiscoveryOptions
-    ) async throws -> NodeDiscovery {
+    ) async throws -> SwiftFFI.NodeDiscovery {
         logger.trace("🔍 Creating real discovery provider with options: \(discoveryOptions)")
 
         // Get key manager for node public key
@@ -2220,15 +2173,6 @@ public final class Node {
             addresses: [] // Will be updated when transport address is available
         )
         logger.trace("🔍 Created PeerInfo for discovery")
-
-        // Create MulticastDiscovery using the new API
-        logger.trace("🔍 Creating MulticastDiscovery with new API")
-        let discoveryHandle = try await MulticastDiscovery.create(
-            peerInfo: peerInfo,
-            options: discoveryOptions,
-            logger: logger.child(component: .network)
-        )
-        logger.trace("🔍 MulticastDiscovery created successfully")
 
         // Create discovery callbacks for handling discovery events
         let discoveryCallbacks = DiscoveryCallbacks(
@@ -2249,16 +2193,17 @@ public final class Node {
             }
         )
 
-        // Create and return discovery provider
-        logger.trace("🔍 Creating Discovery instance")
-        let discoveryProvider = Discovery(discoveryHandle: discoveryHandle, logger: logger)
+        // Create Discovery instance with clean API - handles creation and initialization internally
+        logger.trace("🔍 Creating Discovery instance with clean API")
+        let discoveryProvider = try await SwiftFFI.Discovery(
+            peerInfo: peerInfo,
+            options: discoveryOptions,
+            logger: logger.child(component: .network)
+        )
 
         // Set the callbacks on the discovery provider
         await discoveryProvider.setCallbacks(discoveryCallbacks)
-
-        // Note: Local peer info will be updated after transport is started
-        // This is because we need the transport's local address
-
+        logger.trace("🔍 Discovery provider created successfully")
         return discoveryProvider
     }
 
@@ -2304,13 +2249,9 @@ public final class Node {
                 logger.trace("🔍 DISCOVERY: Found \(discoveryProviders.count) discovery providers to update")
                 for (index, discoveryProvider) in discoveryProviders.enumerated() {
                     logger.trace("🔍 DISCOVERY: Updating discovery provider \(index + 1) of \(discoveryProviders.count)")
-                    if let discovery = discoveryProvider as? Discovery {
-                        logger.trace("🔍 DISCOVERY: Calling updateLocalPeerInfo on discovery provider \(index + 1)")
-                        try await discovery.updateLocalPeerInfo(peerInfoCbor: peerInfoCbor)
-                        logger.trace("🔍 DISCOVERY: Successfully updated peer info for discovery provider \(index + 1)")
-                    } else {
-                        logger.trace("🔍 DISCOVERY: Discovery provider \(index + 1) is not a Discovery instance")
-                    }
+                    logger.trace("🔍 DISCOVERY: Calling updateLocalPeerInfo on discovery provider \(index + 1)")
+                    try await discoveryProvider.updateLocalPeerInfo(peerInfoCbor: peerInfoCbor)
+                    logger.trace("🔍 DISCOVERY: Successfully updated peer info for discovery provider \(index + 1)")
                 }
             } else {
                 logger.trace("🔍 DISCOVERY: No discovery providers available (networkDiscoveryProviders is nil)")
@@ -2323,6 +2264,7 @@ public final class Node {
             throw error
         }
     }
+
 
     /// Get local node information with current service metadata (GETTER ONLY)
     private func getLocalNodeInfo() async throws -> NodeInfo {
@@ -2421,41 +2363,41 @@ public final class Node {
 
         // Make the local request using Node.request (matching Rust pattern)
         do {
-            let response = try await request(
-                topicPath.asString(),
-                payload: paramsOption,
-                networkId: networkId
-            )
+        let response = try await request(
+            topicPath.asString(),
+            payload: paramsOption,
+            networkId: networkId
+        )
 
-            logger.trace("[handle_network_request] local request completed successfully correlation_id: \(message.payload.correlationId)")
+        logger.trace("[handle_network_request] local request completed successfully correlation_id: \(message.payload.correlationId)")
 
-            // Create resolver for response serialization
+        // Create resolver for response serialization
             let resolver = try await getOrCreateResolver(profilePublicKeys)
 
-            // Create serialization context
-            let serializationContext = SerializationContext(
-                keystore: keysManager,
-                resolver: resolver,
+        // Create serialization context
+        let serializationContext = SerializationContext(
+            keystore: keysManager,
+            resolver: resolver,
+            networkPublicKey: networkPublicKey,
+            profilePublicKeys: profilePublicKeys
+        )
+
+        // Serialize the response data
+        let serializedData = try await response.serialize(context: serializationContext)
+
+        // Create response NetworkMessage
+        return NetworkMessage(
+            sourceNodeId: nodeId,
+            destinationNodeId: message.sourceNodeId,
+            messageType: 5, // MESSAGE_TYPE_RESPONSE
+            payload: NetworkMessagePayloadItem(
+                path: message.payload.path,
+                payloadBytes: serializedData,
+                correlationId: message.payload.correlationId,
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
             )
-
-            // Serialize the response data
-            let serializedData = try await response.serialize(context: serializationContext)
-
-            // Create response NetworkMessage
-            return NetworkMessage(
-                sourceNodeId: nodeId,
-                destinationNodeId: message.sourceNodeId,
-                messageType: 5, // MESSAGE_TYPE_RESPONSE
-                payload: NetworkMessagePayloadItem(
-                    path: message.payload.path,
-                    payloadBytes: serializedData,
-                    correlationId: message.payload.correlationId,
-                    networkPublicKey: networkPublicKey,
-                    profilePublicKeys: profilePublicKeys
-                )
-            )
+        )
         } catch {
             // ERROR HANDLING (matching Rust exactly)
             logger.error("❌ [handle_network_request] Local request failed correlation_id: \(message.payload.correlationId) - Error: \(error)")
@@ -2464,35 +2406,35 @@ public final class Node {
             // For error response serialization, we can use a system-only resolver since we're not encrypting new data
             let resolver = try await getOrCreateResolver(profilePublicKeys)
 
-            let serializationContext = SerializationContext(
-                keystore: keysManager,
-                resolver: resolver,
+        let serializationContext = SerializationContext(
+            keystore: keysManager,
+            resolver: resolver,
+            networkPublicKey: networkPublicKey,
+            profilePublicKeys: profilePublicKeys
+        )
+
+            // Create a map for the error response (matching Rust exactly)
+        var errorMap: [String: AnyValue] = [:]
+        errorMap["error"] = AnyValue.primitive(true)
+        errorMap["message"] = AnyValue.primitive(error.localizedDescription)
+        let errorValue = AnyValue.map(errorMap)
+
+            // Serialize the error value (matching Rust exactly)
+        let serializedError = try await errorValue.serialize(context: serializationContext)
+
+            // Create error response NetworkMessage (matching Rust exactly)
+        return NetworkMessage(
+            sourceNodeId: nodeId,
+                destinationNodeId: message.sourceNodeId,
+            messageType: 5, // MESSAGE_TYPE_RESPONSE
+            payload: NetworkMessagePayloadItem(
+                    path: message.payload.path,
+                payloadBytes: serializedError,
+                    correlationId: message.payload.correlationId,
                 networkPublicKey: networkPublicKey,
                 profilePublicKeys: profilePublicKeys
             )
-
-            // Create a map for the error response (matching Rust exactly)
-            var errorMap: [String: AnyValue] = [:]
-            errorMap["error"] = AnyValue.primitive(true)
-            errorMap["message"] = AnyValue.primitive(error.localizedDescription)
-            let errorValue = AnyValue.map(errorMap)
-
-            // Serialize the error value (matching Rust exactly)
-            let serializedError = try await errorValue.serialize(context: serializationContext)
-
-            // Create error response NetworkMessage (matching Rust exactly)
-            return NetworkMessage(
-                sourceNodeId: nodeId,
-                destinationNodeId: message.sourceNodeId,
-                messageType: 5, // MESSAGE_TYPE_RESPONSE
-                payload: NetworkMessagePayloadItem(
-                    path: message.payload.path,
-                    payloadBytes: serializedError,
-                    correlationId: message.payload.correlationId,
-                    networkPublicKey: networkPublicKey,
-                    profilePublicKeys: profilePublicKeys
-                )
-            )
+        )
         }
     }
 
@@ -2666,92 +2608,95 @@ public final class Node {
 
     /// Handle peer discovered event from discovery system
     private func handlePeerDiscovered(peerInfo: SwiftFFI.PeerInfo) async {
-        logger.trace("🔍 DISCOVERY: Peer discovered: \(peerInfo.addresses)")
-
-        // Convert SwiftFFI.PeerInfo to a format we can use
-        // For now, we'll use the first address as the peer ID
-        guard let firstAddress = peerInfo.addresses.first else {
-            logger.warning("🔍 DISCOVERY: Peer discovered but no addresses available")
+        // Early return if networking not supported (matches Rust)
+        guard supportsNetworking else {
+            logger.trace("🔍 DISCOVERY: Networking not supported, skipping peer discovery")
             return
         }
 
-        // Extract peer ID from address or use address as ID
-        let peerNodeId = firstAddress
+        // Use compact_id from public key (matches Rust exactly)
+        let discoveredPeerId = CompactId.compactId(from: peerInfo.publicKey)
+        
+        logger.info("🔍 DISCOVERY: Discovery listener found node: \(discoveredPeerId)")
 
-        // Store peer info for later connection
-        logger.trace("🔍 DISCOVERY: Storing peer info for \(peerNodeId)")
-
-        // Publish discovery event that tests can subscribe to
-        // This matches the Rust test expectation: $registry/peer/{nodeId}/discovered
-        let discoveryEventPath = "$registry/peer/\(peerNodeId)/discovered"
-        logger.trace("🔍 DISCOVERY: Publishing discovery event: \(discoveryEventPath)")
-
-        // Publish the discovery event
-        do {
-            try await publish(
-                topic: discoveryEventPath,
-                data: AnyValue.primitive(peerNodeId),
-                options: PublishOptions()
-            )
-            logger.trace("🔍 DISCOVERY: Discovery event published successfully")
-        } catch {
-            logger.error("🔍 DISCOVERY: Failed to publish discovery event: \(error)")
+        // Debounce rapid duplicate announcements (matches Rust exactly)
+        let shouldDebounce: Bool
+        if let lastSeen = await discoverySeenTimes.get(discoveredPeerId) {
+            shouldDebounce = Date().timeIntervalSince(lastSeen) < 0.15 // 150ms
+        } else {
+            shouldDebounce = false
         }
 
-        // Connect to the discovered peer and perform handshake
-        await connectToDiscoveredPeer(peerInfo: peerInfo, peerNodeId: peerNodeId)
-    }
-
-    /// Connect to a discovered peer and perform handshake
-    private func connectToDiscoveredPeer(peerInfo: SwiftFFI.PeerInfo, peerNodeId: String) async {
-        logger.trace("🔍 CONNECTION: Connecting to discovered peer: \(peerNodeId)")
-
-        guard let transport = networkTransport else {
-            logger.error("🔍 CONNECTION: No transport available for connection")
-            return
+        if shouldDebounce {
+            logger.debug("🔍 DISCOVERY: Debounced discovery for \(discoveredPeerId)")
+            // Do not early-return; small delay then continue to connect to ensure reconnection after restart
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+        } else {
+            _ = await discoverySeenTimes.insert(Date(), for: discoveredPeerId)
         }
 
-        do {
-            // Connect to the peer using the transport
-            logger.trace("🔍 CONNECTION: Calling transport.connectToPeer()")
-            try await transport.connectToPeer(peerInfo: peerInfo)
-            logger.trace("🔍 CONNECTION: Transport connection successful")
-
-            // The handshake will happen automatically via the transport callbacks
-            // The peerConnectedCallback will be called with the peer's NodeInfo
-            // which will trigger handlePeerConnected() to register remote services
-            logger.trace("🔍 CONNECTION: Handshake will be handled by transport callbacks")
-
-        } catch {
-            logger.error("🔍 CONNECTION: Failed to connect to peer \(peerNodeId): \(error)")
+        // Attempt to connect to the discovered peer via transport (matches Rust exactly)
+        if let transport = networkTransport {
+            logger.trace("🔍 DISCOVERY: Attempting to connect to discovered peer via transport")
+            do {
+                try await transport.connectToPeer(peerInfo: peerInfo)
+                logger.trace("🔍 DISCOVERY: Successfully initiated connection to peer \(discoveredPeerId)")
+            } catch {
+                logger.error("🔍 DISCOVERY: Connection failed to \(discoveredPeerId): \(error)")
+            }
+        } else {
+            logger.warning("🔍 DISCOVERY: No network transport available for connection")
         }
     }
+
 
     /// Handle peer updated event from discovery system
     private func handlePeerUpdated(peerInfo: SwiftFFI.PeerInfo) async {
-        logger.trace("🔍 DISCOVERY: Peer updated: \(peerInfo.addresses)")
-
-        // Handle peer information updates
-        // This could include address changes, service updates, etc.
-        guard let firstAddress = peerInfo.addresses.first else {
-            logger.warning("🔍 DISCOVERY: Peer updated but no addresses available")
-            return
-        }
-
-        let peerNodeId = firstAddress
-        logger.trace("🔍 DISCOVERY: Peer update completed for \(peerNodeId)")
+        // In Rust, both DiscoveryEvent::Discovered and DiscoveryEvent::Updated call handle_discovered_node
+        // So we call the same method here
+        await handlePeerDiscovered(peerInfo: peerInfo)
     }
 
     /// Handle peer lost event from discovery system
     private func handlePeerLost(nodeId: String) async {
-        logger.trace("🔍 DISCOVERY: Peer lost: \(nodeId)")
+        logger.info("🔍 DISCOVERY: Cleaning up disconnected peer: \(nodeId)")
 
-        // Handle peer being lost from discovery
-        // This doesn't necessarily mean the peer disconnected (it might still be connected)
-        // but it's no longer discoverable via the discovery mechanism
+        // 1) Remove remote subscriptions registered for this peer
+        let subscriptionIds = await serviceRegistry.drainRemotePeerSubscriptions(peerId: nodeId)
+        for subscriptionId in subscriptionIds {
+            do {
+                try await serviceRegistry.unsubscribeRemote(subscriptionId: subscriptionId)
+            } catch {
+                logger.error("🔍 DISCOVERY: Failed to unsubscribe remote subscription \(subscriptionId): \(error)")
+            }
+        }
 
-        // Note: Peer lost logic is handled by discovery mechanism
-        // - Clean up discovery-specific state
+        // 2) Remove remote services from this peer
+        if let previousInfo = await remoteNodeInfo.get(nodeId) {
+            for service in previousInfo.nodeMetadata.services {
+                do {
+                    let serviceTopicPath = try TopicPath.new(service.servicePath, defaultNetwork: service.networkId)
+                    try await serviceRegistry.removeRemoteService(serviceTopic: serviceTopicPath)
+                } catch {
+                    logger.error("🔍 DISCOVERY: Failed to remove remote service \(service.servicePath): \(error)")
+                }
+            }
+        }
+
+        // 3) Remove from local cache
+        _ = await remoteNodeInfo.remove(nodeId)
+
+        // 4) Publish a local-only event indicating peer removal
+        let disconnectedEventPath = "$registry/peer/\(nodeId)/disconnected"
+        do {
+            try await publish(
+                topic: disconnectedEventPath,
+                data: AnyValue.primitive(nodeId),
+                options: PublishOptions.localOnly().withRetainFor(10.0)
+            )
+        } catch {
+            logger.error("🔍 DISCOVERY: Failed to publish peer disconnected event: \(error)")
+        }
 
         logger.trace("🔍 DISCOVERY: Peer lost handling completed for \(nodeId)")
     }
@@ -2812,6 +2757,12 @@ public final class Node {
         } catch {
             logger.error("Network event handling failed: \(error)")
         }
+    }
+
+    /// Get all discovered peers (for testing)
+    public func getDiscoveredPeers() async -> [NodeInfo] {
+        let peerDict = await remoteNodeInfo.toDictionary()
+        return Array(peerDict.values)
     }
 }
 

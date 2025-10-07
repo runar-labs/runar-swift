@@ -3549,6 +3549,88 @@ public enum EnrollmentTokenUtils {
 
 // MARK: - Typed Transport Events (Swift counterparts of Rust structs)
 
+// MARK: - Discovery Protocol and Implementation
+
+/// Protocol for node discovery
+public protocol NodeDiscovery: Sendable {
+    func start() async throws
+    func stop() async throws
+    func setCallbacks(_ callbacks: DiscoveryCallbacks) async
+    func updateLocalPeerInfo(peerInfoCbor: Data) async throws
+}
+
+/// Discovery implementation using Swift FFI MulticastDiscovery
+@MainActor
+public final class Discovery: NodeDiscovery, Sendable {
+    private let discoveryHandle: MulticastDiscovery
+    private let logger: RunarLogger
+    private var isStarted = false
+
+    /// Create a new discovery instance
+    /// - Parameters:
+    ///   - peerInfo: Peer information containing public key and addresses
+    ///   - options: Discovery options
+    ///   - logger: Logger instance for discovery operations
+    /// - Returns: New discovery instance
+    /// - Throws: FFIError if creation fails
+    public init(peerInfo: PeerInfo, options: DiscoveryOptions, logger: RunarLogger) async throws {
+        self.logger = logger
+        
+        // Create MulticastDiscovery handle internally
+        logger.trace("🔍 Creating MulticastDiscovery handle internally")
+        self.discoveryHandle = try await MulticastDiscovery.create(
+            peerInfo: peerInfo,
+            options: options,
+            logger: logger
+        )
+        
+        // Initialize the discovery handle internally
+        logger.trace("🔍 Initializing discovery handle internally")
+        let encoder = CodableCBOREncoder()
+        let discoveryOptionsCbor = try encoder.encode(options)
+        try await discoveryHandle.initialize(optionsCbor: discoveryOptionsCbor)
+        
+        logger.trace("🔍 Discovery initialized successfully")
+    }
+
+    public func start() async throws {
+        guard !isStarted else {
+            logger.trace("🔍 Discovery already started, skipping")
+            return
+        }
+
+        logger.trace("🔍 Starting discovery...")
+        try await discoveryHandle.startAnnouncing()
+        isStarted = true
+        logger.trace("🔍 Discovery started successfully")
+    }
+
+    public func stop() async throws {
+        guard isStarted else {
+            logger.trace("🔍 Discovery not started, skipping stop")
+            return
+        }
+
+        logger.trace("🔍 Stopping discovery...")
+        try await discoveryHandle.stopAnnouncing()
+        isStarted = false
+        logger.trace("🔍 Discovery stopped successfully")
+    }
+
+    /// Set discovery callbacks for handling discovered/updated/lost events
+    public func setCallbacks(_ callbacks: DiscoveryCallbacks) async {
+        logger.trace("🔍 Setting discovery callbacks")
+        await discoveryHandle.setCallbacks(callbacks)
+    }
+
+    /// Update local peer info for discovery announcements
+    public func updateLocalPeerInfo(peerInfoCbor: Data) async throws {
+        logger.trace("🔍 Discovery: Updating local peer info")
+        try await discoveryHandle.updateLocalPeerInfo(peerInfoCbor: peerInfoCbor)
+        logger.trace("🔍 Discovery: Local peer info updated successfully")
+    }
+}
+
 // MARK: - Multicast Discovery
 
 /// Handle for Multicast Discovery operations
