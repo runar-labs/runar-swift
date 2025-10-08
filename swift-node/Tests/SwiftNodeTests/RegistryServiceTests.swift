@@ -57,7 +57,7 @@ final class RegistryServiceTests: XCTestCase {
             // Use the request method to query the registry service
             let servicesAv: AnyValue = try await node.request("$registry/services/list", payload: AnyValue.map([
                 "include_internal_services": AnyValue.primitive(true),
-                "include_remote_services": AnyValue.primitive(true)
+                "include_remote_services": AnyValue.primitive(true),
             ]))
 
             // Convert AnyValue list into [ServiceMetadata]
@@ -131,7 +131,7 @@ final class RegistryServiceTests: XCTestCase {
             // Debug log available handlers using logger
             let listAv: AnyValue = try await node.request("$registry/services/list", payload: AnyValue.map([
                 "include_internal_services": AnyValue.primitive(true),
-                "include_remote_services": AnyValue.primitive(true)
+                "include_remote_services": AnyValue.primitive(true),
             ]))
             let listArray = try await listAv.asType() as [AnyValue]
             var listResponse: [ServiceMetadata] = []
@@ -206,7 +206,6 @@ final class RegistryServiceTests: XCTestCase {
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let response: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: response) ?? .created
@@ -223,7 +222,6 @@ final class RegistryServiceTests: XCTestCase {
             let nonExistentResult = try await node.request(
                 "$registry/services/not_existent/state",
                 payload: AnyValue.primitive(true),
-                
             )
             testLogger.debug("Service state after start: \(nonExistentResult)")
 
@@ -292,7 +290,6 @@ final class RegistryServiceTests: XCTestCase {
                 let stateResponse: AnyValue = try await node.request(
                     "$registry/services//state",
                     payload: AnyValue.primitive(true),
-                    
                 )
                 // If it returns a response, it should have an error status code
                 testLogger.debug("Response for invalid state path: \(stateResponse)")
@@ -323,7 +320,6 @@ final class RegistryServiceTests: XCTestCase {
 }
 
 // MARK: - Helper Functions
-
 
 // MARK: - Test Service Implementation
 
@@ -410,8 +406,20 @@ final class MathService: AbstractService {
         }
 
         let map = try await data.asType() as [String: AnyValue]
-        let a = try await map["a"]?.asType() as Double? ?? 0.0
-        let b = try await map["b"]?.asType() as Double? ?? 0.0
+
+        let a: Double
+        if let aValue = map["a"] {
+            a = try await aValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'a' is required")
+        }
+
+        let b: Double
+        if let bValue = map["b"] {
+            b = try await bValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'b' is required")
+        }
 
         let result = try await add(a: a, b: b, context: context)
         context.logger.trace("Addition successful: \(a) + \(b) = \(result)")
@@ -420,10 +428,25 @@ final class MathService: AbstractService {
 
     private func handleSubtract(payload: AnyValue?, context: RequestContext) async throws -> AnyValue {
         context.logger.trace("Handling subtract operation request")
-        let data = payload ?? AnyValue.null()
+        guard let data = payload else {
+            throw ServiceRegistryError.serviceNotFound("params are required")
+        }
+
         let map = try await data.asType() as [String: AnyValue]
-        let a = try await map["a"]?.asType() as Double? ?? 0.0
-        let b = try await map["b"]?.asType() as Double? ?? 0.0
+
+        let a: Double
+        if let aValue = map["a"] {
+            a = try await aValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'a' is required")
+        }
+
+        let b: Double
+        if let bValue = map["b"] {
+            b = try await bValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'b' is required")
+        }
 
         let result = subtract(a: a, b: b, context: context)
         context.logger.trace("Subtraction successful: \(a) - \(b) = \(result)")
@@ -432,10 +455,25 @@ final class MathService: AbstractService {
 
     private func handleMultiply(payload: AnyValue?, context: RequestContext) async throws -> AnyValue {
         context.logger.trace("Handling multiply operation request")
-        let data = payload ?? AnyValue.null()
+        guard let data = payload else {
+            throw ServiceRegistryError.serviceNotFound("params are required")
+        }
+
         let map = try await data.asType() as [String: AnyValue]
-        let a = try await map["a"]?.asType() as Double? ?? 0.0
-        let b = try await map["b"]?.asType() as Double? ?? 0.0
+
+        let a: Double
+        if let aValue = map["a"] {
+            a = try await aValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'a' is required")
+        }
+
+        let b: Double
+        if let bValue = map["b"] {
+            b = try await bValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'b' is required")
+        }
 
         let result = multiply(a: a, b: b, context: context)
         context.logger.trace("Multiplication successful: \(a) * \(b) = \(result)")
@@ -444,10 +482,25 @@ final class MathService: AbstractService {
 
     private func handleDivide(payload: AnyValue?, context: RequestContext) async throws -> AnyValue {
         context.logger.trace("Handling divide operation request")
-        let data = payload ?? AnyValue.null()
+        guard let data = payload else {
+            throw ServiceRegistryError.serviceNotFound("params are required")
+        }
+
         let map = try await data.asType() as [String: AnyValue]
-        let a = try await map["a"]?.asType() as Double? ?? 0.0
-        let b = try await map["b"]?.asType() as Double? ?? 0.0
+
+        let a: Double
+        if let aValue = map["a"] {
+            a = try await aValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'a' is required")
+        }
+
+        let b: Double
+        if let bValue = map["b"] {
+            b = try await bValue.asType()
+        } else {
+            throw ServiceRegistryError.serviceNotFound("Parameter 'b' is required")
+        }
 
         do {
             let result = try divide(a: a, b: b, context: context)
@@ -549,7 +602,6 @@ extension RegistryServiceTests {
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let initialState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: initialState) ?? .unknown
@@ -561,7 +613,6 @@ extension RegistryServiceTests {
             let pauseResponseAv: AnyValue = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                
             )
             // The pause response should return the service state as a string
             let pausedStateString: String = try await pauseResponseAv.asType() as String
@@ -573,7 +624,6 @@ extension RegistryServiceTests {
             let stateAfterPauseAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let currentState: String = try await stateAfterPauseAv.asType() as String
             let serviceStateAfterPause = ServiceState(rawValue: currentState) ?? .unknown
@@ -586,7 +636,6 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/pause",
                     payload: nil,
-                    
                 )
                 XCTFail("Pausing a paused service should fail")
             } catch {
@@ -628,14 +677,12 @@ extension RegistryServiceTests {
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                
             )
 
             // Verify service is in Paused state
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
@@ -647,7 +694,6 @@ extension RegistryServiceTests {
             let resumeResponseAv: AnyValue = try await node.request(
                 "$registry/services/math/resume",
                 payload: nil,
-                
             )
             // The resume response should return the service state as a string
             let resumedStateString: String = try await resumeResponseAv.asType() as String
@@ -659,7 +705,6 @@ extension RegistryServiceTests {
             let stateAfterResumeAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let currentState: String = try await stateAfterResumeAv.asType() as String
             let serviceStateAfterResume = ServiceState(rawValue: currentState) ?? .unknown
@@ -672,7 +717,6 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/resume",
                     payload: nil,
-                    
                 )
                 XCTFail("Resuming a running service should fail")
             } catch {
@@ -714,14 +758,12 @@ extension RegistryServiceTests {
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                
             )
 
             // Verify service is paused
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
@@ -732,23 +774,22 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "math/add",
                     payload: AnyValue.map(["a": AnyValue.primitive(5.0), "b": AnyValue.primitive(3.0)]),
-                    
                 )
                 XCTFail("Request to paused service should fail")
             } catch {
                 testLogger.debug("Expected error when requesting paused service: \(error)")
-                
+
                 // Check if it's a NodeError and get the actual message
                 var errorMessage = error.localizedDescription
                 if let nodeError = error as? NodeError {
                     switch nodeError {
-                    case .serviceNotFound(let message):
+                    case let .serviceNotFound(message):
                         errorMessage = message
                     default:
                         break
                     }
                 }
-                
+
                 // This is expected - requests to paused services should fail
                 XCTAssertTrue(errorMessage.contains("paused") || errorMessage.contains("Paused") || errorMessage.contains("not Running") || errorMessage.contains("Service is not Running"), "Error should mention service is paused")
             }
@@ -781,7 +822,6 @@ extension RegistryServiceTests {
             let pauseResponseAv: AnyValue = try await node.request(
                 "$registry/services/nonexistent/pause",
                 payload: nil,
-                
             )
 
             testLogger.debug("Pause response for non-existent service: \(pauseResponseAv)")
@@ -815,7 +855,6 @@ extension RegistryServiceTests {
             let resumeResponseAv: AnyValue = try await node.request(
                 "$registry/services/nonexistent/resume",
                 payload: nil,
-                
             )
 
             testLogger.debug("Resume response for non-existent service: \(resumeResponseAv)")
@@ -855,7 +894,6 @@ extension RegistryServiceTests {
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let runningState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: runningState) ?? .unknown
@@ -866,7 +904,6 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/resume",
                     payload: nil,
-                    
                 )
                 XCTFail("Resuming a running service should fail")
             } catch {
@@ -909,14 +946,12 @@ extension RegistryServiceTests {
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                
             )
 
             // Verify service is paused
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                
             )
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
@@ -927,7 +962,6 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/pause",
                     payload: nil,
-                    
                 )
                 XCTFail("Pausing an already paused service should fail")
             } catch {
@@ -965,23 +999,22 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "nonexistent/add",
                     payload: AnyValue.map(["a": AnyValue.primitive(5.0), "b": AnyValue.primitive(3.0)]),
-                    
                 )
                 XCTFail("Request to non-existent service should fail")
             } catch {
                 testLogger.debug("Expected error when requesting non-existent service: \(error)")
-                
+
                 // Check if it's a NodeError and get the actual message
                 var errorMessage = error.localizedDescription
                 if let nodeError = error as? NodeError {
                     switch nodeError {
-                    case .serviceNotFound(let message):
+                    case let .serviceNotFound(message):
                         errorMessage = message
                     default:
                         break
                     }
                 }
-                
+
                 // This is expected - requests to non-existent services should fail
                 XCTAssertTrue(errorMessage.contains("not found") || errorMessage.contains("actionNotFound") || errorMessage.contains("No handler found for action"), "Error should mention service not found")
             }

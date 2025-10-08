@@ -161,7 +161,7 @@ public final class RegistryService: AbstractService {
             // Extract parameters from the request (matching Rust implementation)
             let includeInternalServices: Bool
             let includeRemoteServices: Bool
-            
+
             if let paramsMap = try await payload?.asType() as [String: AnyValue]? {
                 includeInternalServices = try await paramsMap["include_internal_services"]?.asType() as Bool? ?? true
                 includeRemoteServices = try await paramsMap["include_remote_services"]?.asType() as Bool? ?? true
@@ -1252,7 +1252,6 @@ public final class Node {
         self.localNodeInfo = localNodeInfo
         self.retainedEvents = retainedEvents
         self.retainedIndex = retainedIndex
-
     }
 
     // MARK: - Core Methods
@@ -1474,7 +1473,7 @@ public final class Node {
     /// }
     /// ```
     public func on(topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
-        return try await subscribe(topic: topic, options: options, callback: callback)
+        try await subscribe(topic: topic, options: options, callback: callback)
     }
 
     /// Add a service to this node.
@@ -1621,7 +1620,7 @@ public final class Node {
             try await service.start(startContext)
         } catch {
             logger.error("[start_service] Failed to start service: \(serviceTopic), error: \(error)")
-            
+
             // Update service state to Error (matching Rust exactly)
             do {
                 try await registry.updateLocalServiceState(
@@ -1631,7 +1630,7 @@ public final class Node {
             } catch {
                 logger.error("[start_service] Failed to update service state to Error: \(error)")
             }
-            
+
             // Publish error state (matching Rust exactly)
             do {
                 try await publish(
@@ -1677,9 +1676,9 @@ public final class Node {
         } catch {
             logger.error("[start_service] Failed to publish running state: \(error)")
         }
-        
+
         logger.info("[start_service] published local-only running for local service \(serviceTopic)")
-        
+
         if updateNodeVersion {
             logger.info("[start_service] notifying node change for service: \(serviceTopic)")
             do {
@@ -1770,7 +1769,6 @@ public final class Node {
             serviceTasks.append((serviceTopicRef, task))
         }
     }
-
 
     /// Helper function to implement timeout (matching Rust timeout pattern)
     private func withTimeout<T: Sendable>(_ timeout: TimeInterval, operation: @escaping @Sendable () async throws -> T) async throws -> T {
@@ -1968,7 +1966,7 @@ public final class Node {
 
         // Cancel any existing debounce task (matching Rust exactly)
         debounceTask?.cancel()
-        
+
         // Spawn a new debounce task (matching Rust exactly)
         debounceTask = Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
@@ -1986,7 +1984,7 @@ public final class Node {
         // This would typically update the registry version and send node info to peers
         // For now, we'll implement a basic version that matches the Rust structure
         logger.info("Notifying node change - updating node info")
-        
+
         // Update transport with current node info (matching Rust pattern)
         if networkTransport != nil {
             try await updateTransportNodeInfo()
@@ -1997,7 +1995,7 @@ public final class Node {
     ///
     /// This method forwards the request to the ServiceRegistry for processing.
     public func request(_ path: String, payload: AnyValue?, options: RequestOptions? = nil) async throws -> AnyValue {
-        let actualNetworkId = self.networkId
+        let actualNetworkId = networkId
         let requestPayload = payload ?? AnyValue.null()
 
         // Parse topic path (matching Rust pattern exactly)
@@ -2069,20 +2067,20 @@ public final class Node {
     /// Only checks for local handlers - no remote fallback to avoid infinite recursion
     private func localRequest(_ path: String, payload: AnyValue?, options: RequestOptions? = nil) async throws -> AnyValue {
         let topicPath = try TopicPath.new(path, defaultNetwork: networkId)
-        
+
         logger.debug("Processing local request: \(topicPath.asString())")
-        
+
         // First check for local handlers (matching Rust exactly)
         if let (handler, registrationPath) = await serviceRegistry.getLocalActionHandler(topicPath: topicPath) {
             logger.debug("Executing local handler for: \(topicPath.asString())")
-            
+
             let profilePublicKeys = options?.profilePublicKeys ?? []
             let profileKeysList: [AnyValue] = profilePublicKeys.map { AnyValue.primitive(Data($0)) }
-            
+
             var metadata: [String: AnyValue] = [:]
             metadata["node_id"] = AnyValue.primitive(nodeId)
             metadata["profile_public_keys"] = AnyValue.list(profileKeysList)
-            
+
             // Create request context (matching Rust exactly)
             var requestContext = RequestContext(
                 topicPath: topicPath,
@@ -2090,17 +2088,17 @@ public final class Node {
                 metadata: metadata,
                 logger: logger
             )
-            
+
             // Extract parameters using the original registration path (matching Rust exactly)
             if let pathParams = topicPath.extractParams(registrationPath.actionPath) {
                 requestContext.pathParams = pathParams
                 logger.debug("Extracted path parameters: \(pathParams)")
             }
-            
+
             // Execute the handler and return result (matching Rust exactly)
             return try await handler(payload ?? AnyValue.null(), requestContext)
         }
-        
+
         // No local handler found (matching Rust exactly)
         throw NodeError.serviceNotFound("No local handler found for: \(topicPath.asString())")
     }
@@ -2281,88 +2279,132 @@ public final class Node {
                     await self?.handlePeerDisconnected(peerNodeId: peerNodeId)
                 }
             },
-            requestCallback: { [weak self] _, path, payload, sourcePeerId, correlationId in
-                // Create NetworkMessage from the callback parameters
-                let payloadItem = NetworkMessagePayloadItem(
-                    path: path,
-                    payloadBytes: payload,
-                    correlationId: correlationId ?? "",
-                    networkPublicKey: nil, // Will be set during processing
-                    profilePublicKeys: [] // Will be set during processing
-                )
-
-                let networkMessage = NetworkMessage(
-                    sourceNodeId: sourcePeerId,
-                    destinationNodeId: self?.nodeId ?? "",
-                    messageType: 4, // MESSAGE_TYPE_REQUEST
-                    payload: payloadItem
-                )
-
-                // Process the network request asynchronously (matching Rust pattern)
-                // Always return a NetworkMessage - if self is nil, create a default error response
+            requestCallback: { [weak self, logger] requestId, incomingMessage in
+                // Ensure self is available - cannot process without it
                 guard let self else {
-                    // Create a default error response when self is nil
-                    return NetworkMessage(
-                        sourceNodeId: sourcePeerId,
-                        destinationNodeId: "",
-                        messageType: 5, // MESSAGE_TYPE_RESPONSE
-                        payload: NetworkMessagePayloadItem(
-                            path: path,
-                            payloadBytes: Data("{\"error\": true, \"message\": \"Node not available\"}".utf8),
-                            correlationId: correlationId ?? "",
-                            networkPublicKey: nil,
-                            profilePublicKeys: []
-                        )
-                    )
-                }
-
-                // Use async request handling (matching Rust pattern)
-                // Wrap in Task to handle async/await in non-async callback
-                Task {
+                    // This should never happen in normal operation
+                    logger.error("❌ Request callback invoked but Node instance is nil - requestId: \(requestId)")
+                    // Create minimal error response without accessing self
+                    let errorValue = AnyValue.map([
+                        "error": AnyValue.primitive(true),
+                        "message": AnyValue.primitive("Node instance not available"),
+                    ])
+                    // Serialize without context (system-only, no encryption)
                     do {
-                        _ = try await handleNetworkRequest(networkMessage)
-                        // Note: The transport callback doesn't return the response, it's handled internally
-                    } catch {
-                        // Create error response for transport callback
-                        logger.error("Network request failed: \(error)")
-                        // Create error response using proper HashMap serialization (matching Rust exactly)
-                        let errorValue = AnyValue.map([
-                            "error": AnyValue.primitive(true),
-                            "message": AnyValue.primitive(error.localizedDescription),
-                        ])
-
-                        // Serialize error response using proper context (matching Rust exactly)
-                        do {
-                            let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkMessage.payload.path.components(separatedBy: ":").first ?? "default")
-                            let resolver = try await getOrCreateResolver(networkMessage.payload.profilePublicKeys)
-                            let serializationContext = SerializationContext(
-                                keystore: keysManager,
-                                resolver: resolver,
-                                networkPublicKey: networkPublicKey,
-                                profilePublicKeys: networkMessage.payload.profilePublicKeys
+                        let errorBytes = try await errorValue.serialize(context: nil)
+                        return NetworkMessage(
+                            sourceNodeId: incomingMessage.destinationNodeId, // Swap source/dest for response
+                            destinationNodeId: incomingMessage.sourceNodeId,
+                            messageType: 5, // MESSAGE_TYPE_RESPONSE
+                            payload: NetworkMessagePayloadItem(
+                                path: incomingMessage.payload.path,
+                                payloadBytes: errorBytes,
+                                correlationId: incomingMessage.payload.correlationId,
+                                networkPublicKey: nil,
+                                profilePublicKeys: []
                             )
-                            _ = try await errorValue.serialize(context: serializationContext)
-
-                            // Note: The transport callback doesn't return the response, it's handled internally
-                        } catch {
-                            logger.error("Failed to serialize error response: \(error)")
-                        }
+                        )
+                    } catch {
+                        // Extremely rare: serialization failed even without encryption
+                        logger.error("❌ Failed to serialize error response: \(error)")
+                        // Return empty response as absolute last resort
+                        return NetworkMessage(
+                            sourceNodeId: incomingMessage.destinationNodeId,
+                            destinationNodeId: incomingMessage.sourceNodeId,
+                            messageType: 5,
+                            payload: NetworkMessagePayloadItem(
+                                path: incomingMessage.payload.path,
+                                payloadBytes: Data(),
+                                correlationId: incomingMessage.payload.correlationId,
+                                networkPublicKey: nil,
+                                profilePublicKeys: []
+                            )
+                        )
                     }
                 }
 
-                // Return a default response since the callback is non-throwing
-                return NetworkMessage(
-                    sourceNodeId: sourcePeerId,
-                    destinationNodeId: nodeId,
-                    messageType: 5, // MESSAGE_TYPE_RESPONSE
-                    payload: NetworkMessagePayloadItem(
-                        path: path,
-                        payloadBytes: Data("{\"status\": \"processing\"}".utf8),
-                        correlationId: correlationId ?? "",
-                        networkPublicKey: nil,
-                        profilePublicKeys: []
-                    )
-                )
+                // The NetworkMessage has profilePublicKeys from FFI (Rust extracts .first() from wire format)
+                // networkPublicKey is always looked up locally by Node, never trusted from wire
+
+                // Process the network request and return the response (matching Rust pattern)
+                // The callback is async, so we can directly await the result
+                do {
+                    let responseMessage = try await handleNetworkRequest(incomingMessage)
+                    return responseMessage
+                } catch {
+                    // Create error response for transport callback
+                    logger.error("Network request failed: \(error)")
+                    // Create error response using proper HashMap serialization (matching Rust exactly)
+                    let errorValue = AnyValue.map([
+                        "error": AnyValue.primitive(true),
+                        "message": AnyValue.primitive(error.localizedDescription),
+                    ])
+
+                    // Serialize error response using proper context (matching Rust exactly)
+                    do {
+                        let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: incomingMessage.payload.path.components(separatedBy: ":").first ?? "default")
+                        let resolver = try await getOrCreateResolver(incomingMessage.payload.profilePublicKeys)
+                        let serializationContext = SerializationContext(
+                            keystore: keysManager,
+                            resolver: resolver,
+                            networkPublicKey: networkPublicKey,
+                            profilePublicKeys: incomingMessage.payload.profilePublicKeys
+                        )
+                        let errorBytes = try await errorValue.serialize(context: serializationContext)
+
+                        // Return error response
+                        return NetworkMessage(
+                            sourceNodeId: incomingMessage.destinationNodeId, // Swap source/dest
+                            destinationNodeId: incomingMessage.sourceNodeId,
+                            messageType: 5, // MESSAGE_TYPE_RESPONSE
+                            payload: NetworkMessagePayloadItem(
+                                path: incomingMessage.payload.path,
+                                payloadBytes: errorBytes,
+                                correlationId: incomingMessage.payload.correlationId,
+                                networkPublicKey: networkPublicKey,
+                                profilePublicKeys: incomingMessage.payload.profilePublicKeys
+                            )
+                        )
+                    } catch {
+                        logger.error("Failed to serialize error response: \(error)")
+                        // Last resort: return unencrypted error (this should be very rare)
+                        do {
+                            let fallbackError = AnyValue.map([
+                                "error": AnyValue.primitive(true),
+                                "message": AnyValue.primitive("Failed to serialize error response"),
+                            ])
+                            let fallbackBytes = try await fallbackError.serialize(context: nil)
+                            return NetworkMessage(
+                                sourceNodeId: incomingMessage.destinationNodeId,
+                                destinationNodeId: incomingMessage.sourceNodeId,
+                                messageType: 5, // MESSAGE_TYPE_RESPONSE
+                                payload: NetworkMessagePayloadItem(
+                                    path: incomingMessage.payload.path,
+                                    payloadBytes: fallbackBytes,
+                                    correlationId: incomingMessage.payload.correlationId,
+                                    networkPublicKey: nil,
+                                    profilePublicKeys: []
+                                )
+                            )
+                        } catch {
+                            // Extremely rare: even fallback serialization failed
+                            logger.error("❌ Fallback serialization failed: \(error)")
+                            // Return empty response as absolute last resort
+                            return NetworkMessage(
+                                sourceNodeId: incomingMessage.destinationNodeId,
+                                destinationNodeId: incomingMessage.sourceNodeId,
+                                messageType: 5,
+                                payload: NetworkMessagePayloadItem(
+                                    path: incomingMessage.payload.path,
+                                    payloadBytes: Data(),
+                                    correlationId: incomingMessage.payload.correlationId,
+                                    networkPublicKey: nil,
+                                    profilePublicKeys: []
+                                )
+                            )
+                        }
+                    }
+                }
             },
             eventCallback: { [weak self] requestId, path, payload, sourcePeerId, correlationId in
                 Task { @MainActor in
@@ -2604,6 +2646,7 @@ public final class Node {
         let profilePublicKeys = message.payload.profilePublicKeys
 
         // Get network public key from key manager (matching Rust pattern exactly)
+        // NOTE: Incoming message.payload.networkPublicKey is IGNORED (Rust does the same)
         let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: networkId)
 
         // Make the local request using localRequest (matching Rust pattern exactly)
@@ -2745,7 +2788,7 @@ public final class Node {
                 let currentNetworkId = networkId
                 let remoteHandler: ActionHandler = { [weak self] params, context in
                     return try await self?.makeRemoteNetworkCall(
-                        topicPath: try TopicPath.new(actionPath, defaultNetwork: currentNetworkId),
+                        topicPath: TopicPath.new(actionPath, defaultNetwork: currentNetworkId),
                         peerNodeId: peerNodeId,
                         params: params,
                         context: context
@@ -2831,8 +2874,11 @@ public final class Node {
 
         logger.trace("✅ [RemoteService] Response received successfully")
 
-        // Deserialize the response bytes back to AnyValue (matching Rust pattern)
-        let responseValue = try AnyValue.deserialize(responseBytes, keystore: keysManager)
+        // The response bytes are the full NetworkMessage CBOR, extract the payload
+        let networkMessage = try CodableCBORDecoder().decode(NetworkMessage.self, from: responseBytes)
+
+        // Deserialize the payload bytes to AnyValue
+        let responseValue = try AnyValue.deserialize(networkMessage.payload.payloadBytes, keystore: keysManager)
 
         return responseValue
     }

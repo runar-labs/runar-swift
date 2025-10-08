@@ -3575,21 +3575,21 @@ public final class Discovery: NodeDiscovery, Sendable {
     /// - Throws: FFIError if creation fails
     public init(peerInfo: PeerInfo, options: DiscoveryOptions, logger: RunarLogger) async throws {
         self.logger = logger
-        
+
         // Create MulticastDiscovery handle internally
         logger.trace("🔍 Creating MulticastDiscovery handle internally")
-        self.discoveryHandle = try await MulticastDiscovery.create(
+        discoveryHandle = try await MulticastDiscovery.create(
             peerInfo: peerInfo,
             options: options,
             logger: logger
         )
-        
+
         // Initialize the discovery handle internally
         logger.trace("🔍 Initializing discovery handle internally")
         let encoder = CodableCBOREncoder()
         let discoveryOptionsCbor = try encoder.encode(options)
         try await discoveryHandle.initialize(optionsCbor: discoveryOptionsCbor)
-        
+
         logger.trace("🔍 Discovery initialized successfully")
     }
 
@@ -4370,14 +4370,28 @@ public actor QuicTransport {
     private func handleRequestEvent(_ event: TransportRequestEvent) async {
         logger.info("QuicTransport.handleRequestEvent() - path=\(event.path) corr=\(event.correlationId)")
 
-        // Call the request callback and get the response
-        // The callback now always returns a NetworkMessage (never nil)
+        // Construct NetworkMessage from event (matching Rust FFI pattern exactly)
+        // Rust FFI extracts .first().unwrap_or_default() from profile_public_keys array
+        // Swift reverses this: empty Data -> [], non-empty Data -> [Data]
+        let profilePublicKeys: [Data] = event.profilePublicKey.isEmpty ? [] : [event.profilePublicKey]
+
+        let incomingMessage = NetworkMessage(
+            sourceNodeId: event.sourcePeerId,
+            destinationNodeId: event.destinationPeerId,
+            messageType: 4, // MESSAGE_TYPE_REQUEST
+            payload: NetworkMessagePayloadItem(
+                path: event.path,
+                payloadBytes: event.payload,
+                correlationId: event.correlationId,
+                networkPublicKey: nil, // Not in TransportRequestEvent; Node looks it up locally
+                profilePublicKeys: profilePublicKeys
+            )
+        )
+
+        // Call the request callback with the complete NetworkMessage (matching Rust pattern)
         let responseMessage = await callbacks.requestCallback(
             event.requestId,
-            event.path,
-            event.payload,
-            event.sourcePeerId, // Use actual source peer ID from event
-            event.correlationId
+            incomingMessage
         )
 
         // Serialize the NetworkMessage to CBOR data
@@ -4477,15 +4491,12 @@ public typealias PeerConnectedCallback = @Sendable (String, NodeInfo) -> Void
 /// Callback for when a peer disconnects
 public typealias PeerDisconnectedCallback = @Sendable (String) -> Void
 
-/// Callback for handling incoming requests
+/// Callback for handling incoming requests (matching Rust pattern exactly)
 /// - Parameters:
 ///   - requestId: The request ID to use when completing the request
-///   - path: The request path
-///   - payload: The request payload
-///   - sourcePeerId: The ID of the peer that sent the request
-///   - correlationId: Optional correlation ID
+///   - message: The incoming NetworkMessage with all fields populated
 /// - Returns: NetworkMessage response (always returns a response, use AnyValue.null for null responses)
-public typealias RequestCallback = @Sendable (String, String, Data, String, String?) async -> NetworkMessage
+public typealias RequestCallback = @Sendable (String, NetworkMessage) async -> NetworkMessage
 
 /// Callback for handling P2P event messages (fire and forget, no response)
 /// - Parameters:
@@ -4493,8 +4504,8 @@ public typealias RequestCallback = @Sendable (String, String, Data, String, Stri
 ///   - path: The event path
 ///   - payload: The event payload
 ///   - sourcePeerId: The ID of the peer that sent the event
-///   - correlationId: Optional correlation ID
-public typealias EventCallback = @Sendable (String, String, Data, String, String?) async -> Void
+///   - correlationId: Correlation ID (always present)
+public typealias EventCallback = @Sendable (String, String, Data, String, String) async -> Void
 
 /// Transport callbacks container
 public struct TransportCallbacks: Sendable {
