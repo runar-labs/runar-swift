@@ -79,9 +79,41 @@ func createTestNodeKeys(
 /// Create test label resolver config with real network public key
 /// Mirrors Rust create_test_label_resolver_config() exactly
 func createTestLabelResolverConfig(networkPublicKey: Data) -> LabelResolverConfig {
-    // Create a simple test config with the real network public key
-    // This matches the Rust implementation exactly
-    LabelResolverConfig(labelMappings: [:])
+    // Create label mappings exactly matching Rust implementation
+    let labelMappings: [String: LabelValue] = [
+        // System label - network key only
+        "system": LabelValue(
+            networkPublicKey: networkPublicKey,
+            userKeySpec: nil
+        ),
+        // User label - network key + current user
+        "user": LabelValue(
+            networkPublicKey: networkPublicKey,
+            userKeySpec: .currentUser
+        ),
+        // Admin label - network key only
+        "admin": LabelValue(
+            networkPublicKey: networkPublicKey,
+            userKeySpec: nil
+        ),
+        // User-only label - no network key, only user keys
+        "private": LabelValue(
+            networkPublicKey: networkPublicKey,
+            userKeySpec: .currentUser
+        ),
+        // Search label - network key only
+        "search": LabelValue(
+            networkPublicKey: networkPublicKey,
+            userKeySpec: nil
+        ),
+        // System-only label - network key only
+        "system_only": LabelValue(
+            networkPublicKey: networkPublicKey,
+            userKeySpec: nil
+        )
+    ]
+    
+    return LabelResolverConfig(labelMappings: labelMappings)
 }
 
 // MARK: - Node Config Utilities

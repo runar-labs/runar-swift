@@ -346,7 +346,7 @@ final class RemoteNetworkTests: XCTestCase {
         // Note: Event subscription would be handled by the service registry
         // For now, we'll skip the event subscription part to focus on remote calls
 
-        // Test 1: Call math1/add service (on node1) from node2
+        // Test 1: Call math1/add service (on node1) from node2 (matching Rust exactly)
         logger.debug("🔍 DEBUG: About to call math1/add service from node2 to node1")
         logger.debug("📤 Testing remote action call from node2 to node1 (math1/add)...")
 
@@ -362,7 +362,7 @@ final class RemoteNetworkTests: XCTestCase {
         XCTAssertEqual(responseValue, 8.0)
         logger.debug("✅ Secure add operation succeeded: 5 + 3 = \(responseValue)")
 
-        // Test 2: Call math2/multiply service (on node2) from node1
+        // Test 2: Call math2/multiply service (on node2) from node1 (matching Rust exactly)
         logger.debug("📤 Testing remote action call from node1 to node2 (math2/multiply)...")
         let response2 = try await node1.request(
             "math2/multiply",

@@ -2705,7 +2705,7 @@ public final class Node {
 
             // Create RemoteService instance and register it
             do {
-                let serviceTopic = try TopicPath.new(service.servicePath, defaultNetwork: nodeInfo.networkIds.first ?? "default")
+                let serviceTopic = try TopicPath.new(service.servicePath, defaultNetwork: networkId)
                 // Create RemoteServiceConfig and RemoteServiceDependencies
                 let rsConfig = RemoteServiceConfig(
                     name: service.name,
@@ -2742,9 +2742,10 @@ public final class Node {
                 logger.trace("🔍 HANDSHAKE: Registering remote action: \(actionPath) from peer: \(peerNodeId)")
 
                 // Create a real network call handler (matching Rust implementation)
+                let currentNetworkId = networkId
                 let remoteHandler: ActionHandler = { [weak self] params, context in
                     return try await self?.makeRemoteNetworkCall(
-                        actionPath: actionPath,
+                        topicPath: try TopicPath.new(actionPath, defaultNetwork: currentNetworkId),
                         peerNodeId: peerNodeId,
                         params: params,
                         context: context
@@ -2754,7 +2755,7 @@ public final class Node {
                 // Register the remote action handler
                 do {
                     // Use proper TopicPath API like Rust: TopicPath::new(&action_path, &network_id)
-                    let topicPath = try TopicPath.new(actionPath, defaultNetwork: nodeInfo.networkIds.first ?? "default")
+                    let topicPath = try TopicPath.new(actionPath, defaultNetwork: networkId)
                     try await serviceRegistry.registerRemoteActionHandler(
                         topicPath: topicPath,
                         handler: remoteHandler
@@ -2770,12 +2771,12 @@ public final class Node {
 
     /// Make a real remote network call (matching Rust implementation)
     private func makeRemoteNetworkCall(
-        actionPath: String,
+        topicPath: TopicPath,
         peerNodeId: String,
         params: AnyValue?,
         context: RequestContext
     ) async throws -> AnyValue {
-        logger.trace("🚀 [RemoteService] Starting remote request - Action: \(actionPath) Target: \(peerNodeId)")
+        logger.trace("🚀 [RemoteService] Starting remote request - Action: \(topicPath.asString()) Target: \(peerNodeId)")
 
         // Verify the peer exists
         guard await remoteNodeInfo.contains(peerNodeId) else {
@@ -2820,7 +2821,7 @@ public final class Node {
 
         // Make the network request (matching Rust network_transport.request call)
         let responseBytes = try await transport.request(
-            path: actionPath,
+            path: topicPath.asString(),
             correlationId: correlationId,
             payload: paramsBytes,
             peerNodeId: peerNodeId,

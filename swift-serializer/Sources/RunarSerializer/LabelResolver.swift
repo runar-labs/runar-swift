@@ -41,7 +41,6 @@ public struct LabelResolverConfig: Sendable, Equatable {
 public enum LabelResolverError: Error, LocalizedError, Sendable {
     case invalidConfiguration(String)
     case labelUnavailable(String)
-    case keyLengthInvalid(String)
 
     public var errorDescription: String? {
         switch self {
@@ -49,8 +48,6 @@ public enum LabelResolverError: Error, LocalizedError, Sendable {
             "Invalid label resolver configuration: \(msg)"
         case let .labelUnavailable(label):
             "Label unavailable: \(label)"
-        case let .keyLengthInvalid(msg):
-            "Invalid key length: \(msg)"
         }
     }
 }
@@ -108,7 +105,6 @@ public struct LabelResolver: Sendable, Equatable {
                 profileKeys = []
             }
 
-            try validatePublicKeys(networkKey: networkKey, profileKeys: profileKeys, label: label)
 
             out[label] = LabelKeyInfo(
                 profilePublicKeys: profileKeys,
@@ -146,22 +142,3 @@ private func validate(systemConfig: LabelResolverConfig) throws {
     }
 }
 
-private func validatePublicKeys(networkKey: Data?, profileKeys: [Data], label: String) throws {
-    // Example constraints (adjust to actual crypto suite):
-    // - Ed25519 public keys: 32 bytes
-    // - X25519 public keys: 32 bytes
-    // If key types are mixed, validation should be aware of the expected algorithm per system policy.
-    func isValidLength(_ data: Data?) -> Bool {
-        data == nil || data!.count == 32
-    }
-
-    if !isValidLength(networkKey) {
-        throw LabelResolverError.keyLengthInvalid("networkPublicKey for label \(label) must be 32 bytes")
-    }
-
-    for (idx, key) in profileKeys.enumerated() {
-        if key.count != 32 {
-            throw LabelResolverError.keyLengthInvalid("profilePublicKeys[\(idx)] for label \(label) must be 32 bytes")
-        }
-    }
-}
