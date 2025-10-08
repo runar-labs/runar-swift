@@ -55,7 +55,7 @@ final class RegistryServiceTests: XCTestCase {
             try await node.waitForServicesToStart()
 
             // Use the request method to query the registry service
-            let servicesAv: AnyValue = try await node.request("$registry/services/list", payload: nil, networkId: nil)
+            let servicesAv: AnyValue = try await node.request("$registry/services/list", payload: nil)
 
             // Convert AnyValue list into [ServiceMetadata]
             let listArray = try await servicesAv.asType() as [AnyValue]
@@ -126,7 +126,7 @@ final class RegistryServiceTests: XCTestCase {
             try await node.waitForServicesToStart()
 
             // Debug log available handlers using logger
-            let listAv: AnyValue = try await node.request("$registry/services/list", payload: nil, networkId: nil)
+            let listAv: AnyValue = try await node.request("$registry/services/list", payload: nil)
             let listArray = try await listAv.asType() as [AnyValue]
             var listResponse: [ServiceMetadata] = []
             for av in listArray {
@@ -137,7 +137,7 @@ final class RegistryServiceTests: XCTestCase {
 
             // Use the request method to query the registry service for the math service
             // Note: We should use the correct parameter path format
-            let responseAv: AnyValue = try await node.request("$registry/services/math", payload: nil, networkId: nil)
+            let responseAv: AnyValue = try await node.request("$registry/services/math", payload: nil)
             let response: ServiceMetadata = try await responseAv.asType() as ServiceMetadata
             testLogger.debug("Service info response: \(response)")
 
@@ -200,7 +200,7 @@ final class RegistryServiceTests: XCTestCase {
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let response: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: response) ?? .created
@@ -217,7 +217,7 @@ final class RegistryServiceTests: XCTestCase {
             let nonExistentResult = try await node.request(
                 "$registry/services/not_existent/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             testLogger.debug("Service state after start: \(nonExistentResult)")
 
@@ -272,7 +272,7 @@ final class RegistryServiceTests: XCTestCase {
             // The registry service expects a path parameter in the URL, but we're using an invalid path
             // that the router won't be able to match to a template with a parameter
             do {
-                let response: AnyValue = try await node.request("$registry/services", payload: nil, networkId: nil)
+                let response: AnyValue = try await node.request("$registry/services", payload: nil)
                 // If it returns a response, it should have an error status code
                 testLogger.debug("Response for missing parameter: \(response)")
             } catch {
@@ -286,7 +286,7 @@ final class RegistryServiceTests: XCTestCase {
                 let stateResponse: AnyValue = try await node.request(
                     "$registry/services//state",
                     payload: AnyValue.primitive(true),
-                    networkId: nil
+                    
                 )
                 // If it returns a response, it should have an error status code
                 testLogger.debug("Response for invalid state path: \(stateResponse)")
@@ -318,49 +318,6 @@ final class RegistryServiceTests: XCTestCase {
 
 // MARK: - Helper Functions
 
-/// Create a test configuration with certificates, user root keys, network and node keys installed.
-///
-/// ⚠️  WARNING: This is for TESTING ONLY. Do not use in production.
-/// Use the proper node setup flow for production use.
-func createNodeTestConfig() async throws -> NodeConfig {
-    // Create test credentials
-    let (mobileKeysManager, defaultNetworkId) = try await createTestMobileKeys()
-
-    let (nodeKeysManager, _nodeId) = try await createTestNodeKeys(
-        mobileKeysManager: mobileKeysManager,
-        networkId: defaultNetworkId
-    )
-
-    // Create test label resolver config
-    let networkPublicKey = Data() // Placeholder for now
-    let labelConfig = createTestLabelResolverConfig(networkPublicKey: networkPublicKey)
-
-    let config = NodeConfig(defaultNetworkId: defaultNetworkId)
-        .withKeyManager(nodeKeysManager)
-        .withLabelResolverConfig(labelConfig)
-
-    return config
-}
-
-/// Create test mobile keys
-func createTestMobileKeys() async throws -> (MobileKeyManager, String) {
-    let mobileKeysManager = try await MobileKeyManager()
-    let networkId = "test-network"
-    return (mobileKeysManager, networkId)
-}
-
-/// Create test node keys
-func createTestNodeKeys(mobileKeysManager _: MobileKeyManager, networkId _: String) async throws -> (NodeKeyManager, String) {
-    let nodeKeysManager = try await NodeKeyManager()
-    let nodeId = "test-node-id"
-    return (nodeKeysManager, nodeId)
-}
-
-/// Create test label resolver config
-func createTestLabelResolverConfig(networkPublicKey _: Data) -> LabelResolverConfig {
-    // Create a simple test config
-    LabelResolverConfig(labelMappings: [:])
-}
 
 // MARK: - Test Service Implementation
 
@@ -586,7 +543,7 @@ extension RegistryServiceTests {
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let initialState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: initialState) ?? .unknown
@@ -598,7 +555,7 @@ extension RegistryServiceTests {
             let pauseResponseAv: AnyValue = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                networkId: nil
+                
             )
             // The pause response should return the service state as a string
             let pausedStateString: String = try await pauseResponseAv.asType() as String
@@ -610,7 +567,7 @@ extension RegistryServiceTests {
             let stateAfterPauseAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let currentState: String = try await stateAfterPauseAv.asType() as String
             let serviceStateAfterPause = ServiceState(rawValue: currentState) ?? .unknown
@@ -623,7 +580,7 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/pause",
                     payload: nil,
-                    networkId: nil
+                    
                 )
                 XCTFail("Pausing a paused service should fail")
             } catch {
@@ -665,14 +622,14 @@ extension RegistryServiceTests {
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                networkId: nil
+                
             )
 
             // Verify service is in Paused state
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
@@ -684,7 +641,7 @@ extension RegistryServiceTests {
             let resumeResponseAv: AnyValue = try await node.request(
                 "$registry/services/math/resume",
                 payload: nil,
-                networkId: nil
+                
             )
             // The resume response should return the service state as a string
             let resumedStateString: String = try await resumeResponseAv.asType() as String
@@ -696,7 +653,7 @@ extension RegistryServiceTests {
             let stateAfterResumeAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let currentState: String = try await stateAfterResumeAv.asType() as String
             let serviceStateAfterResume = ServiceState(rawValue: currentState) ?? .unknown
@@ -709,7 +666,7 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/resume",
                     payload: nil,
-                    networkId: nil
+                    
                 )
                 XCTFail("Resuming a running service should fail")
             } catch {
@@ -751,14 +708,14 @@ extension RegistryServiceTests {
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                networkId: nil
+                
             )
 
             // Verify service is paused
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
@@ -769,7 +726,7 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "math/add",
                     payload: AnyValue.map(["a": AnyValue.primitive(5.0), "b": AnyValue.primitive(3.0)]),
-                    networkId: nil
+                    
                 )
                 XCTFail("Request to paused service should fail")
             } catch {
@@ -818,7 +775,7 @@ extension RegistryServiceTests {
             let pauseResponseAv: AnyValue = try await node.request(
                 "$registry/services/nonexistent/pause",
                 payload: nil,
-                networkId: nil
+                
             )
 
             testLogger.debug("Pause response for non-existent service: \(pauseResponseAv)")
@@ -852,7 +809,7 @@ extension RegistryServiceTests {
             let resumeResponseAv: AnyValue = try await node.request(
                 "$registry/services/nonexistent/resume",
                 payload: nil,
-                networkId: nil
+                
             )
 
             testLogger.debug("Resume response for non-existent service: \(resumeResponseAv)")
@@ -892,7 +849,7 @@ extension RegistryServiceTests {
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let runningState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: runningState) ?? .unknown
@@ -903,7 +860,7 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/resume",
                     payload: nil,
-                    networkId: nil
+                    
                 )
                 XCTFail("Resuming a running service should fail")
             } catch {
@@ -946,14 +903,14 @@ extension RegistryServiceTests {
             _ = try await node.request(
                 "$registry/services/math/pause",
                 payload: nil,
-                networkId: nil
+                
             )
 
             // Verify service is paused
             let stateAv: AnyValue = try await node.request(
                 "$registry/services/math/state",
                 payload: AnyValue.primitive(true),
-                networkId: nil
+                
             )
             let pausedState: String = try await stateAv.asType() as String
             let serviceState = ServiceState(rawValue: pausedState) ?? .unknown
@@ -964,7 +921,7 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "$registry/services/math/pause",
                     payload: nil,
-                    networkId: nil
+                    
                 )
                 XCTFail("Pausing an already paused service should fail")
             } catch {
@@ -1002,7 +959,7 @@ extension RegistryServiceTests {
                 _ = try await node.request(
                     "nonexistent/add",
                     payload: AnyValue.map(["a": AnyValue.primitive(5.0), "b": AnyValue.primitive(3.0)]),
-                    networkId: nil
+                    
                 )
                 XCTFail("Request to non-existent service should fail")
             } catch {

@@ -55,8 +55,8 @@ final class RemoteNetworkTests: XCTestCase {
 
         testLogger.trace("Creating simple node test configs for discovery only...")
 
-        // Create simple configs - NO certificates, NO network keys, just discovery
-        let configs = try await createSimpleDiscoveryTestConfigs(count: 2)
+        // Create simple configs using shared test utilities
+        let configs = try await createNetworkedNodeTestConfigs(count: 2)
         XCTAssertEqual(configs.count, 2, "Should create exactly 2 node configs")
 
         // Create nodes with simple configs
@@ -136,7 +136,7 @@ final class RemoteNetworkTests: XCTestCase {
         // Force trace logging for this test
         logger.trace("🔍 TRACE LOGGING ENABLED - Test starting with trace level")
 
-        testLogger.trace("Creating networked node test configs...")
+        testLogger.trace("Creating networked node test configs using shared test utilities...")
         let configs = try await createNetworkedNodeTestConfigs(count: 2)
         testLogger.trace("Test configs created successfully")
 
@@ -193,8 +193,7 @@ final class RemoteNetworkTests: XCTestCase {
             payload: AnyValue.map([
                 "a": AnyValue.primitive(5.0),
                 "b": AnyValue.primitive(3.0),
-            ]),
-            networkId: "test-network"
+            ])
         )
 
         let responseValue = try await response.asType() as Double
@@ -209,7 +208,7 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(4.0),
                 "b": AnyValue.primitive(7.0),
             ]),
-            networkId: "test-network"
+            
         )
         let response2Value = try await response2.asType() as Double
         XCTAssertEqual(response2Value, 28.0)
@@ -235,7 +234,7 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(10.0),
                 "b": AnyValue.primitive(5.0),
             ]),
-            networkId: "test-network"
+            
         )
         let response3Value = try await response3.asType() as Double
         XCTAssertEqual(response3Value, 15.0)
@@ -254,7 +253,7 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(20.0),
                 "b": AnyValue.primitive(8.0),
             ]),
-            networkId: "test-network"
+            
         )
         let response4Value = try await response4.asType() as Double
         XCTAssertEqual(response4Value, 12.0)
@@ -267,7 +266,7 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(15.0),
                 "b": AnyValue.primitive(3.0),
             ]),
-            networkId: "test-network"
+            
         )
         let response5Value = try await response5.asType() as Double
         XCTAssertEqual(response5Value, 5.0)
@@ -347,7 +346,7 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(10.0),
                 "b": AnyValue.primitive(5.0),
             ]),
-            networkId: "test-network"
+            
         )
 
         let responseValue = try await response.asType() as Double
@@ -377,7 +376,7 @@ final class RemoteNetworkTests: XCTestCase {
                     "a": AnyValue.primitive(1.0),
                     "b": AnyValue.primitive(1.0),
                 ]),
-                networkId: "test-network"
+                
             )
             XCTFail("Node 1 should be unreachable after stop")
         } catch {
@@ -414,7 +413,7 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(20.0),
                 "b": AnyValue.primitive(10.0),
             ]),
-            networkId: "test-network"
+            
         )
 
         let response2Value = try await response2.asType() as Double
@@ -433,7 +432,7 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(6.0),
                 "b": AnyValue.primitive(7.0),
             ]),
-            networkId: "test-network"
+            
         )
 
         let response3Value = try await response3.asType() as Double
@@ -452,220 +451,6 @@ final class RemoteNetworkTests: XCTestCase {
     }
 }
 
-// MARK: - Test Utilities
-
-/// Create networked node test configurations for multiple nodes
-/// This matches the Rust create_networked_node_test_config function
-func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
-    var configs: [NodeConfig] = []
-
-    // Set up trace logging for detailed debugging
-    let logger: RunarLogger = RunarLogger.root(component: .node)
-
-    logger.trace("🔍 Creating \(count) networked node test configs with trace logging")
-
-    // Create a CA for certificate generation
-    let caKeys = try await MobileKeyManager()
-    
-    // Generate shared network key for all nodes
-    logger.trace("🔍 CONFIG: Generating shared network key for all nodes")
-    let sharedNetworkDataKey = try await caKeys.generateNetworkDataKey()
-    logger.trace("🔍 CONFIG: Shared network key generated")
-
-    for i in 0 ..< count {
-        logger.trace("🔍 CONFIG: Creating config for node \(i)")
-        // All nodes should be on the same network to communicate
-        let networkId = "test-network"
-        logger.trace("🔍 CONFIG: Network ID: \(networkId)")
-
-        // Create key manager for this node
-        logger.trace("🔍 CONFIG: Creating key manager for node \(i)")
-        let keyManager = try await createTestKeyManager()
-        logger.trace("🔍 CONFIG: Key manager created for node \(i)")
-        
-        // Debug: Log the key manager instance and public key
-        let publicKey = try await keyManager.getNodePublicKey()
-        logger.trace("🔑 CONFIG DEBUG: Node \(i) key manager instance: \(ObjectIdentifier(keyManager))")
-        logger.trace("🔑 CONFIG DEBUG: Node \(i) public key: \(publicKey.map { String(format: "%02x", $0) }.joined())")
-
-        // Set local node info (required for transport creation)
-        // Note: NodeInfo is now managed at the transport level, not keys level
-        // The transport will be created with the current NodeInfo when the node starts
-        logger.trace("🔍 CONFIG: NodeInfo will be set at transport level when node starts")
-
-        // Generate and install certificate for QUIC transport
-        logger.trace("🔍 CONFIG: Generating certificate for node \(i)")
-        let csr = try await keyManager.generateCsrSetupToken(logger: logger.child(component: .network))
-        let cert = try await caKeys.processSetupToken(csr)
-        try await keyManager.installCertificate(cert)
-        logger.trace("🔍 CONFIG: Certificate installed for node \(i)")
-
-        // Install shared network key for test-network
-        logger.trace("🔍 CONFIG: Setting up shared network key for node \(i)")
-        let nodeAgreementKey = try await keyManager.getNodeAgreementPublicKey()
-        let networkKeyMessage = try await caKeys.createNetworkKeyMessage(
-            networkPublicKey: sharedNetworkDataKey,
-            nodeAgreementPublicKey: nodeAgreementKey
-        )
-        try await keyManager.installNetworkKey(networkKeyMessage)
-        logger.trace("🔍 CONFIG: Shared network key installed for node \(i)")
-
-        // Create network config with QUIC transport and discovery
-        logger.trace("🔍 CONFIG: Creating network config for node \(i)")
-        let discoveryOptions = SwiftFFI.DiscoveryOptions(
-            announceInterval: 0.05,        // 50ms - fast for testing
-            discoveryTimeout: 1.0,         // 1 second - fast for testing
-            debounceWindow: 0.1,           // 100ms - fast for testing
-            useMulticast: true,
-            localNetworkOnly: true,
-            multicastGroup: "239.255.0.2:45679"  // Use same group as working FFI test
-        )
-        let discoveryProvider = DiscoveryProviderConfig(
-            type: "multicast",
-            config: [:]
-        )
-        let networkConfig = NetworkConfig(
-            transportType: "quic",
-            bindAddress: "127.0.0.1:0", // Let OS assign port
-            connectionTimeoutMs: 30000,
-            requestTimeoutMs: 30000,
-            discoveryOptions: discoveryOptions,
-            discoveryProviders: [discoveryProvider]
-        )
-
-        // Create label resolver config with network key
-        logger.trace("🔍 CONFIG: Creating label resolver config for node \(i)")
-        let labelResolverConfig = LabelResolverConfig(
-            labelMappings: [
-                "test-network": LabelValue(
-                    networkPublicKey: sharedNetworkDataKey,
-                    userKeySpec: nil
-                )
-            ]
-        )
-
-        // Create node config
-        logger.trace("🔍 CONFIG: Creating node config for node \(i)")
-        let config = NodeConfig(defaultNetworkId: networkId)
-            .withKeyManager(keyManager)
-            .withNetworkConfig(networkConfig)
-            .withLabelResolverConfig(labelResolverConfig)
-
-        configs.append(config)
-        logger.trace("🔍 CONFIG: Config created for node \(i)")
-    }
-
-    return configs
-}
-
-/// Create a test key manager for testing
-func createTestKeyManager() async throws -> FFIKeys {
-    // Create a new key manager and generate unique keys
-    let keyManager = try await NodeKeyManager()
-    try await keyManager.generateKeys()
-    
-    return keyManager
-}
-
-/// Helper function to create simple discovery-only test configs (no certificates, no network keys)
-func createSimpleDiscoveryTestConfigs(count: Int) async throws -> [NodeConfig] {
-    var configs: [NodeConfig] = []
-
-    // Set up trace logging for detailed debugging
-    let logger: RunarLogger = RunarLogger.root(component: .node)
-
-    logger.trace("🔍 Creating \(count) discovery test configs with proper transport setup")
-    
-    // Create a CA for certificate generation
-    let caKeys = try await MobileKeyManager()
-    
-    // Generate shared network key for all nodes
-    logger.trace("🔍 CONFIG: Generating shared network key for all nodes")
-    let sharedNetworkDataKey = try await caKeys.generateNetworkDataKey()
-    logger.trace("🔍 CONFIG: Shared network key generated")
-
-    for i in 0 ..< count {
-        logger.trace("🔍 CONFIG: Creating config for node \(i)")
-        
-        // All nodes should be on the same network to communicate
-        let networkId = "test-network"
-        logger.trace("🔍 CONFIG: Network ID: \(networkId)")
-
-        // Create key manager for this node
-        logger.trace("🔍 CONFIG: Creating key manager for node \(i)")
-        let keyManager = try await createTestKeyManager()
-        logger.trace("🔍 CONFIG: Key manager created for node \(i)")
-        
-        // Debug: Log the key manager instance and public key
-        let publicKey = try await keyManager.getNodePublicKey()
-        logger.trace("🔑 CONFIG DEBUG: Node \(i) key manager instance: \(ObjectIdentifier(keyManager))")
-        logger.trace("🔑 CONFIG DEBUG: Node \(i) public key: \(publicKey.map { String(format: "%02x", $0) }.joined())")
-
-        // Generate and install certificate for QUIC transport
-        logger.trace("🔍 CONFIG: Generating certificate for node \(i)")
-        let csr = try await keyManager.generateCsrSetupToken(logger: logger.child(component: .network))
-        let cert = try await caKeys.processSetupToken(csr)
-        try await keyManager.installCertificate(cert)
-        logger.trace("🔍 CONFIG: Certificate installed for node \(i)")
-
-        // Install shared network key for test-network
-        logger.trace("🔍 CONFIG: Setting up shared network key for node \(i)")
-        let nodeAgreementKey = try await keyManager.getNodeAgreementPublicKey()
-        let networkKeyMessage = try await caKeys.createNetworkKeyMessage(
-            networkPublicKey: sharedNetworkDataKey,
-            nodeAgreementPublicKey: nodeAgreementKey
-        )
-        try await keyManager.installNetworkKey(networkKeyMessage)
-        logger.trace("🔍 CONFIG: Shared network key installed for node \(i)")
-
-        // Create network config with QUIC transport and discovery
-        logger.trace("🔍 CONFIG: Creating network config for node \(i)")
-        let discoveryOptions = SwiftFFI.DiscoveryOptions(
-            announceInterval: 0.05,        // 50ms - fast for testing
-            discoveryTimeout: 1.0,         // 1 second - fast for testing
-            debounceWindow: 0.1,           // 100ms - fast for testing
-            useMulticast: true,
-            localNetworkOnly: true,
-            multicastGroup: "239.255.0.2:45679"  // Use same group as working FFI test
-        )
-        let discoveryProvider = DiscoveryProviderConfig(
-            type: "multicast",
-            config: [:]
-        )
-        let networkConfig = NetworkConfig(
-            transportType: "quic", // Use proper transport like Rust
-            bindAddress: "127.0.0.1:0", // Let system assign port
-            connectionTimeoutMs: 30000,
-            requestTimeoutMs: 30000,
-            discoveryOptions: discoveryOptions,
-            discoveryProviders: [discoveryProvider]
-        )
-
-        // Create label resolver config with shared network key
-        logger.trace("🔍 CONFIG: Creating label resolver config for node \(i)")
-        let labelResolverConfig = LabelResolverConfig(
-            labelMappings: [
-                "system": LabelValue(
-                    networkPublicKey: sharedNetworkDataKey,
-                    userKeySpec: nil
-                )
-            ]
-        )
-
-        // Create node config
-        logger.trace("🔍 CONFIG: Creating node config for node \(i)")
-        let config = NodeConfig(defaultNetworkId: networkId)
-            .withKeyManager(keyManager)
-            .withNetworkConfig(networkConfig)
-            .withLabelResolverConfig(labelResolverConfig)
-
-        configs.append(config)
-        logger.trace("🔍 CONFIG: Node \(i) config created successfully")
-    }
-
-    logger.trace("🔍 CONFIG: All \(count) simple discovery configs created successfully")
-    return configs
-}
 
 // MARK: - Test Errors
 

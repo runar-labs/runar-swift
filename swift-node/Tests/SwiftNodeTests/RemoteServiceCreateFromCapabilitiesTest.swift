@@ -474,7 +474,7 @@ private final class MockNodeTransport: NodeTransport {
         return "mock://localhost:8080"
     }
     
-    func updateLocalNodeInfo(_ nodeInfo: Data) async throws {
+    func updateLocalNodeInfo(nodeInfo: SwiftFFI.NodeInfo) async throws {
         // Mock implementation - do nothing
     }
     

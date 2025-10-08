@@ -1,6 +1,7 @@
 import Foundation
 import RunarSerializer
 import SwiftCommon
+import SwiftFFI
 @testable import SwiftNode
 import XCTest
 
@@ -247,8 +248,8 @@ final class ServiceRegistryTests: XCTestCase {
         try await node.registerAction(networkId: networkId, servicePath: "math", action: "subtract", handler: subtractHandler)
 
         // Test both handlers through Node (matching Rust architecture)
-        let addResult = try await node.request("math/add", payload: nil as AnyValue?, networkId: networkId)
-        let subtractResult = try await node.request("math/subtract", payload: nil as AnyValue?, networkId: networkId)
+        let addResult = try await node.request("math/add", payload: nil as AnyValue?)
+        let subtractResult = try await node.request("math/subtract", payload: nil as AnyValue?)
 
         XCTAssertNotNil(addResult)
         XCTAssertNotNil(subtractResult)
@@ -278,8 +279,8 @@ final class ServiceRegistryTests: XCTestCase {
         try await node.registerAction(networkId: "test-network", servicePath: "math", action: "subtract", handler: handler2)
 
         // Test that handlers are isolated by action (both on same network)
-        let result1 = try await node.request("math/add", payload: nil as AnyValue?, networkId: "test-network")
-        let result2 = try await node.request("math/subtract", payload: nil as AnyValue?, networkId: "test-network")
+        let result1 = try await node.request("math/add", payload: nil as AnyValue?)
+        let result2 = try await node.request("math/subtract", payload: nil as AnyValue?)
 
         XCTAssertNotNil(result1)
         XCTAssertNotNil(result2)
@@ -647,7 +648,7 @@ final class ServiceRegistryTests: XCTestCase {
         try await node.registerAction(networkId: networkId, servicePath: "math", action: "add", handler: handler)
 
         // Make a request
-        let result = try await node.request("math/add", payload: nil as AnyValue?, networkId: networkId)
+        let result = try await node.request("math/add", payload: nil as AnyValue?)
 
         // Verify request was handled
         XCTAssertNotNil(result)
@@ -667,7 +668,7 @@ final class ServiceRegistryTests: XCTestCase {
 
         // Make a request to a non-existent service
         do {
-            _ = try await node.request("nonexistent/action", payload: nil as AnyValue?, networkId: "test-network")
+            _ = try await node.request("nonexistent/action", payload: nil as AnyValue?)
             XCTFail("Should have thrown an error for non-existent service")
         } catch {
             // Expected error
@@ -699,7 +700,7 @@ final class ServiceRegistryTests: XCTestCase {
             try await node.registerAction(networkId: "test-network", servicePath: "users", action: "test", handler: handler)
 
             // Test the handler with a simple request
-            let result = try await node.request("users/test", payload: nil as AnyValue?, networkId: "test-network")
+            let result = try await node.request("users/test", payload: nil as AnyValue?)
             XCTAssertNotNil(result, "Handler should be called and return result")
 
             try await node.stop()
@@ -829,30 +830,6 @@ final class ServiceRegistryTests: XCTestCase {
         }
     }
 
-    // MARK: - Event Publishing Tests
-
-    /// Test that verifies event publishing
-    func testEventPublishing() async throws {
-        let registry = createTestRegistry()
-
-        // Create a callback
-        let callback: EventHandler = { _, _ in
-            // Event callback - logging removed due to actor isolation
-        }
-
-        // Subscribe to events
-        _ = try await registry.subscribeToEvents(
-            networkId: "net1",
-            servicePath: "test/event",
-            handler: callback
-        )
-
-        // Publish an event
-        await registry.publish(topic: "test/event", data: AnyValue.primitive("test_data"), networkId: "net1")
-
-        // No error should be thrown
-        XCTAssertTrue(true, "Event publishing should succeed")
-    }
 
     // MARK: - Helper Classes
 

@@ -41,7 +41,7 @@ final class NodeRequestTests: XCTestCase {
         ])
 
         // Make a request to the math service's add action
-        let result = try await node.request("math/add", payload: params, networkId: "test-network")
+        let result = try await node.request("math/add", payload: params)
 
         // Verify the result
         let resultValue = try await result.asType() as Double
@@ -74,7 +74,7 @@ final class NodeRequestTests: XCTestCase {
         ])
 
         // Make a request to the math service's multiply action
-        let result = try await node.request("math/multiply", payload: params, networkId: "test-network")
+        let result = try await node.request("math/multiply", payload: params)
 
         // Verify the result
         let resultValue = try await result.asType() as Double
@@ -95,7 +95,7 @@ final class NodeRequestTests: XCTestCase {
 
         // Try to make a request to a non-existent service
         do {
-            _ = try await node.request("nonexistent/action", payload: nil as AnyValue?, networkId: "test-network")
+            _ = try await node.request("nonexistent/action", payload: nil as AnyValue?)
             XCTFail("Request should have failed for non-existent service")
         } catch {
             // Expected to fail
