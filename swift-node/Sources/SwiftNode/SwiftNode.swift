@@ -2643,11 +2643,11 @@ public final class Node {
                 profilePublicKeys: profilePublicKeys
             )
 
-            // TODO improve this by having a proper error type (matching Rust comment exactly)
-            // Create a map for the error response (matching Rust exactly)
+            // Create a proper error response using NodeError.networkRequestFailed (matching Rust exactly)
+            let networkError = NodeError.networkRequestFailed(error.localizedDescription)
             var errorMap: [String: AnyValue] = [:]
             errorMap["error"] = AnyValue.primitive(true)
-            errorMap["message"] = AnyValue.primitive(error.localizedDescription)
+            errorMap["message"] = AnyValue.primitive(networkError.localizedDescription)
             let errorValue = AnyValue.map(errorMap)
 
             // Serialize the error value (matching Rust exactly)
@@ -3623,6 +3623,7 @@ public enum NodeError: Error, LocalizedError, Sendable {
     case invalidPath(String)
     case serviceNotFound(String)
     case timeout(String)
+    case networkRequestFailed(String)
 
     public var localizedDescription: String {
         switch self {
@@ -3654,6 +3655,8 @@ public enum NodeError: Error, LocalizedError, Sendable {
             "Service not found: \(message)"
         case let .timeout(message):
             "Timeout: \(message)"
+        case let .networkRequestFailed(message):
+            "Network request failed: \(message)"
         }
     }
 }
