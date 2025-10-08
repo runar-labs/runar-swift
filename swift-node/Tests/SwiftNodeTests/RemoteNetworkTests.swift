@@ -112,6 +112,147 @@ final class RemoteNetworkTests: XCTestCase {
         logger.trace("✅ Basic discovery test completed successfully")
     }
 
+    /// Test for node handshake and service discovery validation
+    ///
+    /// INTENTION: This test validates that peer discovery and handshake work properly by:
+    /// 1. Creating two nodes with services
+    /// 2. Using proper event-based peer discovery (no hacks/sleeps)
+    /// 3. Validating that both local and remote services are discoverable via $registry/services/list
+    /// 4. Ensuring the handshake process works correctly
+    func testNodeHandshake() async throws {
+        // Set up logger with trace level
+        let logger = testLogger.child(component: .node)
+
+        // Enable trace logging for Rust FFI layer
+        try await FFILogger.setLogLevel(.trace)
+        try await FFILogger.setLoggerContext("node-handshake-test")
+
+        // Set global logger config to trace level for this test
+        LoggerConfigManager.shared.globalConfig = LoggerConfig(
+            level: .trace,
+            includeTimestamp: true,
+            includeComponent: true,
+            includeContext: true
+        )
+
+        // Force trace logging for this test
+        logger.trace("🔍 TRACE LOGGING ENABLED - Node handshake test starting with trace level")
+
+        testLogger.trace("Creating networked node test configs using shared test utilities...")
+        let configs = try await createNetworkedNodeTestConfigs(count: 2)
+        testLogger.trace("Test configs created successfully")
+
+        let node1Config = configs[0]
+        let node2Config = configs[1]
+        testLogger.trace("Node1 config: \(node1Config)")
+        testLogger.trace("Node2 config: \(node2Config)")
+
+        // Create math services with different paths using the fixture
+        let mathService1 = MathService(name: "math1", path: "math1", logger: logger)
+        let mathService2 = MathService(name: "math2", path: "math2", logger: logger)
+
+        logger.debug("Node1 config: \(node1Config)")
+        logger.debug("Node2 config: \(node2Config)")
+
+        testLogger.trace("Creating node1...")
+        let node1 = try await Node.new(config: node1Config)
+        try await node1.addService(mathService1)
+        testLogger.trace("Node1 created and service added")
+
+        testLogger.trace("Creating node2...")
+        let node2 = try await Node.new(config: node2Config)
+        try await node2.addService(mathService2)
+        testLogger.trace("Node2 created and service added")
+
+        testLogger.trace("Starting node1...")
+        try await node1.start()
+        testLogger.trace("Node1 started successfully")
+        logger.debug("✅ Node 1 started")
+
+        testLogger.trace("Starting node2...")
+        try await node2.start()
+        testLogger.trace("Node2 started successfully")
+        logger.debug("✅ Node 2 started")
+
+        logger.debug("⏳ Waiting for nodes to discover each other via multicast and establish QUIC connections...")
+
+        // Wait for peer discovery using the existing getDiscoveredPeers method
+        var node1Peers: [NodeInfo] = []
+        var node2Peers: [NodeInfo] = []
+        var attempts = 0
+        let maxAttempts = 30 // 3 seconds total
+        
+        while attempts < maxAttempts {
+            node1Peers = await node1.getDiscoveredPeers()
+            node2Peers = await node2.getDiscoveredPeers()
+            
+            if node1Peers.count > 0 && node2Peers.count > 0 {
+                logger.debug("🔍 Discovery successful after \(attempts + 1) attempts")
+                break
+            }
+            
+            logger.debug("🔍 Attempt \(attempts + 1): Node1 has \(node1Peers.count) peers, Node2 has \(node2Peers.count) peers")
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            attempts += 1
+        }
+
+        // Verify discovery worked
+        XCTAssertGreaterThan(node1Peers.count, 0, "Node1 should have discovered at least one peer")
+        XCTAssertGreaterThan(node2Peers.count, 0, "Node2 should have discovered at least one peer")
+        logger.debug("✅ Both nodes successfully discovered each other")
+
+        // Now validate that both local and remote services are discoverable
+        logger.debug("🔍 Validating service discovery via $registry/services/list...")
+
+        // Get services list from node1 (should include both local and remote services)
+        let node1ServicesAv: AnyValue = try await node1.request("$registry/services/list", payload: AnyValue.map([
+            "include_internal_services": AnyValue.primitive(true),
+            "include_remote_services": AnyValue.primitive(true)
+        ]))
+        let node1ServicesArray = try await node1ServicesAv.asType() as [AnyValue]
+        var node1Services: [ServiceMetadata] = []
+        for av in node1ServicesArray {
+            let service = try await av.asType() as ServiceMetadata
+            node1Services.append(service)
+        }
+
+        // Get services list from node2 (should include both local and remote services)
+        let node2ServicesAv: AnyValue = try await node2.request("$registry/services/list", payload: AnyValue.map([
+            "include_internal_services": AnyValue.primitive(true),
+            "include_remote_services": AnyValue.primitive(true)
+        ]))
+        let node2ServicesArray = try await node2ServicesAv.asType() as [AnyValue]
+        var node2Services: [ServiceMetadata] = []
+        for av in node2ServicesArray {
+            let service = try await av.asType() as ServiceMetadata
+            node2Services.append(service)
+        }
+
+        logger.debug("Node1 discovered \(node1Services.count) services: \(node1Services.map { $0.servicePath })")
+        logger.debug("Node2 discovered \(node2Services.count) services: \(node2Services.map { $0.servicePath })")
+
+        // Validate that both nodes can see each other's services
+        let node1HasMath1 = node1Services.contains { $0.servicePath == "math1" }
+        let node1HasMath2 = node1Services.contains { $0.servicePath == "math2" }
+        let node2HasMath1 = node2Services.contains { $0.servicePath == "math1" }
+        let node2HasMath2 = node2Services.contains { $0.servicePath == "math2" }
+
+        XCTAssertTrue(node1HasMath1, "Node1 should see its own math1 service")
+        XCTAssertTrue(node1HasMath2, "Node1 should see Node2's math2 service (remote)")
+        XCTAssertTrue(node2HasMath1, "Node2 should see Node1's math1 service (remote)")
+        XCTAssertTrue(node2HasMath2, "Node2 should see its own math2 service")
+
+        logger.debug("✅ Service discovery validation passed - both local and remote services are discoverable")
+
+        // Cleanup
+        logger.info("🧹 Shutting down nodes...")
+        try await node2.stop()
+        try await node1.stop()
+
+        logger.info("✅ Both nodes stopped successfully")
+        logger.info("🎉 Node handshake test completed successfully!")
+    }
+
     /// Test for remote action calls between two nodes using QUIC with proper certificates
     ///
     /// INTENTION: Create two Node instances with QUIC network enabled using certificates from a shared CA.
@@ -176,10 +317,31 @@ final class RemoteNetworkTests: XCTestCase {
         logger.debug("✅ Node 2 started")
 
         logger.debug("⏳ Waiting for nodes to discover each other via multicast and establish QUIC connections...")
-        // Note: For now, we'll skip the peer discovery part to focus on remote calls
-        // In a real implementation, this would wait for peer discovery events
-        try await Task.sleep(for: .seconds(2)) // Give time for discovery
-        logger.debug("✅ Assuming nodes discovered each other")
+
+        // Wait for peer discovery using the existing getDiscoveredPeers method
+        var node1Peers: [NodeInfo] = []
+        var node2Peers: [NodeInfo] = []
+        var attempts = 0
+        let maxAttempts = 30 // 3 seconds total
+        
+        while attempts < maxAttempts {
+            node1Peers = await node1.getDiscoveredPeers()
+            node2Peers = await node2.getDiscoveredPeers()
+            
+            if node1Peers.count > 0 && node2Peers.count > 0 {
+                logger.debug("🔍 Discovery successful after \(attempts + 1) attempts")
+                break
+            }
+            
+            logger.debug("🔍 Attempt \(attempts + 1): Node1 has \(node1Peers.count) peers, Node2 has \(node2Peers.count) peers")
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            attempts += 1
+        }
+
+        // Verify discovery worked
+        XCTAssertGreaterThan(node1Peers.count, 0, "Node1 should have discovered at least one peer")
+        XCTAssertGreaterThan(node2Peers.count, 0, "Node2 should have discovered at least one peer")
+        logger.debug("✅ Both nodes successfully discovered each other")
 
         // Note: Event subscription would be handled by the service registry
         // For now, we'll skip the event subscription part to focus on remote calls
@@ -325,9 +487,31 @@ final class RemoteNetworkTests: XCTestCase {
 
         // Wait for nodes to discover each other
         logger.debug("⏳ Waiting for nodes to discover each other...")
-        // Note: For now, we'll skip the peer discovery part to focus on remote calls
-        try await Task.sleep(for: .seconds(2)) // Give time for discovery
-        logger.debug("✅ Assuming nodes discovered each other")
+
+        // Wait for peer discovery using the existing getDiscoveredPeers method
+        var node1Peers: [NodeInfo] = []
+        var node2Peers: [NodeInfo] = []
+        var attempts = 0
+        let maxAttempts = 30 // 3 seconds total
+        
+        while attempts < maxAttempts {
+            node1Peers = await node1.getDiscoveredPeers()
+            node2Peers = await node2.getDiscoveredPeers()
+            
+            if node1Peers.count > 0 && node2Peers.count > 0 {
+                logger.debug("🔍 Discovery successful after \(attempts + 1) attempts")
+                break
+            }
+            
+            logger.debug("🔍 Attempt \(attempts + 1): Node1 has \(node1Peers.count) peers, Node2 has \(node2Peers.count) peers")
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            attempts += 1
+        }
+
+        // Verify discovery worked
+        XCTAssertGreaterThan(node1Peers.count, 0, "Node1 should have discovered at least one peer")
+        XCTAssertGreaterThan(node2Peers.count, 0, "Node2 should have discovered at least one peer")
+        logger.debug("✅ Both nodes successfully discovered each other")
 
         // ==========================================
         // STEP 2: Test initial remote call from node2 to node1
@@ -398,9 +582,31 @@ final class RemoteNetworkTests: XCTestCase {
 
         // Wait for nodes to discover each other again - same as initial setup
         logger.debug("⏳ Waiting for nodes to rediscover each other...")
-        // Note: For now, we'll skip the peer discovery part to focus on remote calls
-        try await Task.sleep(for: .seconds(2)) // Give time for discovery
-        logger.debug("✅ Assuming nodes rediscovered each other")
+
+        // Wait for peer rediscovery using the existing getDiscoveredPeers method
+        var node1RediscoveryPeers: [NodeInfo] = []
+        var node2RediscoveryPeers: [NodeInfo] = []
+        var rediscoveryAttempts = 0
+        let rediscoveryMaxAttempts = 30 // 3 seconds total
+        
+        while rediscoveryAttempts < rediscoveryMaxAttempts {
+            node1RediscoveryPeers = await node1.getDiscoveredPeers()
+            node2RediscoveryPeers = await node2.getDiscoveredPeers()
+            
+            if node1RediscoveryPeers.count > 0 && node2RediscoveryPeers.count > 0 {
+                logger.debug("🔍 Rediscovery successful after \(rediscoveryAttempts + 1) attempts")
+                break
+            }
+            
+            logger.debug("🔍 Attempt \(rediscoveryAttempts + 1): Node1 has \(node1RediscoveryPeers.count) peers, Node2 has \(node2RediscoveryPeers.count) peers")
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            rediscoveryAttempts += 1
+        }
+
+        // Verify rediscovery worked
+        XCTAssertGreaterThan(node1RediscoveryPeers.count, 0, "Node1 should have rediscovered at least one peer")
+        XCTAssertGreaterThan(node2RediscoveryPeers.count, 0, "Node2 should have rediscovered at least one peer")
+        logger.debug("✅ Both nodes successfully rediscovered each other")
 
         // ==========================================
         // STEP 7: Test remote call after restart

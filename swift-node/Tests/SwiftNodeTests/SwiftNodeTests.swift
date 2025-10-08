@@ -86,7 +86,10 @@ final class SwiftNodeTests: XCTestCase {
         }
         try await node.addService(Svc())
         try await node.start()
-        let res = try await node.request("$registry/services/list", payload: nil as AnyValue?)
+        let res = try await node.request("$registry/services/list", payload: AnyValue.map([
+            "include_internal_services": AnyValue.primitive(true),
+            "include_remote_services": AnyValue.primitive(true)
+        ]))
         let listArray = try await res.asType() as [AnyValue]
         var list: [ServiceMetadata] = []
         for av in listArray {

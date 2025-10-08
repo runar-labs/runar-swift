@@ -156,35 +156,28 @@ public final class RegistryService: AbstractService {
         try await context.registerAction("services/list") { [weak self] payload, _ in
             guard let self else { return AnyValue.list([]) }
 
-            // Get includeInternalServices parameter (default to false)
-            logger.trace("RegistryService.services/list: payload = \(String(describing: payload))")
-            let includeInternal: Bool
-            if let payload {
-                logger.trace("RegistryService.services/list: payload type = \(type(of: payload))")
-                do {
-                    let paramsDict = try await payload.asType() as [String: AnyValue]
-                    logger.trace("RegistryService.services/list: paramsDict = \(paramsDict)")
-                    if let includeInternalValue = paramsDict["includeInternal"] {
-                        logger.trace("RegistryService.services/list: includeInternalValue = \(includeInternalValue)")
-                        logger.trace("RegistryService.services/list: includeInternalValue type = \(type(of: includeInternalValue))")
-                        includeInternal = try await includeInternalValue.asType() as Bool
-                        logger.trace("RegistryService.services/list: includeInternal = \(includeInternal)")
-                    } else {
-                        logger.trace("RegistryService.services/list: includeInternal key not found")
-                        includeInternal = false
-                    }
-                } catch {
-                    logger.error("RegistryService.services/list: Failed to parse payload: \(error)")
-                    logger.trace("RegistryService.services/list: includeInternal = false (default due to error)")
-                    includeInternal = false
-                }
+            logger.debug("RegistryService.services/list: Listing all services")
+
+            // Extract parameters from the request (matching Rust implementation)
+            let includeInternalServices: Bool
+            let includeRemoteServices: Bool
+            
+            if let paramsMap = try await payload?.asType() as [String: AnyValue]? {
+                includeInternalServices = try await paramsMap["include_internal_services"]?.asType() as Bool? ?? true
+                includeRemoteServices = try await paramsMap["include_remote_services"]?.asType() as Bool? ?? true
             } else {
-                logger.trace("RegistryService.services/list: No payload provided")
-                includeInternal = false
+                // Default to true if params is not a map (matching Rust)
+                includeInternalServices = true
+                includeRemoteServices = true
             }
 
-            // Get all service metadata
-            let allMetadata = try await registryDelegate.getAllServiceMetadata(includeInternalServices: includeInternal)
+            logger.debug("RegistryService.services/list: include_internal_services=\(includeInternalServices), include_remote_services=\(includeRemoteServices)")
+
+            // Get all service metadata with the specified flags (matching Rust)
+            let allMetadata = try await registryDelegate.getAllServiceMetadata(
+                includeInternalServices: includeInternalServices,
+                includeRemoteServices: includeRemoteServices
+            )
 
             // Convert to AnyValue list (matching Rust implementation)
             let metadataList = Array(allMetadata.values).map { metadata in
@@ -489,7 +482,7 @@ public protocol RegistryDelegate: AnyObject, Sendable {
     func getLocalServiceState(servicePath: TopicPath) async -> ServiceState?
     func getRemoteServiceState(servicePath: TopicPath) async -> ServiceState?
     func getServiceMetadata(servicePath: TopicPath) async throws -> ServiceMetadata?
-    func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata]
+    func getAllServiceMetadata(includeInternalServices: Bool, includeRemoteServices: Bool) async throws -> [String: ServiceMetadata]
     func getActionsMetadata(serviceTopicPath: TopicPath) async throws -> [ActionMetadata]
     func registerRemoteActionHandler(topicPath: TopicPath, handler: @escaping ActionHandler) async throws
     func removeRemoteActionHandler(topicPath: TopicPath) async throws
@@ -1460,6 +1453,28 @@ public final class Node {
         }
 
         return subscriptionId
+    }
+
+    /// Subscribe to events on a topic with timeout (matching Rust `on` method)
+    ///
+    /// INTENTION: Subscribe to events with a timeout, matching the Rust `on` method pattern.
+    /// This is used for waiting for specific events like peer discovery.
+    ///
+    /// - Parameters:
+    ///   - topic: The topic path to subscribe to (e.g., "$registry/peer/{nodeId}/discovered")
+    ///   - options: Event registration options including timeout
+    ///   - callback: The callback to invoke when events are received
+    /// - Returns: A subscription ID that can be used to unsubscribe
+    ///
+    /// Example:
+    /// ```swift
+    /// let subscriptionId = try await node.on("$registry/peer/\(peerId)/discovered",
+    ///     options: EventRegistrationOptions(timeout: 3.0)) { data in
+    ///     print("Peer discovered: \(data)")
+    /// }
+    /// ```
+    public func on(topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
+        return try await subscribe(topic: topic, options: options, callback: callback)
     }
 
     /// Add a service to this node.
@@ -3120,8 +3135,11 @@ extension Node: RegistryDelegate {
         try await serviceRegistry.getServiceMetadata(servicePath: servicePath)
     }
 
-    public func getAllServiceMetadata(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
-        try await serviceRegistry.getAllLocalServiceMetadata(includeInternalServices: includeInternalServices)
+    public func getAllServiceMetadata(includeInternalServices: Bool, includeRemoteServices: Bool) async throws -> [String: ServiceMetadata] {
+        try await serviceRegistry.getAllServiceMetadataRef(
+            includeInternalServices: includeInternalServices,
+            includeRemoteServices: includeRemoteServices
+        )
     }
 
     public func getActionsMetadata(serviceTopicPath: TopicPath) async throws -> [ActionMetadata] {

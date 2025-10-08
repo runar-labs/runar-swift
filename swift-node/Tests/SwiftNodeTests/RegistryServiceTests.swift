@@ -55,7 +55,10 @@ final class RegistryServiceTests: XCTestCase {
             try await node.waitForServicesToStart()
 
             // Use the request method to query the registry service
-            let servicesAv: AnyValue = try await node.request("$registry/services/list", payload: nil)
+            let servicesAv: AnyValue = try await node.request("$registry/services/list", payload: AnyValue.map([
+                "include_internal_services": AnyValue.primitive(true),
+                "include_remote_services": AnyValue.primitive(true)
+            ]))
 
             // Convert AnyValue list into [ServiceMetadata]
             let listArray = try await servicesAv.asType() as [AnyValue]
@@ -126,7 +129,10 @@ final class RegistryServiceTests: XCTestCase {
             try await node.waitForServicesToStart()
 
             // Debug log available handlers using logger
-            let listAv: AnyValue = try await node.request("$registry/services/list", payload: nil)
+            let listAv: AnyValue = try await node.request("$registry/services/list", payload: AnyValue.map([
+                "include_internal_services": AnyValue.primitive(true),
+                "include_remote_services": AnyValue.primitive(true)
+            ]))
             let listArray = try await listAv.asType() as [AnyValue]
             var listResponse: [ServiceMetadata] = []
             for av in listArray {

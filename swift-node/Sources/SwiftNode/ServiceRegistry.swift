@@ -1252,7 +1252,7 @@ public final class ServiceRegistry {
     }
 
     /// Optimized version that uses references to avoid cloning
-    public func getAllServiceMetadataRef(includeInternalServices: Bool) async throws -> [String: ServiceMetadata] {
+    public func getAllServiceMetadataRef(includeInternalServices: Bool, includeRemoteServices: Bool) async throws -> [String: ServiceMetadata] {
         var result: [String: ServiceMetadata] = [:]
 
         // Local services
@@ -1272,18 +1272,20 @@ public final class ServiceRegistry {
             }
         }
 
-        // Remote services
-        let allRemote = remoteServices.getAllValues()
-        for remote in allRemote {
-            let pathStr = remote.path
-            if !includeInternalServices, isInternalService(pathStr) { continue }
+        // Get remote services if requested (matching Rust implementation)
+        if includeRemoteServices {
+            let allRemote = remoteServices.getAllValues()
+            for remote in allRemote {
+                let pathStr = remote.path
+                if !includeInternalServices, isInternalService(pathStr) { continue }
 
-            let searchPath = "\(pathStr)/*"
-            let searchTopic = try TopicPath.new(searchPath, defaultNetwork: remote.serviceTopic.networkId)
-            if let metadata = try await getServiceMetadata(servicePath: searchTopic) {
-                result[pathStr] = metadata
-            } else {
-                throw ServiceRegistryError.serviceNotFound("Service metadata not found for topic: \(searchTopic)")
+                let searchPath = "\(pathStr)/*"
+                let searchTopic = try TopicPath.new(searchPath, defaultNetwork: remote.serviceTopic.networkId)
+                if let metadata = try await getServiceMetadata(servicePath: searchTopic) {
+                    result[pathStr] = metadata
+                } else {
+                    throw ServiceRegistryError.serviceNotFound("Service metadata not found for topic: \(searchTopic)")
+                }
             }
         }
 
