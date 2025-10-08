@@ -1454,26 +1454,108 @@ public final class Node {
         return subscriptionId
     }
 
-    /// Subscribe to events on a topic with timeout (matching Rust `on` method)
+    /// Wait for a single event matching a topic pattern (matching Rust on() pattern exactly).
     ///
-    /// INTENTION: Subscribe to events with a timeout, matching the Rust `on` method pattern.
-    /// This is used for waiting for specific events like peer discovery.
+    /// This method creates a one-shot subscription that automatically unsubscribes after receiving
+    /// the first matching event or timing out. It matches the Rust node.on() implementation.
     ///
-    /// - Parameters:
-    ///   - topic: The topic path to subscribe to (e.g., "$registry/peer/{nodeId}/discovered")
-    ///   - options: Event registration options including timeout
-    ///   - callback: The callback to invoke when events are received
-    /// - Returns: A subscription ID that can be used to unsubscribe
+    /// # Arguments
     ///
-    /// Example:
+    ///   - topic: The topic pattern to wait for
+    ///   - options: Optional OnOptions with timeout and includePast settings
+    ///
+    /// # Returns
+    ///
+    /// Task that resolves to the event data (AnyValue?) or throws on timeout
+    ///
+    /// # Example
+    ///
     /// ```swift
-    /// let subscriptionId = try await node.on("$registry/peer/\(peerId)/discovered",
-    ///     options: EventRegistrationOptions(timeout: 3.0)) { data in
-    ///     print("Peer discovered: \(data)")
-    /// }
+    /// let eventTask = await node.on(topic: "$registry/peer/\(peerId)/discovered",
+    ///                               options: OnOptions(timeout: 3.0))
+    /// let eventData = try await eventTask.value
     /// ```
-    public func on(topic: String, options: EventRegistrationOptions? = nil, callback: @escaping EventHandler) async throws -> String {
-        try await subscribe(topic: topic, options: options, callback: callback)
+    ///
+    /// # Process (matching Rust exactly)
+    ///
+    /// 1. Creates a subscription with a callback that sends to a continuation
+    /// 2. Waits for the event with the specified timeout
+    /// 3. Automatically unsubscribes after receiving the event or timing out
+    /// 4. Returns the event data or throws TimeoutError
+    ///
+    public func on(topic: String, options: OnOptions? = nil) async -> Task<AnyValue?, Error> {
+        Task {
+            // Build full topic path synchronously
+            let fullTopic: String = if topic.contains(":") {
+                topic
+            } else if topic.contains("/") {
+                "\(networkId):\(topic)"
+            } else {
+                "\(networkId):default/\(topic)"
+            }
+
+            let onOptions = options ?? OnOptions(timeout: 5.0, includePast: nil)
+
+            // Actor to safely manage shared state across concurrent callbacks
+            actor EventState {
+                var didResume = false
+                var subscriptionId: String?
+
+                func markResumed() -> Bool {
+                    let wasResumed = didResume
+                    didResume = true
+                    return !wasResumed // Return true if this is the first resume
+                }
+
+                func setSubscriptionId(_ id: String) {
+                    subscriptionId = id
+                }
+
+                func getSubscriptionId() -> String? {
+                    subscriptionId
+                }
+            }
+
+            let state = EventState()
+
+            return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AnyValue?, Error>) in
+                Task {
+                    do {
+                        // Register subscription
+                        let eventOptions = EventRegistrationOptions(includePast: onOptions.includePast)
+                        let subId = try await self.subscribe(topic: fullTopic, options: eventOptions) { _, data in
+                            Task {
+                                // Only resume once (first event wins)
+                                if await state.markResumed() {
+                                    continuation.resume(returning: data)
+                                    // Unsubscribe after receiving event (best effort)
+                                    if let id = await state.getSubscriptionId() {
+                                        try? await self.unsubscribeFromEvents(subscriptionId: id)
+                                    }
+                                }
+                            }
+                        }
+                        await state.setSubscriptionId(subId)
+
+                        // Wait for timeout
+                        try await Task.sleep(nanoseconds: UInt64(onOptions.timeout * 1_000_000_000))
+
+                        // If we reach here, timeout occurred
+                        if await state.markResumed() {
+                            // Unsubscribe on timeout (best effort)
+                            if let id = await state.getSubscriptionId() {
+                                try? await self.unsubscribeFromEvents(subscriptionId: id)
+                            }
+                            continuation.resume(throwing: NodeError.timeout("Timeout waiting for event on topic: \(fullTopic)"))
+                        }
+                    } catch {
+                        if await state.markResumed() {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Add a service to this node.

@@ -73,22 +73,22 @@ final class RemoteNetworkTests: XCTestCase {
 
         // Wait for discovery to work and events to be processed
         logger.trace("⏳ Waiting for discovery to work and events to be processed...")
-        
+
         // Poll for discovery events to be processed
         var node1Peers: [NodeInfo] = []
         var node2Peers: [NodeInfo] = []
         var attempts = 0
         let maxAttempts = 20 // 2 seconds total
-        
+
         while attempts < maxAttempts {
             node1Peers = await node1.getDiscoveredPeers()
             node2Peers = await node2.getDiscoveredPeers()
-            
-            if node1Peers.count > 0 && node2Peers.count > 0 {
+
+            if node1Peers.count > 0, node2Peers.count > 0 {
                 logger.trace("🔍 Discovery successful after \(attempts + 1) attempts")
                 break
             }
-            
+
             logger.trace("🔍 Attempt \(attempts + 1): Node1 has \(node1Peers.count) peers, Node2 has \(node2Peers.count) peers")
             try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             attempts += 1
@@ -181,16 +181,16 @@ final class RemoteNetworkTests: XCTestCase {
         var node2Peers: [NodeInfo] = []
         var attempts = 0
         let maxAttempts = 30 // 3 seconds total
-        
+
         while attempts < maxAttempts {
             node1Peers = await node1.getDiscoveredPeers()
             node2Peers = await node2.getDiscoveredPeers()
-            
-            if node1Peers.count > 0 && node2Peers.count > 0 {
+
+            if node1Peers.count > 0, node2Peers.count > 0 {
                 logger.debug("🔍 Discovery successful after \(attempts + 1) attempts")
                 break
             }
-            
+
             logger.debug("🔍 Attempt \(attempts + 1): Node1 has \(node1Peers.count) peers, Node2 has \(node2Peers.count) peers")
             try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             attempts += 1
@@ -207,7 +207,7 @@ final class RemoteNetworkTests: XCTestCase {
         // Get services list from node1 (should include both local and remote services)
         let node1ServicesAv: AnyValue = try await node1.request("$registry/services/list", payload: AnyValue.map([
             "include_internal_services": AnyValue.primitive(true),
-            "include_remote_services": AnyValue.primitive(true)
+            "include_remote_services": AnyValue.primitive(true),
         ]))
         let node1ServicesArray = try await node1ServicesAv.asType() as [AnyValue]
         var node1Services: [ServiceMetadata] = []
@@ -219,7 +219,7 @@ final class RemoteNetworkTests: XCTestCase {
         // Get services list from node2 (should include both local and remote services)
         let node2ServicesAv: AnyValue = try await node2.request("$registry/services/list", payload: AnyValue.map([
             "include_internal_services": AnyValue.primitive(true),
-            "include_remote_services": AnyValue.primitive(true)
+            "include_remote_services": AnyValue.primitive(true),
         ]))
         let node2ServicesArray = try await node2ServicesAv.asType() as [AnyValue]
         var node2Services: [ServiceMetadata] = []
@@ -228,8 +228,8 @@ final class RemoteNetworkTests: XCTestCase {
             node2Services.append(service)
         }
 
-        logger.debug("Node1 discovered \(node1Services.count) services: \(node1Services.map { $0.servicePath })")
-        logger.debug("Node2 discovered \(node2Services.count) services: \(node2Services.map { $0.servicePath })")
+        logger.debug("Node1 discovered \(node1Services.count) services: \(node1Services.map(\.servicePath))")
+        logger.debug("Node2 discovered \(node2Services.count) services: \(node2Services.map(\.servicePath))")
 
         // Validate that both nodes can see each other's services
         let node1HasMath1 = node1Services.contains { $0.servicePath == "math1" }
@@ -258,7 +258,6 @@ final class RemoteNetworkTests: XCTestCase {
     /// INTENTION: Create two Node instances with QUIC network enabled using certificates from a shared CA.
     /// Nodes should discover and securely connect to each other, then test remote service calls.
     func testRemoteActionCall() async throws {
-
         // Set up logger with trace level
         let logger = testLogger.child(component: .node)
 
@@ -318,33 +317,45 @@ final class RemoteNetworkTests: XCTestCase {
 
         logger.debug("⏳ Waiting for nodes to discover each other via multicast and establish QUIC connections...")
 
-        // Wait for peer discovery using the existing getDiscoveredPeers method
-        var node1Peers: [NodeInfo] = []
-        var node2Peers: [NodeInfo] = []
-        var attempts = 0
-        let maxAttempts = 30 // 3 seconds total
-        
-        while attempts < maxAttempts {
-            node1Peers = await node1.getDiscoveredPeers()
-            node2Peers = await node2.getDiscoveredPeers()
-            
-            if node1Peers.count > 0 && node2Peers.count > 0 {
-                logger.debug("🔍 Discovery successful after \(attempts + 1) attempts")
-                break
-            }
-            
-            logger.debug("🔍 Attempt \(attempts + 1): Node1 has \(node1Peers.count) peers, Node2 has \(node2Peers.count) peers")
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            attempts += 1
+        // Use event-based discovery waiting (matching Rust pattern exactly)
+        let node1Id = node1.nodeId
+        let node2Id = node2.nodeId
+
+        let peerFuture2 = await node2.on(
+            topic: "$registry/peer/\(node1Id)/discovered",
+            options: OnOptions(timeout: 5.0, includePast: 10.0)
+        )
+        let peerFuture1 = await node1.on(
+            topic: "$registry/peer/\(node2Id)/discovered",
+            options: OnOptions(timeout: 5.0, includePast: 10.0)
+        )
+
+        // Wait for both futures to complete (matching Rust tokio::join! pattern)
+        async let peerResult2 = peerFuture2.value
+        async let peerResult1 = peerFuture1.value
+
+        // Check for timeout errors and fail if any occurred (matching Rust pattern)
+        do {
+            _ = try await peerResult2
+            logger.debug("✅ Node2 successfully discovered Node1")
+        } catch {
+            XCTFail("❌ Node2 failed to discover Node1 within timeout: \(error)")
+            try await node1.stop()
+            try await node2.stop()
+            return
         }
 
-        // Verify discovery worked
-        XCTAssertGreaterThan(node1Peers.count, 0, "Node1 should have discovered at least one peer")
-        XCTAssertGreaterThan(node2Peers.count, 0, "Node2 should have discovered at least one peer")
-        logger.debug("✅ Both nodes successfully discovered each other")
+        do {
+            _ = try await peerResult1
+            logger.debug("✅ Node1 successfully discovered Node2")
+        } catch {
+            XCTFail("❌ Node1 failed to discover Node2 within timeout: \(error)")
+            try await node1.stop()
+            try await node2.stop()
+            return
+        }
 
-        // Note: Event subscription would be handled by the service registry
-        // For now, we'll skip the event subscription part to focus on remote calls
+        logger.debug("✅ Both nodes successfully discovered each other")
 
         // Test 1: Call math1/add service (on node1) from node2 (matching Rust exactly)
         logger.debug("🔍 DEBUG: About to call math1/add service from node2 to node1")
@@ -370,7 +381,6 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(4.0),
                 "b": AnyValue.primitive(7.0),
             ]),
-            
         )
         let response2Value = try await response2.asType() as Double
         XCTAssertEqual(response2Value, 28.0)
@@ -396,7 +406,6 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(10.0),
                 "b": AnyValue.primitive(5.0),
             ]),
-            
         )
         let response3Value = try await response3.asType() as Double
         XCTAssertEqual(response3Value, 15.0)
@@ -415,7 +424,6 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(20.0),
                 "b": AnyValue.primitive(8.0),
             ]),
-            
         )
         let response4Value = try await response4.asType() as Double
         XCTAssertEqual(response4Value, 12.0)
@@ -428,7 +436,6 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(15.0),
                 "b": AnyValue.primitive(3.0),
             ]),
-            
         )
         let response5Value = try await response5.asType() as Double
         XCTAssertEqual(response5Value, 5.0)
@@ -493,16 +500,16 @@ final class RemoteNetworkTests: XCTestCase {
         var node2Peers: [NodeInfo] = []
         var attempts = 0
         let maxAttempts = 30 // 3 seconds total
-        
+
         while attempts < maxAttempts {
             node1Peers = await node1.getDiscoveredPeers()
             node2Peers = await node2.getDiscoveredPeers()
-            
-            if node1Peers.count > 0 && node2Peers.count > 0 {
+
+            if node1Peers.count > 0, node2Peers.count > 0 {
                 logger.debug("🔍 Discovery successful after \(attempts + 1) attempts")
                 break
             }
-            
+
             logger.debug("🔍 Attempt \(attempts + 1): Node1 has \(node1Peers.count) peers, Node2 has \(node2Peers.count) peers")
             try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             attempts += 1
@@ -530,7 +537,6 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(10.0),
                 "b": AnyValue.primitive(5.0),
             ]),
-            
         )
 
         let responseValue = try await response.asType() as Double
@@ -560,7 +566,6 @@ final class RemoteNetworkTests: XCTestCase {
                     "a": AnyValue.primitive(1.0),
                     "b": AnyValue.primitive(1.0),
                 ]),
-                
             )
             XCTFail("Node 1 should be unreachable after stop")
         } catch {
@@ -588,16 +593,16 @@ final class RemoteNetworkTests: XCTestCase {
         var node2RediscoveryPeers: [NodeInfo] = []
         var rediscoveryAttempts = 0
         let rediscoveryMaxAttempts = 30 // 3 seconds total
-        
+
         while rediscoveryAttempts < rediscoveryMaxAttempts {
             node1RediscoveryPeers = await node1.getDiscoveredPeers()
             node2RediscoveryPeers = await node2.getDiscoveredPeers()
-            
-            if node1RediscoveryPeers.count > 0 && node2RediscoveryPeers.count > 0 {
+
+            if node1RediscoveryPeers.count > 0, node2RediscoveryPeers.count > 0 {
                 logger.debug("🔍 Rediscovery successful after \(rediscoveryAttempts + 1) attempts")
                 break
             }
-            
+
             logger.debug("🔍 Attempt \(rediscoveryAttempts + 1): Node1 has \(node1RediscoveryPeers.count) peers, Node2 has \(node2RediscoveryPeers.count) peers")
             try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             rediscoveryAttempts += 1
@@ -619,7 +624,6 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(20.0),
                 "b": AnyValue.primitive(10.0),
             ]),
-            
         )
 
         let response2Value = try await response2.asType() as Double
@@ -638,7 +642,6 @@ final class RemoteNetworkTests: XCTestCase {
                 "a": AnyValue.primitive(6.0),
                 "b": AnyValue.primitive(7.0),
             ]),
-            
         )
 
         let response3Value = try await response3.asType() as Double
@@ -656,7 +659,6 @@ final class RemoteNetworkTests: XCTestCase {
         logger.info("🎉 Node stop/restart/reconnection test completed successfully!")
     }
 }
-
 
 // MARK: - Test Errors
 
