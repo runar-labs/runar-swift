@@ -88,7 +88,7 @@ final class SwiftNodeTests: XCTestCase {
         try await node.start()
         let res = try await node.request("$registry/services/list", payload: AnyValue.map([
             "include_internal_services": AnyValue.primitive(true),
-            "include_remote_services": AnyValue.primitive(true)
+            "include_remote_services": AnyValue.primitive(true),
         ]))
         let listArray = try await res.asType() as [AnyValue]
         var list: [ServiceMetadata] = []
@@ -106,7 +106,7 @@ final class SwiftNodeTests: XCTestCase {
         let node = try await Node.new(config: config)
         try await node.start()
         let exp = expectation(description: "recv")
-        _ = try await node.subscribe(topic: "echo/data", options: nil as EventRegistrationOptions?) { eventContext, data in
+        _ = try await node.subscribe(topic: "echo/data", options: nil as EventRegistrationOptions?) { _, data in
             if let d = data {
                 let val: String? = try? await d.asType() as String
                 if val == "ping" { exp.fulfill() }
@@ -148,7 +148,7 @@ final class SwiftNodeTests: XCTestCase {
         try await node.start()
         try await node.waitForServicesToStart()
         let exp = expectation(description: "evt")
-        _ = try await node.subscribe(topic: "pub/evt", options: nil as EventRegistrationOptions?) { eventContext, data in
+        _ = try await node.subscribe(topic: "pub/evt", options: nil as EventRegistrationOptions?) { _, data in
             if let d = data {
                 let val: String? = try? await d.asType() as String
                 if val == "event" { exp.fulfill() }

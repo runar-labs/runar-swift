@@ -1,9 +1,8 @@
-import XCTest
 @testable import SwiftCommon
+import XCTest
 
 @available(macOS 13.0, iOS 16.0, *)
 final class LoggerContextMutableTest: XCTestCase {
-
     func testSetContextOnRootLogger() {
         let logger = RunarLogger.root(component: .node, context: "initial")
 
@@ -46,7 +45,7 @@ final class LoggerContextMutableTest: XCTestCase {
         expectation.expectedFulfillmentCount = 100
 
         // Simulate concurrent context updates
-        for index in 0..<100 {
+        for index in 0 ..< 100 {
             DispatchQueue.global().async {
                 logger.setContext("context-\(index)")
                 expectation.fulfill()

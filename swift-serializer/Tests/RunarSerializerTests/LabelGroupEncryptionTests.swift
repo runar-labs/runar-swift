@@ -1,7 +1,7 @@
 import RunarSerializer
 import SwiftCBOR
-import SwiftFFI
 import SwiftCommon
+import SwiftFFI
 import XCTest
 
 /// Tests for Label Group Encryption functionality using real FFI key managers
@@ -24,20 +24,20 @@ final class LabelGroupEncryptionTests: XCTestCase {
         // Create mobile keystore and initialize user root key
         mobileKeystore = try await MobileKeyManager()
         try await mobileKeystore.initializeUserRootKey()
-        
+
         // Generate network data key
         networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
-        
+
         // Derive profile key for testing
         profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
-        
+
         // Install network public key on mobile
         try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
 
         // Create node keystore and generate keys
         nodeKeystore = try await NodeKeyManager()
         try await nodeKeystore.generateKeys()
-        
+
         // Install network key on node
         let nodeAgreementPublicKey = try await nodeKeystore.getNodeAgreementPublicKey()
         let networkKeyMessage = try await mobileKeystore.createNetworkKeyMessage(

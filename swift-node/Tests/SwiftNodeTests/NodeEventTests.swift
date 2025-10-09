@@ -53,7 +53,7 @@ final class NodeEventTests: XCTestCase {
         let topic = "test/topic"
 
         // Subscribe to the topic
-        let subscriptionId = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { eventContext, data in
+        let subscriptionId = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { _, data in
             // Verify the data matches what we published
             if let data {
                 let stringValue = try? await data.asType() as String
@@ -102,7 +102,7 @@ final class NodeEventTests: XCTestCase {
         let topic = "test/multiple"
 
         // Subscribe to the topic with first subscriber
-        let subscriptionId1 = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { eventContext, data in
+        let subscriptionId1 = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { _, data in
             if let data {
                 let stringValue = try? await data.asType() as String
                 XCTAssertEqual(stringValue, "test data")
@@ -111,7 +111,7 @@ final class NodeEventTests: XCTestCase {
         }
 
         // Subscribe to the topic with second subscriber
-        let subscriptionId2 = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { eventContext, data in
+        let subscriptionId2 = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { _, data in
             if let data {
                 let stringValue = try? await data.asType() as String
                 XCTAssertEqual(stringValue, "test data")
@@ -160,7 +160,7 @@ final class NodeEventTests: XCTestCase {
 
         // Subscribe to the service's event topic
         let topic = "test/service/event"
-        let subscriptionId = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { eventContext, data in
+        let subscriptionId = try await node.subscribe(topic: topic, options: nil as EventRegistrationOptions?) { _, data in
             if let data {
                 let stringValue = try? await data.asType() as String
                 XCTAssertEqual(stringValue, "Hello from service!")

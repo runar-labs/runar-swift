@@ -1,7 +1,7 @@
 import RunarSerializer
 import SwiftCBOR
-import SwiftFFI
 import SwiftCommon
+import SwiftFFI
 import XCTest
 
 /// Comprehensive integration tests that demonstrate the full functionality
@@ -26,20 +26,20 @@ final class ComprehensiveIntegrationTests: XCTestCase {
         // Create mobile keystore and initialize user root key
         mobileKeystore = try await MobileKeyManager()
         try await mobileKeystore.initializeUserRootKey()
-        
+
         // Generate network data key
         networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
-        
+
         // Derive profile key for testing
         profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
-        
+
         // Install network public key on mobile
         try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
 
         // Create node keystore and generate keys
         nodeKeystore = try await NodeKeyManager()
         try await nodeKeystore.generateKeys()
-        
+
         // Install network key on node
         let nodeAgreementPublicKey = try await nodeKeystore.getNodeAgreementPublicKey()
         let networkKeyMessage = try await mobileKeystore.createNetworkKeyMessage(

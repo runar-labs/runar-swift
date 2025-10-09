@@ -14,18 +14,18 @@ import SwiftFFI
 /// Create test mobile keys with real network ID generation
 /// Mirrors Rust create_test_mobile_keys() exactly
 func createTestMobileKeys() async throws -> (MobileKeyManager, String) {
-    let _ = RunarLogger.root(component: .custom("Keys"))
-    let mobileKeysManager = try await MobileKeyManager()
     
+    let mobileKeysManager = try await MobileKeyManager()
+
     // Initialize user root key (matching Rust exactly)
     try await mobileKeysManager.initializeUserRootKey()
-    
+
     // Generate network data key (matching Rust exactly)
     let defaultNetworkPublicKey = try await mobileKeysManager.generateNetworkDataKey()
-    
+
     // Create real network ID from the public key (matching Rust exactly)
     let defaultNetworkId = CompactId.compactId(from: defaultNetworkPublicKey)
-    
+
     return (mobileKeysManager, defaultNetworkId)
 }
 
@@ -39,38 +39,38 @@ func createTestNodeKeys(
 ) async throws -> (NodeKeyManager, String) {
     let logger = RunarLogger.root(component: .custom("Keys"))
     let nodeKeysManager = try await NodeKeyManager()
-    
+
     // Generate keys (matching Rust exactly)
     try await nodeKeysManager.generateKeys()
-    
+
     // Get node public key and create real node ID (matching Rust exactly)
     let nodePublicKey = try await nodeKeysManager.getNodePublicKey()
     let nodeId = CompactId.compactId(from: nodePublicKey)
-    
+
     // Generate CSR setup token (matching Rust exactly)
     let setupTokenData = try await nodeKeysManager.generateCSR(logger: logger)
-    
+
     // Deserialize setup token to get node_agreement_public_key
     let setupToken = try CodableCBORDecoder().decode(SetupToken.self, from: setupTokenData)
-    
+
     // Process setup token with mobile keys manager (matching Rust exactly)
     let certMessage = try await mobileKeysManager.processSetupToken(setupTokenData)
-    
+
     // Get network public key from network ID (matching Rust exactly)
     let networkPublicKey = try await mobileKeysManager.getNetworkPublicKeyByNetworkId(networkId: defaultNetworkId)
-    
+
     // Create network key message (matching Rust exactly)
     let networkKeyMessage = try await mobileKeysManager.createNetworkKeyMessage(
         networkPublicKey: networkPublicKey,
         nodeAgreementPublicKey: Data(setupToken.node_agreement_public_key)
     )
-    
+
     // Install certificate (matching Rust exactly)
     try await nodeKeysManager.installCertificate(certMessage)
-    
+
     // Install network key (matching Rust exactly)
     try await nodeKeysManager.installNetworkKey(networkKeyMessage)
-    
+
     return (nodeKeysManager, nodeId)
 }
 
@@ -110,9 +110,9 @@ func createTestLabelResolverConfig(networkPublicKey: Data) -> LabelResolverConfi
         "system_only": LabelValue(
             networkPublicKey: networkPublicKey,
             userKeySpec: nil
-        )
+        ),
     ]
-    
+
     return LabelResolverConfig(labelMappings: labelMappings)
 }
 
@@ -123,22 +123,22 @@ func createTestLabelResolverConfig(networkPublicKey: Data) -> LabelResolverConfi
 func createNodeTestConfig() async throws -> NodeConfig {
     // Create test credentials with real network ID (matching Rust exactly)
     var (mobileKeysManager, defaultNetworkId) = try await createTestMobileKeys()
-    
+
     // Create test node keys with real node ID (matching Rust exactly)
     let (nodeKeysManager, _) = try await createTestNodeKeys(
         mobileKeysManager: &mobileKeysManager,
         defaultNetworkId: defaultNetworkId
     )
-    
+
     // Create test label resolver config with real network public key (matching Rust exactly)
     let networkPublicKey = try await nodeKeysManager.getNetworkPublicKeyByNetworkId(networkId: defaultNetworkId)
     let labelConfig = createTestLabelResolverConfig(networkPublicKey: networkPublicKey)
-    
+
     // Create node config with real IDs (matching Rust exactly)
     let config = NodeConfig(defaultNetworkId: defaultNetworkId)
         .withKeyManager(nodeKeysManager)
         .withLabelResolverConfig(labelConfig)
-    
+
     return config
 }
 
@@ -163,13 +163,13 @@ func createTestLogger(componentName: String) -> RunarLogger {
 func createTestMathParams(a: Double, b: Double) -> AnyValue {
     AnyValue.map([
         "a": AnyValue.primitive(a),
-        "b": AnyValue.primitive(b)
+        "b": AnyValue.primitive(b),
     ])
 }
 
 /// Create test primitive value
 /// Mirrors Rust primitive value creation exactly
-func createTestPrimitive<T: CBOREncodable & Sendable>(_ value: T) -> AnyValue {
+func createTestPrimitive(_ value: some CBOREncodable & Sendable) -> AnyValue {
     AnyValue.primitive(value)
 }
 
@@ -195,8 +195,8 @@ func assertApproximatelyEqual<T: FloatingPoint>(
 
 /// Assert that a value is not nil
 /// Mirrors Rust assert! with Option unwrapping exactly
-func assertNotNil<T>(
-    _ value: T?,
+func assertNotNil(
+    _ value: (some Any)?,
     message: String = "Value should not be nil"
 ) {
     assert(value != nil, message)
@@ -204,8 +204,8 @@ func assertNotNil<T>(
 
 /// Assert that a value is nil
 /// Mirrors Rust assert! with Option checking exactly
-func assertNil<T>(
-    _ value: T?,
+func assertNil(
+    _ value: (some Any)?,
     message: String = "Value should be nil"
 ) {
     assert(value == nil, message)
@@ -223,14 +223,14 @@ func withTestTimeout<T: Sendable>(
     let operationTask = Task { @Sendable in
         try await operation()
     }
-    
+
     // Create a timeout task
     let timeoutTask = Task {
         try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
         operationTask.cancel()
         throw TestTimeoutError.timeout
     }
-    
+
     // Wait for either the operation to complete or timeout
     do {
         let result = try await operationTask.value
@@ -258,20 +258,20 @@ enum TestTimeoutError: Error {
 func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
     // Create test credentials (matching Rust exactly)
     var (mobileKeysManager, defaultNetworkId) = try await createTestMobileKeys()
-    
+
     // Assign a unique multicast port for this test instance to isolate from other tests (matching Rust exactly)
-    let uniquePort = UInt16(47000 + UInt16.random(in: 0...1000))
+    let uniquePort = UInt16(47000 + UInt16.random(in: 0 ... 1000))
     let uniqueGroup = "239.255.42.98:\(uniquePort)"
-    
+
     var configs: [NodeConfig] = []
-    
-    for _ in 0..<count {
+
+    for _ in 0 ..< count {
         // Create test node keys with real node ID (matching Rust exactly)
         let (nodeKeysManager, _) = try await createTestNodeKeys(
             mobileKeysManager: &mobileKeysManager,
             defaultNetworkId: defaultNetworkId
         )
-        
+
         // Create discovery options (matching Rust exactly)
         let discoveryOptions = DiscoveryOptions(
             announceInterval: 1000,
@@ -281,10 +281,10 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
             localNetworkOnly: true,
             multicastGroup: uniqueGroup
         )
-        
+
         // Create discovery provider (matching Rust exactly)
         let discoveryProvider = DiscoveryProviderConfig(type: "mdns", config: [:])
-        
+
         // Create network config (matching Rust exactly)
         let networkConfig = NetworkConfig(
             transportType: "quic",
@@ -295,20 +295,20 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
             discoveryOptions: discoveryOptions,
             discoveryProviders: [discoveryProvider]
         )
-        
+
         // Create test label resolver config (matching Rust exactly)
         let networkPublicKey = try await nodeKeysManager.getNetworkPublicKeyByNetworkId(networkId: defaultNetworkId)
         let labelConfig = createTestLabelResolverConfig(networkPublicKey: networkPublicKey)
-        
+
         // Create node config (matching Rust exactly)
         let config = NodeConfig(defaultNetworkId: defaultNetworkId)
             .withKeyManager(nodeKeysManager)
             .withLabelResolverConfig(labelConfig)
             .withNetworkConfig(networkConfig)
-        
+
         configs.append(config)
     }
-    
+
     return configs
 }
 
@@ -318,23 +318,23 @@ func createNetworkedNodeTestConfigs(count: Int) async throws -> [NodeConfig] {
 /// Mirrors Rust AtomicUsize behavior exactly
 actor TestAtomicInteger {
     private var _value: Int
-    
+
     init(initialValue: Int = 0) {
         _value = initialValue
     }
-    
+
     var value: Int {
-        return _value
+        _value
     }
-    
+
     func increment() {
         _value += 1
     }
-    
+
     func decrement() {
         _value -= 1
     }
-    
+
     func setValue(_ newValue: Int) {
         _value = newValue
     }
@@ -344,15 +344,15 @@ actor TestAtomicInteger {
 /// Mirrors Rust Arc<Mutex<T>> behavior exactly
 actor TestAtomicReference<T> {
     private var _value: T
-    
+
     init(initialValue: T) {
         _value = initialValue
     }
-    
+
     var value: T {
-        return _value
+        _value
     }
-    
+
     func setValue(_ newValue: T) {
         _value = newValue
     }
@@ -362,19 +362,19 @@ actor TestAtomicReference<T> {
 /// Mirrors Rust AtomicBool behavior exactly
 actor TestAtomicBoolean {
     private var _value: Bool
-    
+
     init(initialValue: Bool = false) {
         _value = initialValue
     }
-    
+
     var value: Bool {
-        return _value
+        _value
     }
-    
+
     func setValue(_ newValue: Bool) {
         _value = newValue
     }
-    
+
     func toggle() {
         _value.toggle()
     }

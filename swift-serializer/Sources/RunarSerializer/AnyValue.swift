@@ -508,7 +508,6 @@ public final class AnyValue: Sendable {
 
     /// Deserialize lazy data into a concrete value of target type
     private func deserializeLazyData<T>(_ lazyData: LazyData, to _: T.Type) async throws -> T {
-
         // Handle by strict wire names for known categories and primitives
         switch lazyData.typeName {
         case "bytes":
@@ -521,14 +520,14 @@ public final class AnyValue: Sendable {
             if let cbor = try? CBOR.decode(bytes) {
                 switch cbor {
                 case let .utf8String(stringValue):
-                    guard let casted = stringValue as? T else { 
-                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)") 
+                    guard let casted = stringValue as? T else {
+                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)")
                     }
                     return casted
                 case let .array(arr) where arr.count == 1:
                     guard case let .utf8String(stringValue) = arr[0] else { break }
-                    guard let casted = stringValue as? T else { 
-                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)") 
+                    guard let casted = stringValue as? T else {
+                        throw SerializerError.typeMismatch("Cannot cast string to \(T.self)")
                     }
                     return casted
                 default: break
@@ -555,8 +554,8 @@ public final class AnyValue: Sendable {
         case "i8":
             do {
                 let int8Value = try SwiftCBOR.CodableCBORDecoder().decode(Int8.self, from: Data(lazyData.data))
-                guard let casted = int8Value as? T else { 
-                    throw SerializerError.typeMismatch("Cannot cast i8 to \(T.self)") 
+                guard let casted = int8Value as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast i8 to \(T.self)")
                 }
                 return casted
             } catch {
@@ -566,8 +565,8 @@ public final class AnyValue: Sendable {
         case "i16":
             do {
                 let int16Value = try SwiftCBOR.CodableCBORDecoder().decode(Int16.self, from: Data(lazyData.data))
-                guard let casted = int16Value as? T else { 
-                    throw SerializerError.typeMismatch("Cannot cast i16 to \(T.self)") 
+                guard let casted = int16Value as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast i16 to \(T.self)")
                 }
                 return casted
             } catch {
@@ -577,8 +576,8 @@ public final class AnyValue: Sendable {
         case "i32":
             do {
                 let int32Value = try SwiftCBOR.CodableCBORDecoder().decode(Int32.self, from: Data(lazyData.data))
-                guard let casted = int32Value as? T else { 
-                    throw SerializerError.typeMismatch("Cannot cast i32 to \(T.self)") 
+                guard let casted = int32Value as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast i32 to \(T.self)")
                 }
                 return casted
             } catch {
@@ -626,8 +625,8 @@ public final class AnyValue: Sendable {
         case "u8":
             do {
                 let uint8Value = try SwiftCBOR.CodableCBORDecoder().decode(UInt8.self, from: Data(lazyData.data))
-                guard let casted = uint8Value as? T else { 
-                    throw SerializerError.typeMismatch("Cannot cast u8 to \(T.self)") 
+                guard let casted = uint8Value as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast u8 to \(T.self)")
                 }
                 return casted
             } catch {
@@ -683,8 +682,8 @@ public final class AnyValue: Sendable {
         case "f32":
             do {
                 let floatValue = try SwiftCBOR.CodableCBORDecoder().decode(Float.self, from: Data(lazyData.data))
-                guard let casted = floatValue as? T else { 
-                    throw SerializerError.typeMismatch("Cannot cast f32 to \(T.self)") 
+                guard let casted = floatValue as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast f32 to \(T.self)")
                 }
                 return casted
             } catch {
@@ -694,8 +693,8 @@ public final class AnyValue: Sendable {
         case "f64":
             do {
                 let doubleValue = try SwiftCBOR.CodableCBORDecoder().decode(Double.self, from: Data(lazyData.data))
-                guard let casted = doubleValue as? T else { 
-                    throw SerializerError.typeMismatch("Cannot cast f64 to \(T.self)") 
+                guard let casted = doubleValue as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast f64 to \(T.self)")
                 }
                 return casted
             } catch {
@@ -705,8 +704,8 @@ public final class AnyValue: Sendable {
         case "bool":
             do {
                 let boolValue = try SwiftCBOR.CodableCBORDecoder().decode(Bool.self, from: Data(lazyData.data))
-                guard let casted = boolValue as? T else { 
-                    throw SerializerError.typeMismatch("Cannot cast bool to \(T.self)") 
+                guard let casted = boolValue as? T else {
+                    throw SerializerError.typeMismatch("Cannot cast bool to \(T.self)")
                 }
                 return casted
             } catch {
@@ -753,27 +752,28 @@ public final class AnyValue: Sendable {
             }
             var out: [AnyValue] = []
             for element in elements {
-                guard case let .map(map) = element else { 
-                    throw SerializerError.deserializationFailed("Invalid element in list<any>") 
+                guard case let .map(map) = element else {
+                    throw SerializerError.deserializationFailed("Invalid element in list<any>")
                 }
-                guard let catEntry = map[.utf8String("category")], 
-                      let nameEntry = map[.utf8String("typename")], 
-                      let valEntry = map[.utf8String("value")] else {
+                guard let catEntry = map[.utf8String("category")],
+                      let nameEntry = map[.utf8String("typename")],
+                      let valEntry = map[.utf8String("value")]
+                else {
                     throw SerializerError.deserializationFailed("Missing fields in list<any> element")
                 }
                 let cat: ValueCategory
                 switch catEntry {
                 case let .unsignedInt(unsignedValue):
-                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else { 
-                        throw SerializerError.deserializationFailed("Bad category") 
+                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else {
+                        throw SerializerError.deserializationFailed("Bad category")
                     }
                     cat = category
                 default: throw SerializerError.deserializationFailed("Bad category type")
                 }
                 let name: String
-                switch nameEntry { 
-                    case let .utf8String(stringValue): name = stringValue
-                    default: throw SerializerError.deserializationFailed("Bad typename type") 
+                switch nameEntry {
+                case let .utf8String(stringValue): name = stringValue
+                default: throw SerializerError.deserializationFailed("Bad typename type")
                 }
                 let payload: Data
                 switch valEntry {
@@ -825,16 +825,16 @@ public final class AnyValue: Sendable {
                 let cat: ValueCategory
                 switch catEntry {
                 case let .unsignedInt(unsignedValue):
-                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else { 
-                        throw SerializerError.deserializationFailed("Bad category") 
+                    guard let category = ValueCategory.from(UInt8(unsignedValue)) else {
+                        throw SerializerError.deserializationFailed("Bad category")
                     }
                     cat = category
                 default: throw SerializerError.deserializationFailed("Bad category type")
                 }
                 let name: String
-                switch nameEntry { 
-                    case let .utf8String(stringValue): name = stringValue
-                    default: throw SerializerError.deserializationFailed("Bad typename type") 
+                switch nameEntry {
+                case let .utf8String(stringValue): name = stringValue
+                default: throw SerializerError.deserializationFailed("Bad typename type")
                 }
                 let payload: Data
                 switch valEntry {
@@ -909,7 +909,7 @@ public final class AnyValue: Sendable {
                     return casted
                 }
             }
-            
+
             // If we get here, either no keystore was provided or no decryptor was found
             // This is expected for plain types or when no keystore is available
             throw SerializerError.deserializationFailed("Cannot deserialize \(lazyData.typeName) as \(T.self) - no keystore provided or no decryptor registered")
@@ -923,7 +923,7 @@ public final class AnyValue: Sendable {
         let wireName: String
         let payload: Data
     }
-    
+
     private static func parseSerializedHeader(_ data: Data) throws -> SerializedHeader {
         guard !data.isEmpty else { throw SerializerError.emptyData }
         let categoryByte = data[0]
@@ -989,12 +989,12 @@ public final class AnyValue: Sendable {
                 throw SerializerError.deserializationFailed("Unknown map wire name: \(typeName)")
             }
         case .json:
-            if typeName != "json" { 
-                throw SerializerError.deserializationFailed("Unknown json wire name: \(typeName)") 
+            if typeName != "json" {
+                throw SerializerError.deserializationFailed("Unknown json wire name: \(typeName)")
             }
         case .bytes:
-            if typeName != "bytes" { 
-                throw SerializerError.deserializationFailed("Unknown bytes wire name: \(typeName)") 
+            if typeName != "bytes" {
+                throw SerializerError.deserializationFailed("Unknown bytes wire name: \(typeName)")
             }
         default:
             break

@@ -9,7 +9,7 @@ public enum EnvelopeEncryption {
         context: SerializationContext
     ) async throws -> Data {
         // Use network public key directly from context
-        return try await context.keystore.encryptWithEnvelope(data: data, networkPublicKey: context.networkPublicKey, profilePublicKeys: context.profilePublicKeys)
+        try await context.keystore.encryptWithEnvelope(data: data, networkPublicKey: context.networkPublicKey, profilePublicKeys: context.profilePublicKeys)
     }
 
     public static func decrypt(

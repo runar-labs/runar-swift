@@ -82,9 +82,9 @@ public final actor ShardedConcurrentMap<Key: Hashable & Sendable, Value: Sendabl
         }
 
         #if DEBUG
-        func snapshot() -> [Key: Value] {
-            storage
-        }
+            func snapshot() -> [Key: Value] {
+                storage
+            }
         #endif
 
         func forEach(_ body: (Key, Value) -> Void) {
@@ -256,16 +256,20 @@ extension ShardedConcurrentMap: CustomDebugStringConvertible {
 }
 
 #if DEBUG
-// MARK: - Test-only helpers
-extension ShardedConcurrentMap {
-    /// TEST-ONLY: Materialize the entire map into a dictionary for assertions
-    public func toDictionary() async -> [Key: Value] {
-        var out: [Key: Value] = [:]
-        for shard in shards {
-            let snap = await shard.snapshot()
-            for (k, v) in snap { out[k] = v }
+
+    // MARK: - Test-only helpers
+
+    public extension ShardedConcurrentMap {
+        /// TEST-ONLY: Materialize the entire map into a dictionary for assertions
+        func toDictionary() async -> [Key: Value] {
+            var out: [Key: Value] = [:]
+            for shard in shards {
+                let snap = await shard.snapshot()
+                for (k, v) in snap {
+                    out[k] = v
+                }
+            }
+            return out
         }
-        return out
     }
-}
 #endif

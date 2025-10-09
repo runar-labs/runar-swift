@@ -160,7 +160,7 @@ public final class RunarLogger: Sendable {
         self.parent = parent
         self.component = component
         // Use shared lock if provided (for child loggers), otherwise create new one
-        self.contextLock = sharedContextLock ?? OSAllocatedUnfairLock(initialState: context)
+        contextLock = sharedContextLock ?? OSAllocatedUnfairLock(initialState: context)
         explicitConfig = config
     }
 
@@ -175,8 +175,8 @@ public final class RunarLogger: Sendable {
             parent: self,
             component: component,
             context: context,
-            config: self.explicitConfig,
-            sharedContextLock: self.contextLock
+            config: explicitConfig,
+            sharedContextLock: contextLock
         )
     }
 
@@ -321,9 +321,9 @@ public final class RunarLogger: Sendable {
             }
             // Safely read context from lock
             let context = logger.contextLock.withLock { currentContext in
-                return currentContext
+                currentContext
             }
-            if let context = context {
+            if let context {
                 contexts.insert(context, at: 0)
             }
             current = logger.parent

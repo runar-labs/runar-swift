@@ -154,7 +154,7 @@ final class LabelResolverTests: XCTestCase {
             userProfilePublicKeys: []
         )) { error in
             XCTAssertTrue(error is LabelResolverError)
-            if case let .keyLengthInvalid(message) = error as? LabelResolverError {
+            if case let .invalidConfiguration(message) = error as? LabelResolverError {
                 XCTAssertTrue(message.contains("must be 32 bytes"))
             }
         }

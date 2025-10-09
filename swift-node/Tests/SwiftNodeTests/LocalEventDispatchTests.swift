@@ -33,18 +33,6 @@ final class LocalEventDispatchTests: XCTestCase {
         testLogger.child(component: .node)
     }
 
-    private func createNodeTestConfig() async throws -> NodeConfig {
-        let keysManager = try await NodeKeyManager()
-        try await keysManager.generateKeys()
-        
-        let networkPublicKey = try await keysManager.getNetworkPublicKeyByNetworkId(networkId: "default")
-        let networkId = CompactId.compactId(from: networkPublicKey)
-        
-        return NodeConfig(defaultNetworkId: networkId)
-            .withKeyManager(keysManager)
-            // NO networking - matches Rust exactly (networking disabled by default in test config)
-    }
-
     // MARK: - Local Event Dispatch Tests
 
     /// Test local event dispatch with multiple subscribers
@@ -110,7 +98,7 @@ final class LocalEventDispatchTests: XCTestCase {
         // Clean up (matching Rust exactly)
         try await node.unsubscribeFromEvents(subscriptionId: subId1)
         try await node.unsubscribeFromEvents(subscriptionId: subId2)
-        
+
         await node.stop()
     }
 
@@ -150,10 +138,10 @@ final class LocalEventDispatchTests: XCTestCase {
         // Call the math operation (which should publish math/added) (matching Rust exactly)
         let params = AnyValue.map([
             "a": AnyValue.primitive(5.0),
-            "b": AnyValue.primitive(3.0)
+            "b": AnyValue.primitive(3.0),
         ])
         let result = try await node.request("math1/add", payload: params)
-        
+
         let resultValue: Double = try await result.asType()
         XCTAssertEqual(resultValue, 8.0, accuracy: 0.001)
         print("Math operation completed: 5 + 3 = \(resultValue)")
@@ -173,7 +161,7 @@ final class LocalEventDispatchTests: XCTestCase {
 
         // Clean up (matching Rust exactly)
         try await node.unsubscribeFromEvents(subscriptionId: subId)
-        
+
         await node.stop()
     }
 
@@ -189,7 +177,7 @@ final class LocalEventDispatchTests: XCTestCase {
         }
 
         var value: Int {
-            return _value
+            _value
         }
 
         func increment() {
@@ -207,7 +195,7 @@ final class LocalEventDispatchTests: XCTestCase {
         }
 
         var value: T {
-            return _value
+            _value
         }
 
         func setValue(_ newValue: T) {
@@ -229,8 +217,8 @@ final class LocalEventDispatchTests: XCTestCase {
         init(name: String, path: String) {
             self.name = name
             self.path = path
-            self.description = "Test math service"
-            self.logger = RunarLogger.root(component: .service)
+            description = "Test math service"
+            logger = RunarLogger.root(component: .service)
         }
 
         func setNetworkId(_ networkId: String) {
@@ -244,8 +232,8 @@ final class LocalEventDispatchTests: XCTestCase {
                 servicePath: context.servicePath,
                 action: "add",
                 handler: { [weak self] payload, requestContext in
-                    guard let self = self else { return AnyValue.null() }
-                    return try await self.handleAdd(requestContext: requestContext, payload: payload)
+                    guard let self else { return AnyValue.null() }
+                    return try await handleAdd(requestContext: requestContext, payload: payload)
                 }
             )
         }
@@ -256,41 +244,43 @@ final class LocalEventDispatchTests: XCTestCase {
                 topic: "\(context.servicePath)/math/added",
                 options: EventRegistrationOptions(),
                 callback: { [weak self] eventContext, data in
-                    guard let self = self else { return }
-                    try await self.handleMathAdded(eventContext: eventContext, data: data)
+                    guard let self else { return }
+                    try await handleMathAdded(eventContext: eventContext, data: data)
                 }
             )
         }
 
-        func stop(_ context: LifecycleContext) async throws {
+        func stop(_: LifecycleContext) async throws {
             // Stop the service
         }
 
         private func handleAdd(requestContext: RequestContext, payload: AnyValue?) async throws -> AnyValue {
-            guard let payload = payload,
+            guard let payload,
                   let params = try? await payload.asType() as [String: AnyValue],
                   let aValue = params["a"],
                   let bValue = params["b"],
                   let a = try? await aValue.asType() as Double,
-                  let b = try? await bValue.asType() as Double else {
+                  let b = try? await bValue.asType() as Double
+            else {
                 throw NodeError.invalidServicePath("Invalid parameters for add operation")
             }
-            
+
             let result = a + b
-            
+
             // Publish the result as an event (matching Rust MathService exactly)
             try await requestContext.nodeDelegate.publish(
                 topic: "\(requestContext.topicPath.servicePath)/math/added",
                 data: AnyValue.primitive(result)
             )
-            
+
             return AnyValue.primitive(result)
         }
 
-        private func handleMathAdded(eventContext: EventContext, data: AnyValue?) async throws {
+        private func handleMathAdded(eventContext _: EventContext, data: AnyValue?) async throws {
             // Handle the math/added event (matching Rust MathService exactly)
-            if let data = data,
-               let value = try? await data.asType() as Double {
+            if let data,
+               let value = try? await data.asType() as Double
+            {
                 print("MathService received math/added event: \(value)")
             }
         }

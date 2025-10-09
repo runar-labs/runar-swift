@@ -414,18 +414,18 @@ public final class PathTrie<T> {
     /// Find all handlers that match a wildcard topic pattern (matches Rust find_wildcard_matches)
     public func findWildcardMatches(pattern: TopicPath) -> [PathTrieMatch<T>] {
         let networkId = pattern.networkId
-        
+
         guard let netTrie = networks[networkId] else { return [] }
-        
+
         return netTrie.findWildcardMatchesInternal(segments: pattern.segments.map { $0.asString() }, index: 0)
     }
 
     /// Remove handlers that match a predicate for a specific topic path (matches Rust remove_handler)
     public func removeHandler(topic: TopicPath, predicate: (T) -> Bool) -> Bool {
         let networkId = topic.networkId
-        
+
         guard let netTrie = networks[networkId] else { return false }
-        
+
         return netTrie.removeHandlerInternal(segments: topic.segments.map { $0.asString() }, index: 0, predicate: predicate)
     }
 
@@ -480,11 +480,11 @@ public final class PathTrie<T> {
     /// Remove all values for a specific topic path (matches Rust remove_values)
     public func removeValues(topic: TopicPath) {
         let networkId = topic.networkId
-        
+
         // Get or create network-specific trie
         let networkTrie = networks[networkId] ?? PathTrie<T>()
         networks[networkId] = networkTrie
-        
+
         // Remove from the network-specific trie
         networkTrie.removeValuesInternal(segments: topic.segments.map { $0.asString() }, index: 0)
     }
@@ -514,28 +514,28 @@ public final class PathTrie<T> {
     /// Internal method to find wildcard matches with parameters (matches Rust find_wildcard_matches_internal)
     private func findWildcardMatchesInternal(segments: [String], index: Int) -> [PathTrieMatch<T>] {
         var results: [PathTrieMatch<T>] = []
-        
+
         if index >= segments.count {
             // Pattern is exhausted, collect all values at this level
-            collectAllConcreteMatches(&results, params: [:]) 
+            collectAllConcreteMatches(&results, params: [:])
             return results
         }
-        
+
         let segment = segments[index]
-        
+
         if segment == "*" {
             // Single wildcard - collect all values from this level and below
-            collectAllConcreteMatches(&results, params: [:]) 
+            collectAllConcreteMatches(&results, params: [:])
         } else if segment == ">" {
             // Multi-wildcard - collect all values from this level and below
-            collectAllConcreteMatches(&results, params: [:]) 
+            collectAllConcreteMatches(&results, params: [:])
         } else {
             // Literal segment - only search in matching child
             if let child = children[segment] {
                 results.append(contentsOf: child.findWildcardMatchesInternal(segments: segments, index: index + 1))
             }
         }
-        
+
         return results
     }
 
@@ -547,9 +547,9 @@ public final class PathTrie<T> {
             content.removeAll { predicate($0) }
             return content.count != originalCount
         }
-        
+
         let segment = segments[index]
-        
+
         if segment == "*" {
             // Single wildcard - remove from wildcard child
             return wildcardChild?.removeHandlerInternal(segments: segments, index: index + 1, predicate: predicate) ?? false
@@ -565,20 +565,20 @@ public final class PathTrie<T> {
     /// Internal method to count all values in this trie and its children
     private func countAllValues() -> Int {
         var count = content.count + multiWildcard.count
-        
+
         // Recursively count from children
         for child in children.values {
             count += child.countAllValues()
         }
-        
+
         if let wildcard = wildcardChild {
             count += wildcard.countAllValues()
         }
-        
+
         if let template = templateChild {
             count += template.countAllValues()
         }
-        
+
         return count
     }
 }

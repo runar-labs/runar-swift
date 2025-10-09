@@ -182,10 +182,10 @@ public actor SerializationRegistry {
     ) {
         let registryKey = wireName ?? String(describing: T.self)
         let expectedTypeName = String(describing: T.self)
-        
+
         Self.registrationLock.lock()
         defer { Self.registrationLock.unlock() }
-        
+
         // Store the encryptor closure
         wireNameToEncryptor[registryKey] = { [encryptor, expectedTypeName] value, keystore, resolver in
             guard let typedValue = value as? T else {
@@ -193,7 +193,7 @@ public actor SerializationRegistry {
             }
             return try await encryptor(typedValue, keystore, resolver)
         }
-        
+
         if let encryptedName = targetEncryptedWireName {
             encryptedWireByPlainWire[registryKey] = encryptedName
         }
@@ -205,10 +205,10 @@ public actor SerializationRegistry {
         decryptor: @escaping @Sendable (Data, CommonKeyManager) async throws -> T
     ) {
         let registryKey = wireName ?? String(describing: T.self)
-        
+
         Self.registrationLock.lock()
         defer { Self.registrationLock.unlock() }
-        
+
         wireNameToDecryptor[registryKey] = { [decryptor] data, keystore in
             try await decryptor(data, keystore)
         }
@@ -220,7 +220,7 @@ public actor SerializationRegistry {
     ) {
         Self.registrationLock.lock()
         defer { Self.registrationLock.unlock() }
-        
+
         wireNameToDecoder[wireName] = { [decoder] data in
             try decoder(data)
         }
@@ -228,10 +228,10 @@ public actor SerializationRegistry {
 
     public nonisolated func registerWireNameSync<T>(for _: T.Type, wireName: String) {
         let swiftName = String(describing: T.self)
-        
+
         Self.registrationLock.lock()
         defer { Self.registrationLock.unlock() }
-        
+
         swiftTypeToWireName[swiftName] = wireName
         wireNameToSwiftType[wireName] = T.self
         wireNameCache.setObject(NSString(string: wireName), forKey: NSString(string: swiftName))

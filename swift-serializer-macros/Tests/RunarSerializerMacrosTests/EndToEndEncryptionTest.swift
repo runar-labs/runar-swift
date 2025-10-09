@@ -1,20 +1,19 @@
 import RunarSerializer
 import RunarSerializerMacros
 import SwiftCBOR
-import SwiftFFI
 import SwiftCommon
+import SwiftFFI
 import XCTest
 
 /// End-to-end encryption test that demonstrates the full flow working
 /// This test shows basic encryption/decryption functionality with the current macros
 final class EndToEndEncryptionTest: XCTestCase {
-    
     // Swift logger for trace-level logging
     private var testLogger: RunarLogger!
-    
+
     override func setUp() async throws {
         try await super.setUp()
-        
+
         // Set global logger config to trace level for all tests
         LoggerConfigManager.shared.globalConfig = LoggerConfig(
             level: .info,
@@ -22,13 +21,13 @@ final class EndToEndEncryptionTest: XCTestCase {
             includeComponent: true,
             includeContext: true
         )
-        
+
         // Create root logger for this test with test name as context
         testLogger = RunarLogger.root(component: .custom("EndToEndEncryptionTest"))
     }
-    
+
     // MARK: - Test Structs with Macros
-    
+
     @Encrypted(name: "encryption_test.TestProfile")
     struct TestProfile: Codable {
         let id: String
@@ -37,15 +36,15 @@ final class EndToEndEncryptionTest: XCTestCase {
         let email: String
         @Runar("system") let metadata: String
     }
-    
+
     @Plain(name: "encryption_test.SimpleStruct")
     struct SimpleStruct: Codable {
         let a: Int64
         let b: String
     }
-    
+
     // MARK: - Basic Macro Functionality Tests
-    
+
     func testEncryptedMacroGeneratesCode() async throws {
         let profile = TestProfile(
             id: "123",
@@ -54,68 +53,68 @@ final class EndToEndEncryptionTest: XCTestCase {
             email: "test@example.com",
             metadata: "system_data"
         )
-        
+
         // Test that the encrypted struct type exists
         let encryptedType = TestProfile.Encrypted.self
         XCTAssertNotNil(encryptedType)
-        
+
         // Test that toAnyValue() method exists and works
         let anyValue = await profile.toAnyValue()
         XCTAssertNotNil(anyValue)
-        
+
         print("✅ Encrypted macro generates code and toAnyValue() works")
     }
-    
+
     func testPlainMacroGeneratesCode() async throws {
         let simple = SimpleStruct(a: 42, b: "test_string")
-        
+
         // Test that generated methods exist and work
         let anyValue = await simple.toAnyValue()
         XCTAssertNotNil(anyValue)
-        
+
         // Test basic struct functionality
         XCTAssertEqual(simple.a, 42)
         XCTAssertEqual(simple.b, "test_string")
-        
+
         print("✅ Plain macro generates code and toAnyValue() works")
     }
-    
+
     // MARK: - Wire Name Registration Tests
-    
+
     func testWireNameRegistration() async throws {
         let simple = SimpleStruct(a: 789, b: "wire_test")
-        
+
         // Test serialization (this triggers wire name registration)
         let anyValue = await simple.toAnyValue()
         XCTAssertNotNil(anyValue)
-        
+
         // Test that the wire name is properly registered
         let wireName = "encryption_test.SimpleStruct"
         let isRegistered = await SerializationRegistry.shared.isRegistered(wireName: wireName)
         XCTAssertTrue(isRegistered)
-        
+
         print("✅ Wire name registration test passed")
     }
-    
+
     // MARK: - Empty Struct Handling
-    
+
     func testEmptyStructHandling() async throws {
         @Plain(name: "empty.test")
         struct EmptyStruct: Codable {
             // No fields
         }
-        
+
         let empty = EmptyStruct()
-        
+
         // Test that empty struct works
         let anyValue = await empty.toAnyValue()
         XCTAssertNotNil(anyValue)
-        
+
         print("✅ Empty struct handling test passed")
     }
-    
+
     // MARK: - Field Type Handling
-    
+
     func testFieldTypeHandling() async throws {
         @Plain(name: "type_test")
         struct TypeTestStruct: Codable {
@@ -125,7 +124,7 @@ final class EndToEndEncryptionTest: XCTestCase {
             let doubleField: Double
             let dataField: Data
         }
-        
+
         let testData = Data("test_data".utf8)
         let instance = TypeTestStruct(
             intField: 123,
@@ -134,23 +133,23 @@ final class EndToEndEncryptionTest: XCTestCase {
             doubleField: 3.14,
             dataField: testData
         )
-        
+
         // Test that different field types work
         let anyValue = await instance.toAnyValue()
         XCTAssertNotNil(anyValue)
-        
+
         // Test basic struct functionality
         XCTAssertEqual(instance.intField, 123)
         XCTAssertEqual(instance.stringField, "test_string")
         XCTAssertTrue(instance.boolField)
         XCTAssertEqual(instance.doubleField, 3.14)
         XCTAssertEqual(instance.dataField, testData)
-        
+
         print("✅ Field type handling test passed")
     }
-    
+
     // MARK: - Registry Integration Test
-    
+
     func testRegistryIntegration() async throws {
         // Test that macros work with the registry system
         @Plain(name: "registry.Simple")
@@ -158,22 +157,22 @@ final class EndToEndEncryptionTest: XCTestCase {
             let id: String
             let value: Int64
         }
-        
+
         let simple = RegistryStruct(id: "reg_123", value: 456)
-        
+
         // Test serialization works
         let simpleSerialized = await simple.toAnyValue()
         XCTAssertNotNil(simpleSerialized)
-        
+
         // Test that the registry has the wire name
         let isRegistered = await SerializationRegistry.shared.isRegistered(wireName: "registry.Simple")
         XCTAssertTrue(isRegistered)
-        
+
         print("✅ Registry integration test passed")
     }
-    
+
     // MARK: - Macro Compilation Test
-    
+
     func testMacroCompilation() async throws {
         // Test that the macros compile and generate valid Swift code
         @Encrypted(name: "compilation.test")
@@ -181,32 +180,32 @@ final class EndToEndEncryptionTest: XCTestCase {
             let field1: String
             let field2: Int64
         }
-        
+
         @Plain(name: "compilation.plain")
         struct CompilationPlain: Codable {
             let data: String
         }
-        
+
         // Test that types are generated
         let encryptedType = CompilationTest.Encrypted.self
         XCTAssertNotNil(encryptedType)
-        
+
         // Test that instances can be created
         let encrypted = CompilationTest(field1: "test", field2: 42)
         let plain = CompilationPlain(data: "test_data")
-        
+
         // Test that toAnyValue() methods work
         let encryptedAnyValue = await encrypted.toAnyValue()
         let plainAnyValue = await plain.toAnyValue()
-        
+
         XCTAssertNotNil(encryptedAnyValue)
         XCTAssertNotNil(plainAnyValue)
-        
+
         print("✅ Macro compilation test passed")
     }
-    
+
     // MARK: - Debug Test
-    
+
     func testDebugEncryptionFlow() async throws {
         // Set up logging for both Rust FFI layer and Swift layer
         testLogger.debug("Setting up debug encryption test")
@@ -216,16 +215,16 @@ final class EndToEndEncryptionTest: XCTestCase {
         // Create mobile keystore and initialize user root key
         let mobileKeystore = try await MobileKeyManager()
         try await mobileKeystore.initializeUserRootKey()
-        
+
         // Generate network data key
         let networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
-        
+
         // Derive profile key for testing
         let profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
-        
+
         // Install network public key on mobile
         try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
-        
+
         // Create a test resolver
         let resolver = LabelResolver(mapping: [
             "system": LabelKeyInfo(
@@ -235,9 +234,9 @@ final class EndToEndEncryptionTest: XCTestCase {
             "user": LabelKeyInfo(
                 profilePublicKeys: [profilePublicKey],
                 networkPublicKey: networkPublicKey
-            )
+            ),
         ])
-        
+
         // Test the macro-generated encryptWithKeystore method directly
         let profile = TestProfile(
             id: "debug_user",
@@ -246,27 +245,27 @@ final class EndToEndEncryptionTest: XCTestCase {
             email: "debug@test.com",
             metadata: "debug_metadata"
         )
-        
+
         // Test direct encryption
         let encryptedProfile = try await profile.encryptWithKeystore(mobileKeystore, resolver)
         print("✅ Direct encryption worked")
-        
+
         // Test direct decryption
         let decryptedProfile = try await encryptedProfile.decryptWithKeystore(mobileKeystore)
         print("✅ Direct decryption worked")
-        
+
         // Verify data matches
         XCTAssertEqual(decryptedProfile.id, profile.id)
         XCTAssertEqual(decryptedProfile.name, profile.name)
         XCTAssertEqual(decryptedProfile.secretData, profile.secretData)
         XCTAssertEqual(decryptedProfile.email, profile.email)
         XCTAssertEqual(decryptedProfile.metadata, profile.metadata)
-        
+
         print("✅ Debug encryption flow test passed")
     }
-    
+
     // MARK: - Full Encryption Flow Test
-    
+
     func testFullEncryptionFlowWithRegistry() async throws {
         // Set up logging for both Rust FFI layer and Swift layer
         testLogger.debug("Setting up full encryption test")
@@ -276,16 +275,16 @@ final class EndToEndEncryptionTest: XCTestCase {
         // Create mobile keystore and initialize user root key
         let mobileKeystore = try await MobileKeyManager()
         try await mobileKeystore.initializeUserRootKey()
-        
+
         // Generate network data key
         let networkPublicKey = try await mobileKeystore.generateNetworkDataKey()
-        
+
         // Derive profile key for testing
         let profilePublicKey = try await mobileKeystore.deriveUserProfileKey(label: "test_profile")
-        
+
         // Install network public key on mobile
         try await mobileKeystore.installNetworkPublicKey(networkPublicKey)
-        
+
         // Create a test resolver
         let resolver = LabelResolver(mapping: [
             "system": LabelKeyInfo(
@@ -295,11 +294,11 @@ final class EndToEndEncryptionTest: XCTestCase {
             "user": LabelKeyInfo(
                 profilePublicKeys: [profilePublicKey],
                 networkPublicKey: networkPublicKey
-            )
+            ),
         ])
-        
+
         let context = SerializationContext(keystore: mobileKeystore, resolver: resolver, networkPublicKey: networkPublicKey, profilePublicKeys: [profilePublicKey])
-        
+
         // Test the full encryption flow with @Encrypted macro
         let profile = TestProfile(
             id: "encryption_test_user",
@@ -308,33 +307,33 @@ final class EndToEndEncryptionTest: XCTestCase {
             email: "encryption@test.com",
             metadata: "system_metadata"
         )
-        
+
         // Convert to AnyValue (this should register the encryptor with the registry)
         let anyValue = await profile.toAnyValue()
-        
+
         // Test that the type is registered for encryption
         let wireName = "encryption_test.TestProfile"
         let isRegistered = await SerializationRegistry.shared.isRegistered(wireName: wireName)
         XCTAssertTrue(isRegistered, "TestProfile should be registered for encryption")
-        
+
         // Test serialization with context (should use registry encryptor)
         let serializedData = try await anyValue.serialize(context: context)
         XCTAssertFalse(serializedData.isEmpty, "Serialized data should not be empty")
-        
+
         // Test deserialization - this should work with the registry
         let deserializedValue = try AnyValue.deserialize(serializedData, keystore: mobileKeystore)
-        
+
         // The deserialized value should be of type EncryptedTestProfile
         // We need to decrypt it using the registry decryptor
         let deserializedProfile: TestProfile = try await deserializedValue.asType()
-        
+
         // Verify the data matches
         XCTAssertEqual(deserializedProfile.id, profile.id)
         XCTAssertEqual(deserializedProfile.name, profile.name)
         XCTAssertEqual(deserializedProfile.secretData, profile.secretData)
         XCTAssertEqual(deserializedProfile.email, profile.email)
         XCTAssertEqual(deserializedProfile.metadata, profile.metadata)
-        
+
         print("✅ Full encryption flow with registry test passed")
     }
 }

@@ -257,7 +257,6 @@ public struct TopicPath: Equatable, Hashable, Sendable {
         self.segmentTypeBitmap = segmentTypeBitmap
     }
 
-
     /// Create a TopicPath from a full path string (matches Rust from_full_path)
     public static func fromFullPath(_ path: String) throws -> TopicPath {
         if path.contains(":") {
@@ -285,7 +284,6 @@ public struct TopicPath: Equatable, Hashable, Sendable {
             throw TopicPathError.invalidPath("Invalid path format - missing network_id received: \(path)")
         }
     }
-
 
     /// Create a service-only TopicPath (matches Rust new_service exactly)
     public static func newService(_ networkId: String, serviceName: String) -> TopicPath {

@@ -65,7 +65,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let sub = """
             struct \(subName): Codable, RunarSerializer.RunarDefault {
             	\(members)
-                
+
                 static var runarDefaultValue: \(subName) {
                     \(subName)(
                         \(fields.map { fname in
@@ -103,7 +103,7 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let subName = "\(structName)\(cap)Fields"
             let fields = labelToFields[label] ?? []
             let subInitArgs = fields.map { fieldName in
-                return "\(fieldName): self.\(fieldName)"
+                "\(fieldName): self.\(fieldName)"
             }.joined(separator: ", ")
             let line = """
             let \(label)Struct = \(subName)(\(subInitArgs))
@@ -128,9 +128,9 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             let fields = labelToFields[label] ?? []
             let cap = toCamelCase(label)
             let subName = "\(structName)\(cap)Fields"
-            let assignLines = fields.map { fname in 
+            let assignLines = fields.map { fname in
                 let sanitizedName = sanitizeFieldName(fname)
-                return "\(sanitizedName)_value = tmp.\(fname)" 
+                return "\(sanitizedName)_value = tmp.\(fname)"
             }.joined(separator: "\n                        ")
             let block = """
             if let group = self.\(label)_encrypted {
@@ -144,10 +144,10 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
         // Build final initializer call with locals
         let decryptInitArgs = orderedFields.map { f in
-            if fieldLabels[f.name] != nil { 
+            if fieldLabels[f.name] != nil {
                 let sanitizedName = sanitizeFieldName(f.name)
                 let cleanFieldName = f.name.replacingOccurrences(of: "`", with: "")
-                return "\(cleanFieldName): \(sanitizedName)_value" 
+                return "\(cleanFieldName): \(sanitizedName)_value"
             }
             let cleanFieldName = f.name.replacingOccurrences(of: "`", with: "")
             return "\(cleanFieldName): self.\(f.name)"
@@ -306,10 +306,10 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
             // Use RunarLabel priority for deterministic ordering (matches Rust)
             func rank(_ l: String) -> Int {
                 switch l {
-                case "system": return 0
-                case "user": return 1
-                case "search", "system_only": return 2
-                default: return 3
+                case "system": 0
+                case "user": 1
+                case "search", "system_only": 2
+                default: 3
                 }
             }
             let rankA = rank(a)
@@ -341,9 +341,9 @@ public struct EncryptedMacro: MemberMacro, PeerMacro {
 
         return [extEncryptable, extDecryptable]
     }
-    
+
     private static func sanitizeFieldName(_ name: String) -> String {
         // Remove backticks and replace with underscores for variable names
-        return name.replacingOccurrences(of: "`", with: "")
+        name.replacingOccurrences(of: "`", with: "")
     }
 }

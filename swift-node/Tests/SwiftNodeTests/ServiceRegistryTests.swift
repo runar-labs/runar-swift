@@ -15,7 +15,7 @@ actor AtomicBoolean {
     }
 
     var value: Bool {
-        return _value
+        _value
     }
 
     func setValue(_ newValue: Bool) {
@@ -226,13 +226,14 @@ final class ServiceRegistryTests: XCTestCase {
 
     /// Test that verifies multiple action handlers
     func testMultipleActionHandlers() async throws {
-        let networkId = "test-network" // Use the same network ID as the node's default
-
         // Create a Node instance for testing
         let config = try await createNodeTestConfig()
         let node = try await Node.new(config: config)
         try await node.start()
         try await node.waitForServicesToStart()
+
+        // Use the actual network ID from the config (matching Rust)
+        let networkId = config.defaultNetworkId
 
         // Create handlers for different actions
         let addHandler: ActionHandler = { _, _ in
@@ -265,6 +266,9 @@ final class ServiceRegistryTests: XCTestCase {
         try await node.start()
         try await node.waitForServicesToStart()
 
+        // Use the actual network ID from the config (matching Rust)
+        let networkId = config.defaultNetworkId
+
         // Create handlers for different actions
         let handler1: ActionHandler = { _, _ in
             AnyValue.primitive("add_result")
@@ -275,8 +279,8 @@ final class ServiceRegistryTests: XCTestCase {
         }
 
         // Register handlers for different actions on the same network
-        try await node.registerAction(networkId: "test-network", servicePath: "math", action: "add", handler: handler1)
-        try await node.registerAction(networkId: "test-network", servicePath: "math", action: "subtract", handler: handler2)
+        try await node.registerAction(networkId: networkId, servicePath: "math", action: "add", handler: handler1)
+        try await node.registerAction(networkId: networkId, servicePath: "math", action: "subtract", handler: handler2)
 
         // Test that handlers are isolated by action (both on same network)
         let result1 = try await node.request("math/add", payload: nil as AnyValue?)
@@ -632,13 +636,14 @@ final class ServiceRegistryTests: XCTestCase {
 
     /// Test that verifies request handling
     func testRequestHandling() async throws {
-        let networkId = "test-network" // Use the same network ID as the node's default
-
         // Create a Node instance for testing
         let config = try await createNodeTestConfig()
         let node = try await Node.new(config: config)
         try await node.start()
         try await node.waitForServicesToStart()
+
+        // Use the actual network ID from the config (matching Rust)
+        let networkId = config.defaultNetworkId
 
         // Register an action handler
         let handler: ActionHandler = { _, _ in
@@ -691,13 +696,16 @@ final class ServiceRegistryTests: XCTestCase {
             try await node.start()
             try await node.waitForServicesToStart()
 
+            // Use the actual network ID from the config (matching Rust)
+            let networkId = config.defaultNetworkId
+
             // Create a simple handler for testing
             let handler: ActionHandler = { _, _ in
-                return AnyValue.primitive("success")
+                AnyValue.primitive("success")
             }
 
             // Register handler using Node's public API (simplified test)
-            try await node.registerAction(networkId: "test-network", servicePath: "users", action: "test", handler: handler)
+            try await node.registerAction(networkId: networkId, servicePath: "users", action: "test", handler: handler)
 
             // Test the handler with a simple request
             let result = try await node.request("users/test", payload: nil as AnyValue?)
@@ -829,7 +837,6 @@ final class ServiceRegistryTests: XCTestCase {
             XCTAssertEqual(remoteSubscribersAfter.count, 0, "Remote subscription should be removed")
         }
     }
-
 
     // MARK: - Helper Classes
 

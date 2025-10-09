@@ -506,7 +506,6 @@ public final class ServiceRegistry {
     /// Logger instance
     public let logger: RunarLogger
 
-
     // MARK: - Initialization
 
     /// Create a new registry with a provided logger
@@ -638,7 +637,6 @@ public final class ServiceRegistry {
             throw ServiceRegistryError.serviceNotFound("Service not found: \(servicePath.asString())")
         }
     }
-
 
     // MARK: - Remote Service Management
 

@@ -105,7 +105,6 @@ public struct LabelResolver: Sendable, Equatable {
                 profileKeys = []
             }
 
-
             out[label] = LabelKeyInfo(
                 profilePublicKeys: profileKeys,
                 networkPublicKey: networkKey
@@ -141,4 +140,3 @@ private func validate(systemConfig: LabelResolverConfig) throws {
         }
     }
 }
-
