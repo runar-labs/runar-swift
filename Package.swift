@@ -1,19 +1,13 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "runar-swift",
     platforms: [
-        .macOS(.v12),
-        .iOS(.v15),
-        .tvOS(.v15),
-        .watchOS(.v8),
+        .macOS(.v13),
+        .iOS(.v16),
     ],
     products: [],
-    dependencies: [
-        .package(path: "swift-common"),
-        .package(path: "swift-serializer-macros"),
-        .package(path: "swift-serializer"),
-    ],
+    dependencies: [],
     targets: []
 )
