@@ -134,7 +134,7 @@ final class FFIDiscoveryTest: XCTestCase {
         var wrongAddresses = false
 
         // Poll for discovered events - matches Rust exactly
-        for i in 0..<10 {
+        for i in 0 ..< 10 {
             if let peerInfo = try await discoveryB.pollDiscovered() {
                 logger.debug("Poll \(i + 1): Node B discovered peer with addresses: \(peerInfo.addresses)")
                 logger.trace("  Public key: \(peerInfo.publicKey.map { String(format: "%02x", $0) }.joined())")
@@ -184,7 +184,7 @@ final class FFIDiscoveryTest: XCTestCase {
         try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
 
         // Poll for lost events after TTL - matches Rust exactly
-        for _ in 0..<5 {
+        for _ in 0 ..< 5 {
             if let nodeId = try await discoveryB.pollLost() {
                 logger.debug("Lost peer after TTL: \(nodeId)")
                 lostEvents += 1
@@ -209,7 +209,7 @@ final class FFIDiscoveryTest: XCTestCase {
         // Cleanup - matches Rust exactly
         try await discoveryA.shutdown()
         try await discoveryB.shutdown()
-        
+
         logger.debug("✅ FFI Discovery Event Polling Test completed")
     }
 

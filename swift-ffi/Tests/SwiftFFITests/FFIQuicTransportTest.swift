@@ -119,7 +119,7 @@ final class FFIQuicTransportTest: XCTestCase {
         let eventIdBox = Box<String?>(nil)
 
         let callbacksA = TransportCallbacks(
-            requestCallback: { receivedRequestId, path, _, sourcePeerId, correlationId in
+            requestCallback: { receivedRequestId, incomingMessage in
                 Task {
                     await requestIdBox.setValue(receivedRequestId)
                     requestReceived.fulfill()
@@ -127,16 +127,16 @@ final class FFIQuicTransportTest: XCTestCase {
 
                 // Create a NetworkMessage response
                 let responsePayload = NetworkMessagePayloadItem(
-                    path: path,
+                    path: incomingMessage.payload.path,
                     payloadBytes: Data("world".utf8),
-                    correlationId: correlationId ?? "test_correlation",
+                    correlationId: incomingMessage.payload.correlationId,
                     networkPublicKey: nil,
                     profilePublicKeys: []
                 )
 
                 let responseMessage = NetworkMessage(
                     sourceNodeId: "test_node_a",
-                    destinationNodeId: sourcePeerId,
+                    destinationNodeId: incomingMessage.sourceNodeId,
                     messageType: 5, // MESSAGE_TYPE_RESPONSE
                     payload: responsePayload
                 )
@@ -184,7 +184,7 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Step 10: Set up callbacks for transport B (no special callbacks needed) - exactly like Rust
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -314,7 +314,7 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport
         let callbacks = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -394,7 +394,7 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport A
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -419,7 +419,7 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport B
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -501,7 +501,7 @@ final class FFIQuicTransportTest: XCTestCase {
 
         // Create transport
         let callbacks = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",

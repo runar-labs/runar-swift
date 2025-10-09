@@ -54,21 +54,21 @@ final class ManualPollingTest: XCTestCase {
 
         // Step 7: Create transport A with minimal callbacks
         let callbacksA = TransportCallbacks(
-            requestCallback: { receivedRequestId, path, _, sourcePeerId, correlationId in
+            requestCallback: { receivedRequestId, incomingMessage in
                 print("ManualPollingTest - Request received on A: \(receivedRequestId)")
 
                 // Create a NetworkMessage response
                 let responsePayload = NetworkMessagePayloadItem(
-                    path: path,
+                    path: incomingMessage.payload.path,
                     payloadBytes: Data("world".utf8),
-                    correlationId: correlationId ?? "test_correlation",
+                    correlationId: incomingMessage.payload.correlationId,
                     networkPublicKey: nil,
                     profilePublicKeys: []
                 )
 
                 let responseMessage = NetworkMessage(
                     sourceNodeId: "test_node_a",
-                    destinationNodeId: sourcePeerId,
+                    destinationNodeId: incomingMessage.sourceNodeId,
                     messageType: 5, // MESSAGE_TYPE_RESPONSE
                     payload: responsePayload
                 )
@@ -88,7 +88,7 @@ final class ManualPollingTest: XCTestCase {
 
         // Step 10: Create transport B with minimal callbacks
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",

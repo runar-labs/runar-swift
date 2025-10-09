@@ -210,7 +210,7 @@ final class FFIHandshakeTest: XCTestCase {
                 peerDisconnectedEventsA.append(nodeId)
                 callbackLoggerA.debug("Transport A received peer_disconnected event for peer: \(nodeId)")
             },
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -269,7 +269,7 @@ final class FFIHandshakeTest: XCTestCase {
                 peerDisconnectedEventsB.append(nodeId)
                 callbackLoggerB.debug("Transport B received peer_disconnected event for peer: \(nodeId)")
             },
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -447,7 +447,7 @@ final class FFIHandshakeTest: XCTestCase {
 
         // Step 7: Set up callbacks for transport A - exactly like Rust
         let callbacksA = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -496,7 +496,7 @@ final class FFIHandshakeTest: XCTestCase {
                 callbackLoggerB.debug("Transport B received peer_connected event for peer: \(nodeId)")
                 callbackLoggerB.trace("NodeInfo: \(nodeInfo)")
             },
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",

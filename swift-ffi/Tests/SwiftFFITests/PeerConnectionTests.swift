@@ -76,7 +76,7 @@ final class PeerConnectionTests: XCTestCase {
                 print("PeerConnectionTests - Peer disconnected: \(peerId)")
                 peerDisconnectedExpectation.fulfill()
             },
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
@@ -106,7 +106,7 @@ final class PeerConnectionTests: XCTestCase {
 
         // Create transport B with minimal callbacks
         let callbacksB = TransportCallbacks(
-            requestCallback: { _, _, _, _, _ in
+            requestCallback: { _, _ in
                 NetworkMessage(
                     sourceNodeId: "",
                     destinationNodeId: "",
