@@ -18,7 +18,6 @@ let package = Package(
         .package(path: "../swift-serializer"),
         .package(path: "../swift-ffi"),
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
-        .package(path: "../swift-test-utils"),
     ],
     targets: [
         .target(

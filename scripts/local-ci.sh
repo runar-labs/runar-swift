@@ -13,7 +13,7 @@ run_to() {
   fi
 }
 
-packages=(swift-common swift-serializer swift-serializer-macros swift-ffi swift-node swift-test-utils swift-ffi-poc)
+packages=(swift-common swift-serializer swift-serializer-macros swift-ffi swift-node swift-ffi-poc)
 
 echo "== Swift versions =="
 swift --version || true

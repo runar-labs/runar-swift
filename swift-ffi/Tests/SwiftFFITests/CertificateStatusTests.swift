@@ -144,8 +144,6 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Certificate Serial Tests
 
     func testGetCertificateSerial() async throws {
-        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
-        let logger = RunarLogger.root(component: .custom("GetCertificateSerial"))
         // Test getting certificate serial
         do {
             let serial = try await nodeKeys.getCertificateSerial()
@@ -175,8 +173,6 @@ final class CertificateStatusTests: XCTestCase {
     // MARK: - Peer Certificate Validation Tests
 
     func testValidatePeerCertificate() async throws {
-        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
-        let logger = RunarLogger.root(component: .custom("ValidatePeerCertificate"))
         // Get node's own certificate for testing
         let nodeCertificate = try await nodeKeys.getNodeCertificate()
 
@@ -191,8 +187,6 @@ final class CertificateStatusTests: XCTestCase {
     }
 
     func testValidatePeerCertificateWithInvalidData() async throws {
-        // CREATE A ROOT LOGGER WITH THE NAME OF THE TEST CASE
-        let logger = RunarLogger.root(component: .custom("ValidatePeerCertificateWithInvalidData"))
         // Test with invalid certificate data
         let invalidCertificate = Data([0x01, 0x02, 0x03, 0x04]) // Invalid certificate data
 

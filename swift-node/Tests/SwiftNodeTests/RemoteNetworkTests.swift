@@ -457,16 +457,6 @@ final class RemoteNetworkTests: XCTestCase {
     /// INTENTION: Test that a node can properly stop, restart, and reconnect to the network
     /// and resume remote service calls. This isolates the reconnection logic from replication.
     func testNodeStopRestartReconnection() async throws {
-        // For now, just run the test directly without timeout
-        // In a real implementation, this would have proper timeout handling
-        try await performStopRestartTest()
-    }
-
-    private func performStopRestartTest() async throws {
-        // Configure logging to ensure test logs are displayed
-        let LoggerConfig = LoggerConfig()
-        // Note: Logging config would be applied here in a full implementation
-
         // Set up logger
         let logger = testLogger.child(component: .node)
 
