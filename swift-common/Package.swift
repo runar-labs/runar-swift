@@ -1,11 +1,11 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "swift-common",
     platforms: [
-        .macOS(.v12),
-        .iOS(.v15)
+        .macOS(.v13),
+        .iOS(.v16),
     ],
     products: [
         .library(
@@ -13,15 +13,19 @@ let package = Package(
             targets: ["SwiftCommon"]
         ),
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-atomics.git", from: "1.2.0"),
+    ],
     targets: [
         .target(
             name: "SwiftCommon",
-            dependencies: []
+            dependencies: [
+                .product(name: "Atomics", package: "swift-atomics"),
+            ]
         ),
         .testTarget(
             name: "SwiftCommonTests",
             dependencies: ["SwiftCommon"]
         ),
     ]
-) 
+)

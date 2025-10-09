@@ -1,115 +1,349 @@
+import Foundation
+import RunarSerializer
+import SwiftCBOR
 import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
-import SwiftCBOR
 
-/// Implementation of the `Encrypted` macro, which generates encryption code for structs.
-///
-/// This macro automatically adds:
-/// - Type alias for the encrypted version
-/// - Encrypted struct definition with encryption/decryption methods
-/// - Real encryption/decryption implementation
-/// - Type registration in the global TypeRegistry
-///
-/// Note: The struct must explicitly conform to `Codable` for this macro to work.
-///
-/// ## Usage
-/// ```swift
-/// @Encrypted
-/// struct TestProfile: Codable {
-///     let id: String
-///     var sensitive: String
-/// }
-/// ```
-public struct EncryptedMacro: MemberMacro {
+/// Implementation of the `Encrypted` macro, aligned with Rust `Encrypt` derive.
+/// Generates:
+/// - Nested sub-structs per label group (System/User/etc.)
+/// - Nested `Encrypted<Struct>` struct containing plain fields + per-label encrypted envelopes
+/// - `encryptWithKeystore(_:_: )` on the plain struct
+/// - `decryptWithKeystore(_:)` on the encrypted struct
+/// - SerializationRegistry registration (wire name + decoder) for the plain struct
+public struct EncryptedMacro: MemberMacro, PeerMacro {
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
-        in context: some MacroExpansionContext
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        
-        // Only support structs
         guard let structDecl = declaration.as(StructDeclSyntax.self) else {
             throw MacroError("Encrypted macro only supports structs")
         }
-        
+
         let structName = structDecl.name.text
         let encryptedStructName = "Encrypted\(structName)"
-        
-        // Check if the struct has Codable conformance
+        let wireName = extractWireName(from: node, structName: structName)
+
+        // Require explicit Codable conformance for deterministic encoding
         let hasCodable = structDecl.inheritanceClause?.inheritedTypes.contains { type in
-            type.type.as(SimpleTypeIdentifierSyntax.self)?.name.text == "Codable"
+            type.type.as(IdentifierTypeSyntax.self)?.name.text == "Codable"
         } ?? false
-        
-        guard hasCodable else {
-            throw MacroError("Encrypted macro requires the struct to explicitly conform to Codable")
-        }
-        
-        return [
-            """
-            /// Type alias for the encrypted version of this struct
-            public typealias Encrypted = \(raw: encryptedStructName)
-            
-            /// Encrypt this struct using the provided keystore
-            public func encryptWithKeystore(_ keystore: EnvelopeCrypto, resolver: LabelResolver) async throws -> \(raw: encryptedStructName) {
-                // Ensure the type is registered for deserialization
-                await Self.ensureRegistered()
-                
-                // Serialize the struct to CBOR for encrypted types
-                let anyValue = AnyValue.struct(self)
-                let serialized = try anyValue.serialize(context: nil)
-                
-                // Use real envelope encryption from swift-keys
-                let labelInfo = resolver.resolveLabel("\(raw: structName.lowercased())")
-                let envelopeData = try keystore.encryptWithEnvelope(
-                    data: serialized,
-                    networkId: labelInfo?.networkId,
-                    profileIds: labelInfo?.profileIds ?? []
-                )
-                
-                return \(raw: encryptedStructName)(encryptedData: envelopeData)
-            }
-            
-            /// Encrypted version of \(raw: structName)
-            public struct \(raw: encryptedStructName): Codable {
-                /// The encrypted data
-                public let encryptedData: EnvelopeEncryptedData
-                
-                public init(encryptedData: EnvelopeEncryptedData) {
-                    self.encryptedData = encryptedData
-                }
-                
-                /// Decrypt this struct using the provided keystore
-                public func decryptWithKeystore(_ keystore: EnvelopeCrypto) async throws -> \(raw: structName) {
-                    // Use real envelope decryption from swift-keys
-                    let decryptedData: Data
-                    
-                    // Try network-based decryption first (most reliable)
-                    if encryptedData.networkId != nil && !encryptedData.networkEncryptedKey.isEmpty {
-                        decryptedData = try keystore.decryptWithNetwork(envelopeData: encryptedData)
-                    } else if let firstProfileId = encryptedData.profileEncryptedKeys.keys.first {
-                        // Fall back to profile-based decryption
-                        decryptedData = try keystore.decryptWithProfile(envelopeData: encryptedData, profileId: firstProfileId)
-                    } else {
-                        throw SerializerError.deserializationFailed("No valid decryption method available")
+        guard hasCodable else { throw MacroError("Encrypted macro requires the struct to explicitly conform to Codable") }
+
+        // Extract ordered fields and labels
+        let orderedFields = extractOrderedFields(from: structDecl) // [(name, type)]
+        let fieldTypes = Dictionary(uniqueKeysWithValues: orderedFields.map { ($0.name, $0.type) })
+        let fieldLabels = extractFieldLabels(from: structDecl) // name -> [labels]
+        let labelOrder = makeOrderedLabels(from: fieldLabels) // [label]
+
+        // Build label->fields map preserving declaration order
+        let labelToFields: [String: [String]] = {
+            var map: [String: [String]] = [:]
+            for (name, _) in orderedFields {
+                if let labels = fieldLabels[name] {
+                    for l in labels {
+                        map[l, default: []].append(name)
                     }
-                    
-                    // Deserialize CBOR data back to AnyValue and convert to struct
-                    let anyValue = try AnyValue.deserialize(decryptedData, keystore: nil)
-                    return try await anyValue.asType() as \(raw: structName)
                 }
             }
-            
-            /// Register this type in the global TypeRegistry for deserialization
-            private static func ensureRegistered() async {
-                await TypeRegistry.shared.register(\(raw: structName).self) { data in
-                    // Use CodableCBORDecoder to decode CBOR data back to the struct
-                    let decoder = CodableCBORDecoder()
-                    return try decoder.decode(\(raw: structName).self, from: data)
+            return map
+        }()
+
+        // Generate sub-structs per label
+        var substructs: [String] = []
+        for label in labelOrder {
+            guard let fields = labelToFields[label] else { continue }
+            let cap = toCamelCase(label)
+            let subName = "\(structName)\(cap)Fields"
+            let members = fields.compactMap { fname -> String? in
+                guard let ty = fieldTypes[fname] else { return nil }
+                return "public let \(fname): \(ty)"
+            }.joined(separator: "\n                ")
+            let sub = """
+            struct \(subName): Codable, RunarSerializer.RunarDefault {
+            	\(members)
+                
+                static var runarDefaultValue: \(subName) {
+                    \(subName)(
+                        \(fields.map { fname in
+                            guard let ty = fieldTypes[fname] else { return "\(fname): \(fname).runarDefaultValue" }
+                            return "\(fname): \(ty).runarDefaultValue"
+                        }.joined(separator: ",\n                        "))
+                    )
                 }
             }
             """
-        ]
+            substructs.append(sub)
+        }
+
+        // Plain fields (no labels)
+        let plainFields = orderedFields.filter { fieldLabels[$0.name] == nil }
+        let plainFieldDecls = plainFields.map { "public let \($0.name): \($0.type)" }.joined(separator: "\n                ")
+
+        // Encrypted fields per label -> EncryptedLabelGroup?
+        let encryptedFieldDecls = labelOrder.map { label in
+            "public let \(label)_encrypted: RunarSerializer.EncryptedLabelGroup?"
+        }.joined(separator: "\n                ")
+
+        // Encrypted struct init params/body
+        let encInitParamsPlain = plainFields.map { "\($0.name): \($0.type)" }
+        let encInitParamsEncrypted = labelOrder.map { "\($0)_encrypted: RunarSerializer.EncryptedLabelGroup?" }
+        let encInitParams = (encInitParamsPlain + encInitParamsEncrypted).joined(separator: ",\n                    ")
+        let encInitBodyPlain = plainFields.map { "self.\($0.name) = \($0.name)" }
+        let encInitBodyEncrypted = labelOrder.map { "self.\($0)_encrypted = \($0)_encrypted" }
+        let encInitBody = (encInitBodyPlain + encInitBodyEncrypted).joined(separator: "\n                    ")
+
+        // Encrypt: build each sub-struct and envelope if resolver has mapping
+        var encryptGroupLines: [String] = []
+        for label in labelOrder {
+            let cap = toCamelCase(label)
+            let subName = "\(structName)\(cap)Fields"
+            let fields = labelToFields[label] ?? []
+            let subInitArgs = fields.map { fieldName in
+                return "\(fieldName): self.\(fieldName)"
+            }.joined(separator: ", ")
+            let line = """
+            let \(label)Struct = \(subName)(\(subInitArgs))
+            let \(label)Encrypted = try await RunarSerializer.encryptLabelGroup(label: "\(label)", fieldsStruct: \(label)Struct, keystore: keystore, resolver: resolver)
+            """
+            encryptGroupLines.append(line)
+        }
+        let encReturnArgsPlain = plainFields.map { "\($0.name): self.\($0.name)" }
+        let encReturnArgsEncrypted = labelOrder.map { "\($0)_encrypted: \($0)Encrypted" }
+        let encReturnArgs = (encReturnArgsPlain + encReturnArgsEncrypted).joined(separator: ",\n                    ")
+
+        // Decrypt: prepare locals with defaults for labeled fields
+        let labeledFields = orderedFields.filter { fieldLabels[$0.name] != nil }
+        let labeledLocalDefaults = labeledFields.map { f in
+            let sanitizedName = sanitizeFieldName(f.name)
+            return "var \(sanitizedName)_value: \(f.type) = (\(f.type)).runarDefaultValue"
+        }.joined(separator: "\n                ")
+
+        // For each label, attempt decrypt and assign into locals
+        var decryptBlocks: [String] = []
+        for label in labelOrder {
+            let fields = labelToFields[label] ?? []
+            let cap = toCamelCase(label)
+            let subName = "\(structName)\(cap)Fields"
+            let assignLines = fields.map { fname in 
+                let sanitizedName = sanitizeFieldName(fname)
+                return "\(sanitizedName)_value = tmp.\(fname)" 
+            }.joined(separator: "\n                        ")
+            let block = """
+            if let group = self.\(label)_encrypted {
+                if let tmp = try? await RunarSerializer.decryptLabelGroup(encryptedGroup: group, keystore: keystore) as \(subName) {
+                    \(assignLines)
+                }
+            }
+            """
+            decryptBlocks.append(block)
+        }
+
+        // Build final initializer call with locals
+        let decryptInitArgs = orderedFields.map { f in
+            if fieldLabels[f.name] != nil { 
+                let sanitizedName = sanitizeFieldName(f.name)
+                let cleanFieldName = f.name.replacingOccurrences(of: "`", with: "")
+                return "\(cleanFieldName): \(sanitizedName)_value" 
+            }
+            let cleanFieldName = f.name.replacingOccurrences(of: "`", with: "")
+            return "\(cleanFieldName): self.\(f.name)"
+        }.joined(separator: ",\n                        ")
+
+        let members = """
+        public typealias Encrypted = \(encryptedStructName)
+
+        // Automatic registration at program startup (like Rust #[ctor::ctor])
+        private static let _registration: Void = {
+            // Register encryptor
+            RunarSerializer.SerializationRegistry.shared.registerEncryptorSync(for: Self.self, wireName: "\(wireName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+                    let enc = try await value.encryptWithKeystore(keystore, resolver)
+                    let encoder = SwiftCBOR.CodableCBOREncoder()
+                    return try encoder.encode(enc)
+            }
+            // Also register encryptor under Swift type name to avoid races during bootstrap
+            RunarSerializer.SerializationRegistry.shared.registerEncryptorSync(for: Self.self, wireName: "\(structName)", targetEncryptedWireName: "Encrypted_\(wireName)") { value, keystore, resolver in
+                    let enc = try await value.encryptWithKeystore(keystore, resolver)
+                    let encoder = SwiftCBOR.CodableCBOREncoder()
+                    return try encoder.encode(enc)
+            }
+            RunarSerializer.SerializationRegistry.shared.registerDecryptorSync(for: Self.self, wireName: "Encrypted_\(wireName)") { data, keystore in
+                    let encrypted = try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
+                    return try await encrypted.decryptWithKeystore(keystore)
+            }
+
+            // Register wire names and decoders
+            RunarSerializer.SerializationRegistry.shared.registerWireNameSync(for: Self.self, wireName: "\(wireName)")
+            RunarSerializer.SerializationRegistry.shared.registerDecoderSync(for: "\(wireName)") { data in
+                    try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
+            }
+            RunarSerializer.SerializationRegistry.shared.registerDecoderSync(for: "\(structName)") { data in
+                    try SwiftCBOR.CodableCBORDecoder().decode(Self.self, from: data)
+            }
+            // Also register decoder for encrypted wire name
+            RunarSerializer.SerializationRegistry.shared.registerDecoderSync(for: "Encrypted_\(wireName)") { data in
+                    try SwiftCBOR.CodableCBORDecoder().decode(Encrypted\(structName).self, from: data)
+            }
+        }()
+
+        // Ensure registration happens when type is first accessed
+        public static func _ensureRegistered() {
+            _ = _registration
+        }
+
+        public func toAnyValue() async -> RunarSerializer.AnyValue {
+                Self._ensureRegistered()
+                return RunarSerializer.AnyValue.struct(self)
+        }
+
+        public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> Self {
+                Self._ensureRegistered()
+                return try await anyValue.asType()
+        }
+
+        public func encryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager, _ resolver: RunarSerializer.LabelResolver) async throws -> \(encryptedStructName) {
+                Self._ensureRegistered()
+                \(encryptGroupLines.joined(separator: "\n                "))
+                return \(encryptedStructName)(\(encReturnArgs))
+        }
+
+        \(substructs.joined(separator: "\n            "))
+
+        public struct \(encryptedStructName): Codable, RunarSerializer.AnyRunarDecryptable {
+                \(plainFieldDecls)
+                \(encryptedFieldDecls.isEmpty ? "" : "\n                \(encryptedFieldDecls)")
+
+                public init(\(encInitParams)) {
+                        \(encInitBody)
+                }
+
+                public func decryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager) async throws -> \(structName) {
+                        \(labeledLocalDefaults)
+                        \(decryptBlocks.joined(separator: "\n                "))
+                        return \(structName)(\(decryptInitArgs))
+                }
+
+                // Type-erased hook for AnyValue - required by AnyRunarDecryptable protocol
+                public func runarDecryptWithKeystore(_ keystore: RunarSerializer.CommonKeyManager) async throws -> Any {
+                        try await decryptWithKeystore(keystore) as \(structName)
+                }
+        }
+        """
+
+        return ["\(raw: members)"]
+    }
+
+    // MARK: - Helpers
+
+    private static func extractWireName(from node: AttributeSyntax, structName: String) -> String {
+        if let arguments = node.arguments?.as(LabeledExprListSyntax.self) {
+            for argument in arguments {
+                if let label = argument.label?.text, label == "name",
+                   let str = argument.expression.as(StringLiteralExprSyntax.self)?.segments.first?.as(StringSegmentSyntax.self)?.content.text
+                {
+                    return str
+                }
+            }
+        }
+        return structName
+    }
+
+    private static func extractOrderedFields(from structDecl: StructDeclSyntax) -> [(name: String, type: String)] {
+        var fields: [(String, String)] = []
+        for member in structDecl.memberBlock.members {
+            guard let varDecl = member.decl.as(VariableDeclSyntax.self) else { continue }
+            for binding in varDecl.bindings {
+                guard let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text,
+                      let typeAnnotation = binding.typeAnnotation else { continue }
+                let typeString = typeAnnotation.type.description.trimmingCharacters(in: .whitespaces)
+                fields.append((name, typeString))
+            }
+        }
+        return fields
+    }
+
+    private static func extractFieldLabels(from structDecl: StructDeclSyntax) -> [String: [String]] {
+        var out: [String: [String]] = [:]
+        for member in structDecl.memberBlock.members {
+            guard let varDecl = member.decl.as(VariableDeclSyntax.self) else { continue }
+            var labels: [String] = []
+            for attribute in varDecl.attributes {
+                if let attr = attribute.as(AttributeSyntax.self),
+                   attr.attributeName.as(IdentifierTypeSyntax.self)?.name.text == "Runar"
+                {
+                    labels.append(contentsOf: RunarMacro.extractLabels(from: attr))
+                }
+            }
+            if labels.isEmpty { continue }
+            for binding in varDecl.bindings {
+                if let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text {
+                    out[name] = labels
+                }
+            }
+        }
+        return out
+    }
+
+    private static func toCamelCase(_ s: String) -> String {
+        s.split(whereSeparator: { $0 == "_" || $0 == "-" }).map { part in
+            guard let first = part.first else { return "" }
+            return String(first).uppercased() + String(part.dropFirst())
+        }.joined()
+    }
+
+    private static func makeOrderedLabels(from fieldLabels: [String: [String]]) -> [String] {
+        var set: Set<String> = []
+        for labels in fieldLabels.values {
+            for l in labels {
+                set.insert(l)
+            }
+        }
+        let arr = Array(set)
+        return arr.sorted { a, b in
+            // Use RunarLabel priority for deterministic ordering (matches Rust)
+            func rank(_ l: String) -> Int {
+                switch l {
+                case "system": return 0
+                case "user": return 1
+                case "search", "system_only": return 2
+                default: return 3
+                }
+            }
+            let rankA = rank(a)
+            let rankB = rank(b)
+            if rankA == rankB { return a < b } // Lexicographic tie-breaker
+            return rankA < rankB
+        }
+    }
+
+    public static func expansion(
+        of _: AttributeSyntax,
+        providingPeersOf declaration: some DeclSyntaxProtocol,
+        in _: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        guard let structDecl = declaration.as(StructDeclSyntax.self) else { return [] }
+        let structName = structDecl.name.text
+
+        let extEncryptable: DeclSyntax = """
+        extension \(raw: structName): RunarSerializer.RunarEncryptable {
+        	public typealias Encrypted = \(raw: structName).\(raw: "Encrypted\(structName)")
+        }
+        """
+
+        let extDecryptable: DeclSyntax = """
+        extension \(raw: structName).\(raw: "Encrypted\(structName)"): RunarSerializer.RunarDecryptable {
+        	public typealias Decrypted = \(raw: structName)
+        }
+        """
+
+        return [extEncryptable, extDecryptable]
+    }
+    
+    private static func sanitizeFieldName(_ name: String) -> String {
+        // Remove backticks and replace with underscores for variable names
+        return name.replacingOccurrences(of: "`", with: "")
     }
 }

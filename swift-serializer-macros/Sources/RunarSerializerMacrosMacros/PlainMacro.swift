@@ -1,76 +1,123 @@
+import Foundation
+import RunarSerializer
+import SwiftCBOR
 import SwiftCompilerPlugin
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 
-/// Implementation of the `Plain` macro, which generates serialization code for structs.
+/// Implementation of the `Plain` macro, which provides struct-level serialization functionality.
 ///
-/// This macro automatically adds:
-/// - `toAnyValue()` method for zero-copy serialization
-/// - `fromAnyValue()` static method for deserialization
+/// This macro supports struct-level usage patterns:
+/// 1. Basic: `@Plain` - Generates serialization methods using struct name as wire name
+/// 2. Named: `@Plain(name: "...")` - Generates serialization methods with custom wire name
 ///
-/// Note: The struct must explicitly conform to `Codable` for this macro to work.
+/// ## Usage Examples
 ///
-/// ## Usage
+/// ### Struct-level serialization:
 /// ```swift
 /// @Plain
-/// struct TestUser: Codable {
-///     let id: Int
+/// struct User: Codable {
+///     let id: Int64
 ///     let name: String
-///     let isActive: Bool
+/// }
+///
+/// @Plain(name: "custom_user")
+/// struct CustomUser: Codable {
+///     let id: Int64
+///     let email: String
+/// }
+/// ```
+///
+/// ### Field-level labels:
+/// Field-level encryption labels are handled by the `@Encrypted` macro:
+/// ```swift
+/// @Encrypted
+/// struct Profile: Codable {
+///     let id: String
+///     @Runar("user") var privateData: String         // This should be handled by @Encrypted
+///     @Runar("system") var systemData: String       // This should be handled by @Encrypted
 /// }
 /// ```
 public struct PlainMacro: MemberMacro {
+    // MARK: - MemberMacro Implementation (Struct-level)
+
     public static func expansion(
         of node: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
-        in context: some MacroExpansionContext
+        in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
-        
-        // Ensure we're working with a struct
+        // Only support structs for member macro
         guard let structDecl = declaration.as(StructDeclSyntax.self) else {
-            throw MacroError("Plain macro can only be applied to structs")
+            throw MacroError("Runar macro can only be applied to structs")
         }
-        
+
         let structName = structDecl.name.text
-        
+
         // Check if the struct has Codable conformance
         let hasCodable = structDecl.inheritanceClause?.inheritedTypes.contains { type in
-            type.type.as(SimpleTypeIdentifierSyntax.self)?.name.text == "Codable"
+            type.type.as(IdentifierTypeSyntax.self)?.name.text == "Codable"
         } ?? false
-        
+
         guard hasCodable else {
-            throw MacroError("Plain macro requires the struct to explicitly conform to Codable")
+            throw MacroError("Runar macro requires the struct to explicitly conform to Codable")
         }
-        
-        // Add the serialization methods
+
+        // Extract wire name from macro arguments or use struct name as default
+        let wireName = extractWireName(from: node, structName: structName)
+
+        // Handle the case where no name parameter is provided (use struct name)
+        let finalWireName = wireName.isEmpty ? structName : wireName
+
         return [
             """
-            /// Convert this struct to an AnyValue for zero-copy serialization
-            public func toAnyValue() -> AnyValue {
-                return AnyValue.struct(self)
+            /// Simple async registration - no static state
+            private static func _ensureRegistered() async {
+                await RunarSerializer.SerializationRegistry.shared.registerWireName(for: Self.self, wireName: "\(raw: finalWireName)")
+                await RunarSerializer.SerializationRegistry.shared.registerDecoder(for: "\(raw: finalWireName)") { data in
+                    let decoder = SwiftCBOR.CodableCBORDecoder()
+                    return try decoder.decode(Self.self, from: data)
+                }
             }
-            
-            /// Create this struct from an AnyValue
-            public static func fromAnyValue(_ value: AnyValue) async throws -> \(raw: structName) {
-                return try await value.asType()
+
+            /// Convert this struct to an AnyValue for serialization
+            public func toAnyValue() async -> RunarSerializer.AnyValue {
+                // Await async registrations
+                await Self._ensureRegistered()
+                return RunarSerializer.AnyValue.struct(self)
             }
-            """
+
+            /// Create this struct from AnyValue
+            public static func fromAnyValue(_ anyValue: RunarSerializer.AnyValue) async throws -> \(raw: structName) {
+                // Trigger async registrations
+                await Self._ensureRegistered()
+                return try await anyValue.asType()
+            }
+            """,
         ]
     }
-}
 
-/// Error type for macro-related errors
-struct MacroError: Error, CustomStringConvertible {
-    let message: String
-    
-    init(_ message: String) {
-        self.message = message
-    }
-    
-    var description: String {
-        return message
+    // MARK: - Helper Functions
+
+    private static func extractWireName(from node: AttributeSyntax, structName: String) -> String {
+        // Check if the @Plain macro has a name parameter
+        if let arguments = node.arguments?.as(LabeledExprListSyntax.self) {
+            for argument in arguments {
+                if let label = argument.label?.text,
+                   label == "name",
+                   let stringLiteral = argument.expression.as(StringLiteralExprSyntax.self)
+                {
+                    return stringLiteral.segments.first?.as(StringSegmentSyntax.self)?.content.text ?? structName
+                }
+            }
+        }
+
+        // If no arguments provided, return empty string to use struct name as default
+        if node.arguments == nil {
+            return ""
+        }
+
+        // Default to struct name if no name parameter provided
+        return structName
     }
 }
-
- 

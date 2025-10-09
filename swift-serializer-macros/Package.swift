@@ -5,10 +5,8 @@ import PackageDescription
 let package = Package(
     name: "RunarSerializerMacros",
     platforms: [
-        .iOS(.v13),
-        .macOS(.v10_15),
-        .tvOS(.v13),
-        .watchOS(.v6)
+        .macOS(.v13),
+        .iOS(.v16),
     ],
     products: [
         .library(
@@ -19,23 +17,30 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "509.0.0"),
         .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.4.0"),
+        .package(path: "../swift-serializer"),
+        .package(path: "../swift-common"),
     ],
     targets: [
         .target(
             name: "RunarSerializerMacros",
             dependencies: ["RunarSerializerMacrosMacros"]
         ),
-                       .macro(
-                   name: "RunarSerializerMacrosMacros",
-                   dependencies: [
-                       .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-                       .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-                       .product(name: "SwiftCBOR", package: "SwiftCBOR"),
-                   ]
-               ),
+        .macro(
+            name: "RunarSerializerMacrosMacros",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+                .product(name: "SwiftCBOR", package: "SwiftCBOR"),
+                .product(name: "RunarSerializer", package: "swift-serializer"),
+            ]
+        ),
         .testTarget(
             name: "RunarSerializerMacrosTests",
-            dependencies: ["RunarSerializerMacros"]
+            dependencies: [
+                "RunarSerializerMacros",
+                .product(name: "RunarSerializer", package: "swift-serializer"),
+                .product(name: "SwiftCommon", package: "swift-common"),
+            ]
         ),
     ]
-) 
+)

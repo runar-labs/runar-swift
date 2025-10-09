@@ -8,4 +8,4 @@ struct ExampleStruct {
 func testMacro() {
     let example = ExampleStruct(value: "test")
     example.testFunction()
-} 
+}

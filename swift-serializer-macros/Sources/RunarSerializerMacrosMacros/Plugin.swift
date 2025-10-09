@@ -7,5 +7,6 @@ struct RunarSerializerMacrosPlugin: CompilerPlugin {
         TestMacro.self,
         PlainMacro.self,
         EncryptedMacro.self,
+        RunarMacro.self,
     ]
-} 
+}

@@ -1,0 +1,19 @@
+// swift-tools-version: 5.10
+import PackageDescription
+
+let package = Package(
+    name: "runar-swift",
+    platforms: [
+        .macOS(.v12),
+        .iOS(.v15),
+        .tvOS(.v15),
+        .watchOS(.v8),
+    ],
+    products: [],
+    dependencies: [
+        .package(path: "swift-common"),
+        .package(path: "swift-serializer-macros"),
+        .package(path: "swift-serializer"),
+    ],
+    targets: []
+)

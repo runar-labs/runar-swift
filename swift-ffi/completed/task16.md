@@ -1,0 +1,1 @@
+ we have just add this tests in the rust side /Users/rafael/dev/runar-swift/runar-rust/runar-ffi/tests/ffi_discovery_test.rs.. to test the FFI discovery API ,, lets create a seift test exactly like this one 100% aligned.. so we can make sure discovery also works using the swift FFI package.. and baheve like the RUST test does.

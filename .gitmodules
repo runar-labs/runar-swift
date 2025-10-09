@@ -1,0 +1,3 @@
+[submodule "Vendor/swift-certificates"]
+	path = Vendor/swift-certificates
+	url = https://github.com/runar-labs/swift-certificates

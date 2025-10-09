@@ -4,10 +4,8 @@ import PackageDescription
 let package = Package(
     name: "RunarSerializer",
     platforms: [
-        .iOS(.v13),
-        .macOS(.v12),
-        .tvOS(.v13),
-        .watchOS(.v6)
+        .macOS(.v13),
+        .iOS(.v16),
     ],
     products: [
         .library(
@@ -16,17 +14,18 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.4.0"),
+        .package(url: "https://github.com/valpackett/SwiftCBOR.git", from: "0.5.0"),
+        .package(path: "../swift-common"),
+        .package(path: "../swift-ffi"),
         .package(path: "../swift-serializer-macros"),
-        .package(path: "../swift-keys"),
     ],
     targets: [
         .target(
             name: "RunarSerializer",
             dependencies: [
                 "SwiftCBOR",
-                .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
-                .product(name: "RunarKeys", package: "swift-keys")
+                .product(name: "SwiftCommon", package: "swift-common"),
+                .product(name: "SwiftFFI", package: "swift-ffi"),
             ],
             path: "Sources/RunarSerializer"
         ),
@@ -34,10 +33,11 @@ let package = Package(
             name: "RunarSerializerTests",
             dependencies: [
                 "RunarSerializer",
+                "SwiftCBOR",
+                .product(name: "SwiftFFI", package: "swift-ffi"),
                 .product(name: "RunarSerializerMacros", package: "swift-serializer-macros"),
-                "SwiftCBOR"
             ],
             path: "Tests/RunarSerializerTests"
         ),
     ]
-) 
+)

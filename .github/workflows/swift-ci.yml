@@ -1,0 +1,107 @@
+name: swift-ci
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ "**" ]
+
+concurrency:
+  group: swift-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-format:
+    name: Lint and Format
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Swift 6.0
+        run: |
+          # Download and install Swift 6.0 toolchain for macOS
+          curl -L https://download.swift.org/swift-6.0-release/xcode/swift-6.0-RELEASE-osx.pkg -o swift.pkg
+          sudo installer -pkg swift.pkg -target /
+          rm swift.pkg
+          # Add Swift to PATH
+          export PATH="/usr/bin:$PATH"
+
+      - name: Show Swift version
+        run: |
+          export PATH="/usr/bin:$PATH"
+          swift --version
+
+      - name: Install SwiftFormat and SwiftLint
+        run: |
+          brew update
+          brew install swiftformat swiftlint
+
+      - name: SwiftFormat (lint mode)
+        run: |
+          set -euo pipefail
+          export PATH="/usr/bin:$PATH"
+          for dir in swift-common swift-serializer swift-serializer-macros swift-ffi swift-node swift-test-utils swift-ffi-poc; do
+            echo "Checking formatting in $dir"
+            swiftformat --lint "$dir"
+          done
+
+      - name: SwiftLint (strict)
+        run: |
+          set -euo pipefail
+          export PATH="/usr/bin:$PATH"
+          for dir in swift-common swift-serializer swift-serializer-macros swift-ffi swift-node swift-test-utils swift-ffi-poc; do
+            echo "SwiftLint in $dir (strict)"
+            (cd "$dir" && swiftlint)
+          done
+
+  build-and-test:
+    name: Build and Test (${{ matrix.package }})
+    runs-on: macos-14
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [ swift-common, swift-serializer, swift-serializer-macros, swift-ffi, swift-node, swift-test-utils, swift-ffi-poc ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Swift 6.0
+        run: |
+          # Download and install Swift 6.0 toolchain for macOS
+          curl -L https://download.swift.org/swift-6.0-release/xcode/swift-6.0-RELEASE-osx.pkg -o swift.pkg
+          sudo installer -pkg swift.pkg -target /
+          rm swift.pkg
+          # Add Swift to PATH
+          export PATH="/usr/bin:$PATH"
+
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ matrix.package }}/.build
+            ${{ matrix.package }}/.swiftpm
+          key: ${{ runner.os }}-spm-${{ matrix.package }}-${{ hashFiles(format('{0}/Package.resolved', matrix.package)) }}
+          restore-keys: |
+            ${{ runner.os }}-spm-${{ matrix.package }}-
+
+      - name: Show Swift version
+        run: |
+          export PATH="/usr/bin:$PATH"
+          swift --version
+
+      - name: Build
+        working-directory: ${{ matrix.package }}
+        run: |
+          export PATH="/usr/bin:$PATH"
+          swift build
+
+      - name: Test
+        working-directory: ${{ matrix.package }}
+        run: |
+          export PATH="/usr/bin:$PATH"
+          swift test
+
+

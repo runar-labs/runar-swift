@@ -60,3 +60,9 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+swift-keys-v1/
+.DS_Store
+runar-rust
+target/serializer-vectors-swift/*.bin
+swift-serializer/target/
+swift-ffi/target/
