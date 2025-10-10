@@ -2,6 +2,9 @@
 <Workspace
    version = "1.0">
    <FileRef
+      location = "group:examples/ios/RunarTestApp/RunarTestApp.xcodeproj">
+   </FileRef>
+   <FileRef
       location = "group:swift-common">
    </FileRef>
    <FileRef
